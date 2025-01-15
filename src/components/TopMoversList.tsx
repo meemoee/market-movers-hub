@@ -52,7 +52,7 @@ const TopMoversList = ({
         </div>
       )}
       
-      <div className="sticky top-14 bg-background px-4 py-4 z-40 border-b border-l border-r border-white/10 rounded-b-lg mb-6">
+      <div className="sticky top-14 bg-[#1a1b1e] px-4 py-4 z-40 border-b border-l border-r border-white/10 rounded-b-lg mb-6">
         <div className="flex items-center justify-between gap-2 mb-2">
           <div className="flex items-center space-x-2">
             <span className="text-2xl font-bold">What's happened in the last</span>
@@ -66,7 +66,7 @@ const TopMoversList = ({
               </button>
 
               {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 py-2 bg-background/80 rounded-xl shadow-2xl border border-white/10 w-40 backdrop-blur-2xl z-50">
+                <div className="absolute top-full left-0 mt-2 py-2 bg-[#1a1b1e]/80 rounded-xl shadow-2xl border border-white/10 w-40 backdrop-blur-2xl z-50">
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
@@ -106,15 +106,43 @@ const TopMoversList = ({
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {topMovers.map((mover) => (
-          <MarketMoverCard
+      <div className="bg-[#1a1b1e] border border-white/10 rounded-lg overflow-hidden">
+        {topMovers.map((mover, index) => (
+          <div
             key={mover.market_id}
-            title={mover.question}
-            price={mover.price}
-            change={mover.price_change}
-            volume={mover.volume}
-          />
+            className={`p-4 ${index !== 0 ? 'border-t border-white/10' : ''}`}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex-grow">
+                <h3 className="font-bold text-lg mb-2">{mover.question}</h3>
+                <div className="flex items-center space-x-4">
+                  <div className="flex items-center">
+                    <span className="text-2xl font-bold">{(mover.price * 100).toFixed(0)}¢</span>
+                    <div className="ml-2 flex items-center">
+                      {mover.price_change >= 0 ? (
+                        <>
+                          <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
+                          <span className="text-green-500">
+                            +{(mover.price_change * 100).toFixed(1)}¢
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <TrendingDown className="w-4 h-4 text-red-500 mr-1" />
+                          <span className="text-red-500">
+                            {(mover.price_change * 100).toFixed(1)}¢
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-gray-400">
+                    Vol: ${mover.volume.toLocaleString()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 
