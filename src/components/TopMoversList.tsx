@@ -7,14 +7,6 @@ interface TimeInterval {
   value: string
 }
 
-interface TopMover {
-  market_id: string
-  question: string
-  price: number
-  price_change: number
-  volume: number
-}
-
 interface TopMoversListProps {
   topMovers: TopMover[]
   error: string | null
@@ -27,6 +19,24 @@ interface TopMoversListProps {
   onOpenMarketsChange: (value: boolean) => void
   isLoading?: boolean
   isLoadingMore?: boolean
+}
+
+interface TopMover {
+  market_id: string
+  question: string
+  price: number
+  price_change: number
+  volume: number
+  image: string
+  yes_sub_title?: string
+  final_last_traded_price: number
+  final_best_ask: number
+  final_best_bid: number
+  volume_change: number
+  volume_change_percentage: number
+  url: string
+  outcomes?: string[] | string
+  description?: string
 }
 
 const TopMoversList = ({
@@ -43,6 +53,24 @@ const TopMoversList = ({
   isLoadingMore,
 }: TopMoversListProps) => {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false)
+
+  const getVolumeColor = (percentage: number): string => {
+    const maxPercentage = 100
+    const normalizedPercentage = Math.min(Math.abs(percentage), maxPercentage) / maxPercentage
+    const startColor = [156, 163, 175] 
+    const endColor = [255, 255, 0]
+
+    const r = Math.round(startColor[0] + (endColor[0] - startColor[0]) * normalizedPercentage)
+    const g = Math.round(startColor[1] + (endColor[1] - startColor[1]) * normalizedPercentage)
+    const b = Math.round(startColor[2] + (endColor[2] - startColor[2]) * normalizedPercentage)
+
+    return `rgb(${r}, ${g}, ${b})`
+  }
+
+  const formatVolumeChange = (change: number, volume: number): string => {
+    const prefix = change >= 0 ? '+' : ''
+    return `${prefix}${change.toLocaleString()} (${((change / volume) * 100).toFixed(1)}%)`
+  }
 
   return (
     <div className="space-y-6 pb-4 max-w-[1200px] mx-auto relative">
@@ -114,33 +142,99 @@ const TopMoversList = ({
           >
             <div className="flex items-start justify-between">
               <div className="flex-grow">
-                <h3 className="font-bold text-lg mb-2">{mover.question}</h3>
-                <div className="flex items-center space-x-4">
-                  <div className="flex items-center">
-                    <span className="text-2xl font-bold">{(mover.price * 100).toFixed(0)}¢</span>
-                    <div className="ml-2 flex items-center">
-                      {mover.price_change >= 0 ? (
-                        <>
-                          <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-                          <span className="text-green-500">
-                            +{(mover.price_change * 100).toFixed(1)}¢
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <TrendingDown className="w-4 h-4 text-red-500 mr-1" />
-                          <span className="text-red-500">
-                            {(mover.price_change * 100).toFixed(1)}¢
-                          </span>
-                        </>
-                      )}
+                <div className="flex items-start">
+                  <img
+                    src={mover.image}
+                    alt=""
+                    className="w-12 h-12 rounded-lg object-cover mr-4"
+                  />
+                  <div>
+                    <h3 className="font-bold text-lg mb-2">{mover.question}</h3>
+                    {mover.yes_sub_title && (
+                      <p className="text-sm text-gray-400">{mover.yes_sub_title}</p>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="mt-4">
+                  <div className="flex items-center space-x-4">
+                    <div className="flex items-center">
+                      <span className="text-2xl font-bold">
+                        {(mover.final_last_traded_price * 100).toFixed(0)}¢
+                      </span>
+                      <div className="ml-2 flex items-center">
+                        {mover.price_change >= 0 ? (
+                          <>
+                            <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
+                            <span className="text-green-500">
+                              +{(mover.price_change * 100).toFixed(1)}¢
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <TrendingDown className="w-4 h-4 text-red-500 mr-1" />
+                            <span className="text-red-500">
+                              {(mover.price_change * 100).toFixed(1)}¢
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-gray-400">
+                      Vol: ${mover.volume.toLocaleString()}
                     </div>
                   </div>
-                  <div className="text-gray-400">
-                    Vol: ${mover.volume.toLocaleString()}
+
+                  {/* Price change visualization bar */}
+                  <div className="relative h-[2px] w-full mt-4">
+                    <div 
+                      className="absolute bg-white/50 h-1 top-[-2px]" 
+                      style={{ width: `${Math.abs(mover.final_last_traded_price * 100)}%` }}
+                    />
+                    {mover.price_change > 0 ? (
+                      <div 
+                        className="absolute bg-green-900/90 h-1 top-[-2px]" 
+                        style={{ 
+                          width: `${Math.abs(mover.price_change * 100)}%`,
+                          right: `${100 - Math.abs(mover.final_last_traded_price * 100)}%`
+                        }}
+                      />
+                    ) : (
+                      <div 
+                        className="absolute bg-red-500/50 h-1 top-[-2px]" 
+                        style={{ 
+                          width: `${Math.abs(mover.price_change * 100)}%`,
+                          left: `${Math.abs(mover.final_last_traded_price * 100)}%`
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Volume change indicator */}
+                  <div className="mt-2">
+                    <span 
+                      className="text-xs font-bold"
+                      style={{ color: getVolumeColor(mover.volume_change_percentage) }}
+                    >
+                      {formatVolumeChange(mover.volume_change, mover.volume)}
+                    </span>
                   </div>
                 </div>
               </div>
+
+              {/* Market platform logo */}
+              <a 
+                href={mover.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex-shrink-0"
+              >
+                <img
+                  src={mover.url.includes('polymarket') ? '/images/PolymarketLogo.png' : '/images/KalshiLogo.png'}
+                  alt={mover.url.includes('polymarket') ? 'Polymarket' : 'Kalshi'}
+                  className="w-6 h-6"
+                />
+              </a>
             </div>
           </div>
         ))}
