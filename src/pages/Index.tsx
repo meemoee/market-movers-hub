@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Header from "@/components/Header";
 import LeftSidebar from "@/components/LeftSidebar";
+import RightSidebar from "@/components/RightSidebar";
 import MarketMoverCard from "@/components/MarketMoverCard";
 
 // Demo data
@@ -36,7 +37,7 @@ export default function Index() {
       <Header />
       <LeftSidebar />
       
-      <main className="pt-20 px-4 lg:pl-[320px]">
+      <main className="pt-20 px-4 lg:pl-[320px] lg:pr-[420px]">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold mb-6">Top Market Movers</h2>
           
@@ -53,6 +54,8 @@ export default function Index() {
           </div>
         </div>
       </main>
+
+      <RightSidebar />
     </div>
   );
 }
