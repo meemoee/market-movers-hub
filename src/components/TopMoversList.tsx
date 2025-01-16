@@ -110,32 +110,32 @@ const TopMoversList = ({
   }
 
   return (
-    <div className="space-y-6 pb-4 max-w-[1200px] mx-auto relative">
+    <div className="space-y-4 max-w-[1200px] mx-auto relative">
       {isLoading && (
         <div className="absolute top-32 inset-x-0 bottom-0 flex justify-center bg-black/50 backdrop-blur-sm z-50 rounded-lg">
           <Loader2 className="w-8 h-8 animate-spin mt-8" />
         </div>
       )}
       
-      <div className="sticky top-14 bg-[#1a1b1e] px-4 py-4 z-40 border-b border-l border-r border-white/10 rounded-b-lg mb-6">
-        <div className="flex items-center justify-between gap-2 mb-2">
+      <div className="sticky top-14 bg-[#1a1b1e] px-6 py-4 z-40 border-b border-l border-r border-white/10 rounded-b-lg">
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center space-x-2">
-            <span className="text-2xl font-bold">What's happened in the last</span>
+            <span className="text-xl font-bold">What's happened in the last</span>
             <div className="relative">
               <button
                 onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-                className="flex items-center space-x-2 text-2xl font-bold hover:text-white/80 transition-colors"
+                className="flex items-center space-x-2 text-xl font-bold hover:text-white/80 transition-colors"
               >
                 <span>{timeIntervals.find(i => i.value === selectedInterval)?.label}</span>
                 <ChevronDown className="w-5 h-5" />
               </button>
 
               {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 py-2 bg-[#1a1b1e]/80 rounded-xl shadow-2xl border border-white/10 w-40 backdrop-blur-2xl z-50">
+                <div className="absolute top-full left-0 mt-1 py-1 bg-[#1a1b1e]/95 rounded-lg shadow-xl border border-white/10 w-36 backdrop-blur-xl z-50">
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
-                      className={`w-full px-3 py-2 text-left hover:bg-white/10 transition-colors ${
+                      className={`w-full px-4 py-2 text-left hover:bg-white/10 transition-colors ${
                         selectedInterval === interval.value ? 'bg-white/5 text-white' : 'text-gray-300'
                       }`}
                       onClick={() => {
@@ -160,7 +160,7 @@ const TopMoversList = ({
               onChange={e => onOpenMarketsChange(e.target.checked)}
               className="rounded border-gray-600 bg-transparent"
             />
-            <span>Open Markets Only</span>
+            <span className="text-sm">Open Markets Only</span>
           </label>
         </div>
       </div>
@@ -169,20 +169,20 @@ const TopMoversList = ({
         {topMovers.map((mover, index) => (
           <div
             key={mover.market_id}
-            className={`p-4 ${index !== 0 ? 'border-t border-white/10' : ''} cursor-pointer hover:bg-white/5 transition-colors`}
+            className={`px-6 py-4 ${index !== 0 ? 'border-t border-white/10' : ''} cursor-pointer hover:bg-white/5 transition-colors`}
             onClick={() => toggleMarket(mover.market_id)}
           >
-            <div className="flex items-start justify-between">
-              <div className="flex-grow">
-                <div className="flex items-start">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-grow min-w-0">
+                <div className="flex items-start gap-4">
                   <img
                     src={mover.image}
                     alt=""
-                    className="w-12 h-12 rounded-lg object-cover mr-4"
+                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
                   />
-                  <div className="flex-1">
-                    <div className="flex items-start justify-between">
-                      <h3 className="font-bold text-lg mb-2 pr-2">{mover.question}</h3>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-bold text-lg mb-2 pr-2 line-clamp-2">{mover.question}</h3>
                       {expandedMarkets.has(mover.market_id) ? (
                         <ChevronUp className="w-5 h-5 flex-shrink-0 text-gray-400" />
                       ) : (
@@ -190,18 +190,18 @@ const TopMoversList = ({
                       )}
                     </div>
                     {mover.yes_sub_title && (
-                      <p className="text-sm text-gray-400">{mover.yes_sub_title}</p>
+                      <p className="text-sm text-gray-400 line-clamp-1">{mover.yes_sub_title}</p>
                     )}
                   </div>
                 </div>
                 
-                <div className="mt-4">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center">
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-baseline gap-3">
                       <span className="text-2xl font-bold">
                         {formatPrice(mover.final_last_traded_price)}
                       </span>
-                      <div className="ml-2 flex items-center">
+                      <div className="flex items-center">
                         {mover.price_change >= 0 ? (
                           <>
                             <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
@@ -225,7 +225,7 @@ const TopMoversList = ({
                   </div>
 
                   {/* Price change visualization bar */}
-                  <div className="relative h-[2px] w-full mt-4">
+                  <div className="relative h-[2px] w-full">
                     <div 
                       className="absolute bg-white/50 h-1 top-[-2px]" 
                       style={{ width: `${Math.abs(mover.final_last_traded_price * 100)}%` }}
@@ -250,7 +250,7 @@ const TopMoversList = ({
                   </div>
 
                   {/* Volume change indicator */}
-                  <div className="mt-2">
+                  <div>
                     <span 
                       className="text-xs font-medium"
                       style={{ color: getVolumeColor(mover.volume_change_percentage) }}
@@ -265,14 +265,14 @@ const TopMoversList = ({
                     {mover.description && (
                       <p className="text-sm text-gray-400 mb-4">{mover.description}</p>
                     )}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-2 gap-6">
                       <div>
-                        <h4 className="text-sm font-medium mb-2">Best Bid</h4>
-                        <p className="text-lg">{formatPrice(mover.final_best_bid)}</p>
+                        <h4 className="text-sm font-medium mb-1 text-gray-400">Best Bid</h4>
+                        <p className="text-lg font-medium">{formatPrice(mover.final_best_bid)}</p>
                       </div>
                       <div>
-                        <h4 className="text-sm font-medium mb-2">Best Ask</h4>
-                        <p className="text-lg">{formatPrice(mover.final_best_ask)}</p>
+                        <h4 className="text-sm font-medium mb-1 text-gray-400">Best Ask</h4>
+                        <p className="text-lg font-medium">{formatPrice(mover.final_best_ask)}</p>
                       </div>
                     </div>
                   </div>
@@ -310,7 +310,7 @@ const TopMoversList = ({
         </button>
       )}
     </div>
-  )
+  );
 }
 
-export default TopMoversList
+export default TopMoversList;
