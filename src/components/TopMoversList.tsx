@@ -67,6 +67,35 @@ const TopMoversList = ({
     })
   }
 
+  const formatPrice = (price: number): string => {
+    return `${(price * 100).toFixed(1)}¢`
+  }
+
+  const formatPriceChange = (change: number): string => {
+    const prefix = change >= 0 ? '+' : ''
+    return `${prefix}${(change * 100).toFixed(1)}¢`
+  }
+
+  const formatVolume = (volume: number): string => {
+    if (volume >= 1000000) {
+      return `$${(volume / 1000000).toFixed(2)}M`
+    } else if (volume >= 1000) {
+      return `$${(volume / 1000).toFixed(1)}K`
+    }
+    return `$${volume.toFixed(0)}`
+  }
+
+  const formatVolumeChange = (change: number, volume: number): string => {
+    const percentage = ((change / volume) * 100).toFixed(1)
+    const prefix = change >= 0 ? '+' : ''
+    if (Math.abs(change) >= 1000000) {
+      return `${prefix}$${(change / 1000000).toFixed(2)}M (${percentage}%)`
+    } else if (Math.abs(change) >= 1000) {
+      return `${prefix}$${(change / 1000).toFixed(1)}K (${percentage}%)`
+    }
+    return `${prefix}$${change.toFixed(0)} (${percentage}%)`
+  }
+
   const getVolumeColor = (percentage: number): string => {
     const maxPercentage = 100
     const normalizedPercentage = Math.min(Math.abs(percentage), maxPercentage) / maxPercentage
@@ -78,11 +107,6 @@ const TopMoversList = ({
     const b = Math.round(startColor[2] + (endColor[2] - startColor[2]) * normalizedPercentage)
 
     return `rgb(${r}, ${g}, ${b})`
-  }
-
-  const formatVolumeChange = (change: number, volume: number): string => {
-    const prefix = change >= 0 ? '+' : ''
-    return `${prefix}${change.toLocaleString()} (${((change / volume) * 100).toFixed(1)}%)`
   }
 
   return (
@@ -141,12 +165,6 @@ const TopMoversList = ({
         </div>
       </div>
 
-      {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-red-500">
-          {error}
-        </div>
-      )}
-
       <div className="bg-[#1a1b1e] border border-white/10 rounded-lg overflow-hidden">
         {topMovers.map((mover, index) => (
           <div
@@ -181,28 +199,28 @@ const TopMoversList = ({
                   <div className="flex items-center space-x-4">
                     <div className="flex items-center">
                       <span className="text-2xl font-bold">
-                        {(mover.final_last_traded_price * 100).toFixed(0)}¢
+                        {formatPrice(mover.final_last_traded_price)}
                       </span>
                       <div className="ml-2 flex items-center">
                         {mover.price_change >= 0 ? (
                           <>
                             <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
-                            <span className="text-green-500">
-                              +{(mover.price_change * 100).toFixed(1)}¢
+                            <span className="text-green-500 font-medium">
+                              {formatPriceChange(mover.price_change)}
                             </span>
                           </>
                         ) : (
                           <>
                             <TrendingDown className="w-4 h-4 text-red-500 mr-1" />
-                            <span className="text-red-500">
-                              {(mover.price_change * 100).toFixed(1)}¢
+                            <span className="text-red-500 font-medium">
+                              {formatPriceChange(mover.price_change)}
                             </span>
                           </>
                         )}
                       </div>
                     </div>
-                    <div className="text-gray-400">
-                      Vol: ${mover.volume.toLocaleString()}
+                    <div className="text-gray-400 font-medium">
+                      Vol: {formatVolume(mover.volume)}
                     </div>
                   </div>
 
@@ -234,7 +252,7 @@ const TopMoversList = ({
                   {/* Volume change indicator */}
                   <div className="mt-2">
                     <span 
-                      className="text-xs font-bold"
+                      className="text-xs font-medium"
                       style={{ color: getVolumeColor(mover.volume_change_percentage) }}
                     >
                       {formatVolumeChange(mover.volume_change, mover.volume)}
@@ -250,11 +268,11 @@ const TopMoversList = ({
                     <div className="grid grid-cols-2 gap-4">
                       <div>
                         <h4 className="text-sm font-medium mb-2">Best Bid</h4>
-                        <p className="text-lg">{(mover.final_best_bid * 100).toFixed(0)}¢</p>
+                        <p className="text-lg">{formatPrice(mover.final_best_bid)}</p>
                       </div>
                       <div>
                         <h4 className="text-sm font-medium mb-2">Best Ask</h4>
-                        <p className="text-lg">{(mover.final_best_ask * 100).toFixed(0)}¢</p>
+                        <p className="text-lg">{formatPrice(mover.final_best_ask)}</p>
                       </div>
                     </div>
                   </div>
