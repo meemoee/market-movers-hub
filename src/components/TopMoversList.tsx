@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, TrendingUp, TrendingDown, Loader2 } from 'lucide-react'
+import { ChevronDown, TrendingUp, TrendingDown, Loader2, ChevronUp } from 'lucide-react'
 import MarketMoverCard from './MarketMoverCard'
 
 interface TimeInterval {
@@ -53,6 +53,19 @@ const TopMoversList = ({
   isLoadingMore,
 }: TopMoversListProps) => {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false)
+  const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set())
+
+  const toggleMarket = (marketId: string) => {
+    setExpandedMarkets(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(marketId)) {
+        newSet.delete(marketId)
+      } else {
+        newSet.add(marketId)
+      }
+      return newSet
+    })
+  }
 
   const getVolumeColor = (percentage: number): string => {
     const maxPercentage = 100
@@ -138,7 +151,8 @@ const TopMoversList = ({
         {topMovers.map((mover, index) => (
           <div
             key={mover.market_id}
-            className={`p-4 ${index !== 0 ? 'border-t border-white/10' : ''}`}
+            className={`p-4 ${index !== 0 ? 'border-t border-white/10' : ''} cursor-pointer hover:bg-white/5 transition-colors`}
+            onClick={() => toggleMarket(mover.market_id)}
           >
             <div className="flex items-start justify-between">
               <div className="flex-grow">
@@ -148,8 +162,15 @@ const TopMoversList = ({
                     alt=""
                     className="w-12 h-12 rounded-lg object-cover mr-4"
                   />
-                  <div>
-                    <h3 className="font-bold text-lg mb-2">{mover.question}</h3>
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between">
+                      <h3 className="font-bold text-lg mb-2 pr-2">{mover.question}</h3>
+                      {expandedMarkets.has(mover.market_id) ? (
+                        <ChevronUp className="w-5 h-5 flex-shrink-0 text-gray-400" />
+                      ) : (
+                        <ChevronDown className="w-5 h-5 flex-shrink-0 text-gray-400" />
+                      )}
+                    </div>
                     {mover.yes_sub_title && (
                       <p className="text-sm text-gray-400">{mover.yes_sub_title}</p>
                     )}
@@ -220,14 +241,32 @@ const TopMoversList = ({
                     </span>
                   </div>
                 </div>
+
+                {expandedMarkets.has(mover.market_id) && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    {mover.description && (
+                      <p className="text-sm text-gray-400 mb-4">{mover.description}</p>
+                    )}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Best Bid</h4>
+                        <p className="text-lg">{(mover.final_best_bid * 100).toFixed(0)}¢</p>
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Best Ask</h4>
+                        <p className="text-lg">{(mover.final_best_ask * 100).toFixed(0)}¢</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Market platform logo */}
               <a 
                 href={mover.url} 
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="flex-shrink-0"
+                onClick={(e) => e.stopPropagation()}
               >
                 <img
                   src={mover.url.includes('polymarket') ? '/images/PolymarketLogo.png' : '/images/KalshiLogo.png'}

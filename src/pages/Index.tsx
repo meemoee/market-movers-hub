@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from 'react';
 import Header from "@/components/Header";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
@@ -43,7 +43,6 @@ export default function Index() {
             openMarketsOnly={openMarketsOnly}
             onOpenMarketsChange={setOpenMarketsOnly}
             isLoading={false}
-            balance={1000}
           />
         </div>
       </main>
