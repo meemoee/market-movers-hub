@@ -54,6 +54,7 @@ export function MarketCard({
             description={market.description}
             bestBid={market.final_best_bid}
             bestAsk={market.final_best_ask}
+            marketId={market.market_id}
           />
         )}
       </div>

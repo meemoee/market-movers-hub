@@ -175,6 +175,39 @@ export type Database = {
           },
         ]
       }
+      orderbook_data: {
+        Row: {
+          asks: Json | null
+          best_ask: number | null
+          best_bid: number | null
+          bids: Json | null
+          id: number
+          market_id: string
+          spread: number | null
+          timestamp: string | null
+        }
+        Insert: {
+          asks?: Json | null
+          best_ask?: number | null
+          best_bid?: number | null
+          bids?: Json | null
+          id?: never
+          market_id: string
+          spread?: number | null
+          timestamp?: string | null
+        }
+        Update: {
+          asks?: Json | null
+          best_ask?: number | null
+          best_bid?: number | null
+          bids?: Json | null
+          id?: never
+          market_id?: string
+          spread?: number | null
+          timestamp?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           balance: number | null
