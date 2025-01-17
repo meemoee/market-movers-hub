@@ -3,6 +3,18 @@ import { ChevronDown, TrendingUp, TrendingDown, Loader2, ChevronUp } from 'lucid
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
 import { Progress } from './ui/progress'
+import { Button } from './ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { useToast } from "@/hooks/use-toast"
 
 interface TimeInterval {
   label: string
@@ -56,6 +68,8 @@ const TopMoversList = ({
 }: TopMoversListProps) => {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false)
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set())
+  const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null)
+  const { toast } = useToast()
 
   const toggleMarket = (marketId: string) => {
     setExpandedMarkets(prev => {
@@ -67,6 +81,17 @@ const TopMoversList = ({
       }
       return newSet
     })
+  }
+
+  const handleTransaction = () => {
+    if (!selectedMarket) return
+    
+    const action = selectedMarket.action
+    toast({
+      title: "Transaction Submitted",
+      description: `Your ${action} order has been submitted successfully.`,
+    })
+    setSelectedMarket(null)
   }
 
   const formatPrice = (price: number): string => {
@@ -132,7 +157,6 @@ const TopMoversList = ({
         </div>
       </Card>
 
-      {/* Markets List */}
       <ScrollArea className="h-[calc(100vh-200px)]">
         <div className="space-y-3 px-1">
           {isLoading ? (
@@ -162,6 +186,24 @@ const TopMoversList = ({
                           {mover.yes_sub_title}
                         </p>
                       )}
+                      <div className="flex gap-2 mt-2">
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="bg-green-500 hover:bg-green-600"
+                          onClick={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
+                        >
+                          Buy
+                        </Button>
+                        <Button
+                          variant="default"
+                          size="sm"
+                          className="bg-red-500 hover:bg-red-600"
+                          onClick={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
+                        >
+                          Sell
+                        </Button>
+                      </div>
                     </div>
                   </div>
 
@@ -262,6 +304,32 @@ const TopMoversList = ({
           )}
         </div>
       </ScrollArea>
+
+      <AlertDialog 
+        open={selectedMarket !== null} 
+        onOpenChange={() => setSelectedMarket(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to {selectedMarket?.action} this position?
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleTransaction}
+              className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+            >
+              Confirm {selectedMarket?.action}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
