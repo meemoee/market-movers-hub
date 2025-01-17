@@ -7,6 +7,7 @@ const corsHeaders = {
 
 const POLYMARKET_API = "https://gamma-api.polymarket.com"
 const POLYMARKET_BASE_URL = "https://polymarket.com/event"
+const BATCH_SIZE = 100 // Process 100 events at a time
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
@@ -16,7 +17,7 @@ const supabase = createClient(supabaseUrl, supabaseKey)
 // Helper function to add delay between requests
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
-async function getEvents(limit = 100, offset = 0, retries = 3) {
+async function getEvents(limit = BATCH_SIZE, offset = 0, retries = 3) {
   console.log(`Fetching events with limit=${limit}, offset=${offset}`)
   const endpoint = `${POLYMARKET_API}/events`
   
@@ -26,7 +27,6 @@ async function getEvents(limit = 100, offset = 0, retries = 3) {
       
       if (response.status === 429) {
         console.log(`Rate limited on attempt ${attempt}, waiting before retry...`)
-        // Wait longer between each retry attempt
         await delay(attempt * 2000)
         continue
       }
@@ -43,33 +43,6 @@ async function getEvents(limit = 100, offset = 0, retries = 3) {
       console.log(`Error on attempt ${attempt}, retrying...`, error)
       await delay(1000)
     }
-  }
-}
-
-async function getAllEvents() {
-  const allEvents = []
-  let offset = 0
-  const limit = 100 // Back to 100 as requested
-  
-  try {
-    while (true) {
-      const events = await getEvents(limit, offset)
-      if (!events || events.length === 0) break
-      
-      allEvents.push(...events)
-      console.log(`Fetched ${allEvents.length} events so far...`)
-      
-      if (events.length < limit) break
-      offset += limit
-      
-      // Add delay between batches to avoid rate limits
-      await delay(1000)
-    }
-    
-    return allEvents
-  } catch (error) {
-    console.error('Error fetching all events:', error)
-    throw error
   }
 }
 
@@ -103,28 +76,13 @@ function processMarket(market: any, eventSlug: string, eventId: string, event?: 
   }
 }
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
+async function processBatch(events: any[]) {
+  console.log(`Processing batch of ${events.length} events...`)
+  
+  for (const event of events) {
+    if (!event.markets) continue
 
-  try {
-    console.log('Starting market data collection...')
-    const startTime = Date.now()
-
-    // Fetch all events from Polymarket
-    const events = await getAllEvents()
-    if (!events || events.length === 0) {
-      throw new Error('No events retrieved')
-    }
-
-    console.log(`Processing ${events.length} events...`)
-
-    // Process events in batches
-    for (const event of events) {
-      if (!event.markets) continue
-
+    try {
       // Insert event
       const { error: eventError } = await supabase
         .from('events')
@@ -142,8 +100,8 @@ Deno.serve(async (req) => {
         continue
       }
 
-      // Add delay between event processing to avoid rate limits
-      await delay(500)
+      // Add small delay between operations
+      await delay(100)
 
       // Process markets
       for (const marketData of event.markets) {
@@ -177,16 +135,57 @@ Deno.serve(async (req) => {
           console.error(`Error inserting price for market ${market.id}:`, priceError)
         }
 
-        // Add small delay between market processing
-        await delay(200)
+        // Add small delay between markets
+        await delay(50)
+      }
+    } catch (error) {
+      console.error(`Error processing event ${event.id}:`, error)
+    }
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
+
+  try {
+    console.log('Starting market data collection...')
+    const startTime = Date.now()
+    let offset = 0
+    let totalProcessed = 0
+    const maxEvents = 1000 // Process max 1000 events per function call
+
+    while (totalProcessed < maxEvents) {
+      const events = await getEvents(BATCH_SIZE, offset)
+      if (!events || events.length === 0) break
+
+      await processBatch(events)
+      
+      totalProcessed += events.length
+      offset += BATCH_SIZE
+      
+      // Add delay between batches
+      await delay(1000)
+      
+      console.log(`Processed ${totalProcessed} events so far...`)
+      
+      // Check if we're approaching the time limit (10s buffer)
+      if (Date.now() - startTime > 50000) { // Edge function timeout is 60s
+        console.log('Approaching time limit, stopping processing...')
+        break
       }
     }
 
     const totalTime = (Date.now() - startTime) / 1000
-    console.log(`Completed processing ${events.length} events in ${totalTime.toFixed(2)}s`)
+    console.log(`Completed processing ${totalProcessed} events in ${totalTime.toFixed(2)}s`)
 
     return new Response(
-      JSON.stringify({ success: true, message: `Processed ${events.length} events` }),
+      JSON.stringify({ 
+        success: true, 
+        message: `Processed ${totalProcessed} events`,
+        hasMore: totalProcessed === maxEvents 
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
