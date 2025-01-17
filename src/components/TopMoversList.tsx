@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, TrendingUp, TrendingDown, Loader2, ChevronUp } from 'lucide-react'
-import MarketMoverCard from './MarketMoverCard'
 import { Card } from './ui/card'
+import { ScrollArea } from './ui/scroll-area'
 
 interface TimeInterval {
   label: string
@@ -74,7 +74,7 @@ const TopMoversList = ({
 
   const formatPriceChange = (change: number): string => {
     const prefix = change >= 0 ? '+' : ''
-    return `${prefix}${(change * 100).toFixed(1)}¢`
+    return `${prefix}${(change * 100).toFixed(1)}%`
   }
 
   const formatVolume = (volume: number): string => {
@@ -84,9 +84,9 @@ const TopMoversList = ({
   }
 
   return (
-    <div className="max-w-[1200px] mx-auto">
+    <div className="max-w-2xl mx-auto">
       {/* Header Section */}
-      <Card className="sticky top-14 bg-card/95 backdrop-blur-sm z-40 mb-4 p-6">
+      <Card className="sticky top-14 bg-card/95 backdrop-blur-sm z-40 mb-4 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold">Market Movers</h2>
@@ -132,126 +132,127 @@ const TopMoversList = ({
         </div>
       </Card>
 
-      {/* Markets Grid */}
-      <div className="relative">
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/50 backdrop-blur-sm rounded-lg z-10">
-            <Loader2 className="w-8 h-8 animate-spin" />
-          </div>
-        )}
-
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {topMovers.map((mover) => (
-            <Card
-              key={mover.market_id}
-              className="overflow-hidden hover:shadow-lg transition-shadow duration-200"
-            >
-              <div className="p-4 space-y-4">
-                {/* Market Header */}
-                <div className="flex gap-3">
-                  <img
-                    src={mover.image}
-                    alt=""
-                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-lg leading-tight line-clamp-2">
-                      {mover.question}
-                    </h3>
-                    {mover.yes_sub_title && (
-                      <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
-                        {mover.yes_sub_title}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Price and Volume Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <div className="text-2xl font-bold">
-                      {formatPrice(mover.final_last_traded_price)}
-                    </div>
-                    <div className={`flex items-center gap-1 text-sm font-medium
-                      ${mover.price_change >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                    >
-                      {mover.price_change >= 0 ? (
-                        <TrendingUp className="w-4 h-4" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4" />
+      {/* Markets List */}
+      <ScrollArea className="h-[calc(100vh-200px)]">
+        <div className="space-y-3 px-1">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin" />
+            </div>
+          ) : (
+            topMovers.map((mover) => (
+              <Card
+                key={mover.market_id}
+                className="overflow-hidden hover:shadow-lg transition-shadow duration-200"
+              >
+                <div className="p-4 space-y-4">
+                  {/* Market Header */}
+                  <div className="flex gap-4">
+                    <img
+                      src={mover.image}
+                      alt=""
+                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-lg leading-tight">
+                        {mover.question}
+                      </h3>
+                      {mover.yes_sub_title && (
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {mover.yes_sub_title}
+                        </p>
                       )}
-                      {formatPriceChange(mover.price_change)}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-semibold">
-                      {formatVolume(mover.volume)}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      24h Volume
-                    </div>
-                  </div>
-                </div>
 
-                {/* Market Details (Expandable) */}
-                <button
-                  onClick={() => toggleMarket(mover.market_id)}
-                  className="w-full flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {expandedMarkets.has(mover.market_id) ? (
-                    <>
-                      <span>Show less</span>
-                      <ChevronUp className="w-4 h-4" />
-                    </>
-                  ) : (
-                    <>
-                      <span>Show more</span>
-                      <ChevronDown className="w-4 h-4" />
-                    </>
+                  {/* Price and Volume Info */}
+                  <div className="grid grid-cols-3 gap-6">
+                    <div>
+                      <div className="text-3xl font-bold tracking-tight">
+                        {formatPrice(mover.final_last_traded_price)}
+                      </div>
+                      <div className={`flex items-center gap-1 text-sm font-medium mt-1
+                        ${mover.price_change >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                      >
+                        {mover.price_change >= 0 ? (
+                          <TrendingUp className="w-4 h-4" />
+                        ) : (
+                          <TrendingDown className="w-4 h-4" />
+                        )}
+                        {formatPriceChange(mover.price_change)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-semibold">
+                        {formatVolume(mover.volume)}
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        24h Volume
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <button
+                        onClick={() => toggleMarket(mover.market_id)}
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {expandedMarkets.has(mover.market_id) ? (
+                          <>
+                            <span>Less</span>
+                            <ChevronUp className="w-4 h-4" />
+                          </>
+                        ) : (
+                          <>
+                            <span>More</span>
+                            <ChevronDown className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded Details */}
+                  {expandedMarkets.has(mover.market_id) && (
+                    <div className="pt-4 border-t border-border space-y-4">
+                      {mover.description && (
+                        <p className="text-sm text-muted-foreground">
+                          {mover.description}
+                        </p>
+                      )}
+                      <div className="grid grid-cols-2 gap-6">
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1">Best Bid</div>
+                          <div className="text-lg font-medium">
+                            {formatPrice(mover.final_best_bid)}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground mb-1">Best Ask</div>
+                          <div className="text-lg font-medium">
+                            {formatPrice(mover.final_best_ask)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                </button>
+                </div>
+              </Card>
+            ))
+          )}
 
-                {expandedMarkets.has(mover.market_id) && (
-                  <div className="pt-4 border-t border-border space-y-4">
-                    {mover.description && (
-                      <p className="text-sm text-muted-foreground">
-                        {mover.description}
-                      </p>
-                    )}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-sm text-muted-foreground mb-1">Best Bid</div>
-                        <div className="text-lg font-medium">
-                          {formatPrice(mover.final_best_bid)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-muted-foreground mb-1">Best Ask</div>
-                        <div className="text-lg font-medium">
-                          {formatPrice(mover.final_best_ask)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </Card>
-          ))}
+          {/* Load More Button */}
+          {hasMore && !isLoading && (
+            <button
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
+                flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isLoadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isLoadingMore ? 'Loading...' : 'Load More'}
+            </button>
+          )}
         </div>
-
-        {/* Load More Button */}
-        {hasMore && (
-          <button
-            onClick={onLoadMore}
-            disabled={isLoadingMore}
-            className="mt-6 w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
-              flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isLoadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
-            {isLoadingMore ? 'Loading...' : 'Load More'}
-          </button>
-        )}
-      </div>
+      </ScrollArea>
     </div>
   )
 }
