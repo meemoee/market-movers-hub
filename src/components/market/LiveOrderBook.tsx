@@ -8,7 +8,6 @@ interface OrderBookData {
   best_bid: number;
   best_ask: number;
   spread: number;
-  timestamp?: string;
 }
 
 export function LiveOrderBook() {
@@ -19,6 +18,7 @@ export function LiveOrderBook() {
   useEffect(() => {
     const fetchOrderBook = async () => {
       try {
+        // Use the full URL from Supabase
         const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws/test`;
         console.log('Fetching from:', wsUrl);
         
@@ -129,12 +129,6 @@ export function LiveOrderBook() {
           </div>
         </div>
       </div>
-
-      {orderBook.timestamp && (
-        <div className="mt-4 text-sm text-muted-foreground text-right">
-          Last updated: {new Date(orderBook.timestamp).toLocaleTimeString()}
-        </div>
-      )}
     </Card>
   );
 }
