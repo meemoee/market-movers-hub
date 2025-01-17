@@ -88,10 +88,22 @@ export default function TopMoversList({
     setIsConnecting(true);
     setOrderBookData(null);
 
-    // Connect to WebSocket via Supabase Edge Function
     const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`;
     console.log('Attempting to connect to WebSocket:', wsUrl);
-    const ws = new WebSocket(wsUrl);
+    
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to orderbook data. Please try again.",
+        variant: "destructive",
+      });
+      setIsConnecting(false);
+      return;
+    }
 
     let connectionTimeout = setTimeout(() => {
       if (ws.readyState !== WebSocket.OPEN) {
@@ -109,13 +121,23 @@ export default function TopMoversList({
       console.log('Connected to Polymarket WebSocket');
       clearTimeout(connectionTimeout);
       
-      // Send initial subscription message
-      const subscriptionMessage = {
-        type: 'subscribe',
-        marketId: selectedMarket.id
-      };
-      console.log('Sending subscription message:', subscriptionMessage);
-      ws.send(JSON.stringify(subscriptionMessage));
+      try {
+        const subscriptionMessage = {
+          type: 'subscribe',
+          marketId: selectedMarket.id
+        };
+        console.log('Sending subscription message:', subscriptionMessage);
+        ws.send(JSON.stringify(subscriptionMessage));
+      } catch (error) {
+        console.error('Error sending subscription message:', error);
+        toast({
+          title: "Subscription Error",
+          description: "Failed to subscribe to market data. Please try again.",
+          variant: "destructive",
+        });
+        ws.close();
+        setIsConnecting(false);
+      }
     };
 
     ws.onmessage = (event) => {
@@ -155,7 +177,7 @@ export default function TopMoversList({
     return () => {
       console.log('Cleaning up WebSocket connection');
       clearTimeout(connectionTimeout);
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
     };
