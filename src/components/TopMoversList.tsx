@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { MarketCard } from './market/MarketCard';
+import { OrderBook } from './market/OrderBook';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface TimeInterval {
   label: string;
@@ -52,6 +54,14 @@ interface TopMover {
   description?: string;
 }
 
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
+
 export default function TopMoversList({
   timeIntervals,
   selectedInterval,
@@ -68,7 +78,41 @@ export default function TopMoversList({
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null);
+  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!selectedMarket) return;
+
+    // Connect to the Polymarket WebSocket function
+    const ws = new WebSocket(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`);
+
+    ws.onopen = () => {
+      console.log('Connected to Polymarket WebSocket');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        setOrderBookData(data);
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to orderbook data",
+        variant: "destructive",
+      });
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [selectedMarket, toast]);
 
   const toggleMarket = (marketId: string) => {
     setExpandedMarkets(prev => {
@@ -83,12 +127,14 @@ export default function TopMoversList({
   };
 
   const handleTransaction = () => {
-    if (!selectedMarket) return;
+    if (!selectedMarket || !orderBookData) return;
     
     const action = selectedMarket.action;
+    const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
+    
     toast({
       title: "Transaction Submitted",
-      description: `Your ${action} order has been submitted successfully.`,
+      description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
     });
     setSelectedMarket(null);
   };
@@ -183,15 +229,40 @@ export default function TopMoversList({
             <AlertDialogTitle>
               Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to {selectedMarket?.action} this position?
-              This action cannot be undone.
+            <AlertDialogDescription className="space-y-4">
+              {orderBookData ? (
+                <>
+                  <p>Current market prices:</p>
+                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Best Bid</p>
+                      <p className="text-lg font-medium text-green-500">
+                        {(orderBookData.best_bid * 100).toFixed(2)}¢
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Best Ask</p>
+                      <p className="text-lg font-medium text-red-500">
+                        {(orderBookData.best_ask * 100).toFixed(2)}¢
+                      </p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
+                  </p>
+                </>
+              ) : (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                </div>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleTransaction}
+              disabled={!orderBookData}
               className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
             >
               Confirm {selectedMarket?.action}
