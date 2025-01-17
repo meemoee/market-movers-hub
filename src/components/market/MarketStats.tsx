@@ -32,7 +32,7 @@ export function MarketStats({
   };
 
   return (
-    <div className="grid grid-cols-3 gap-6 items-center">
+    <div className="grid grid-cols-[1fr,auto] gap-6 items-center">
       <div>
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
@@ -59,24 +59,24 @@ export function MarketStats({
           />
         </div>
       </div>
-      <div className="col-start-3 text-right">
+      <div className="text-right">
         <div className="text-xl font-semibold">
           {formatVolume(volume)}
         </div>
         <div className="text-sm text-muted-foreground mt-1">
           24h Volume
         </div>
+        <button
+          onClick={onToggleExpand}
+          className="mt-2 inline-flex justify-center"
+        >
+          {isExpanded ? (
+            <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+          )}
+        </button>
       </div>
-      <button
-        onClick={onToggleExpand}
-        className="col-start-3 row-start-2 justify-self-end"
-      >
-        {isExpanded ? (
-          <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-        )}
-      </button>
     </div>
   );
 }
