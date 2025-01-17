@@ -88,9 +88,10 @@ export default function TopMoversList({
     setIsConnecting(true);
     setOrderBookData(null);
 
-    // Connect to WebSocket
-    const ws = new WebSocket(`${import.meta.env.VITE_SUPABASE_URL}/polymarket-ws`);
-    console.log('Attempting to connect to WebSocket:', ws.url);
+    // Connect to WebSocket via Supabase Edge Function
+    const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`;
+    console.log('Attempting to connect to WebSocket:', wsUrl);
+    const ws = new WebSocket(wsUrl);
 
     let connectionTimeout = setTimeout(() => {
       if (ws.readyState !== WebSocket.OPEN) {
@@ -107,7 +108,6 @@ export default function TopMoversList({
     ws.onopen = () => {
       console.log('Connected to Polymarket WebSocket');
       clearTimeout(connectionTimeout);
-      setIsConnecting(false);
       
       // Send initial subscription message
       const subscriptionMessage = {
@@ -124,9 +124,16 @@ export default function TopMoversList({
         const data = JSON.parse(event.data);
         if (data.bids && data.asks) {
           setOrderBookData(data);
+          setIsConnecting(false);
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
+        toast({
+          title: "Data Error",
+          description: "Failed to parse orderbook data. Please try again.",
+          variant: "destructive",
+        });
+        setIsConnecting(false);
       }
     };
 
