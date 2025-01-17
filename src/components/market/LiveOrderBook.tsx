@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -18,15 +19,21 @@ export function LiveOrderBook() {
   useEffect(() => {
     const fetchOrderBook = async () => {
       try {
-        // Use the full URL from Supabase
-        const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws/test`;
+        // Use the Supabase client's URL directly
+        const { data: { publicUrl } } = await supabase.storage.from('').getPublicUrl('');
+        const baseUrl = publicUrl.split('/storage/v1')[0];
+        const wsUrl = `${baseUrl}/functions/v1/polymarket-ws/test`;
         console.log('Fetching from:', wsUrl);
         
         const response = await fetch(wsUrl);
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
         const data = await response.json();
+        console.log('Response data:', data);
         
         if (data.orderbook) {
-          console.log('Received orderbook:', data.orderbook);
           setOrderBook(data.orderbook);
         } else {
           setError('No orderbook data available');
