@@ -19,44 +19,69 @@ export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchOrderBook = async () => {
+    let ws: WebSocket | null = null;
+
+    const connectWebSocket = async () => {
       try {
         const { data: { publicUrl } } = await supabase.storage.from('').getPublicUrl('');
         const baseUrl = publicUrl.split('/storage/v1')[0];
-        const wsUrl = `${baseUrl}/functions/v1/polymarket-ws/test`;
-        console.log('Fetching from:', wsUrl);
+        const wsUrl = `${baseUrl}/functions/v1/polymarket-ws`.replace('https://', 'wss://');
+        console.log('Connecting to WebSocket:', wsUrl);
         
-        const response = await fetch(wsUrl);
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        console.log('Response data:', data);
-        
-        if (data.orderbook) {
-          onOrderBookData(data.orderbook);
-        } else {
-          setError('No orderbook data available');
-          onOrderBookData(null);
-        }
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          console.log('WebSocket connected');
+          setLoading(false);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            console.log('Received orderbook update:', data);
+            if (data.orderbook) {
+              onOrderBookData(data.orderbook);
+              setError(null);
+            }
+          } catch (err) {
+            console.error('Error parsing WebSocket message:', err);
+            setError('Failed to parse orderbook data');
+          }
+        };
+
+        ws.onerror = (event) => {
+          console.error('WebSocket error:', event);
+          setError('WebSocket connection error');
+          setLoading(false);
+        };
+
+        ws.onclose = () => {
+          console.log('WebSocket closed');
+          setLoading(false);
+        };
+
       } catch (err) {
-        console.error('Error fetching orderbook:', err);
-        setError('Failed to fetch orderbook data');
-        onOrderBookData(null);
-      } finally {
+        console.error('Error setting up WebSocket:', err);
+        setError('Failed to connect to orderbook service');
         setLoading(false);
       }
     };
 
-    fetchOrderBook();
+    connectWebSocket();
+
+    return () => {
+      if (ws) {
+        console.log('Closing WebSocket connection');
+        ws.close();
+      }
+    };
   }, [onOrderBookData]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-4">
         <Loader2 className="w-6 h-6 animate-spin" />
-        <span className="ml-2">Loading orderbook...</span>
+        <span className="ml-2">Connecting to orderbook...</span>
       </div>
     );
   }
