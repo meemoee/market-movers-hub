@@ -22,24 +22,24 @@ export function OrderBookDisplay({ bids, asks, best_bid, best_ask, spread }: Ord
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4 mb-4">
+      <div className="grid grid-cols-3 gap-4">
         <Card className="p-3">
-          <p className="text-sm text-muted-foreground">Best Bid</p>
-          <p className="text-lg font-medium text-green-500">
+          <div className="text-sm text-muted-foreground">Best Bid</div>
+          <div className="text-lg font-medium text-green-500">
             {formatPrice(best_bid)}
-          </p>
+          </div>
         </Card>
         <Card className="p-3">
-          <p className="text-sm text-muted-foreground">Best Ask</p>
-          <p className="text-lg font-medium text-red-500">
+          <div className="text-sm text-muted-foreground">Best Ask</div>
+          <div className="text-lg font-medium text-red-500">
             {formatPrice(best_ask)}
-          </p>
+          </div>
         </Card>
         <Card className="p-3">
-          <p className="text-sm text-muted-foreground">Spread</p>
-          <p className="text-lg font-medium">
+          <div className="text-sm text-muted-foreground">Spread</div>
+          <div className="text-lg font-medium">
             {formatPrice(spread)}
-          </p>
+          </div>
         </Card>
       </div>
 
