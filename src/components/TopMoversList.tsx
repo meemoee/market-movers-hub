@@ -88,99 +88,81 @@ export default function TopMoversList({
     setIsConnecting(true);
     setOrderBookData(null);
 
-    const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`;
-    console.log('Attempting to connect to WebSocket:', wsUrl);
-    
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(wsUrl);
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-      toast({
-        title: "Connection Error",
-        description: "Failed to connect to orderbook data. Please try again.",
-        variant: "destructive",
-      });
-      setIsConnecting(false);
-      return;
-    }
+    // Test endpoint first to ensure the WebSocket server is running
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws/test`)
+      .then(response => response.json())
+      .then(data => {
+        if (!data.received_data) {
+          throw new Error('WebSocket server test failed');
+        }
+        console.log('WebSocket server test successful:', data);
+        
+        // Now connect to the WebSocket
+        const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`;
+        console.log('Connecting to WebSocket:', wsUrl);
+        
+        const ws = new WebSocket(wsUrl);
 
-    let connectionTimeout = setTimeout(() => {
-      if (ws.readyState !== WebSocket.OPEN) {
-        ws.close();
+        ws.onopen = () => {
+          console.log('Connected to Polymarket WebSocket');
+          const subscriptionMessage = {
+            type: 'subscribe',
+            marketId: selectedMarket.id
+          };
+          console.log('Sending subscription message:', subscriptionMessage);
+          ws.send(JSON.stringify(subscriptionMessage));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            console.log('Received WebSocket message:', event.data);
+            const data = JSON.parse(event.data);
+            if (data.bids && data.asks) {
+              setOrderBookData(data);
+              setIsConnecting(false);
+            }
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+            toast({
+              title: "Data Error",
+              description: "Failed to parse orderbook data. Please try again.",
+              variant: "destructive",
+            });
+            setIsConnecting(false);
+          }
+        };
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error);
+          setIsConnecting(false);
+          toast({
+            title: "Connection Error",
+            description: "Failed to connect to orderbook data. Please try again.",
+            variant: "destructive",
+          });
+        };
+
+        ws.onclose = () => {
+          console.log('WebSocket connection closed');
+          setIsConnecting(false);
+        };
+
+        return () => {
+          console.log('Cleaning up WebSocket connection');
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close();
+          }
+        };
+      })
+      .catch(error => {
+        console.error('WebSocket server test failed:', error);
+        setIsConnecting(false);
         toast({
-          title: "Connection Timeout",
+          title: "Connection Error",
           description: "Failed to connect to orderbook data. Please try again.",
           variant: "destructive",
         });
-        setIsConnecting(false);
-      }
-    }, 5000);
-
-    ws.onopen = () => {
-      console.log('Connected to Polymarket WebSocket');
-      clearTimeout(connectionTimeout);
-      
-      try {
-        const subscriptionMessage = {
-          type: 'subscribe',
-          marketId: selectedMarket.id
-        };
-        console.log('Sending subscription message:', subscriptionMessage);
-        ws.send(JSON.stringify(subscriptionMessage));
-      } catch (error) {
-        console.error('Error sending subscription message:', error);
-        toast({
-          title: "Subscription Error",
-          description: "Failed to subscribe to market data. Please try again.",
-          variant: "destructive",
-        });
-        ws.close();
-        setIsConnecting(false);
-      }
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        console.log('Received WebSocket message:', event.data);
-        const data = JSON.parse(event.data);
-        if (data.bids && data.asks) {
-          setOrderBookData(data);
-          setIsConnecting(false);
-        }
-      } catch (error) {
-        console.error('Error parsing WebSocket message:', error);
-        toast({
-          title: "Data Error",
-          description: "Failed to parse orderbook data. Please try again.",
-          variant: "destructive",
-        });
-        setIsConnecting(false);
-      }
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setIsConnecting(false);
-      toast({
-        title: "Connection Error",
-        description: "Failed to connect to orderbook data. Please try again.",
-        variant: "destructive",
       });
-    };
-
-    ws.onclose = () => {
-      console.log('WebSocket connection closed');
-      setIsConnecting(false);
-    };
-
-    return () => {
-      console.log('Cleaning up WebSocket connection');
-      clearTimeout(connectionTimeout);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
-      }
-    };
   }, [selectedMarket, toast]);
 
   const toggleMarket = (marketId: string) => {
