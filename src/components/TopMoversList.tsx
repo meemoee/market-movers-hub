@@ -84,15 +84,22 @@ export default function TopMoversList({
   useEffect(() => {
     if (!selectedMarket) return;
 
-    // Connect to the Polymarket WebSocket function
+    // Use Supabase's function invocation for WebSocket connection
     const ws = new WebSocket(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`);
+    console.log('Attempting to connect to WebSocket:', ws.url);
 
     ws.onopen = () => {
       console.log('Connected to Polymarket WebSocket');
+      // Send initial message to subscribe to market data
+      ws.send(JSON.stringify({ 
+        type: 'subscribe',
+        marketId: selectedMarket.id 
+      }));
     };
 
     ws.onmessage = (event) => {
       try {
+        console.log('Received WebSocket message:', event.data);
         const data = JSON.parse(event.data);
         setOrderBookData(data);
       } catch (error) {
@@ -104,13 +111,20 @@ export default function TopMoversList({
       console.error('WebSocket error:', error);
       toast({
         title: "Connection Error",
-        description: "Failed to connect to orderbook data",
+        description: "Failed to connect to orderbook data. Please try again.",
         variant: "destructive",
       });
     };
 
+    ws.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
     return () => {
-      ws.close();
+      console.log('Cleaning up WebSocket connection');
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
     };
   }, [selectedMarket, toast]);
 
