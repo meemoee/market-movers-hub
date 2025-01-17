@@ -13,29 +13,64 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-async function getEvents(limit = 100, offset = 0) {
+// Helper function to add delay between requests
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+async function getEvents(limit = 100, offset = 0, retries = 3) {
   console.log(`Fetching events with limit=${limit}, offset=${offset}`)
   const endpoint = `${POLYMARKET_API}/events`
-  const response = await fetch(`${endpoint}?limit=${limit}&offset=${offset}`)
-  if (!response.ok) throw new Error(`API error: ${response.status}`)
-  return await response.json()
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(`${endpoint}?limit=${limit}&offset=${offset}`)
+      
+      if (response.status === 429) {
+        console.log(`Rate limited on attempt ${attempt}, waiting before retry...`)
+        // Wait longer between each retry attempt
+        await delay(attempt * 2000)
+        continue
+      }
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+      
+      return await response.json()
+    } catch (error) {
+      if (attempt === retries) {
+        throw error
+      }
+      console.log(`Error on attempt ${attempt}, retrying...`, error)
+      await delay(1000)
+    }
+  }
 }
 
 async function getAllEvents() {
   const allEvents = []
   let offset = 0
-  const limit = 100
-
-  while (true) {
-    const events = await getEvents(limit, offset)
-    if (!events || events.length === 0) break
-    allEvents.push(...events)
-    if (events.length < limit) break
-    offset += limit
-    console.log(`Fetched ${allEvents.length} events so far...`)
+  const limit = 50 // Reduced from 100 to avoid rate limits
+  
+  try {
+    while (true) {
+      const events = await getEvents(limit, offset)
+      if (!events || events.length === 0) break
+      
+      allEvents.push(...events)
+      console.log(`Fetched ${allEvents.length} events so far...`)
+      
+      if (events.length < limit) break
+      offset += limit
+      
+      // Add delay between batches to avoid rate limits
+      await delay(1000)
+    }
+    
+    return allEvents
+  } catch (error) {
+    console.error('Error fetching all events:', error)
+    throw error
   }
-
-  return allEvents
 }
 
 function processMarket(market: any, eventSlug: string, eventId: string, event?: any) {
@@ -107,6 +142,9 @@ Deno.serve(async (req) => {
         continue
       }
 
+      // Add delay between event processing to avoid rate limits
+      await delay(500)
+
       // Process markets
       for (const marketData of event.markets) {
         const market = processMarket(marketData, event.slug, event.id, event)
@@ -138,6 +176,9 @@ Deno.serve(async (req) => {
         if (priceError) {
           console.error(`Error inserting price for market ${market.id}:`, priceError)
         }
+
+        // Add small delay between market processing
+        await delay(200)
       }
     }
 
