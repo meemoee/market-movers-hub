@@ -27,28 +27,39 @@ interface OrderBookPayload {
 export function OrderBook({ marketId }: OrderBookProps) {
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initial fetch
     const fetchOrderBook = async () => {
-      const { data, error } = await supabase
-        .from('orderbook_data')
-        .select('*')
-        .eq('market_id', marketId)
-        .order('timestamp', { ascending: false })
-        .limit(1)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from('orderbook_data')
+          .select('*')
+          .eq('market_id', marketId)
+          .order('timestamp', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (!error && data) {
-        // Convert the JSON data to the correct type and ensure all required fields exist
-        const convertedData: OrderBookData = {
-          bids: (data.bids as Record<string, number>) || {},
-          asks: (data.asks as Record<string, number>) || {},
-          best_bid: data.best_bid || 0,
-          best_ask: data.best_ask || 0,
-          spread: data.spread || 0
-        };
-        setOrderBook(convertedData);
+        if (error) {
+          console.error('Error fetching orderbook:', error);
+          setError('Failed to fetch orderbook data');
+        } else if (!data) {
+          setError('No orderbook data available');
+        } else {
+          // Convert the JSON data to the correct type and ensure all required fields exist
+          const convertedData: OrderBookData = {
+            bids: (data.bids as Record<string, number>) || {},
+            asks: (data.asks as Record<string, number>) || {},
+            best_bid: data.best_bid || 0,
+            best_ask: data.best_ask || 0,
+            spread: data.spread || 0
+          };
+          setOrderBook(convertedData);
+          setError(null);
+        }
+      } catch (err) {
+        console.error('Error in fetchOrderBook:', err);
+        setError('An unexpected error occurred');
       }
       setLoading(false);
     };
@@ -79,6 +90,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
               spread: newData.spread || 0
             };
             setOrderBook(convertedData);
+            setError(null);
           }
         }
       )
@@ -93,6 +105,14 @@ export function OrderBook({ marketId }: OrderBookProps) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="w-6 h-6 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        {error}
       </div>
     );
   }
