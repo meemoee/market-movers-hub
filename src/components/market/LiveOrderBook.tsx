@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -11,15 +10,17 @@ interface OrderBookData {
   spread: number;
 }
 
-export function LiveOrderBook() {
-  const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
+interface LiveOrderBookProps {
+  onOrderBookData: (data: OrderBookData | null) => void;
+}
+
+export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchOrderBook = async () => {
       try {
-        // Use the Supabase client's URL directly
         const { data: { publicUrl } } = await supabase.storage.from('').getPublicUrl('');
         const baseUrl = publicUrl.split('/storage/v1')[0];
         const wsUrl = `${baseUrl}/functions/v1/polymarket-ws/test`;
@@ -34,108 +35,37 @@ export function LiveOrderBook() {
         console.log('Response data:', data);
         
         if (data.orderbook) {
-          setOrderBook(data.orderbook);
+          onOrderBookData(data.orderbook);
         } else {
           setError('No orderbook data available');
+          onOrderBookData(null);
         }
       } catch (err) {
         console.error('Error fetching orderbook:', err);
         setError('Failed to fetch orderbook data');
+        onOrderBookData(null);
       } finally {
         setLoading(false);
       }
     };
 
     fetchOrderBook();
-  }, []);
-
-  const formatPrice = (price: number) => `${(price * 100).toFixed(2)}¢`;
+  }, [onOrderBookData]);
 
   if (loading) {
     return (
-      <Card className="p-6">
-        <div className="flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="ml-2">Loading orderbook...</span>
-        </div>
-      </Card>
+      <div className="flex items-center justify-center py-4">
+        <Loader2 className="w-6 h-6 animate-spin" />
+        <span className="ml-2">Loading orderbook...</span>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <Card className="p-6">
-        <div className="text-center text-red-500">{error}</div>
-      </Card>
+      <div className="text-center text-red-500">{error}</div>
     );
   }
 
-  if (!orderBook) {
-    return (
-      <Card className="p-6">
-        <div className="text-center text-muted-foreground">No orderbook data available</div>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className="p-6">
-      <h2 className="text-2xl font-bold mb-4">Live Order Book</h2>
-      
-      <div className="grid grid-cols-2 gap-6">
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Bids</h3>
-          <div className="space-y-1">
-            {Object.entries(orderBook.bids)
-              .sort(([a], [b]) => parseFloat(b) - parseFloat(a))
-              .slice(0, 5)
-              .map(([price, size]) => (
-                <div key={price} className="flex justify-between text-sm">
-                  <span className="text-green-500">{formatPrice(parseFloat(price))}</span>
-                  <span>{size.toFixed(2)}</span>
-                </div>
-              ))}
-          </div>
-        </div>
-        
-        <div>
-          <h3 className="text-lg font-semibold mb-2">Asks</h3>
-          <div className="space-y-1">
-            {Object.entries(orderBook.asks)
-              .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
-              .slice(0, 5)
-              .map(([price, size]) => (
-                <div key={price} className="flex justify-between text-sm">
-                  <span className="text-red-500">{formatPrice(parseFloat(price))}</span>
-                  <span>{size.toFixed(2)}</span>
-                </div>
-              ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 pt-4 border-t border-border">
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <div className="text-sm text-muted-foreground">Best Bid</div>
-            <div className="font-medium text-green-500">
-              {formatPrice(orderBook.best_bid)}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Best Ask</div>
-            <div className="font-medium text-red-500">
-              {formatPrice(orderBook.best_ask)}
-            </div>
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Spread</div>
-            <div className="font-medium">
-              {formatPrice(orderBook.spread)}
-            </div>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
+  return null;
 }

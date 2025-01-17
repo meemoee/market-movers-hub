@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { LiveOrderBook } from './market/LiveOrderBook';
 
 interface TimeInterval {
   label: string;
@@ -83,108 +84,12 @@ export default function TopMoversList({
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!selectedMarket) return;
-
+    if (!selectedMarket) {
+      setOrderBookData(null);
+      return;
+    }
     setIsConnecting(true);
-    setOrderBookData(null);
-
-    const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`;
-    console.log('Connecting to WebSocket:', wsUrl);
-
-    // Test endpoint first
-    fetch(`${wsUrl}/test`)
-      .then(response => response.json())
-      .then(data => {
-        console.log('Test response:', data);
-        if (!data.received_data) {
-          throw new Error('WebSocket server test failed');
-        }
-        
-        if (data.orderbook) {
-          console.log('Using test orderbook data:', data.orderbook);
-          setOrderBookData(data.orderbook);
-          setIsConnecting(false);
-          return;
-        }
-        
-        // If no test data, proceed with WebSocket connection
-        const ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          console.log('WebSocket connected');
-          const subscriptionMessage = {
-            type: 'subscribe',
-            marketId: selectedMarket.id
-          };
-          console.log('Sending subscription message:', subscriptionMessage);
-          ws.send(JSON.stringify(subscriptionMessage));
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            console.log('Received WebSocket message:', event.data);
-            const data = JSON.parse(event.data);
-            if (data.bids && data.asks) {
-              setOrderBookData(data);
-              setIsConnecting(false);
-            } else if (data.error) {
-              throw new Error(data.error);
-            }
-          } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
-            toast({
-              title: "Data Error",
-              description: "Failed to parse orderbook data. Please try again.",
-              variant: "destructive",
-            });
-            setIsConnecting(false);
-          }
-        };
-
-        ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
-          setIsConnecting(false);
-          toast({
-            title: "Connection Error",
-            description: "Failed to connect to orderbook data. Please try again.",
-            variant: "destructive",
-          });
-        };
-
-        ws.onclose = () => {
-          console.log('WebSocket connection closed');
-          setIsConnecting(false);
-        };
-
-        return () => {
-          console.log('Cleaning up WebSocket connection');
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.close();
-          }
-        };
-      })
-      .catch(error => {
-        console.error('WebSocket server test failed:', error);
-        setIsConnecting(false);
-        toast({
-          title: "Connection Error",
-          description: "Failed to connect to orderbook data. Please try again.",
-          variant: "destructive",
-        });
-      });
-  }, [selectedMarket, toast]);
-
-  const toggleMarket = (marketId: string) => {
-    setExpandedMarkets(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(marketId)) {
-        newSet.delete(marketId);
-      } else {
-        newSet.add(marketId);
-      }
-      return newSet;
-    });
-  };
+  }, [selectedMarket]);
 
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;
@@ -197,6 +102,18 @@ export default function TopMoversList({
       description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
     });
     setSelectedMarket(null);
+  };
+
+  const toggleMarket = (marketId: string) => {
+    setExpandedMarkets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(marketId)) {
+        newSet.delete(marketId);
+      } else {
+        newSet.add(marketId);
+      }
+      return newSet;
+    });
   };
 
   return (
@@ -291,10 +208,10 @@ export default function TopMoversList({
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-4">
               {isConnecting ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span className="ml-2">Connecting to order book...</span>
-                </div>
+                <LiveOrderBook onOrderBookData={(data) => {
+                  setOrderBookData(data);
+                  setIsConnecting(false);
+                }} />
               ) : orderBookData ? (
                 <>
                   <p>Current market prices:</p>

@@ -3,7 +3,6 @@ import Header from "@/components/Header";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
-import { LiveOrderBook } from "@/components/market/LiveOrderBook";
 
 // Demo data
 const DEMO_MARKETS = [
@@ -33,7 +32,6 @@ export default function Index() {
       
       <main className="pt-20 px-4 lg:pl-[320px] lg:pr-[420px]">
         <div className="max-w-4xl mx-auto space-y-6">
-          <LiveOrderBook />
           <TopMoversList
             topMovers={markets}
             error={null}
