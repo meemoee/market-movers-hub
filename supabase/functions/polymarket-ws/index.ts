@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -21,42 +22,66 @@ serve(async (req) => {
   if (url.pathname.endsWith('/test')) {
     console.log("Test endpoint hit")
     try {
+      console.log("Attempting to connect to Polymarket WebSocket...")
       const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market")
       
       return new Promise((resolve) => {
-        polymarketWs.onopen = () => {
-          console.log("Connected to Polymarket WebSocket")
-          
-          // Subscribe to market data
-          const subscription = {
-            type: "Market",
-            assets_ids: ["112079176993929604864779457945097054417527947802930131576938601640669350643880"]
-          }
-          polymarketWs.send(JSON.stringify(subscription))
+        let hasReceivedData = false;
 
-          // Request initial snapshot
-          const snapshotRequest = {
-            type: "GetMarketSnapshot",
-            asset_id: "112079176993929604864779457945097054417527947802930131576938601640669350643880"
+        polymarketWs.onopen = () => {
+          console.log("Connected to Polymarket WebSocket successfully")
+          
+          try {
+            // Subscribe to market data
+            const subscription = {
+              type: "Market",
+              assets_ids: ["112079176993929604864779457945097054417527947802930131576938601640669350643880"]
+            }
+            console.log("Sending subscription message:", JSON.stringify(subscription))
+            polymarketWs.send(JSON.stringify(subscription))
+
+            // Request initial snapshot
+            const snapshotRequest = {
+              type: "GetMarketSnapshot",
+              asset_id: "112079176993929604864779457945097054417527947802930131576938601640669350643880"
+            }
+            console.log("Sending snapshot request:", JSON.stringify(snapshotRequest))
+            polymarketWs.send(JSON.stringify(snapshotRequest))
+          } catch (error) {
+            console.error("Error in onopen handler:", error)
+            resolve(new Response(JSON.stringify({ error: "Failed to send initial messages" }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+              status: 500
+            }))
           }
-          polymarketWs.send(JSON.stringify(snapshotRequest))
         }
 
         polymarketWs.onmessage = (event) => {
-          console.log("Received message from Polymarket:", event.data)
-          if (event.data === "PONG") return
+          console.log("Received message type:", typeof event.data)
+          if (event.data === "PONG") {
+            console.log("Received PONG message")
+            return
+          }
           
           try {
+            hasReceivedData = true;
             const data = JSON.parse(event.data)
-            console.log("Parsed data:", data)
+            console.log("Successfully parsed message data:", JSON.stringify(data))
           } catch (error) {
-            console.error("Error parsing message:", error)
+            console.error("Error parsing message:", error, "Raw message:", event.data)
           }
         }
 
         polymarketWs.onerror = (error) => {
-          console.error("WebSocket error:", error)
-          resolve(new Response(JSON.stringify({ error: "WebSocket connection failed" }), {
+          console.error("WebSocket error details:", {
+            error: error.toString(),
+            type: error.type,
+            message: error.message,
+          })
+          resolve(new Response(JSON.stringify({ 
+            error: "WebSocket connection failed",
+            details: error.toString() 
+          }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
             status: 500
           }))
@@ -64,15 +89,29 @@ serve(async (req) => {
 
         // Resolve after 5 seconds to get some sample data
         setTimeout(() => {
+          if (!hasReceivedData) {
+            console.log("No data received within timeout period")
+          }
           polymarketWs.close()
-          resolve(new Response(JSON.stringify({ message: "Test completed, check logs" }), {
+          resolve(new Response(JSON.stringify({ 
+            message: "Test completed, check logs",
+            received_data: hasReceivedData 
+          }), {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
           }))
         }, 5000)
       })
     } catch (error) {
-      console.error("Error in test endpoint:", error)
-      return new Response(JSON.stringify({ error: error.message }), {
+      console.error("Critical error in test endpoint:", {
+        error: error.toString(),
+        stack: error.stack,
+        message: error.message
+      })
+      return new Response(JSON.stringify({ 
+        error: error.message,
+        details: error.toString(),
+        stack: error.stack 
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 500
       })
@@ -80,31 +119,33 @@ serve(async (req) => {
   }
 
   // Original WebSocket upgrade logic
-  const { socket: clientSocket, response } = Deno.upgradeWebSocket(req)
-  const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market")
-  
-  const currentOrderbook: OrderBook = {
-    bids: {},
-    asks: {},
-  }
-
-  polymarketWs.onopen = () => {
-    console.log("Connected to Polymarket WebSocket")
+  try {
+    console.log("Attempting WebSocket upgrade")
+    const { socket: clientSocket, response } = Deno.upgradeWebSocket(req)
+    const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market")
     
-    // Subscribe to market data
-    const subscription = {
-      type: "Market",
-      assets_ids: ["112079176993929604864779457945097054417527947802930131576938601640669350643880"]
+    const currentOrderbook: OrderBook = {
+      bids: {},
+      asks: {},
     }
-    polymarketWs.send(JSON.stringify(subscription))
 
-    // Request initial snapshot
-    const snapshotRequest = {
-      type: "GetMarketSnapshot",
-      asset_id: "112079176993929604864779457945097054417527947802930131576938601640669350643880"
+    polymarketWs.onopen = () => {
+      console.log("Connected to Polymarket WebSocket")
+      
+      // Subscribe to market data
+      const subscription = {
+        type: "Market",
+        assets_ids: ["112079176993929604864779457945097054417527947802930131576938601640669350643880"]
+      }
+      polymarketWs.send(JSON.stringify(subscription))
+
+      // Request initial snapshot
+      const snapshotRequest = {
+        type: "GetMarketSnapshot",
+        asset_id: "112079176993929604864779457945097054417527947802930131576938601640669350643880"
+      }
+      polymarketWs.send(JSON.stringify(snapshotRequest))
     }
-    polymarketWs.send(JSON.stringify(snapshotRequest))
-  }
 
   polymarketWs.onmessage = (event) => {
     try {
@@ -210,5 +251,19 @@ serve(async (req) => {
     polymarketWs.close()
   }
 
-  return response
+    return response
+  } catch (error) {
+    console.error("Critical error in WebSocket upgrade:", {
+      error: error.toString(),
+      stack: error.stack,
+      message: error.message
+    })
+    return new Response(JSON.stringify({ 
+      error: "Failed to establish WebSocket connection",
+      details: error.toString() 
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500
+    })
+  }
 })
