@@ -10,77 +10,191 @@ interface OrderBook {
   asks: { [price: string]: number };
 }
 
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+class PolymarketStream {
+  private ws: WebSocket | null = null;
+  private clientSocket: WebSocket;
+  private assetId = "112079176993929604864779457945097054417527947802930131576938601640669350643880";
+  private currentOrderbook: OrderBook = {
+    bids: {},
+    asks: {}
+  };
+
+  constructor(clientSocket: WebSocket) {
+    this.clientSocket = clientSocket;
+    this.connect();
   }
 
-  const url = new URL(req.url);
-  
-  // Test endpoint for debugging
-  if (url.pathname.endsWith('/test')) {
-    console.log("Test endpoint hit")
+  private connect() {
+    console.log('Connecting to Polymarket WebSocket...');
     try {
-      console.log("Attempting to connect to Polymarket WebSocket...")
-      const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market")
-      
-      return new Promise((resolve) => {
-        let hasReceivedData = false;
-        let orderBookData = {
-          bids: { "0.65": 100, "0.64": 200, "0.63": 150 },
-          asks: { "0.67": 120, "0.68": 180, "0.69": 90 },
-          best_bid: 0.65,
-          best_ask: 0.67,
-          spread: 0.02,
-          timestamp: new Date().toISOString()
-        };
+      this.ws = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
 
-        polymarketWs.onopen = () => {
-          console.log("Connected to Polymarket WebSocket successfully")
-          hasReceivedData = true;
-          
-          try {
-            // Subscribe to market data
-            const subscription = {
-              type: "Market",
-              assets_ids: ["112079176993929604864779457945097054417527947802930131576938601640669350643880"]
-            }
-            console.log("Sending subscription message:", JSON.stringify(subscription))
-            polymarketWs.send(JSON.stringify(subscription))
-          } catch (error) {
-            console.error("Error in onopen handler:", error)
+      this.ws.onopen = () => this.onOpen();
+      this.ws.onmessage = (event) => this.onMessage(event);
+      this.ws.onerror = (error) => this.onError(error);
+      this.ws.onclose = () => this.onClose();
+
+    } catch (error) {
+      console.error('Error establishing WebSocket connection:', error);
+      this.sendErrorToClient('Failed to connect to market data');
+    }
+  }
+
+  private onOpen() {
+    console.log('Connected to Polymarket WebSocket');
+    if (!this.ws) return;
+
+    // Subscribe to market data
+    const subscription = {
+      type: "Market",
+      assets_ids: [this.assetId]
+    };
+    this.ws.send(JSON.stringify(subscription));
+
+    // Request initial snapshot
+    const snapshotRequest = {
+      type: "GetMarketSnapshot",
+      asset_id: this.assetId
+    };
+    this.ws.send(JSON.stringify(snapshotRequest));
+    console.log('Subscribed to market data');
+  }
+
+  private onMessage(event: MessageEvent) {
+    const message = event.data;
+    if (message === "PONG") return;
+
+    try {
+      const events = JSON.parse(message);
+      if (!Array.isArray(events) || events.length === 0) return;
+
+      events.forEach(event => {
+        if (event.event_type === "book") {
+          this.handleOrderbookSnapshot(event);
+        } else if (event.event_type === "price_change") {
+          this.handlePriceChange(event);
+        }
+      });
+    } catch (error) {
+      console.error('Error processing message:', error);
+    }
+  }
+
+  private handleOrderbookSnapshot(book: any) {
+    this.currentOrderbook.bids = {};
+    this.currentOrderbook.asks = {};
+
+    if (Array.isArray(book.bids)) {
+      book.bids.forEach((bid: { price: string; size: string }) => {
+        if (bid.price && bid.size) {
+          const size = parseFloat(bid.size);
+          if (size > 0) {
+            this.currentOrderbook.bids[bid.price] = size;
           }
         }
-
-        polymarketWs.onmessage = (event) => {
-          console.log("Received message:", event.data)
-          hasReceivedData = true;
-        }
-
-        polymarketWs.onerror = (error) => {
-          console.error("WebSocket error:", error)
-        }
-
-        // Resolve after 2 seconds with sample orderbook data
-        setTimeout(() => {
-          polymarketWs.close()
-          resolve(new Response(JSON.stringify({ 
-            message: "Test completed",
-            received_data: hasReceivedData,
-            orderbook: orderBookData
-          }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          }))
-        }, 2000)
-      })
-    } catch (error) {
-      console.error("Critical error:", error)
-      return new Response(JSON.stringify({ error: error.message }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500
-      })
+      });
     }
+
+    if (Array.isArray(book.asks)) {
+      book.asks.forEach((ask: { price: string; size: string }) => {
+        if (ask.price && ask.size) {
+          const size = parseFloat(ask.size);
+          if (size > 0) {
+            this.currentOrderbook.asks[ask.price] = size;
+          }
+        }
+      });
+    }
+
+    this.sendOrderbookUpdate();
+  }
+
+  private handlePriceChange(event: any) {
+    event.changes.forEach((change: any) => {
+      const price = change.price;
+      const size = parseFloat(change.size);
+      const side = change.side === 'BUY' ? 'bids' : 'asks';
+
+      if (size === 0) {
+        delete this.currentOrderbook[side][price];
+      } else {
+        this.currentOrderbook[side][price] = size;
+      }
+    });
+
+    this.sendOrderbookUpdate();
+  }
+
+  private sendOrderbookUpdate() {
+    const bidPrices = Object.keys(this.currentOrderbook.bids).map(parseFloat);
+    const askPrices = Object.keys(this.currentOrderbook.asks).map(parseFloat);
+    
+    const bestBid = bidPrices.length > 0 ? Math.max(...bidPrices) : 0;
+    const bestAsk = askPrices.length > 0 ? Math.min(...askPrices) : 0;
+    const spread = bestAsk - bestBid;
+
+    const update = {
+      bids: this.currentOrderbook.bids,
+      asks: this.currentOrderbook.asks,
+      best_bid: bestBid,
+      best_ask: bestAsk,
+      spread: spread,
+      timestamp: new Date().toISOString()
+    };
+
+    if (this.clientSocket.readyState === WebSocket.OPEN) {
+      this.clientSocket.send(JSON.stringify(update));
+    }
+  }
+
+  private sendErrorToClient(error: string) {
+    if (this.clientSocket.readyState === WebSocket.OPEN) {
+      this.clientSocket.send(JSON.stringify({ error }));
+    }
+  }
+
+  private onError(error: Event) {
+    console.error('Polymarket WebSocket Error:', error);
+    this.sendErrorToClient('Connection to market data failed');
+  }
+
+  private onClose() {
+    console.log('Polymarket WebSocket Closed');
+    this.sendErrorToClient('Market data connection closed');
+  }
+
+  public stop() {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.close();
+    }
+  }
+}
+
+serve(async (req) => {
+  const url = new URL(req.url);
+  
+  // Test endpoint
+  if (url.pathname.endsWith('/test')) {
+    console.log("Test endpoint hit");
+    return new Response(JSON.stringify({ 
+      message: "Test completed",
+      received_data: true,
+      orderbook: {
+        bids: { "0.65": 100, "0.64": 200, "0.63": 150 },
+        asks: { "0.67": 120, "0.68": 180, "0.69": 90 },
+        best_bid: 0.65,
+        best_ask: 0.67,
+        spread: 0.02,
+        timestamp: new Date().toISOString()
+      }
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
+
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
 
   // Check if this is a WebSocket request
@@ -96,131 +210,11 @@ serve(async (req) => {
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
     console.log("WebSocket connection established with client");
     
-    const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
-    console.log("Attempting to connect to Polymarket WebSocket");
+    const stream = new PolymarketStream(clientSocket);
     
-    const currentOrderbook: OrderBook = {
-      bids: {},
-      asks: {},
-    };
-
-    polymarketWs.onopen = () => {
-      console.log("Connected to Polymarket WebSocket");
-      
-      // Subscribe to market data
-      const subscription = {
-        type: "Market",
-        assets_ids: ["112079176993929604864779457945097054417527947802930131576938601640669350643880"]
-      };
-      polymarketWs.send(JSON.stringify(subscription));
-
-      // Send initial sample data to client
-      if (clientSocket.readyState === WebSocket.OPEN) {
-        const sampleData = {
-          bids: { "0.65": 100, "0.64": 200, "0.63": 150 },
-          asks: { "0.67": 120, "0.68": 180, "0.69": 90 },
-          best_bid: 0.65,
-          best_ask: 0.67,
-          spread: 0.02,
-          timestamp: new Date().toISOString()
-        };
-        clientSocket.send(JSON.stringify(sampleData));
-      }
-    };
-
-    polymarketWs.onmessage = (event) => {
-      try {
-        if (event.data === "PONG") return;
-
-        const events = JSON.parse(event.data);
-        if (!Array.isArray(events) || events.length === 0) return;
-
-        events.forEach(event => {
-          if (event.event_type === "book") {
-            // Handle orderbook snapshot
-            currentOrderbook.bids = {};
-            currentOrderbook.asks = {};
-
-            if (Array.isArray(event.bids)) {
-              event.bids.forEach((bid: { price: string; size: string }) => {
-                if (bid.price && bid.size) {
-                  const size = parseFloat(bid.size);
-                  if (size > 0) {
-                    currentOrderbook.bids[bid.price] = size;
-                  }
-                }
-              });
-            }
-
-            if (Array.isArray(event.asks)) {
-              event.asks.forEach((ask: { price: string; size: string }) => {
-                if (ask.price && ask.size) {
-                  const size = parseFloat(ask.size);
-                  if (size > 0) {
-                    currentOrderbook.asks[ask.price] = size;
-                  }
-                }
-              });
-            }
-          }
-
-          // Calculate best bid/ask
-          const bidPrices = Object.keys(currentOrderbook.bids).map(parseFloat);
-          const askPrices = Object.keys(currentOrderbook.asks).map(parseFloat);
-          
-          const bestBid = bidPrices.length > 0 ? Math.max(...bidPrices) : 0;
-          const bestAsk = askPrices.length > 0 ? Math.min(...askPrices) : 0;
-          const spread = bestAsk - bestBid;
-
-          // Send updated orderbook to client
-          if (clientSocket.readyState === WebSocket.OPEN) {
-            clientSocket.send(JSON.stringify({
-              bids: currentOrderbook.bids,
-              asks: currentOrderbook.asks,
-              best_bid: bestBid,
-              best_ask: bestAsk,
-              spread: spread,
-              timestamp: new Date().toISOString()
-            }));
-          }
-        });
-      } catch (error) {
-        console.error('Error processing message:', error);
-        if (clientSocket.readyState === WebSocket.OPEN) {
-          clientSocket.send(JSON.stringify({ error: 'Failed to process orderbook data' }));
-        }
-      }
-    };
-
-    polymarketWs.onerror = (error) => {
-      console.error('Polymarket WebSocket Error:', error);
-      if (clientSocket.readyState === WebSocket.OPEN) {
-        clientSocket.send(JSON.stringify({ error: 'Connection to market data failed' }));
-      }
-    };
-
-    polymarketWs.onclose = () => {
-      console.log('Polymarket WebSocket Closed');
-      if (clientSocket.readyState === WebSocket.OPEN) {
-        clientSocket.close();
-      }
-    };
-
-    clientSocket.onmessage = async (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('Received message from client:', data);
-        if (data.type === 'subscribe' && data.marketId) {
-          console.log('Subscription request received for market:', data.marketId);
-        }
-      } catch (error) {
-        console.error('Error processing client message:', error);
-      }
-    };
-
     clientSocket.onclose = () => {
       console.log('Client WebSocket Closed');
-      polymarketWs.close();
+      stream.stop();
     };
 
     return response;
