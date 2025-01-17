@@ -3,7 +3,6 @@ import { ChevronDown, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { MarketCard } from './market/MarketCard';
-import { OrderBook } from './market/OrderBook';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,7 +14,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { LiveOrderBook } from './market/LiveOrderBook';
 
 interface TimeInterval {
@@ -201,40 +199,19 @@ export default function TopMoversList({
         open={selectedMarket !== null} 
         onOpenChange={() => setSelectedMarket(null)}
       >
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>
               Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-4">
+            <AlertDialogDescription>
               {isConnecting ? (
                 <LiveOrderBook onOrderBookData={(data) => {
                   setOrderBookData(data);
                   setIsConnecting(false);
                 }} />
-              ) : orderBookData ? (
-                <>
-                  <p>Current market prices:</p>
-                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Best Bid</p>
-                      <p className="text-lg font-medium text-green-500">
-                        {(orderBookData.best_bid * 100).toFixed(2)}¢
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Best Ask</p>
-                      <p className="text-lg font-medium text-red-500">
-                        {(orderBookData.best_ask * 100).toFixed(2)}¢
-                      </p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
-                  </p>
-                </>
               ) : (
-                <div className="flex items-center justify-center py-4 text-destructive">
+                <div className="text-center py-4 text-destructive">
                   Failed to load order book data. Please try again.
                 </div>
               )}
