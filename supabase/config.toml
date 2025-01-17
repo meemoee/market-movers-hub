@@ -16,3 +16,7 @@ port = 54323
 [functions.fetch-polymarket-data]
 verify_jwt = false
 enabled = true
+
+[functions.polymarket-ws]
+verify_jwt = false
+enabled = true
