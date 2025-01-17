@@ -46,6 +46,34 @@ async function getEvents(limit = BATCH_SIZE, offset = 0, retries = 3) {
   }
 }
 
+async function getMarketData(marketId: string, retries = 3) {
+  const endpoint = `${POLYMARKET_API}/markets/${marketId}`
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(endpoint)
+      
+      if (response.status === 429) {
+        console.log(`Rate limited on attempt ${attempt}, waiting before retry...`)
+        await delay(attempt * 2000)
+        continue
+      }
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+      
+      return await response.json()
+    } catch (error) {
+      if (attempt === retries) {
+        throw error
+      }
+      console.log(`Error on attempt ${attempt}, retrying...`, error)
+      await delay(1000)
+    }
+  }
+}
+
 function processMarket(market: any, eventSlug: string, eventId: string, event?: any) {
   const outcomes = market.outcomes || ["Yes", "No"]
   const outcomePrices = market.outcomePrices || [0, 0]
@@ -117,22 +145,45 @@ async function processBatch(events: any[]) {
           continue
         }
 
-        // Insert market prices
-        const { error: priceError } = await supabase
-          .from('market_prices')
-          .insert({
-            market_id: market.id,
-            yes_price: parseFloat(marketData.outcomePrices?.[0] || 0),
-            no_price: parseFloat(marketData.outcomePrices?.[1] || 0),
-            best_bid: parseFloat(marketData.bestBid || 0),
-            best_ask: parseFloat(marketData.bestAsk || 0),
-            last_traded_price: parseFloat(marketData.outcomePrices?.[0] || 0),
-            volume: parseFloat(marketData.volume || 0),
-            liquidity: parseFloat(marketData.liquidity || 0)
-          })
+        // Get latest market data including orderbook
+        const latestMarketData = await getMarketData(market.id)
+        if (latestMarketData) {
+          // Insert market prices
+          const { error: priceError } = await supabase
+            .from('market_prices')
+            .insert({
+              market_id: market.id,
+              yes_price: parseFloat(latestMarketData.outcomePrices?.[0] || 0),
+              no_price: parseFloat(latestMarketData.outcomePrices?.[1] || 0),
+              best_bid: parseFloat(latestMarketData.bestBid || 0),
+              best_ask: parseFloat(latestMarketData.bestAsk || 0),
+              last_traded_price: parseFloat(latestMarketData.outcomePrices?.[0] || 0),
+              volume: parseFloat(latestMarketData.volume || 0),
+              liquidity: parseFloat(latestMarketData.liquidity || 0)
+            })
 
-        if (priceError) {
-          console.error(`Error inserting price for market ${market.id}:`, priceError)
+          if (priceError) {
+            console.error(`Error inserting price for market ${market.id}:`, priceError)
+          }
+
+          // Insert orderbook data
+          if (latestMarketData.orderbook) {
+            const { error: orderbookError } = await supabase
+              .from('orderbook_data')
+              .upsert({
+                id: Date.now(), // Using timestamp as ID
+                market_id: market.id,
+                bids: latestMarketData.orderbook.bids || {},
+                asks: latestMarketData.orderbook.asks || {},
+                best_bid: parseFloat(latestMarketData.bestBid || 0),
+                best_ask: parseFloat(latestMarketData.bestAsk || 0),
+                spread: parseFloat(latestMarketData.bestAsk || 0) - parseFloat(latestMarketData.bestBid || 0)
+              })
+
+            if (orderbookError) {
+              console.error(`Error inserting orderbook for market ${market.id}:`, orderbookError)
+            }
+          }
         }
 
         // Add small delay between markets
@@ -145,6 +196,7 @@ async function processBatch(events: any[]) {
 }
 
 Deno.serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
