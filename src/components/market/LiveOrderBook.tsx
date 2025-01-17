@@ -12,10 +12,10 @@ interface OrderBookData {
 
 interface LiveOrderBookProps {
   onOrderBookData: (data: OrderBookData | null) => void;
+  isLoading: boolean;
 }
 
-export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
-  const [loading, setLoading] = useState(true);
+export function LiveOrderBook({ onOrderBookData, isLoading }: LiveOrderBookProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -32,7 +32,6 @@ export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
 
         ws.onopen = () => {
           console.log('WebSocket connected');
-          setLoading(false);
         };
 
         ws.onmessage = (event) => {
@@ -52,18 +51,15 @@ export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
         ws.onerror = (event) => {
           console.error('WebSocket error:', event);
           setError('WebSocket connection error');
-          setLoading(false);
         };
 
         ws.onclose = () => {
           console.log('WebSocket closed');
-          setLoading(false);
         };
 
       } catch (err) {
         console.error('Error setting up WebSocket:', err);
         setError('Failed to connect to orderbook service');
-        setLoading(false);
       }
     };
 
@@ -77,7 +73,7 @@ export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
     };
   }, [onOrderBookData]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-4">
         <Loader2 className="w-6 h-6 animate-spin" />

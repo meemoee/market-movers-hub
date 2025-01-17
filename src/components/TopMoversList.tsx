@@ -80,7 +80,7 @@ export default function TopMoversList({
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -88,7 +88,7 @@ export default function TopMoversList({
       setOrderBookData(null);
       return;
     }
-    setIsConnecting(true);
+    setIsOrderBookLoading(true);
   }, [selectedMarket]);
 
   const handleTransaction = () => {
@@ -207,12 +207,15 @@ export default function TopMoversList({
               Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-4">
-              {isConnecting ? (
-                <LiveOrderBook onOrderBookData={(data) => {
+              <LiveOrderBook 
+                onOrderBookData={(data) => {
                   setOrderBookData(data);
-                  setIsConnecting(false);
-                }} />
-              ) : orderBookData ? (
+                  setIsOrderBookLoading(false);
+                }} 
+                isLoading={isOrderBookLoading}
+              />
+              
+              {orderBookData && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -262,10 +265,6 @@ export default function TopMoversList({
                     Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
                   </div>
                 </div>
-              ) : (
-                <div className="flex items-center justify-center py-4 text-destructive">
-                  Failed to load order book data. Please try again.
-                </div>
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -273,10 +272,10 @@ export default function TopMoversList({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleTransaction}
-              disabled={!orderBookData || isConnecting}
+              disabled={!orderBookData || isOrderBookLoading}
               className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
             >
-              {isConnecting ? (
+              {isOrderBookLoading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
                   Connecting...
