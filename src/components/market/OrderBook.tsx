@@ -30,7 +30,15 @@ export function OrderBook({ marketId }: OrderBookProps) {
         .single();
 
       if (!error && data) {
-        setOrderBook(data);
+        // Convert the JSON data to the correct type
+        const convertedData: OrderBookData = {
+          bids: data.bids as Record<string, number>,
+          asks: data.asks as Record<string, number>,
+          best_bid: data.best_bid,
+          best_ask: data.best_ask,
+          spread: data.spread
+        };
+        setOrderBook(convertedData);
       }
       setLoading(false);
     };
@@ -51,7 +59,16 @@ export function OrderBook({ marketId }: OrderBookProps) {
         (payload) => {
           console.log('Received orderbook update:', payload);
           if (payload.new) {
-            setOrderBook(payload.new as OrderBookData);
+            const newData = payload.new;
+            // Convert the JSON data to the correct type
+            const convertedData: OrderBookData = {
+              bids: newData.bids as Record<string, number>,
+              asks: newData.asks as Record<string, number>,
+              best_bid: newData.best_bid,
+              best_ask: newData.best_ask,
+              spread: newData.spread
+            };
+            setOrderBook(convertedData);
           }
         }
       )
