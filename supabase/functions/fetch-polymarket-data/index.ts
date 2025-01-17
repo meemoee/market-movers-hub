@@ -49,7 +49,7 @@ async function getEvents(limit = 100, offset = 0, retries = 3) {
 async function getAllEvents() {
   const allEvents = []
   let offset = 0
-  const limit = 50 // Reduced from 100 to avoid rate limits
+  const limit = 100 // Back to 100 as requested
   
   try {
     while (true) {
