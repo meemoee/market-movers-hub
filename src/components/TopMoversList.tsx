@@ -1,9 +1,8 @@
-import { useState } from 'react'
-import { ChevronDown, TrendingUp, TrendingDown, Loader2, ChevronUp } from 'lucide-react'
-import { Card } from './ui/card'
-import { ScrollArea } from './ui/scroll-area'
-import { Progress } from './ui/progress'
-import { Button } from './ui/button'
+import { useState } from 'react';
+import { ChevronDown, Loader2 } from 'lucide-react';
+import { Card } from './ui/card';
+import { ScrollArea } from './ui/scroll-area';
+import { MarketCard } from './market/MarketCard';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,47 +12,47 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { useToast } from "@/hooks/use-toast"
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 interface TimeInterval {
-  label: string
-  value: string
+  label: string;
+  value: string;
 }
 
 interface TopMoversListProps {
-  topMovers: TopMover[]
-  error: string | null
-  timeIntervals: readonly TimeInterval[]
-  selectedInterval: string
-  onIntervalChange: (interval: string) => void
-  onLoadMore: () => void
-  hasMore: boolean
-  openMarketsOnly: boolean
-  onOpenMarketsChange: (value: boolean) => void
-  isLoading?: boolean
-  isLoadingMore?: boolean
+  topMovers: TopMover[];
+  error: string | null;
+  timeIntervals: readonly TimeInterval[];
+  selectedInterval: string;
+  onIntervalChange: (interval: string) => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  openMarketsOnly: boolean;
+  onOpenMarketsChange: (value: boolean) => void;
+  isLoading?: boolean;
+  isLoadingMore?: boolean;
 }
 
 interface TopMover {
-  market_id: string
-  question: string
-  price: number
-  price_change: number
-  volume: number
-  image: string
-  yes_sub_title?: string
-  final_last_traded_price: number
-  final_best_ask: number
-  final_best_bid: number
-  volume_change: number
-  volume_change_percentage: number
-  url: string
-  outcomes?: string[] | string
-  description?: string
+  market_id: string;
+  question: string;
+  price: number;
+  price_change: number;
+  volume: number;
+  image: string;
+  yes_sub_title?: string;
+  final_last_traded_price: number;
+  final_best_ask: number;
+  final_best_bid: number;
+  volume_change: number;
+  volume_change_percentage: number;
+  url: string;
+  outcomes?: string[] | string;
+  description?: string;
 }
 
-const TopMoversList = ({
+export default function TopMoversList({
   timeIntervals,
   selectedInterval,
   onIntervalChange,
@@ -65,49 +64,34 @@ const TopMoversList = ({
   onOpenMarketsChange,
   isLoading,
   isLoadingMore,
-}: TopMoversListProps) => {
-  const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false)
-  const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set())
-  const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null)
-  const { toast } = useToast()
+}: TopMoversListProps) {
+  const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
+  const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
+  const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null);
+  const { toast } = useToast();
 
   const toggleMarket = (marketId: string) => {
     setExpandedMarkets(prev => {
-      const newSet = new Set(prev)
+      const newSet = new Set(prev);
       if (newSet.has(marketId)) {
-        newSet.delete(marketId)
+        newSet.delete(marketId);
       } else {
-        newSet.add(marketId)
+        newSet.add(marketId);
       }
-      return newSet
-    })
-  }
+      return newSet;
+    });
+  };
 
   const handleTransaction = () => {
-    if (!selectedMarket) return
+    if (!selectedMarket) return;
     
-    const action = selectedMarket.action
+    const action = selectedMarket.action;
     toast({
       title: "Transaction Submitted",
       description: `Your ${action} order has been submitted successfully.`,
-    })
-    setSelectedMarket(null)
-  }
-
-  const formatPrice = (price: number): string => {
-    return `${(price * 100).toFixed(1)}¢`
-  }
-
-  const formatPriceChange = (change: number): string => {
-    const prefix = change >= 0 ? '+' : ''
-    return `${prefix}${(change * 100).toFixed(1)}%`
-  }
-
-  const formatVolume = (volume: number): string => {
-    if (volume >= 1e6) return `$${(volume / 1e6).toFixed(1)}M`
-    if (volume >= 1e3) return `$${(volume / 1e3).toFixed(1)}K`
-    return `$${volume.toFixed(0)}`
-  }
+    });
+    setSelectedMarket(null);
+  };
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -133,8 +117,8 @@ const TopMoversList = ({
                         selectedInterval === interval.value ? 'bg-accent/30' : ''
                       }`}
                       onClick={() => {
-                        setIsTimeIntervalDropdownOpen(false)
-                        onIntervalChange(interval.value)
+                        setIsTimeIntervalDropdownOpen(false);
+                        onIntervalChange(interval.value);
                       }}
                     >
                       {interval.label}
@@ -165,129 +149,14 @@ const TopMoversList = ({
             </div>
           ) : (
             topMovers.map((mover) => (
-              <Card
+              <MarketCard
                 key={mover.market_id}
-                className="overflow-hidden hover:shadow-lg transition-shadow duration-200"
-              >
-                <div className="p-4 space-y-4">
-                  {/* Market Header */}
-                  <div className="flex gap-4">
-                    <img
-                      src={mover.image}
-                      alt=""
-                      className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <h3 className="font-semibold text-lg leading-tight">
-                        {mover.question}
-                      </h3>
-                      {mover.yes_sub_title && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {mover.yes_sub_title}
-                        </p>
-                      )}
-                      <div className="flex gap-2 mt-2">
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="bg-green-500 hover:bg-green-600"
-                          onClick={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
-                        >
-                          Buy
-                        </Button>
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="bg-red-500 hover:bg-red-600"
-                          onClick={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
-                        >
-                          Sell
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Price and Volume Info */}
-                  <div className="grid grid-cols-3 gap-6">
-                    <div>
-                      <div className="text-3xl font-bold tracking-tight">
-                        {formatPrice(mover.final_last_traded_price)}
-                      </div>
-                      <div className="space-y-1.5">
-                        <div className={`flex items-center gap-1 text-sm font-medium
-                          ${mover.price_change >= 0 ? 'text-[#8B5CF6]' : 'text-[#ea384c]'}`}
-                        >
-                          {mover.price_change >= 0 ? (
-                            <TrendingUp className="w-4 h-4" />
-                          ) : (
-                            <TrendingDown className="w-4 h-4" />
-                          )}
-                          {formatPriceChange(mover.price_change)}
-                        </div>
-                        <Progress 
-                          value={Math.abs(mover.price_change * 100)} 
-                          max={100}
-                          className={`h-1.5 ${
-                            mover.price_change >= 0 
-                              ? 'bg-[#8B5CF6]/20 [&>div]:bg-[#8B5CF6]' 
-                              : 'bg-[#ea384c]/20 [&>div]:bg-[#ea384c]'
-                          }`}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-xl font-semibold">
-                        {formatVolume(mover.volume)}
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">
-                        24h Volume
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <button
-                        onClick={() => toggleMarket(mover.market_id)}
-                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {expandedMarkets.has(mover.market_id) ? (
-                          <>
-                            <span>Less</span>
-                            <ChevronUp className="w-4 h-4" />
-                          </>
-                        ) : (
-                          <>
-                            <span>More</span>
-                            <ChevronDown className="w-4 h-4" />
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {expandedMarkets.has(mover.market_id) && (
-                    <div className="pt-4 border-t border-border space-y-4">
-                      {mover.description && (
-                        <p className="text-sm text-muted-foreground">
-                          {mover.description}
-                        </p>
-                      )}
-                      <div className="grid grid-cols-2 gap-6">
-                        <div>
-                          <div className="text-sm text-muted-foreground mb-1">Best Bid</div>
-                          <div className="text-lg font-medium">
-                            {formatPrice(mover.final_best_bid)}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-muted-foreground mb-1">Best Ask</div>
-                          <div className="text-lg font-medium">
-                            {formatPrice(mover.final_best_ask)}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Card>
+                market={mover}
+                isExpanded={expandedMarkets.has(mover.market_id)}
+                onToggleExpand={() => toggleMarket(mover.market_id)}
+                onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
+                onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
+              />
             ))
           )}
 
@@ -331,7 +200,5 @@ const TopMoversList = ({
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }
-
-export default TopMoversList
