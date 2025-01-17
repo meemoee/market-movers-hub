@@ -14,6 +14,16 @@ interface OrderBookData {
   spread: number;
 }
 
+interface OrderBookPayload {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+  market_id: string;
+  timestamp: string;
+}
+
 export function OrderBook({ marketId }: OrderBookProps) {
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -30,13 +40,13 @@ export function OrderBook({ marketId }: OrderBookProps) {
         .single();
 
       if (!error && data) {
-        // Convert the JSON data to the correct type
+        // Convert the JSON data to the correct type and ensure all required fields exist
         const convertedData: OrderBookData = {
-          bids: data.bids as Record<string, number>,
-          asks: data.asks as Record<string, number>,
-          best_bid: data.best_bid,
-          best_ask: data.best_ask,
-          spread: data.spread
+          bids: (data.bids as Record<string, number>) || {},
+          asks: (data.asks as Record<string, number>) || {},
+          best_bid: data.best_bid || 0,
+          best_ask: data.best_ask || 0,
+          spread: data.spread || 0
         };
         setOrderBook(convertedData);
       }
@@ -59,14 +69,14 @@ export function OrderBook({ marketId }: OrderBookProps) {
         (payload) => {
           console.log('Received orderbook update:', payload);
           if (payload.new) {
-            const newData = payload.new;
-            // Convert the JSON data to the correct type
+            const newData = payload.new as OrderBookPayload;
+            // Convert the JSON data to the correct type and ensure all required fields exist
             const convertedData: OrderBookData = {
-              bids: newData.bids as Record<string, number>,
-              asks: newData.asks as Record<string, number>,
-              best_bid: newData.best_bid,
-              best_ask: newData.best_ask,
-              spread: newData.spread
+              bids: (newData.bids as Record<string, number>) || {},
+              asks: (newData.asks as Record<string, number>) || {},
+              best_bid: newData.best_bid || 0,
+              best_ask: newData.best_ask || 0,
+              spread: newData.spread || 0
             };
             setOrderBook(convertedData);
           }
