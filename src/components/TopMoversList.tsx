@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ChevronDown, TrendingUp, TrendingDown, Loader2, ChevronUp } from 'lucide-react'
 import { Card } from './ui/card'
 import { ScrollArea } from './ui/scroll-area'
+import { Progress } from './ui/progress'
 
 interface TimeInterval {
   label: string
@@ -85,7 +86,6 @@ const TopMoversList = ({
 
   return (
     <div className="max-w-2xl mx-auto">
-      {/* Header Section */}
       <Card className="sticky top-14 bg-card/95 backdrop-blur-sm z-40 mb-4 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -171,15 +171,26 @@ const TopMoversList = ({
                       <div className="text-3xl font-bold tracking-tight">
                         {formatPrice(mover.final_last_traded_price)}
                       </div>
-                      <div className={`flex items-center gap-1 text-sm font-medium mt-1
-                        ${mover.price_change >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                      >
-                        {mover.price_change >= 0 ? (
-                          <TrendingUp className="w-4 h-4" />
-                        ) : (
-                          <TrendingDown className="w-4 h-4" />
-                        )}
-                        {formatPriceChange(mover.price_change)}
+                      <div className="space-y-1.5">
+                        <div className={`flex items-center gap-1 text-sm font-medium
+                          ${mover.price_change >= 0 ? 'text-[#8B5CF6]' : 'text-[#ea384c]'}`}
+                        >
+                          {mover.price_change >= 0 ? (
+                            <TrendingUp className="w-4 h-4" />
+                          ) : (
+                            <TrendingDown className="w-4 h-4" />
+                          )}
+                          {formatPriceChange(mover.price_change)}
+                        </div>
+                        <Progress 
+                          value={Math.abs(mover.price_change * 100)} 
+                          max={100}
+                          className={`h-1.5 ${
+                            mover.price_change >= 0 
+                              ? 'bg-[#8B5CF6]/20 [&>div]:bg-[#8B5CF6]' 
+                              : 'bg-[#ea384c]/20 [&>div]:bg-[#ea384c]'
+                          }`}
+                        />
                       </div>
                     </div>
                     <div>
@@ -210,7 +221,6 @@ const TopMoversList = ({
                     </div>
                   </div>
 
-                  {/* Expanded Details */}
                   {expandedMarkets.has(mover.market_id) && (
                     <div className="pt-4 border-t border-border space-y-4">
                       {mover.description && (
@@ -239,7 +249,6 @@ const TopMoversList = ({
             ))
           )}
 
-          {/* Load More Button */}
           {hasMore && !isLoading && (
             <button
               onClick={onLoadMore}
