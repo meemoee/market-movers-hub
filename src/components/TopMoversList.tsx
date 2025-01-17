@@ -79,29 +79,52 @@ export default function TopMoversList({
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     if (!selectedMarket) return;
 
-    // Use Supabase's function invocation for WebSocket connection
-    const ws = new WebSocket(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`);
+    setIsConnecting(true);
+    setOrderBookData(null);
+
+    // Connect to WebSocket
+    const ws = new WebSocket(`${import.meta.env.VITE_SUPABASE_URL}/polymarket-ws`);
     console.log('Attempting to connect to WebSocket:', ws.url);
+
+    let connectionTimeout = setTimeout(() => {
+      if (ws.readyState !== WebSocket.OPEN) {
+        ws.close();
+        toast({
+          title: "Connection Timeout",
+          description: "Failed to connect to orderbook data. Please try again.",
+          variant: "destructive",
+        });
+        setIsConnecting(false);
+      }
+    }, 5000);
 
     ws.onopen = () => {
       console.log('Connected to Polymarket WebSocket');
-      // Send initial message to subscribe to market data
-      ws.send(JSON.stringify({ 
+      clearTimeout(connectionTimeout);
+      setIsConnecting(false);
+      
+      // Send initial subscription message
+      const subscriptionMessage = {
         type: 'subscribe',
-        marketId: selectedMarket.id 
-      }));
+        marketId: selectedMarket.id
+      };
+      console.log('Sending subscription message:', subscriptionMessage);
+      ws.send(JSON.stringify(subscriptionMessage));
     };
 
     ws.onmessage = (event) => {
       try {
         console.log('Received WebSocket message:', event.data);
         const data = JSON.parse(event.data);
-        setOrderBookData(data);
+        if (data.bids && data.asks) {
+          setOrderBookData(data);
+        }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
@@ -109,6 +132,7 @@ export default function TopMoversList({
 
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
+      setIsConnecting(false);
       toast({
         title: "Connection Error",
         description: "Failed to connect to orderbook data. Please try again.",
@@ -118,10 +142,12 @@ export default function TopMoversList({
 
     ws.onclose = () => {
       console.log('WebSocket connection closed');
+      setIsConnecting(false);
     };
 
     return () => {
       console.log('Cleaning up WebSocket connection');
+      clearTimeout(connectionTimeout);
       if (ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
@@ -244,7 +270,12 @@ export default function TopMoversList({
               Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
             </AlertDialogTitle>
             <AlertDialogDescription className="space-y-4">
-              {orderBookData ? (
+              {isConnecting ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span className="ml-2">Connecting to order book...</span>
+                </div>
+              ) : orderBookData ? (
                 <>
                   <p>Current market prices:</p>
                   <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
@@ -266,8 +297,8 @@ export default function TopMoversList({
                   </p>
                 </>
               ) : (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-6 h-6 animate-spin" />
+                <div className="flex items-center justify-center py-4 text-destructive">
+                  Failed to load order book data. Please try again.
                 </div>
               )}
             </AlertDialogDescription>
@@ -276,10 +307,17 @@ export default function TopMoversList({
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleTransaction}
-              disabled={!orderBookData}
+              disabled={!orderBookData || isConnecting}
               className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
             >
-              Confirm {selectedMarket?.action}
+              {isConnecting ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Connecting...
+                </>
+              ) : (
+                `Confirm ${selectedMarket?.action}`
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
