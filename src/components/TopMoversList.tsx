@@ -213,26 +213,55 @@ export default function TopMoversList({
                   setIsConnecting(false);
                 }} />
               ) : orderBookData ? (
-                <>
-                  <p>Current market prices:</p>
-                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Best Bid</p>
-                      <p className="text-lg font-medium text-green-500">
-                        {(orderBookData.best_bid * 100).toFixed(2)}¢
-                      </p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Bids</div>
+                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                        {Object.entries(orderBookData.bids)
+                          .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
+                          .slice(0, 5)
+                          .map(([price, size]) => (
+                            <div key={price} className="flex justify-between text-sm">
+                              <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                              <span>{size.toFixed(2)}</span>
+                            </div>
+                          ))}
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm text-muted-foreground">Best Ask</p>
-                      <p className="text-lg font-medium text-red-500">
-                        {(orderBookData.best_ask * 100).toFixed(2)}¢
-                      </p>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Asks</div>
+                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                        {Object.entries(orderBookData.asks)
+                          .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
+                          .slice(0, 5)
+                          .map(([price, size]) => (
+                            <div key={price} className="flex justify-between text-sm">
+                              <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                              <span>{size.toFixed(2)}</span>
+                            </div>
+                          ))}
+                      </div>
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Best Bid</div>
+                      <div className="text-lg font-medium text-green-500">
+                        {(orderBookData.best_bid * 100).toFixed(2)}¢
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Best Ask</div>
+                      <div className="text-lg font-medium text-red-500">
+                        {(orderBookData.best_ask * 100).toFixed(2)}¢
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
                     Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
-                  </p>
-                </>
+                  </div>
+                </div>
               ) : (
                 <div className="flex items-center justify-center py-4 text-destructive">
                   Failed to load order book data. Please try again.
