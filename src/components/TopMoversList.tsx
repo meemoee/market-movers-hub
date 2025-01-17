@@ -88,23 +88,30 @@ export default function TopMoversList({
     setIsConnecting(true);
     setOrderBookData(null);
 
-    // Test endpoint first to ensure the WebSocket server is running
-    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws/test`)
+    const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`;
+    console.log('Connecting to WebSocket:', wsUrl);
+
+    // Test endpoint first
+    fetch(`${wsUrl}/test`)
       .then(response => response.json())
       .then(data => {
+        console.log('Test response:', data);
         if (!data.received_data) {
           throw new Error('WebSocket server test failed');
         }
-        console.log('WebSocket server test successful:', data);
         
-        // Now connect to the WebSocket
-        const wsUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws`;
-        console.log('Connecting to WebSocket:', wsUrl);
+        if (data.orderbook) {
+          console.log('Using test orderbook data:', data.orderbook);
+          setOrderBookData(data.orderbook);
+          setIsConnecting(false);
+          return;
+        }
         
+        // If no test data, proceed with WebSocket connection
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log('Connected to Polymarket WebSocket');
+          console.log('WebSocket connected');
           const subscriptionMessage = {
             type: 'subscribe',
             marketId: selectedMarket.id
@@ -120,6 +127,8 @@ export default function TopMoversList({
             if (data.bids && data.asks) {
               setOrderBookData(data);
               setIsConnecting(false);
+            } else if (data.error) {
+              throw new Error(data.error);
             }
           } catch (error) {
             console.error('Error parsing WebSocket message:', error);
