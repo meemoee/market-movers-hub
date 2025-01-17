@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { OrderBookDisplay } from './OrderBookDisplay';
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -18,7 +17,6 @@ interface LiveOrderBookProps {
 export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
 
   useEffect(() => {
     const fetchOrderBook = async () => {
@@ -37,7 +35,6 @@ export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
         console.log('Response data:', data);
         
         if (data.orderbook) {
-          setOrderBookData(data.orderbook);
           onOrderBookData(data.orderbook);
         } else {
           setError('No orderbook data available');
@@ -70,9 +67,5 @@ export function LiveOrderBook({ onOrderBookData }: LiveOrderBookProps) {
     );
   }
 
-  if (!orderBookData) {
-    return null;
-  }
-
-  return <OrderBookDisplay {...orderBookData} />;
+  return null;
 }
