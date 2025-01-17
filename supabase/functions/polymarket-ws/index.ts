@@ -1,6 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -17,6 +15,71 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  const url = new URL(req.url);
+  
+  // Add a test endpoint
+  if (url.pathname.endsWith('/test')) {
+    console.log("Test endpoint hit")
+    try {
+      const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market")
+      
+      return new Promise((resolve) => {
+        polymarketWs.onopen = () => {
+          console.log("Connected to Polymarket WebSocket")
+          
+          // Subscribe to market data
+          const subscription = {
+            type: "Market",
+            assets_ids: ["112079176993929604864779457945097054417527947802930131576938601640669350643880"]
+          }
+          polymarketWs.send(JSON.stringify(subscription))
+
+          // Request initial snapshot
+          const snapshotRequest = {
+            type: "GetMarketSnapshot",
+            asset_id: "112079176993929604864779457945097054417527947802930131576938601640669350643880"
+          }
+          polymarketWs.send(JSON.stringify(snapshotRequest))
+        }
+
+        polymarketWs.onmessage = (event) => {
+          console.log("Received message from Polymarket:", event.data)
+          if (event.data === "PONG") return
+          
+          try {
+            const data = JSON.parse(event.data)
+            console.log("Parsed data:", data)
+          } catch (error) {
+            console.error("Error parsing message:", error)
+          }
+        }
+
+        polymarketWs.onerror = (error) => {
+          console.error("WebSocket error:", error)
+          resolve(new Response(JSON.stringify({ error: "WebSocket connection failed" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+            status: 500
+          }))
+        }
+
+        // Resolve after 5 seconds to get some sample data
+        setTimeout(() => {
+          polymarketWs.close()
+          resolve(new Response(JSON.stringify({ message: "Test completed, check logs" }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          }))
+        }, 5000)
+      })
+    } catch (error) {
+      console.error("Error in test endpoint:", error)
+      return new Response(JSON.stringify({ error: error.message }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 500
+      })
+    }
+  }
+
+  // Original WebSocket upgrade logic
   const { socket: clientSocket, response } = Deno.upgradeWebSocket(req)
   const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market")
   
