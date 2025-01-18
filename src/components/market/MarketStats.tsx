@@ -25,10 +25,11 @@ export function MarketStats({
     return `${prefix}${(change * 100).toFixed(1)}%`;
   };
 
-  const formatVolume = (volume: number): string => {
-    if (volume >= 1e6) return `$${(volume / 1e6).toFixed(1)}M`;
-    if (volume >= 1e3) return `$${(volume / 1e3).toFixed(1)}K`;
-    return `$${volume.toFixed(0)}`;
+  const formatVolume = (vol: number): string => {
+    if (!vol && vol !== 0) return '$0';
+    if (vol >= 1e6) return `$${(vol / 1e6).toFixed(1)}M`;
+    if (vol >= 1e3) return `$${(vol / 1e3).toFixed(1)}K`;
+    return `$${vol.toFixed(0)}`;
   };
 
   return (
