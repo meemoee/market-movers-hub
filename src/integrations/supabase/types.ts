@@ -9,6 +9,39 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      orderbook_data: {
+        Row: {
+          asks: Json
+          best_ask: number
+          best_bid: number
+          bids: Json
+          id: number
+          market_id: string
+          spread: number
+          timestamp: string
+        }
+        Insert: {
+          asks?: Json
+          best_ask?: number
+          best_bid?: number
+          bids?: Json
+          id?: number
+          market_id: string
+          spread?: number
+          timestamp?: string
+        }
+        Update: {
+          asks?: Json
+          best_ask?: number
+          best_bid?: number
+          bids?: Json
+          id?: number
+          market_id?: string
+          spread?: number
+          timestamp?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           balance: number | null

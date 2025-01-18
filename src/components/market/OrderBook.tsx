@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
-import { Database } from '@/integrations/supabase/types';
 
 interface OrderBookProps {
   marketId: string;
 }
 
-type OrderBookData = Database['public']['Tables']['orderbook_data']['Row'];
+type OrderBookData = {
+  id: number;
+  market_id: string;
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+  timestamp: string;
+}
 
 export function OrderBook({ marketId }: OrderBookProps) {
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
@@ -31,7 +39,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
         } else if (!data) {
           setError('No orderbook data available');
         } else {
-          setOrderBook(data);
+          setOrderBook(data as OrderBookData);
           setError(null);
         }
       } catch (err) {
@@ -102,7 +110,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
       <div>
         <h4 className="text-sm font-medium mb-2 text-muted-foreground">Bids</h4>
         <div className="space-y-1">
-          {Object.entries(orderBook.bids as Record<string, number>)
+          {Object.entries(orderBook.bids)
             .sort(([a], [b]) => parseFloat(b) - parseFloat(a))
             .slice(0, 5)
             .map(([price, size]) => (
@@ -117,7 +125,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
       <div>
         <h4 className="text-sm font-medium mb-2 text-muted-foreground">Asks</h4>
         <div className="space-y-1">
-          {Object.entries(orderBook.asks as Record<string, number>)
+          {Object.entries(orderBook.asks)
             .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
             .slice(0, 5)
             .map(([price, size]) => (
