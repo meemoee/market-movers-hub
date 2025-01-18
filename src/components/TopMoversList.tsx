@@ -1,22 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChevronDown, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { MarketCard } from './market/MarketCard';
-import { OrderBook } from './market/OrderBook';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { LiveOrderBook } from './market/LiveOrderBook';
 
 interface TimeInterval {
   label: string;
@@ -55,14 +42,6 @@ interface TopMover {
   description?: string;
 }
 
-interface OrderBookData {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number;
-  best_ask: number;
-  spread: number;
-}
-
 export default function TopMoversList({
   timeIntervals,
   selectedInterval,
@@ -78,31 +57,7 @@ export default function TopMoversList({
 }: TopMoversListProps) {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
-  const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null);
-  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
-  const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const { toast } = useToast();
-
-  useEffect(() => {
-    if (!selectedMarket) {
-      setOrderBookData(null);
-      return;
-    }
-    setIsOrderBookLoading(true);
-  }, [selectedMarket]);
-
-  const handleTransaction = () => {
-    if (!selectedMarket || !orderBookData) return;
-    
-    const action = selectedMarket.action;
-    const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
-    
-    toast({
-      title: "Transaction Submitted",
-      description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
-    });
-    setSelectedMarket(null);
-  };
 
   const toggleMarket = (marketId: string) => {
     setExpandedMarkets(prev => {
@@ -177,8 +132,6 @@ export default function TopMoversList({
                 market={mover}
                 isExpanded={expandedMarkets.has(mover.market_id)}
                 onToggleExpand={() => toggleMarket(mover.market_id)}
-                onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
-                onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
               />
             ))
           )}
@@ -196,97 +149,6 @@ export default function TopMoversList({
           )}
         </div>
       </ScrollArea>
-
-      <AlertDialog 
-        open={selectedMarket !== null} 
-        onOpenChange={() => setSelectedMarket(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-4">
-              <LiveOrderBook 
-                onOrderBookData={(data) => {
-                  setOrderBookData(data);
-                  setIsOrderBookLoading(false);
-                }} 
-                isLoading={isOrderBookLoading}
-              />
-              
-              {orderBookData && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Bids</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                        {Object.entries(orderBookData.bids)
-                          .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
-                          .slice(0, 5)
-                          .map(([price, size]) => (
-                            <div key={price} className="flex justify-between text-sm">
-                              <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                              <span>{size.toFixed(2)}</span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Asks</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                        {Object.entries(orderBookData.asks)
-                          .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
-                          .slice(0, 5)
-                          .map(([price, size]) => (
-                            <div key={price} className="flex justify-between text-sm">
-                              <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                              <span>{size.toFixed(2)}</span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
-                    <div>
-                      <div className="text-sm text-muted-foreground">Best Bid</div>
-                      <div className="text-lg font-medium text-green-500">
-                        {(orderBookData.best_bid * 100).toFixed(2)}¢
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Best Ask</div>
-                      <div className="text-lg font-medium text-red-500">
-                        {(orderBookData.best_ask * 100).toFixed(2)}¢
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
-                  </div>
-                </div>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleTransaction}
-              disabled={!orderBookData || isOrderBookLoading}
-              className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
-            >
-              {isOrderBookLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Connecting...
-                </>
-              ) : (
-                `Confirm ${selectedMarket?.action}`
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
