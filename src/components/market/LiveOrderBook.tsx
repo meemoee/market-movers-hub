@@ -23,7 +23,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading }: LiveOrderBookProps
 
     const connectWebSocket = async () => {
       try {
-        const wsUrl = `${supabase.getUrl().replace('https://', 'wss://')}/functions/v1/polymarket-ws`;
+        // Use the URL directly from the Supabase client configuration
+        const wsUrl = `wss://${supabase.supabaseUrl.replace('https://', '')}/functions/v1/polymarket-ws`;
         console.log('Connecting to WebSocket:', wsUrl);
         
         ws = new WebSocket(wsUrl);
