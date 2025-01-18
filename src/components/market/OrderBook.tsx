@@ -1,28 +1,13 @@
 import { useEffect, useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { Database } from '@/integrations/supabase/types';
 
 interface OrderBookProps {
   marketId: string;
 }
 
-interface OrderBookData {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number;
-  best_ask: number;
-  spread: number;
-}
-
-interface OrderBookPayload {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number;
-  best_ask: number;
-  spread: number;
-  market_id: string;
-  timestamp: string;
-}
+type OrderBookData = Database['public']['Tables']['orderbook_data']['Row'];
 
 export function OrderBook({ marketId }: OrderBookProps) {
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
@@ -46,15 +31,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
         } else if (!data) {
           setError('No orderbook data available');
         } else {
-          // Convert the JSON data to the correct type and ensure all required fields exist
-          const convertedData: OrderBookData = {
-            bids: (data.bids as Record<string, number>) || {},
-            asks: (data.asks as Record<string, number>) || {},
-            best_bid: data.best_bid || 0,
-            best_ask: data.best_ask || 0,
-            spread: data.spread || 0
-          };
-          setOrderBook(convertedData);
+          setOrderBook(data);
           setError(null);
         }
       } catch (err) {
@@ -80,16 +57,8 @@ export function OrderBook({ marketId }: OrderBookProps) {
         (payload) => {
           console.log('Received orderbook update:', payload);
           if (payload.new) {
-            const newData = payload.new as OrderBookPayload;
-            // Convert the JSON data to the correct type and ensure all required fields exist
-            const convertedData: OrderBookData = {
-              bids: (newData.bids as Record<string, number>) || {},
-              asks: (newData.asks as Record<string, number>) || {},
-              best_bid: newData.best_bid || 0,
-              best_ask: newData.best_ask || 0,
-              spread: newData.spread || 0
-            };
-            setOrderBook(convertedData);
+            const newData = payload.new as OrderBookData;
+            setOrderBook(newData);
             setError(null);
           }
         }
@@ -133,7 +102,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
       <div>
         <h4 className="text-sm font-medium mb-2 text-muted-foreground">Bids</h4>
         <div className="space-y-1">
-          {Object.entries(orderBook.bids)
+          {Object.entries(orderBook.bids as Record<string, number>)
             .sort(([a], [b]) => parseFloat(b) - parseFloat(a))
             .slice(0, 5)
             .map(([price, size]) => (
@@ -148,7 +117,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
       <div>
         <h4 className="text-sm font-medium mb-2 text-muted-foreground">Asks</h4>
         <div className="space-y-1">
-          {Object.entries(orderBook.asks)
+          {Object.entries(orderBook.asks as Record<string, number>)
             .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
             .slice(0, 5)
             .map(([price, size]) => (
