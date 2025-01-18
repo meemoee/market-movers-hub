@@ -9,6 +9,205 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      events: {
+        Row: {
+          category: string | null
+          created_at: string
+          id: string
+          mutually_exclusive: boolean | null
+          slug: string
+          sub_title: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          id: string
+          mutually_exclusive?: boolean | null
+          slug: string
+          sub_title?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          id?: string
+          mutually_exclusive?: boolean | null
+          slug?: string
+          sub_title?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      market_prices: {
+        Row: {
+          best_ask: number | null
+          best_bid: number | null
+          id: number
+          last_traded_price: number | null
+          liquidity: number | null
+          market_id: string | null
+          no_price: number | null
+          timestamp: string
+          volume: number | null
+          yes_price: number | null
+        }
+        Insert: {
+          best_ask?: number | null
+          best_bid?: number | null
+          id?: number
+          last_traded_price?: number | null
+          liquidity?: number | null
+          market_id?: string | null
+          no_price?: number | null
+          timestamp?: string
+          volume?: number | null
+          yes_price?: number | null
+        }
+        Update: {
+          best_ask?: number | null
+          best_bid?: number | null
+          id?: number
+          last_traded_price?: number | null
+          liquidity?: number | null
+          market_id?: string | null
+          no_price?: number | null
+          timestamp?: string
+          volume?: number | null
+          yes_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_prices_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      markets: {
+        Row: {
+          active: boolean | null
+          archived: boolean | null
+          clobtokenids: Json | null
+          close_time: string | null
+          closed: boolean | null
+          condid: string | null
+          created_at: string
+          description: string | null
+          end_date: string | null
+          event_id: string | null
+          group_item_title: string | null
+          id: string
+          image: string | null
+          no_sub_title: string | null
+          open_time: string | null
+          outcomes: Json | null
+          question: string
+          slug: string | null
+          status: string | null
+          subtitle: string | null
+          updated_at: string
+          url: string | null
+          yes_sub_title: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          archived?: boolean | null
+          clobtokenids?: Json | null
+          close_time?: string | null
+          closed?: boolean | null
+          condid?: string | null
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          event_id?: string | null
+          group_item_title?: string | null
+          id: string
+          image?: string | null
+          no_sub_title?: string | null
+          open_time?: string | null
+          outcomes?: Json | null
+          question: string
+          slug?: string | null
+          status?: string | null
+          subtitle?: string | null
+          updated_at?: string
+          url?: string | null
+          yes_sub_title?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          archived?: boolean | null
+          clobtokenids?: Json | null
+          close_time?: string | null
+          closed?: boolean | null
+          condid?: string | null
+          created_at?: string
+          description?: string | null
+          end_date?: string | null
+          event_id?: string | null
+          group_item_title?: string | null
+          id?: string
+          image?: string | null
+          no_sub_title?: string | null
+          open_time?: string | null
+          outcomes?: Json | null
+          question?: string
+          slug?: string | null
+          status?: string | null
+          subtitle?: string | null
+          updated_at?: string
+          url?: string | null
+          yes_sub_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "markets_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orderbook_data: {
+        Row: {
+          asks: Json | null
+          best_ask: number | null
+          best_bid: number | null
+          bids: Json | null
+          id: number
+          market_id: string
+          spread: number | null
+          timestamp: string | null
+        }
+        Insert: {
+          asks?: Json | null
+          best_ask?: number | null
+          best_bid?: number | null
+          bids?: Json | null
+          id?: never
+          market_id: string
+          spread?: number | null
+          timestamp?: string | null
+        }
+        Update: {
+          asks?: Json | null
+          best_ask?: number | null
+          best_bid?: number | null
+          bids?: Json | null
+          id?: never
+          market_id?: string
+          spread?: number | null
+          timestamp?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           balance: number | null
