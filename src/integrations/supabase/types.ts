@@ -9,36 +9,202 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      orderbook_data: {
+      events: {
         Row: {
-          asks: Json
-          best_ask: number
-          best_bid: number
-          bids: Json
-          id: number
-          market_id: string
-          spread: number
-          timestamp: string
+          category: string | null
+          created_at: string | null
+          id: string
+          mutually_exclusive: boolean | null
+          slug: string
+          sub_title: string | null
+          title: string
+          updated_at: string | null
         }
         Insert: {
-          asks?: Json
-          best_ask?: number
-          best_bid?: number
-          bids?: Json
-          id?: number
-          market_id: string
-          spread?: number
-          timestamp?: string
+          category?: string | null
+          created_at?: string | null
+          id: string
+          mutually_exclusive?: boolean | null
+          slug: string
+          sub_title?: string | null
+          title: string
+          updated_at?: string | null
         }
         Update: {
-          asks?: Json
-          best_ask?: number
-          best_bid?: number
-          bids?: Json
+          category?: string | null
+          created_at?: string | null
+          id?: string
+          mutually_exclusive?: boolean | null
+          slug?: string
+          sub_title?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      market_prices: {
+        Row: {
+          best_ask: number | null
+          best_bid: number | null
+          id: number
+          last_traded_price: number | null
+          liquidity: number | null
+          market_id: string | null
+          no_price: number | null
+          timestamp: string | null
+          volume: number | null
+          yes_price: number | null
+        }
+        Insert: {
+          best_ask?: number | null
+          best_bid?: number | null
+          id?: number
+          last_traded_price?: number | null
+          liquidity?: number | null
+          market_id?: string | null
+          no_price?: number | null
+          timestamp?: string | null
+          volume?: number | null
+          yes_price?: number | null
+        }
+        Update: {
+          best_ask?: number | null
+          best_bid?: number | null
+          id?: number
+          last_traded_price?: number | null
+          liquidity?: number | null
+          market_id?: string | null
+          no_price?: number | null
+          timestamp?: string | null
+          volume?: number | null
+          yes_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_prices_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      markets: {
+        Row: {
+          active: boolean | null
+          archived: boolean | null
+          clobtokenids: Json | null
+          close_time: string | null
+          closed: boolean | null
+          condid: string | null
+          created_at: string | null
+          description: string | null
+          end_date: string | null
+          event_id: string | null
+          group_item_title: string | null
+          id: string
+          image: string | null
+          no_sub_title: string | null
+          open_time: string | null
+          outcomes: Json | null
+          question: string
+          slug: string | null
+          status: string | null
+          subtitle: string | null
+          updated_at: string | null
+          url: string | null
+          yes_sub_title: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          archived?: boolean | null
+          clobtokenids?: Json | null
+          close_time?: string | null
+          closed?: boolean | null
+          condid?: string | null
+          created_at?: string | null
+          description?: string | null
+          end_date?: string | null
+          event_id?: string | null
+          group_item_title?: string | null
+          id: string
+          image?: string | null
+          no_sub_title?: string | null
+          open_time?: string | null
+          outcomes?: Json | null
+          question: string
+          slug?: string | null
+          status?: string | null
+          subtitle?: string | null
+          updated_at?: string | null
+          url?: string | null
+          yes_sub_title?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          archived?: boolean | null
+          clobtokenids?: Json | null
+          close_time?: string | null
+          closed?: boolean | null
+          condid?: string | null
+          created_at?: string | null
+          description?: string | null
+          end_date?: string | null
+          event_id?: string | null
+          group_item_title?: string | null
+          id?: string
+          image?: string | null
+          no_sub_title?: string | null
+          open_time?: string | null
+          outcomes?: Json | null
+          question?: string
+          slug?: string | null
+          status?: string | null
+          subtitle?: string | null
+          updated_at?: string | null
+          url?: string | null
+          yes_sub_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "markets_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orderbook_data: {
+        Row: {
+          asks: Json | null
+          best_ask: number | null
+          best_bid: number | null
+          bids: Json | null
+          id: number
+          market_id: string
+          spread: number | null
+          timestamp: string | null
+        }
+        Insert: {
+          asks?: Json | null
+          best_ask?: number | null
+          best_bid?: number | null
+          bids?: Json | null
+          id?: number
+          market_id: string
+          spread?: number | null
+          timestamp?: string | null
+        }
+        Update: {
+          asks?: Json | null
+          best_ask?: number | null
+          best_bid?: number | null
+          bids?: Json | null
           id?: number
           market_id?: string
-          spread?: number
-          timestamp?: string
+          spread?: number | null
+          timestamp?: string | null
         }
         Relationships: []
       }
@@ -71,7 +237,67 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      clean_old_market_data: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      get_active_markets: {
+        Args: {
+          market_ids: string[]
+        }
+        Returns: {
+          id: string
+        }[]
+      }
+      get_active_markets_with_prices:
+        | {
+            Args: {
+              start_time: string
+              end_time: string
+            }
+            Returns: {
+              id: string
+            }[]
+          }
+        | {
+            Args: {
+              start_time: string
+              end_time: string
+              limit?: number
+              offset?: number
+            }
+            Returns: {
+              output_market_id: string
+            }[]
+          }
+      get_active_markets_with_prices_full: {
+        Args: {
+          start_time: string
+          end_time: string
+        }
+        Returns: {
+          output_market_id: string
+        }[]
+      }
+      get_market_price_counts: {
+        Args: {
+          market_ids: string[]
+          time_threshold: string
+        }
+        Returns: {
+          market_id: string
+          count: number
+        }[]
+      }
+      get_markets_with_prices: {
+        Args: {
+          start_time: string
+          end_time: string
+        }
+        Returns: {
+          market_id: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
