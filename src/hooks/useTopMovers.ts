@@ -38,7 +38,7 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
     queryKey: ['topMovers', interval, openOnly, page],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
-        query: {
+        params: {
           interval,
           openOnly: openOnly.toString(),
           page: page.toString(),
