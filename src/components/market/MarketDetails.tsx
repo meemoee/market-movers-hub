@@ -5,9 +5,7 @@ interface MarketDetailsProps {
   marketId: string;
 }
 
-import { OrderBook } from "./OrderBook";
-
-export function MarketDetails({ description, bestBid, bestAsk, marketId }: MarketDetailsProps) {
+export function MarketDetails({ description, bestBid, bestAsk }: MarketDetailsProps) {
   const formatPrice = (price: number): string => {
     return `${(price * 100).toFixed(1)}¢`;
   };
@@ -32,11 +30,6 @@ export function MarketDetails({ description, bestBid, bestAsk, marketId }: Marke
             {formatPrice(bestAsk)}
           </div>
         </div>
-      </div>
-      
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold mb-4">Live Order Book</h3>
-        <OrderBook marketId={marketId} />
       </div>
     </div>
   );

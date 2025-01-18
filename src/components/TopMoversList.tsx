@@ -71,6 +71,20 @@ export default function TopMoversList({
     });
   };
 
+  const handleBuy = () => {
+    toast({
+      title: "Coming Soon",
+      description: "Trading functionality will be available soon.",
+    });
+  };
+
+  const handleSell = () => {
+    toast({
+      title: "Coming Soon",
+      description: "Trading functionality will be available soon.",
+    });
+  };
+
   return (
     <div className="max-w-2xl mx-auto">
       <Card className="sticky top-14 bg-card/95 backdrop-blur-sm z-40 mb-4 p-4">
@@ -132,6 +146,8 @@ export default function TopMoversList({
                 market={mover}
                 isExpanded={expandedMarkets.has(mover.market_id)}
                 onToggleExpand={() => toggleMarket(mover.market_id)}
+                onBuy={handleBuy}
+                onSell={handleSell}
               />
             ))
           )}
