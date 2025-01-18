@@ -3,7 +3,6 @@ import { ChevronDown, Loader2 } from 'lucide-react';
 import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
 import { MarketCard } from './market/MarketCard';
-import { OrderBook } from './market/OrderBook';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,12 +14,38 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import { LiveOrderBook } from './market/LiveOrderBook';
 
 interface TimeInterval {
   label: string;
   value: string;
+}
+
+interface TopMover {
+  market_id: string;
+  question: string;
+  url: string;
+  subtitle?: string;
+  yes_sub_title?: string;
+  no_sub_title?: string;
+  description?: string;
+  clobtokenids?: any;
+  outcomes?: any;
+  active: boolean;
+  closed: boolean;
+  archived: boolean;
+  image: string;
+  event_id: string;
+  event_title?: string;
+  final_last_traded_price: number;
+  final_best_ask: number;
+  final_best_bid: number;
+  final_volume: number;
+  initial_last_traded_price: number;
+  initial_volume: number;
+  price_change: number;
+  volume_change: number;
+  volume_change_percentage: number;
 }
 
 interface TopMoversListProps {
@@ -35,24 +60,6 @@ interface TopMoversListProps {
   onOpenMarketsChange: (value: boolean) => void;
   isLoading?: boolean;
   isLoadingMore?: boolean;
-}
-
-interface TopMover {
-  market_id: string;
-  question: string;
-  price: number;
-  price_change: number;
-  volume: number;
-  image: string;
-  yes_sub_title?: string;
-  final_last_traded_price: number;
-  final_best_ask: number;
-  final_best_bid: number;
-  volume_change: number;
-  volume_change_percentage: number;
-  url: string;
-  outcomes?: string[] | string;
-  description?: string;
 }
 
 interface OrderBookData {
@@ -170,11 +177,31 @@ export default function TopMoversList({
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin" />
             </div>
+          ) : error ? (
+            <div className="text-center py-12 text-destructive">
+              {error}
+            </div>
+          ) : topMovers.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              No market movers found for the selected time period.
+            </div>
           ) : (
             topMovers.map((mover) => (
               <MarketCard
                 key={mover.market_id}
-                market={mover}
+                market={{
+                  market_id: mover.market_id,
+                  question: mover.question,
+                  price: mover.final_last_traded_price,
+                  price_change: mover.price_change,
+                  volume: mover.final_volume,
+                  image: mover.image || '/placeholder.svg',
+                  yes_sub_title: mover.yes_sub_title,
+                  final_last_traded_price: mover.final_last_traded_price,
+                  final_best_ask: mover.final_best_ask,
+                  final_best_bid: mover.final_best_bid,
+                  description: mover.description,
+                }}
                 isExpanded={expandedMarkets.has(mover.market_id)}
                 onToggleExpand={() => toggleMarket(mover.market_id)}
                 onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
