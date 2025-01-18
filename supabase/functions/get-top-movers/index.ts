@@ -13,11 +13,8 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url)
-    const interval = url.searchParams.get('interval') || '24h'
-    const openOnly = url.searchParams.get('openOnly') === 'true'
-    const page = parseInt(url.searchParams.get('page') || '1')
-    const limit = parseInt(url.searchParams.get('limit') || '20')
+    // Parse request body instead of URL params
+    const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json()
 
     console.log(`Fetching top movers with interval: ${interval}, openOnly: ${openOnly}, page: ${page}, limit: ${limit}`)
 
