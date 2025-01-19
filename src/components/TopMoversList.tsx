@@ -186,7 +186,6 @@ export default function TopMoversList({
               No market movers found for the selected time period.
             </div>
           ) : (
-            // The topMovers array is already sorted by absolute price change from the backend
             topMovers.map((mover) => (
               <MarketCard
                 key={mover.market_id}
