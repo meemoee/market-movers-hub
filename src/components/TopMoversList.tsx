@@ -186,40 +186,47 @@ export default function TopMoversList({
               No market movers found for the selected time period.
             </div>
           ) : (
-            topMovers.map((mover) => (
-              <MarketCard
-                key={mover.market_id}
-                market={{
-                  market_id: mover.market_id,
-                  question: mover.question,
-                  price: mover.final_last_traded_price,
-                  price_change: mover.price_change,
-                  volume: mover.final_volume,
-                  image: mover.image || '/placeholder.svg',
-                  yes_sub_title: mover.yes_sub_title,
-                  final_last_traded_price: mover.final_last_traded_price,
-                  final_best_ask: mover.final_best_ask,
-                  final_best_bid: mover.final_best_bid,
-                  description: mover.description,
-                }}
-                isExpanded={expandedMarkets.has(mover.market_id)}
-                onToggleExpand={() => toggleMarket(mover.market_id)}
-                onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
-                onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
-              />
-            ))
-          )}
+            <>
+              {topMovers.map((mover) => (
+                <MarketCard
+                  key={mover.market_id}
+                  market={{
+                    market_id: mover.market_id,
+                    question: mover.question,
+                    price: mover.final_last_traded_price,
+                    price_change: mover.price_change,
+                    volume: mover.final_volume,
+                    image: mover.image || '/placeholder.svg',
+                    yes_sub_title: mover.yes_sub_title,
+                    final_last_traded_price: mover.final_last_traded_price,
+                    final_best_ask: mover.final_best_ask,
+                    final_best_bid: mover.final_best_bid,
+                    description: mover.description,
+                  }}
+                  isExpanded={expandedMarkets.has(mover.market_id)}
+                  onToggleExpand={() => toggleMarket(mover.market_id)}
+                  onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
+                  onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
+                />
+              ))}
 
-          {hasMore && !isLoading && (
-            <button
-              onClick={onLoadMore}
-              disabled={isLoadingMore}
-              className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
-                flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoadingMore && <Loader2 className="w-4 h-4 animate-spin" />}
-              {isLoadingMore ? 'Loading...' : 'Load More'}
-            </button>
+              {hasMore && !isLoading && (
+                <button
+                  onClick={onLoadMore}
+                  className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
+                    flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isLoadingMore ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Loading more...
+                    </>
+                  ) : (
+                    'Load More'
+                  )}
+                </button>
+              )}
+            </>
           )}
         </div>
       </ScrollArea>
