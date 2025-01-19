@@ -237,6 +237,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      batch_insert_market_data: {
+        Args: {
+          event_records: Json
+          market_records: Json
+          price_records: Json
+        }
+        Returns: undefined
+      }
       clean_old_market_data: {
         Args: Record<PropertyKey, never>
         Returns: undefined
