@@ -1,11 +1,26 @@
-// supabase/functions/get-top-movers/index.ts
-import { Redis } from 'ioredis';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Redis } from "https://deno.land/x/redis@v0.29.0/mod.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 serve(async (req) => {
-  const redis = new Redis(Deno.env.get('REDIS_URL'));
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  const redis = await new Redis({
+    hostname: Deno.env.get('REDIS_HOST') || "",
+    port: parseInt(Deno.env.get('REDIS_PORT') || "6379"),
+    password: Deno.env.get('REDIS_PASSWORD'),
+  });
   
   try {
-    const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json()
+    const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval}, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
     
     // Convert interval to minutes
     const redisInterval = {
@@ -18,16 +33,20 @@ serve(async (req) => {
     // Get latest key for this interval
     const latestKey = await redis.get(`topMovers:${redisInterval}:latest`);
     if (!latestKey) {
+      console.error(`No data available for interval: ${interval}`);
       throw new Error('No data available for this interval');
     }
+    console.log(`Found latest key: ${latestKey}`);
 
     // Get manifest
     const manifestKey = `topMovers:${redisInterval}:${latestKey}:manifest`;
     const manifestData = await redis.get(manifestKey);
     if (!manifestData) {
+      console.error(`No manifest found for key: ${manifestKey}`);
       throw new Error('No manifest found');
     }
     const manifest = JSON.parse(manifestData);
+    console.log(`Found manifest with ${manifest.chunks} chunks`);
 
     // Get all markets from chunks
     let allMarkets = [];
@@ -39,6 +58,7 @@ serve(async (req) => {
         allMarkets.push(...markets);
       }
     }
+    console.log(`Retrieved ${allMarkets.length} markets total`);
 
     // Sort by absolute price change
     allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
@@ -46,14 +66,16 @@ serve(async (req) => {
     // Apply filters if needed
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
+      console.log(`Filtered to ${allMarkets.length} open markets`);
     }
 
     // Apply pagination
     const start = (page - 1) * limit;
     const paginatedMarkets = allMarkets.slice(start, start + limit);
     const hasMore = allMarkets.length > start + limit;
+    console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}`);
 
-    await redis.quit();
+    await redis.close();
 
     return new Response(
       JSON.stringify({
@@ -67,7 +89,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error:', error);
-    await redis.quit();
+    await redis.close();
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
