@@ -37,6 +37,8 @@ export function MarketCard({
           image={market.image}
           question={market.question}
           yesSubTitle={market.yes_sub_title}
+          bestBid={market.final_best_bid}
+          bestAsk={market.final_best_ask}
           onBuy={onBuy}
           onSell={onSell}
         />
@@ -51,9 +53,9 @@ export function MarketCard({
 
         {isExpanded && (
           <MarketDetails
-            description={market.description}
             bestBid={market.final_best_bid}
             bestAsk={market.final_best_ask}
+            description={market.description}
             marketId={market.market_id}
           />
         )}
