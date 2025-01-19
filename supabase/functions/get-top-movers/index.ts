@@ -1,4 +1,3 @@
-// Import from the correct Deno Redis package
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
@@ -18,7 +17,7 @@ serve(async (req) => {
     const redisUrl = Deno.env.get('REDIS_URL');
     if (!redisUrl) {
       console.error('REDIS_URL environment variable is not set');
-      throw new Error('REDIS_URL environment variable is not set');
+      throw new Error('Redis configuration is missing');
     }
 
     console.log('Attempting to connect to Redis...');
@@ -44,19 +43,41 @@ serve(async (req) => {
 
     // Get latest key for this interval
     const latestKey = await redis.get(`topMovers:${redisInterval}:latest`);
+    console.log(`Latest key lookup result:`, latestKey);
+    
     if (!latestKey) {
-      console.error(`No data available for interval: ${interval}`);
-      throw new Error('No data available for this interval');
+      console.log(`No latest key found for interval: ${redisInterval}`);
+      return new Response(
+        JSON.stringify({
+          data: [],
+          hasMore: false
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        }
+      );
     }
-    console.log(`Found latest key: ${latestKey}`);
 
     // Get manifest
     const manifestKey = `topMovers:${redisInterval}:${latestKey}:manifest`;
+    console.log(`Looking for manifest at key: ${manifestKey}`);
     const manifestData = await redis.get(manifestKey);
+    
     if (!manifestData) {
-      console.error(`No manifest found for key: ${manifestKey}`);
-      throw new Error('No manifest found');
+      console.log(`No manifest found at key: ${manifestKey}`);
+      return new Response(
+        JSON.stringify({
+          data: [],
+          hasMore: false
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 200
+        }
+      );
     }
+
     const manifest = JSON.parse(manifestData);
     console.log(`Found manifest with ${manifest.chunks} chunks`);
 
@@ -105,9 +126,13 @@ serve(async (req) => {
       await redis.close();
     }
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({
+        data: [],
+        hasMore: false,
+        error: error.message
+      }),
       { 
-        status: 500,
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
