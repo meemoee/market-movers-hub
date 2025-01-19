@@ -44,12 +44,17 @@ serve(async (req) => {
     }
 
     // Get market IDs with price data in the time range
-    const { data: marketIds } = await supabase.rpc('get_active_markets_with_prices', {
+    const { data: marketIds, error: marketIdsError } = await supabase.rpc('get_active_markets_with_prices', {
       start_time: startTime.toISOString(),
       end_time: now.toISOString(),
       limit: limit,
       offset: (page - 1) * limit
     })
+
+    if (marketIdsError) {
+      console.error('Error fetching market IDs:', marketIdsError)
+      throw marketIdsError
+    }
 
     if (!marketIds || marketIds.length === 0) {
       console.log('No market IDs found for the given time range')
@@ -80,11 +85,11 @@ serve(async (req) => {
       query = query.eq('active', true).eq('archived', false)
     }
 
-    const { data: markets, error } = await query
+    const { data: markets, error: marketsError } = await query
 
-    if (error) {
-      console.error('Error fetching markets:', error)
-      throw error
+    if (marketsError) {
+      console.error('Error fetching markets:', marketsError)
+      throw marketsError
     }
 
     // Process markets to calculate price changes
@@ -92,7 +97,7 @@ serve(async (req) => {
       const prices = market.market_prices
       const latestPrice = prices[0]
 
-      // Calculate initial values from 24 hours ago
+      // Calculate initial values from the start of the interval
       const initialPrice = prices[prices.length - 1]
 
       return {
