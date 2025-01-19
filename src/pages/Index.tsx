@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from "@/components/Header";
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
@@ -25,7 +25,7 @@ export default function Index() {
   );
 
   // Update allMovers when initial data loads or interval/openMarketsOnly changes
-  React.useEffect(() => {
+  useEffect(() => {
     if (data?.data && page === 1) {
       setAllMovers(data.data);
     } else if (data?.data && page > 1) {
@@ -34,7 +34,7 @@ export default function Index() {
   }, [data?.data, page]);
 
   // Reset page and allMovers when filters change
-  React.useEffect(() => {
+  useEffect(() => {
     setPage(1);
     setAllMovers([]);
   }, [selectedInterval, openMarketsOnly]);
