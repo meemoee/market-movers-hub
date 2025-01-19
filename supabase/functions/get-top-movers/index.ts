@@ -13,9 +13,7 @@ serve(async (req) => {
   }
 
   const redis = await new Redis({
-    hostname: Deno.env.get('REDIS_HOST') || "",
-    port: parseInt(Deno.env.get('REDIS_PORT') || "6379"),
-    password: Deno.env.get('REDIS_PASSWORD'),
+    url: Deno.env.get('REDIS_URL'),
   });
   
   try {
