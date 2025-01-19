@@ -10,6 +10,7 @@ const corsHeaders = {
 
 const connectToRedis = async () => {
   try {
+    console.log('Connecting to Redis...');
     return await connect({
       hostname: Deno.env.get('REDIS_HOST') || '',
       port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
@@ -19,7 +20,7 @@ const connectToRedis = async () => {
     });
   } catch (error) {
     console.error('Redis connection error:', error);
-    throw error;
+    throw new Error('Failed to connect to Redis');
   }
 };
 
@@ -34,12 +35,13 @@ serve(async (req) => {
 
   let redis = null;
   try {
+    console.log('Processing request...');
     const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json();
-    console.log(`Processing request - interval: ${interval}, page: ${page}, limit: ${limit}`);
+    console.log(`Parameters - interval: ${interval}, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
 
     redis = await connectToRedis();
     if (!redis) {
-      throw new Error('Failed to connect to Redis');
+      throw new Error('Redis connection failed');
     }
 
     // Get latest key with retry
