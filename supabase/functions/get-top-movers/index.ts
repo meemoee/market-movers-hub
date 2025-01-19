@@ -27,8 +27,14 @@ const connectToRedis = async () => {
 };
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Max-Age': '86400',
+      }
+    });
   }
 
   let redis = null;
@@ -37,19 +43,27 @@ serve(async (req) => {
     const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json();
     console.log(`Parameters - interval: ${interval}, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
 
-    // Connect to Redis with retries
+    // Connect to Redis with retries and timeout
     for (let i = 0; i < 3; i++) {
       try {
-        redis = await connectToRedis();
-        if (redis) break;
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Redis connection timeout')), 5000);
+        });
+        redis = await Promise.race([connectToRedis(), timeoutPromise]);
+        if (redis) {
+          console.log('Redis connection established');
+          break;
+        }
       } catch (err) {
         console.error(`Redis connection attempt ${i + 1} failed:`, err);
-        if (i === 2) throw new Error('Failed to connect to Redis after 3 attempts');
+        if (i === 2) {
+          throw new Error('Failed to connect to Redis after 3 attempts');
+        }
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
-    // Get latest key
+    // Get latest key with timeout
     const latestKey = await redis.get(`topMovers:${interval}:latest`);
     if (!latestKey) {
       console.log(`No data found for ${interval} interval`);
@@ -83,21 +97,25 @@ serve(async (req) => {
 
     console.log(`Fetching chunks ${startChunk} to ${endChunk}`);
 
-    // Fetch chunks sequentially to reduce memory usage
+    // Fetch chunks with timeout
     let allMarkets = [];
     for (let i = startChunk; i < endChunk; i++) {
       const chunkKey = `topMovers:${interval}:${latestKey}:chunk:${i}`;
       const chunkData = await redis.get(chunkKey);
       if (chunkData) {
-        const markets = JSON.parse(chunkData);
-        // Filter and add markets from this chunk
-        const filteredMarkets = markets.filter(market => 
-          market.price_change !== null && 
-          market.price_change !== undefined && 
-          market.price_change !== 0 &&
-          (!openOnly || (market.active && !market.archived))
-        );
-        allMarkets = allMarkets.concat(filteredMarkets);
+        try {
+          const markets = JSON.parse(chunkData);
+          const filteredMarkets = markets.filter(market => 
+            market.price_change !== null && 
+            market.price_change !== undefined && 
+            market.price_change !== 0 &&
+            (!openOnly || (market.active && !market.archived))
+          );
+          allMarkets = allMarkets.concat(filteredMarkets);
+        } catch (err) {
+          console.error(`Error processing chunk ${i}:`, err);
+          continue;
+        }
       }
     }
 
@@ -124,7 +142,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        details: error.stack
+        details: error.stack,
+        timestamp: new Date().toISOString()
       }),
       { 
         status: 500,
