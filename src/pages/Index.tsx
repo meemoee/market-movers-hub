@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
+import AccountIsland from "@/components/AccountIsland";
 import { useTopMovers } from '@/hooks/useTopMovers';
 
 const TIME_INTERVALS = [
@@ -33,7 +34,8 @@ export default function Index() {
       <LeftSidebar />
       
       <main className="pt-20 px-4 lg:pl-[320px] lg:pr-[420px]">
-        <div className="max-w-4xl mx-auto space-y-6">
+        <div className="max-w-4xl mx-auto space-y-6 relative">
+          <AccountIsland />
           <TopMoversList
             topMovers={data?.data || []}
             error={error?.message || null}
