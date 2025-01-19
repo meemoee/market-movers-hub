@@ -16,12 +16,28 @@ export default function Index() {
   const [selectedInterval, setSelectedInterval] = useState<string>("24h");
   const [openMarketsOnly, setOpenMarketsOnly] = useState(true);
   const [page, setPage] = useState(1);
+  const [allMovers, setAllMovers] = useState<any[]>([]);
   
   const { data, isLoading, error, isFetching } = useTopMovers(
     selectedInterval,
     openMarketsOnly,
     page
   );
+
+  // Update allMovers when initial data loads or interval/openMarketsOnly changes
+  React.useEffect(() => {
+    if (data?.data && page === 1) {
+      setAllMovers(data.data);
+    } else if (data?.data && page > 1) {
+      setAllMovers(prev => [...prev, ...data.data]);
+    }
+  }, [data?.data, page]);
+
+  // Reset page and allMovers when filters change
+  React.useEffect(() => {
+    setPage(1);
+    setAllMovers([]);
+  }, [selectedInterval, openMarketsOnly]);
 
   const handleLoadMore = () => {
     setPage(prev => prev + 1);
@@ -36,7 +52,7 @@ export default function Index() {
           <div className="flex gap-8 items-start">
             <AccountIsland />
             <TopMoversList
-              topMovers={data?.data || []}
+              topMovers={allMovers}
               error={error?.message || null}
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
@@ -45,8 +61,8 @@ export default function Index() {
               hasMore={data?.hasMore || false}
               openMarketsOnly={openMarketsOnly}
               onOpenMarketsChange={setOpenMarketsOnly}
-              isLoading={isLoading}
-              isLoadingMore={isFetching && !isLoading}
+              isLoading={isLoading && page === 1}
+              isLoadingMore={isFetching && page > 1}
             />
           </div>
         </div>

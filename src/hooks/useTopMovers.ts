@@ -48,6 +48,7 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
 
       if (error) throw error
       return data
-    }
+    },
+    keepPreviousData: true
   })
 }
