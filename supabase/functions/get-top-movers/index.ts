@@ -48,14 +48,12 @@ serve(async (req) => {
 
     console.log('Fetching market data between:', startTime.toISOString(), 'and', now.toISOString())
 
-    // Get market IDs with price changes
+    // Get ALL market IDs with price changes (no pagination at this stage)
     const { data: marketIds, error: marketIdsError } = await supabase.rpc(
-      'get_active_markets_with_prices',
+      'get_active_markets_with_prices_full',
       {
         start_time: startTime.toISOString(),
-        end_time: now.toISOString(),
-        p_limit: limit,
-        p_offset: (page - 1) * limit
+        end_time: now.toISOString()
       }
     )
 
@@ -72,9 +70,9 @@ serve(async (req) => {
       )
     }
 
-    console.log('Retrieved market IDs:', marketIds)
+    console.log(`Retrieved ${marketIds.length} market IDs for processing`)
 
-    // Fetch market details
+    // Fetch market details for ALL markets
     let query = supabase
       .from('markets')
       .select(`
@@ -101,9 +99,9 @@ serve(async (req) => {
       throw marketsError
     }
 
-    console.log(`Retrieved ${markets?.length || 0} markets`)
+    console.log(`Retrieved ${markets?.length || 0} markets with price data`)
 
-    // Process and sort markets by price change
+    // Process ALL markets and calculate price changes
     const processedMarkets = markets.map(market => {
       const prices = market.market_prices
       const latestPrice = prices[0]
@@ -138,21 +136,25 @@ serve(async (req) => {
       }
     })
     .filter(market => market.price_change !== null && !isNaN(market.price_change))
+    // Sort ALL markets by absolute price change
     .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change))
 
-    // Get total count for pagination
-    const { count } = await supabase
-      .from('markets')
-      .select('*', { count: 'exact', head: true })
-      .in('id', marketIds.map(m => m.output_market_id))
+    // Calculate total number of results for pagination
+    const totalCount = processedMarkets.length
+    const hasMore = totalCount > page * limit
 
-    const hasMore = count ? count > page * limit : false
+    // Apply pagination AFTER sorting
+    const paginatedMarkets = processedMarkets.slice((page - 1) * limit, page * limit)
 
-    console.log(`Returning ${processedMarkets.length} processed markets`)
+    console.log(`Returning ${paginatedMarkets.length} markets out of ${totalCount} total markets`)
+    console.log('Top 5 price changes:')
+    processedMarkets.slice(0, 5).forEach((market, i) => {
+      console.log(`#${i + 1}: ${market.question} - Change: ${(market.price_change * 100).toFixed(2)}%`)
+    })
 
     return new Response(
       JSON.stringify({
-        data: processedMarkets,
+        data: paginatedMarkets,
         hasMore
       }),
       { 
