@@ -40,7 +40,13 @@ serve(async (req) => {
         startTime.setDate(now.getDate() - 1)
     }
 
-    // Call the database function with parameters in the correct order
+    console.log('Calling get_active_markets_with_prices with params:', {
+      start_time: startTime.toISOString(),
+      end_time: now.toISOString(),
+      p_limit: limit,
+      p_offset: (page - 1) * limit
+    })
+
     const { data: marketIds, error: marketIdsError } = await supabase.rpc(
       'get_active_markets_with_prices',
       {
@@ -63,6 +69,8 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+
+    console.log('Retrieved market IDs:', marketIds)
 
     let query = supabase
       .from('markets')
@@ -89,6 +97,8 @@ serve(async (req) => {
       console.error('Error fetching markets:', marketsError)
       throw marketsError
     }
+
+    console.log(`Retrieved ${markets?.length || 0} markets`)
 
     // Process markets and sort by absolute price change
     const processedMarkets = markets.map(market => {
