@@ -3,7 +3,9 @@ import { connect } from 'https://deno.land/x/redis@v0.29.0/mod.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Max-Age': '86400',
 }
 
 const convertIntervalToMinutes = (interval: string): number => {
@@ -17,11 +19,14 @@ const convertIntervalToMinutes = (interval: string): number => {
 }
 
 serve(async (req) => {
-  // Always handle CORS preflight requests first
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { 
+    return new Response(null, {
       status: 204,
-      headers: corsHeaders 
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Max-Age': '86400',
+      }
     });
   }
 
@@ -47,7 +52,10 @@ serve(async (req) => {
         JSON.stringify({ data: [], hasMore: false }),
         { 
           status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+          }
         }
       )
     }
@@ -61,7 +69,10 @@ serve(async (req) => {
         JSON.stringify({ data: [], hasMore: false }),
         { 
           status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          headers: { 
+            ...corsHeaders, 
+            'Content-Type': 'application/json',
+          }
         }
       )
     }
@@ -128,7 +139,10 @@ serve(async (req) => {
       }),
       { 
         status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+        }
       }
     )
 
@@ -138,7 +152,10 @@ serve(async (req) => {
       JSON.stringify({ error: error.message }),
       { 
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json',
+        }
       }
     )
   } finally {
