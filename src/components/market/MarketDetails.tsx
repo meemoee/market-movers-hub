@@ -9,7 +9,7 @@ import { OrderBook } from "./OrderBook";
 
 export function MarketDetails({ description, bestBid, bestAsk, marketId }: MarketDetailsProps) {
   const formatPrice = (price: number): string => {
-    return `${(price * 100).toFixed(1)}¢`;
+    return `${(price * 100).toFixed(1)}%`;
   };
 
   return (
@@ -22,13 +22,13 @@ export function MarketDetails({ description, bestBid, bestAsk, marketId }: Marke
       <div className="grid grid-cols-2 gap-6">
         <div>
           <div className="text-sm text-muted-foreground mb-1">Best Bid</div>
-          <div className="text-lg font-medium">
+          <div className="text-lg font-medium text-green-500">
             {formatPrice(bestBid)}
           </div>
         </div>
         <div>
           <div className="text-sm text-muted-foreground mb-1">Best Ask</div>
-          <div className="text-lg font-medium">
+          <div className="text-lg font-medium text-red-500">
             {formatPrice(bestAsk)}
           </div>
         </div>

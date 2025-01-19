@@ -17,12 +17,14 @@ export function MarketStats({
   onToggleExpand
 }: MarketStatsProps) {
   const formatPrice = (price: number): string => {
-    return `${(price * 100).toFixed(1)}¢`;
+    // Convert decimal to percentage with 1 decimal place
+    return `${(price * 100).toFixed(1)}%`;
   };
 
   const formatPriceChange = (change: number): string => {
+    // Format price change as percentage points
     const prefix = change >= 0 ? '+' : '';
-    return `${prefix}${(change * 100).toFixed(1)}%`;
+    return `${prefix}${(change * 100).toFixed(1)} pp`;
   };
 
   const formatVolume = (vol: number): string => {
@@ -32,6 +34,10 @@ export function MarketStats({
     return `$${vol.toFixed(0)}`;
   };
 
+  // Calculate the progress value based on the absolute price change
+  // Cap it at 100% for visualization purposes
+  const progressValue = Math.min(Math.abs(priceChange * 100), 100);
+
   return (
     <div className="grid grid-cols-[1fr,auto] gap-6 items-center">
       <div>
@@ -40,7 +46,7 @@ export function MarketStats({
         </div>
         <div className="space-y-1.5">
           <div className={`flex items-center gap-1 text-sm font-medium
-            ${priceChange >= 0 ? 'text-[#8B5CF6]' : 'text-[#ea384c]'}`}
+            ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
             {priceChange >= 0 ? (
               <TrendingUp className="w-4 h-4" />
@@ -50,12 +56,12 @@ export function MarketStats({
             {formatPriceChange(priceChange)}
           </div>
           <Progress 
-            value={Math.abs(priceChange * 100)} 
+            value={progressValue} 
             max={100}
             className={`h-1.5 ${
               priceChange >= 0 
-                ? 'bg-[#8B5CF6]/20 [&>div]:bg-[#8B5CF6]' 
-                : 'bg-[#ea384c]/20 [&>div]:bg-[#ea384c]'
+                ? 'bg-green-100 [&>div]:bg-green-500' 
+                : 'bg-red-100 [&>div]:bg-red-500'
             }`}
           />
         </div>
