@@ -5,6 +5,7 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Content-Type': 'application/json',
 }
 
 const connectToRedis = async () => {
@@ -53,7 +54,7 @@ serve(async (req) => {
       console.log(`No data found for ${interval} interval`);
       return new Response(
         JSON.stringify({ data: [], hasMore: false }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: corsHeaders }
       );
     }
 
@@ -65,7 +66,7 @@ serve(async (req) => {
       console.log('No manifest data found');
       return new Response(
         JSON.stringify({ data: [], hasMore: false }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { headers: corsHeaders }
       );
     }
 
@@ -114,16 +115,19 @@ serve(async (req) => {
         data: paginatedMarkets,
         hasMore
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { headers: corsHeaders }
     );
 
   } catch (error) {
     console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack
+      }),
       { 
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: corsHeaders
       }
     );
   } finally {
