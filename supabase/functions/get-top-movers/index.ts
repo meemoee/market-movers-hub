@@ -4,9 +4,12 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -17,12 +20,15 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Parse request body
     const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json()
     
     console.log(`Processing request with interval: ${interval}, openOnly: ${openOnly}, page: ${page}, limit: ${limit}`)
 
     const now = new Date()
     let startTime = new Date(now)
+    
+    // Calculate start time based on interval
     switch (interval) {
       case '1h':
         startTime.setHours(now.getHours() - 1)
@@ -40,13 +46,9 @@ serve(async (req) => {
         startTime.setDate(now.getDate() - 1)
     }
 
-    console.log('Calling get_active_markets_with_prices with params:', {
-      start_time: startTime.toISOString(),
-      end_time: now.toISOString(),
-      p_limit: limit,
-      p_offset: (page - 1) * limit
-    })
+    console.log('Fetching market data between:', startTime.toISOString(), 'and', now.toISOString())
 
+    // Get market IDs with price changes
     const { data: marketIds, error: marketIdsError } = await supabase.rpc(
       'get_active_markets_with_prices',
       {
@@ -72,6 +74,7 @@ serve(async (req) => {
 
     console.log('Retrieved market IDs:', marketIds)
 
+    // Fetch market details
     let query = supabase
       .from('markets')
       .select(`
@@ -100,7 +103,7 @@ serve(async (req) => {
 
     console.log(`Retrieved ${markets?.length || 0} markets`)
 
-    // Process markets and sort by absolute price change
+    // Process and sort markets by price change
     const processedMarkets = markets.map(market => {
       const prices = market.market_prices
       const latestPrice = prices[0]
@@ -137,14 +140,7 @@ serve(async (req) => {
     .filter(market => market.price_change !== null && !isNaN(market.price_change))
     .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change))
 
-    console.log(`Returning ${processedMarkets.length} markets, sorted by absolute price change`)
-    processedMarkets.slice(0, 5).forEach((market, i) => {
-      console.log(`\n#${i + 1}:`)
-      console.log(`Market: ${market.question}`)
-      console.log(`Price Change: ${market.price_change.toFixed(6)}`)
-      console.log(`Absolute Change: ${Math.abs(market.price_change).toFixed(6)}`)
-    })
-
+    // Get total count for pagination
     const { count } = await supabase
       .from('markets')
       .select('*', { count: 'exact', head: true })
@@ -152,21 +148,35 @@ serve(async (req) => {
 
     const hasMore = count ? count > page * limit : false
 
+    console.log(`Returning ${processedMarkets.length} processed markets`)
+
     return new Response(
       JSON.stringify({
         data: processedMarkets,
         hasMore
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json'
+        } 
+      }
     )
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error in get-top-movers function:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack,
+        timestamp: new Date().toISOString()
+      }),
       { 
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json'
+        }
       }
     )
   }
