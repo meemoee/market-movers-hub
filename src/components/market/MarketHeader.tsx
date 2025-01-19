@@ -43,11 +43,11 @@ export function MarketHeader({
             variant="ghost"
             size="sm"
             onClick={onBuy}
-            className="flex-1 h-full rounded-r-none hover:bg-emerald-500/20 text-emerald-600 font-medium flex flex-col items-center justify-center gap-0.5 px-2"
+            className="flex-1 h-full rounded-r-none hover:bg-emerald-500/20 text-emerald-600 font-medium flex flex-col items-center justify-center gap-0 px-4"
           >
             <span className="text-sm">Buy</span>
             {bestAsk !== undefined && (
-              <span className="text-[10px] font-normal opacity-80">
+              <span className="text-[10px] font-normal opacity-80 -mt-0.5">
                 {(bestAsk * 100).toFixed(1)}¢
               </span>
             )}
@@ -56,11 +56,11 @@ export function MarketHeader({
             variant="ghost"
             size="sm"
             onClick={onSell}
-            className="flex-1 h-full rounded-l-none hover:bg-red-500/20 text-red-600 font-medium flex flex-col items-center justify-center gap-0.5 px-2"
+            className="flex-1 h-full rounded-l-none hover:bg-red-500/20 text-red-600 font-medium flex flex-col items-center justify-center gap-0 px-4"
           >
             <span className="text-sm">Sell</span>
             {bestBid !== undefined && (
-              <span className="text-[10px] font-normal opacity-80">
+              <span className="text-[10px] font-normal opacity-80 -mt-0.5">
                 {(bestBid * 100).toFixed(1)}¢
               </span>
             )}
