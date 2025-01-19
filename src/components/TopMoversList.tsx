@@ -1,20 +1,9 @@
 import { useState, useEffect } from 'react';
-import { ChevronDown, Loader2 } from 'lucide-react';
-import { Card } from './ui/card';
 import { ScrollArea } from './ui/scroll-area';
-import { MarketCard } from './market/MarketCard';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { LiveOrderBook } from './market/LiveOrderBook';
+import { TopMoversHeader } from './market/TopMoversHeader';
+import { TopMoversContent } from './market/TopMoversContent';
+import { TransactionDialog } from './market/TransactionDialog';
 
 interface TimeInterval {
   label: string;
@@ -124,210 +113,44 @@ export default function TopMoversList({
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <Card className="sticky top-14 bg-card/95 backdrop-blur-sm z-40 mb-4 p-4 w-full">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold">Market Movers</h2>
-            <div className="relative">
-              <button
-                onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors"
-              >
-                <span>{timeIntervals.find(i => i.value === selectedInterval)?.label}</span>
-                <ChevronDown className="w-4 h-4" />
-              </button>
-
-              {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-50">
-                  {timeIntervals.map((interval) => (
-                    <button
-                      key={interval.value}
-                      className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors ${
-                        selectedInterval === interval.value ? 'bg-accent/30' : ''
-                      }`}
-                      onClick={() => {
-                        setIsTimeIntervalDropdownOpen(false);
-                        onIntervalChange(interval.value);
-                      }}
-                    >
-                      {interval.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={openMarketsOnly}
-              onChange={e => onOpenMarketsChange(e.target.checked)}
-              className="rounded border-border bg-transparent"
-            />
-            <span className="text-sm text-muted-foreground">Open Markets Only</span>
-          </label>
-        </div>
-      </Card>
+    <div className="w-full max-w-3xl mx-auto">
+      <TopMoversHeader
+        timeIntervals={timeIntervals}
+        selectedInterval={selectedInterval}
+        onIntervalChange={onIntervalChange}
+        openMarketsOnly={openMarketsOnly}
+        onOpenMarketsChange={onOpenMarketsChange}
+        isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+        setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+      />
 
       <ScrollArea className="h-[calc(100vh-200px)]">
         <div className="space-y-3 px-1 w-full">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin" />
-            </div>
-          ) : error ? (
-            <div className="text-center py-12 text-destructive">
-              {error}
-            </div>
-          ) : topMovers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 space-y-4">
-              <p className="text-lg text-muted-foreground">
-                No market movers found for the selected time period
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Try selecting a different time interval or check back later
-              </p>
-            </div>
-          ) : (
-            <div className="w-full">
-              {topMovers.map((mover) => (
-                <div key={mover.market_id} className="w-full mb-3">
-                  <MarketCard
-                    market={{
-                      market_id: mover.market_id,
-                      question: mover.question,
-                      price: mover.final_last_traded_price,
-                      price_change: mover.price_change,
-                      volume: mover.final_volume,
-                      image: mover.image || '/placeholder.svg',
-                      yes_sub_title: mover.yes_sub_title,
-                      final_last_traded_price: mover.final_last_traded_price,
-                      final_best_ask: mover.final_best_ask,
-                      final_best_bid: mover.final_best_bid,
-                      description: mover.description,
-                    }}
-                    isExpanded={expandedMarkets.has(mover.market_id)}
-                    onToggleExpand={() => toggleMarket(mover.market_id)}
-                    onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
-                    onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
-                  />
-                </div>
-              ))}
-
-              {hasMore && (
-                <button
-                  onClick={onLoadMore}
-                  disabled={isLoadingMore}
-                  className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
-                    flex items-center justify-center gap-2 disabled:opacity-50 mt-3"
-                >
-                  {isLoadingMore ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Loading more...
-                    </>
-                  ) : (
-                    'Load More'
-                  )}
-                </button>
-              )}
-            </div>
-          )}
+          <TopMoversContent
+            isLoading={isLoading || false}
+            error={error}
+            topMovers={topMovers}
+            expandedMarkets={expandedMarkets}
+            toggleMarket={toggleMarket}
+            setSelectedMarket={setSelectedMarket}
+            onLoadMore={onLoadMore}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+          />
         </div>
       </ScrollArea>
 
-      <AlertDialog 
-        open={selectedMarket !== null} 
-        onOpenChange={() => setSelectedMarket(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
-            </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-4">
-              <LiveOrderBook 
-                onOrderBookData={(data) => {
-                  setOrderBookData(data);
-                  setIsOrderBookLoading(false);
-                }} 
-                isLoading={isOrderBookLoading}
-              />
-              
-              {orderBookData && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Bids</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                        {Object.entries(orderBookData.bids)
-                          .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
-                          .slice(0, 5)
-                          .map(([price, size]) => (
-                            <div key={price} className="flex justify-between text-sm">
-                              <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                              <span>{size.toFixed(2)}</span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Asks</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                        {Object.entries(orderBookData.asks)
-                          .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
-                          .slice(0, 5)
-                          .map(([price, size]) => (
-                            <div key={price} className="flex justify-between text-sm">
-                              <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                              <span>{size.toFixed(2)}</span>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
-                    <div>
-                      <div className="text-sm text-muted-foreground">Best Bid</div>
-                      <div className="text-lg font-medium text-green-500">
-                        {(orderBookData.best_bid * 100).toFixed(2)}¢
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Best Ask</div>
-                      <div className="text-lg font-medium text-red-500">
-                        {(orderBookData.best_ask * 100).toFixed(2)}¢
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
-                  </div>
-                </div>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleTransaction}
-              disabled={!orderBookData || isOrderBookLoading}
-              className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
-            >
-              {isOrderBookLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  Connecting...
-                </>
-              ) : (
-                `Confirm ${selectedMarket?.action}`
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <TransactionDialog
+        selectedMarket={selectedMarket}
+        onClose={() => setSelectedMarket(null)}
+        orderBookData={orderBookData}
+        isOrderBookLoading={isOrderBookLoading}
+        onOrderBookData={(data) => {
+          setOrderBookData(data);
+          setIsOrderBookLoading(false);
+        }}
+        onConfirm={handleTransaction}
+      />
     </div>
   );
 }
