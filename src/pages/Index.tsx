@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import Header from "@/components/Header";
-import LeftSidebar from "@/components/LeftSidebar";
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
@@ -31,24 +30,25 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <LeftSidebar />
       
-      <main className="pt-20 px-4 lg:pl-[320px] lg:pr-[420px]">
+      <main className="pt-20 px-4 lg:pr-[420px]">
         <div className="max-w-4xl mx-auto space-y-6 relative">
-          <AccountIsland />
-          <TopMoversList
-            topMovers={data?.data || []}
-            error={error?.message || null}
-            timeIntervals={TIME_INTERVALS}
-            selectedInterval={selectedInterval}
-            onIntervalChange={setSelectedInterval}
-            onLoadMore={handleLoadMore}
-            hasMore={data?.hasMore || false}
-            openMarketsOnly={openMarketsOnly}
-            onOpenMarketsChange={setOpenMarketsOnly}
-            isLoading={isLoading}
-            isLoadingMore={isFetching && !isLoading}
-          />
+          <div className="flex gap-8 items-start">
+            <AccountIsland />
+            <TopMoversList
+              topMovers={data?.data || []}
+              error={error?.message || null}
+              timeIntervals={TIME_INTERVALS}
+              selectedInterval={selectedInterval}
+              onIntervalChange={setSelectedInterval}
+              onLoadMore={handleLoadMore}
+              hasMore={data?.hasMore || false}
+              openMarketsOnly={openMarketsOnly}
+              onOpenMarketsChange={setOpenMarketsOnly}
+              isLoading={isLoading}
+              isLoadingMore={isFetching && !isLoading}
+            />
+          </div>
         </div>
       </main>
 
