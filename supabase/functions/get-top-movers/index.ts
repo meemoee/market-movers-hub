@@ -48,14 +48,12 @@ serve(async (req) => {
 
     console.log('Fetching market data between:', startTime.toISOString(), 'and', now.toISOString())
 
-    // Get market IDs with price changes
+    // Get ALL market IDs with price changes - removed limit here
     const { data: marketIds, error: marketIdsError } = await supabase.rpc(
-      'get_active_markets_with_prices',
+      'get_active_markets_with_prices_full',
       {
         start_time: startTime.toISOString(),
-        end_time: now.toISOString(),
-        p_limit: limit,
-        p_offset: (page - 1) * limit
+        end_time: now.toISOString()
       }
     )
 
@@ -72,9 +70,9 @@ serve(async (req) => {
       )
     }
 
-    console.log('Retrieved market IDs:', marketIds)
+    console.log(`Retrieved ${marketIds.length} market IDs`)
 
-    // Fetch market details
+    // Fetch market details for ALL markets
     let query = supabase
       .from('markets')
       .select(`
@@ -103,7 +101,7 @@ serve(async (req) => {
 
     console.log(`Retrieved ${markets?.length || 0} markets`)
 
-    // Process and sort markets by price change
+    // Process ALL markets and sort by absolute price change
     const processedMarkets = markets.map(market => {
       const prices = market.market_prices
       const latestPrice = prices[0]
@@ -140,19 +138,16 @@ serve(async (req) => {
     .filter(market => market.price_change !== null && !isNaN(market.price_change))
     .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change))
 
-    // Get total count for pagination
-    const { count } = await supabase
-      .from('markets')
-      .select('*', { count: 'exact', head: true })
-      .in('id', marketIds.map(m => m.output_market_id))
+    // Apply pagination AFTER sorting
+    const startIndex = (page - 1) * limit
+    const paginatedMarkets = processedMarkets.slice(startIndex, startIndex + limit)
+    const hasMore = processedMarkets.length > startIndex + limit
 
-    const hasMore = count ? count > page * limit : false
-
-    console.log(`Returning ${processedMarkets.length} processed markets`)
+    console.log(`Returning ${paginatedMarkets.length} processed markets`)
 
     return new Response(
       JSON.stringify({
-        data: processedMarkets,
+        data: paginatedMarkets,
         hasMore
       }),
       { 
