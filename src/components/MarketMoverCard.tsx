@@ -10,6 +10,7 @@ interface MarketMoverProps {
 
 export default function MarketMoverCard({ title, price, change, volume }: MarketMoverProps) {
   const isPositive = change >= 0;
+  const changePercentage = change * 100; // Convert to percentage points
   
   return (
     <Card className="p-4 bg-card hover:bg-card/80 transition-colors cursor-pointer">
@@ -25,12 +26,12 @@ export default function MarketMoverCard({ title, price, change, volume }: Market
       <div className="grid grid-cols-3 gap-2 mt-4 text-sm">
         <div>
           <p className="text-muted-foreground">Price</p>
-          <p className="font-medium">{(price * 100).toFixed(0)}¢</p>
+          <p className="font-medium">{(price * 100).toFixed(1)}¢</p>
         </div>
         <div>
           <p className="text-muted-foreground">Change</p>
           <p className={`font-medium ${isPositive ? "text-green-500" : "text-red-500"}`}>
-            {isPositive ? "+" : ""}{(change * 100).toFixed(1)}%
+            {isPositive ? "+" : ""}{changePercentage.toFixed(1)} pp
           </p>
         </div>
         <div>

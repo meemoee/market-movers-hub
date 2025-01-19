@@ -119,7 +119,18 @@ serve(async (req) => {
         volume_change: latestPrice.volume - initialPrice.volume,
         volume_change_percentage: ((latestPrice.volume - initialPrice.volume) / initialPrice.volume) * 100
       }
-    }).sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change)) // Sort by absolute price change
+    })
+    .filter(market => market.price_change !== null && !isNaN(market.price_change))
+    .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change)) // Sort by absolute price change
+
+    console.log(`Returning ${processedMarkets.length} markets, sorted by absolute price change`)
+    // Log the top 5 markets for debugging
+    processedMarkets.slice(0, 5).forEach((market, i) => {
+      console.log(`\n#${i + 1}:`)
+      console.log(`Market: ${market.question}`)
+      console.log(`Price Change: ${market.price_change.toFixed(6)}`)
+      console.log(`Absolute Change: ${Math.abs(market.price_change).toFixed(6)}`)
+    })
 
     const { count } = await supabase
       .from('markets')
@@ -127,8 +138,6 @@ serve(async (req) => {
       .in('id', marketIds.map(m => m.output_market_id))
 
     const hasMore = count ? count > page * limit : false
-
-    console.log(`Returning ${processedMarkets.length} markets, sorted by absolute price change, hasMore: ${hasMore}`)
 
     return new Response(
       JSON.stringify({
