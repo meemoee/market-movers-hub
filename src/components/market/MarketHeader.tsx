@@ -36,18 +36,18 @@ export function MarketHeader({
           </p>
         )}
       </div>
-      <div className="flex-shrink-0 relative h-[72px] min-w-[140px]">
-        <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-emerald-500/20 to-red-500/20" />
+      <div className="flex-shrink-0 relative h-10 min-w-[160px]">
+        <div className="absolute inset-0 rounded-md bg-gradient-to-r from-emerald-500/20 to-red-500/20" />
         <div className="relative h-full flex">
           <Button
             variant="ghost"
             size="sm"
             onClick={onBuy}
-            className="flex-1 h-full rounded-r-none border-r border-border/50 hover:bg-emerald-500/20 text-emerald-600 font-medium flex flex-col items-center justify-center gap-1"
+            className="flex-1 h-full rounded-r-none hover:bg-emerald-500/20 text-emerald-600 font-medium flex flex-col items-center justify-center gap-0.5 px-2"
           >
-            <span>Buy</span>
+            <span className="text-sm">Buy</span>
             {bestAsk !== undefined && (
-              <span className="text-[11px] font-normal opacity-80">
+              <span className="text-[10px] font-normal opacity-80">
                 {(bestAsk * 100).toFixed(1)}¢
               </span>
             )}
@@ -56,11 +56,11 @@ export function MarketHeader({
             variant="ghost"
             size="sm"
             onClick={onSell}
-            className="flex-1 h-full rounded-l-none hover:bg-red-500/20 text-red-600 font-medium flex flex-col items-center justify-center gap-1"
+            className="flex-1 h-full rounded-l-none hover:bg-red-500/20 text-red-600 font-medium flex flex-col items-center justify-center gap-0.5 px-2"
           >
-            <span>Sell</span>
+            <span className="text-sm">Sell</span>
             {bestBid !== undefined && (
-              <span className="text-[11px] font-normal opacity-80">
+              <span className="text-[10px] font-normal opacity-80">
                 {(bestBid * 100).toFixed(1)}¢
               </span>
             )}
