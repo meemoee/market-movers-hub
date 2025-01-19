@@ -7,7 +7,6 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -18,12 +17,10 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Parse request body
     const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json()
     
     console.log(`Processing request with interval: ${interval}, openOnly: ${openOnly}, page: ${page}, limit: ${limit}`)
 
-    // Calculate time range based on interval
     const now = new Date()
     let startTime = new Date(now)
     switch (interval) {
@@ -40,10 +37,9 @@ serve(async (req) => {
         startTime.setDate(now.getDate() - 30)
         break
       default:
-        startTime.setDate(now.getDate() - 1) // Default to 24h
+        startTime.setDate(now.getDate() - 1)
     }
 
-    // Get market IDs with price data in the time range
     const { data: marketIds, error: marketIdsError } = await supabase.rpc('get_active_markets_with_prices', {
       start_time: startTime.toISOString(),
       end_time: now.toISOString(),
@@ -64,7 +60,6 @@ serve(async (req) => {
       )
     }
 
-    // Get market details and their latest prices
     let query = supabase
       .from('markets')
       .select(`
@@ -79,7 +74,6 @@ serve(async (req) => {
         )
       `)
       .in('id', marketIds.map(m => m.output_market_id))
-      .order('created_at', { ascending: false })
 
     if (openOnly) {
       query = query.eq('active', true).eq('archived', false)
@@ -92,14 +86,14 @@ serve(async (req) => {
       throw marketsError
     }
 
-    // Process markets to calculate price changes
+    // Process markets and sort by absolute price change
     const processedMarkets = markets.map(market => {
       const prices = market.market_prices
       const latestPrice = prices[0]
-
-      // Calculate initial values from the start of the interval
       const initialPrice = prices[prices.length - 1]
 
+      const priceChange = latestPrice.last_traded_price - initialPrice.last_traded_price
+      
       return {
         market_id: market.id,
         question: market.question,
@@ -121,13 +115,12 @@ serve(async (req) => {
         final_volume: latestPrice.volume,
         initial_last_traded_price: initialPrice.last_traded_price,
         initial_volume: initialPrice.volume,
-        price_change: latestPrice.last_traded_price - initialPrice.last_traded_price,
+        price_change: priceChange,
         volume_change: latestPrice.volume - initialPrice.volume,
         volume_change_percentage: ((latestPrice.volume - initialPrice.volume) / initialPrice.volume) * 100
       }
-    })
+    }).sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change)) // Sort by absolute price change
 
-    // Check if there are more results
     const { count } = await supabase
       .from('markets')
       .select('*', { count: 'exact', head: true })
@@ -135,7 +128,7 @@ serve(async (req) => {
 
     const hasMore = count ? count > page * limit : false
 
-    console.log(`Returning ${processedMarkets.length} markets, hasMore: ${hasMore}`)
+    console.log(`Returning ${processedMarkets.length} markets, sorted by absolute price change, hasMore: ${hasMore}`)
 
     return new Response(
       JSON.stringify({
