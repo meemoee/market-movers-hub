@@ -241,6 +241,18 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      debug_market_prices: {
+        Args: {
+          market_id: string
+          start_time: string
+          end_time: string
+        }
+        Returns: {
+          price_timestamp: string
+          last_traded_price: number
+          volume: number
+        }[]
+      }
       get_active_markets: {
         Args: {
           market_ids: string[]
@@ -263,11 +275,13 @@ export type Database = {
             Args: {
               start_time: string
               end_time: string
-              limit?: number
-              offset?: number
+              p_limit?: number
+              p_offset?: number
             }
             Returns: {
               output_market_id: string
+              initial_price: number
+              final_price: number
             }[]
           }
       get_active_markets_with_prices_full: {

@@ -40,12 +40,16 @@ serve(async (req) => {
         startTime.setDate(now.getDate() - 1)
     }
 
-    const { data: marketIds, error: marketIdsError } = await supabase.rpc('get_active_markets_with_prices', {
-      start_time: startTime.toISOString(),
-      end_time: now.toISOString(),
-      limit: limit,
-      offset: (page - 1) * limit
-    })
+    // Call the database function with parameters in the correct order
+    const { data: marketIds, error: marketIdsError } = await supabase.rpc(
+      'get_active_markets_with_prices',
+      {
+        start_time: startTime.toISOString(),
+        end_time: now.toISOString(),
+        p_limit: limit,
+        p_offset: (page - 1) * limit
+      }
+    )
 
     if (marketIdsError) {
       console.error('Error fetching market IDs:', marketIdsError)
@@ -121,10 +125,9 @@ serve(async (req) => {
       }
     })
     .filter(market => market.price_change !== null && !isNaN(market.price_change))
-    .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change)) // Sort by absolute price change
+    .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change))
 
     console.log(`Returning ${processedMarkets.length} markets, sorted by absolute price change`)
-    // Log the top 5 markets for debugging
     processedMarkets.slice(0, 5).forEach((market, i) => {
       console.log(`\n#${i + 1}:`)
       console.log(`Market: ${market.question}`)
