@@ -124,8 +124,8 @@ export default function TopMoversList({
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <Card className="sticky top-14 bg-card/95 backdrop-blur-sm z-40 mb-4 p-4">
+    <div className="w-full max-w-2xl mx-auto">
+      <Card className="sticky top-14 bg-card/95 backdrop-blur-sm z-40 mb-4 p-4 w-full">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold">Market Movers</h2>
@@ -139,7 +139,7 @@ export default function TopMoversList({
               </button>
 
               {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl">
+                <div className="absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-50">
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
@@ -172,7 +172,7 @@ export default function TopMoversList({
       </Card>
 
       <ScrollArea className="h-[calc(100vh-200px)]">
-        <div className="space-y-3 px-1">
+        <div className="space-y-3 px-1 w-full">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin" />
@@ -191,28 +191,29 @@ export default function TopMoversList({
               </p>
             </div>
           ) : (
-            <>
+            <div className="w-full">
               {topMovers.map((mover) => (
-                <MarketCard
-                  key={mover.market_id}
-                  market={{
-                    market_id: mover.market_id,
-                    question: mover.question,
-                    price: mover.final_last_traded_price,
-                    price_change: mover.price_change,
-                    volume: mover.final_volume,
-                    image: mover.image || '/placeholder.svg',
-                    yes_sub_title: mover.yes_sub_title,
-                    final_last_traded_price: mover.final_last_traded_price,
-                    final_best_ask: mover.final_best_ask,
-                    final_best_bid: mover.final_best_bid,
-                    description: mover.description,
-                  }}
-                  isExpanded={expandedMarkets.has(mover.market_id)}
-                  onToggleExpand={() => toggleMarket(mover.market_id)}
-                  onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
-                  onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
-                />
+                <div key={mover.market_id} className="w-full mb-3">
+                  <MarketCard
+                    market={{
+                      market_id: mover.market_id,
+                      question: mover.question,
+                      price: mover.final_last_traded_price,
+                      price_change: mover.price_change,
+                      volume: mover.final_volume,
+                      image: mover.image || '/placeholder.svg',
+                      yes_sub_title: mover.yes_sub_title,
+                      final_last_traded_price: mover.final_last_traded_price,
+                      final_best_ask: mover.final_best_ask,
+                      final_best_bid: mover.final_best_bid,
+                      description: mover.description,
+                    }}
+                    isExpanded={expandedMarkets.has(mover.market_id)}
+                    onToggleExpand={() => toggleMarket(mover.market_id)}
+                    onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
+                    onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
+                  />
+                </div>
               ))}
 
               {hasMore && (
@@ -220,7 +221,7 @@ export default function TopMoversList({
                   onClick={onLoadMore}
                   disabled={isLoadingMore}
                   className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
-                    flex items-center justify-center gap-2 disabled:opacity-50"
+                    flex items-center justify-center gap-2 disabled:opacity-50 mt-3"
                 >
                   {isLoadingMore ? (
                     <>
@@ -232,7 +233,7 @@ export default function TopMoversList({
                   )}
                 </button>
               )}
-            </>
+            </div>
           )}
         </div>
       </ScrollArea>
