@@ -6,6 +6,8 @@ import { Alert, AlertDescription } from "./ui/alert";
 import { Button } from "./ui/button";
 import { Card } from "./ui/card";
 import { useNavigate } from "react-router-dom";
+import { AccountAvatar } from "./account/AccountAvatar";
+import { AccountBalance } from "./account/AccountBalance";
 
 export default function AccountIsland() {
   const [session, setSession] = useState<any>(null);
@@ -63,7 +65,7 @@ export default function AccountIsland() {
   };
 
   return (
-    <Card className="w-[350px] p-4 sticky top-[102px]">
+    <Card className="w-[400px] p-6 sticky top-[102px]">
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
@@ -89,41 +91,29 @@ export default function AccountIsland() {
           theme="dark"
         />
       ) : (
-        <>
-          <div className="mb-6">
-            <h2 className="text-xl font-bold mb-2">Account</h2>
-            <p className="text-sm text-muted-foreground">{session.user.email}</p>
+        <div className="space-y-6">
+          <div className="flex items-start gap-4">
+            <AccountAvatar email={session.user.email} />
+            <div className="flex-1">
+              <h2 className="text-xl font-bold mb-1">Account</h2>
+              <p className="text-sm text-muted-foreground">{session.user.email}</p>
+            </div>
           </div>
           
-          <div className="mb-6">
-            <h3 className="text-lg font-semibold mb-2">Balance</h3>
-            <p className="text-2xl font-bold">${balance?.toFixed(2) ?? '0.00'}</p>
-          </div>
+          <AccountBalance 
+            balance={balance}
+            onAddBalance={() => setBalance(b => (b ?? 0) + 100)}
+            onRemoveBalance={() => setBalance(b => Math.max(0, (b ?? 0) - 100))}
+          />
 
-          <div className="space-y-2">
-            <Button 
-              onClick={() => setBalance(b => (b ?? 0) + 100)}
-              className="w-full"
-              variant="outline"
-            >
-              Add $100
-            </Button>
-            <Button
-              onClick={() => setBalance(b => Math.max(0, (b ?? 0) - 100))}
-              className="w-full"
-              variant="outline"
-            >
-              Remove $100
-            </Button>
-            <Button
-              onClick={handleSignOut}
-              className="w-full"
-              variant="destructive"
-            >
-              Sign Out
-            </Button>
-          </div>
-        </>
+          <Button
+            onClick={handleSignOut}
+            className="w-full"
+            variant="destructive"
+          >
+            Sign Out
+          </Button>
+        </div>
       )}
     </Card>
   );
