@@ -210,9 +210,10 @@ export default function TopMoversList({
                 />
               ))}
 
-              {hasMore && !isLoading && (
+              {hasMore && (
                 <button
                   onClick={onLoadMore}
+                  disabled={isLoadingMore}
                   className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
                     flex items-center justify-center gap-2 disabled:opacity-50"
                 >
