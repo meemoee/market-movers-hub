@@ -12,11 +12,14 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const redis = await new Redis({
-    url: Deno.env.get('REDIS_URL'),
-  });
-  
+  let redis;
   try {
+    redis = await new Redis({
+      url: Deno.env.get('REDIS_URL'),
+    });
+    
+    console.log('Connected to Redis successfully');
+    
     const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json();
     console.log(`Fetching top movers for interval: ${interval}, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
     
@@ -87,7 +90,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error:', error);
-    await redis.close();
+    if (redis) {
+      await redis.close();
+    }
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
