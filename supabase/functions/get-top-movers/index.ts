@@ -14,8 +14,13 @@ serve(async (req) => {
 
   let redis;
   try {
+    const redisUrl = Deno.env.get('REDIS_URL');
+    if (!redisUrl) {
+      throw new Error('REDIS_URL environment variable is not set');
+    }
+
     redis = await new Redis({
-      url: Deno.env.get('REDIS_URL'),
+      url: redisUrl,
     });
     
     console.log('Connected to Redis successfully');
