@@ -182,8 +182,13 @@ export default function TopMoversList({
               {error}
             </div>
           ) : topMovers.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              No market movers found for the selected time period.
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <p className="text-lg text-muted-foreground">
+                No market movers found for the selected time period
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Try selecting a different time interval or check back later
+              </p>
             </div>
           ) : (
             <>
