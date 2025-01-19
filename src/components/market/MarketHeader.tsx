@@ -4,21 +4,11 @@ interface MarketHeaderProps {
   image: string;
   question: string;
   yesSubTitle?: string;
-  bestBid?: number;
-  bestAsk?: number;
   onBuy: () => void;
   onSell: () => void;
 }
 
-export function MarketHeader({ 
-  image, 
-  question, 
-  yesSubTitle, 
-  bestBid, 
-  bestAsk,
-  onBuy, 
-  onSell 
-}: MarketHeaderProps) {
+export function MarketHeader({ image, question, yesSubTitle, onBuy, onSell }: MarketHeaderProps) {
   return (
     <div className="flex items-center gap-4">
       <img
@@ -41,27 +31,17 @@ export function MarketHeader({
           variant="ghost"
           size="sm"
           onClick={onBuy}
-          className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 font-medium px-3 py-1 h-auto flex flex-col gap-0.5"
+          className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 font-medium px-3 py-1 h-7 text-sm"
         >
-          <span>Buy</span>
-          {bestAsk !== undefined && (
-            <span className="text-[11px] opacity-90">
-              {(bestAsk * 100).toFixed(1)}¢
-            </span>
-          )}
+          Buy
         </Button>
         <Button
           variant="ghost"
           size="sm"
           onClick={onSell}
-          className="bg-red-500/10 hover:bg-red-500/20 text-red-500 font-medium px-3 py-1 h-auto flex flex-col gap-0.5"
+          className="bg-red-500/10 hover:bg-red-500/20 text-red-500 font-medium px-3 py-1 h-7 text-sm"
         >
-          <span>Sell</span>
-          {bestBid !== undefined && (
-            <span className="text-[11px] opacity-90">
-              {(bestBid * 100).toFixed(1)}¢
-            </span>
-          )}
+          Sell
         </Button>
       </div>
     </div>
