@@ -17,12 +17,17 @@ const convertIntervalToMinutes = (interval: string): number => {
 }
 
 serve(async (req) => {
+  // Always handle CORS preflight requests first
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { 
+      status: 204,
+      headers: corsHeaders 
+    });
   }
 
+  let redis;
   try {
-    const redis = await connect({
+    redis = await connect({
       hostname: Deno.env.get('REDIS_HOST') || '',
       port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
       password: Deno.env.get('REDIS_PASSWORD'),
@@ -38,10 +43,12 @@ serve(async (req) => {
     const latestKey = await redis.get(`topMovers:${redisInterval}:latest`)
     if (!latestKey) {
       console.log(`No data in Redis for ${redisInterval} minute interval`)
-      await redis.close()
       return new Response(
         JSON.stringify({ data: [], hasMore: false }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
       )
     }
 
@@ -50,10 +57,12 @@ serve(async (req) => {
     const manifestData = await redis.get(manifestKey)
     if (!manifestData) {
       console.log('No manifest found')
-      await redis.close()
       return new Response(
         JSON.stringify({ data: [], hasMore: false }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { 
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
       )
     }
 
@@ -112,14 +121,15 @@ serve(async (req) => {
     const paginatedMarkets = allMarkets.slice(0, limit)
     const hasMore = allMarkets.length > limit
 
-    await redis.close()
-
     return new Response(
       JSON.stringify({
         data: paginatedMarkets,
         hasMore
       }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
     )
 
   } catch (error) {
@@ -131,5 +141,9 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
+  } finally {
+    if (redis) {
+      await redis.close()
+    }
   }
 })
