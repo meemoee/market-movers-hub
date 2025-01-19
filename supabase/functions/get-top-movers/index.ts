@@ -1,9 +1,20 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { connect } from 'https://deno.land/x/redis@v0.29.0/mod.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const convertIntervalToMinutes = (interval: string): number => {
+  switch(interval) {
+    case '1h': return 60;
+    case '24h': return 1440;
+    case '7d': return 10080;
+    case '30d': return 43200;
+    default: return 1440; // Default to 24h
+  }
 }
 
 serve(async (req) => {
@@ -12,149 +23,90 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json()
-    
-    console.log(`Processing request with interval: ${interval}, openOnly: ${openOnly}, page: ${page}, limit: ${limit}`)
-
-    const now = new Date()
-    let startTime = new Date(now)
-    switch (interval) {
-      case '1h':
-        startTime.setHours(now.getHours() - 1)
-        break
-      case '24h':
-        startTime.setDate(now.getDate() - 1)
-        break
-      case '7d':
-        startTime.setDate(now.getDate() - 7)
-        break
-      case '30d':
-        startTime.setDate(now.getDate() - 30)
-        break
-      default:
-        startTime.setDate(now.getDate() - 1)
-    }
-
-    console.log('Calling get_active_markets_with_prices with params:', {
-      start_time: startTime.toISOString(),
-      end_time: now.toISOString(),
-      p_limit: limit,
-      p_offset: (page - 1) * limit
+    const redis = await connect({
+      hostname: Deno.env.get('REDIS_HOST') || '',
+      port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
+      password: Deno.env.get('REDIS_PASSWORD'),
     })
 
-    const { data: marketIds, error: marketIdsError } = await supabase.rpc(
-      'get_active_markets_with_prices',
-      {
-        start_time: startTime.toISOString(),
-        end_time: now.toISOString(),
-        p_limit: limit,
-        p_offset: (page - 1) * limit
-      }
-    )
+    const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json()
+    const redisInterval = convertIntervalToMinutes(interval)
+    
+    console.log(`Processing request with interval: ${interval} (${redisInterval} mins), page: ${page}, limit: ${limit}`)
 
-    if (marketIdsError) {
-      console.error('Error fetching market IDs:', marketIdsError)
-      throw marketIdsError
-    }
-
-    if (!marketIds || marketIds.length === 0) {
-      console.log('No market IDs found for the given time range')
+    // Get latest key from Redis
+    const latestKey = await redis.get(`topMovers:${redisInterval}:latest`)
+    if (!latestKey) {
+      console.log(`No data in Redis for ${redisInterval} minute interval`)
       return new Response(
         JSON.stringify({ data: [], hasMore: false }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    console.log('Retrieved market IDs:', marketIds)
+    // Get manifest data
+    const manifestKey = `topMovers:${redisInterval}:${latestKey}:manifest`
+    const manifestData = await redis.get(manifestKey)
+    if (!manifestData) {
+      console.log('No manifest found')
+      return new Response(
+        JSON.stringify({ data: [], hasMore: false }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
-    let query = supabase
-      .from('markets')
-      .select(`
-        *,
-        market_prices!inner (
-          market_id,
-          last_traded_price,
-          best_ask,
-          best_bid,
-          volume,
-          timestamp
-        )
-      `)
-      .in('id', marketIds.map(m => m.output_market_id))
+    const manifest = JSON.parse(manifestData)
+    console.log('Manifest Data:', manifest)
+
+    // Get all markets from chunks
+    let allMarkets = []
+    for (let i = 0; i < manifest.chunks; i++) {
+      const chunkKey = `topMovers:${redisInterval}:${latestKey}:chunk:${i}`
+      const chunkData = await redis.get(chunkKey)
+      
+      if (chunkData) {
+        const markets = JSON.parse(chunkData)
+        allMarkets.push(...markets)
+      }
+    }
+
+    // Filter and sort markets
+    allMarkets = allMarkets
+      .filter(market => market.price_change !== null && market.price_change !== undefined && market.price_change !== 0)
+      .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change))
 
     if (openOnly) {
-      query = query.eq('active', true).eq('archived', false)
+      allMarkets = allMarkets.filter(market => market.active && !market.archived)
     }
 
-    const { data: markets, error: marketsError } = await query
-
-    if (marketsError) {
-      console.error('Error fetching markets:', marketsError)
-      throw marketsError
-    }
-
-    console.log(`Retrieved ${markets?.length || 0} markets`)
-
-    // Process markets and sort by absolute price change
-    const processedMarkets = markets.map(market => {
-      const prices = market.market_prices
-      const latestPrice = prices[0]
-      const initialPrice = prices[prices.length - 1]
-
-      const priceChange = latestPrice.last_traded_price - initialPrice.last_traded_price
-      
-      return {
-        market_id: market.id,
-        question: market.question,
-        url: market.url,
-        subtitle: market.subtitle,
-        yes_sub_title: market.yes_sub_title,
-        no_sub_title: market.no_sub_title,
-        description: market.description,
-        clobtokenids: market.clobtokenids,
-        outcomes: market.outcomes,
-        active: market.active,
-        closed: market.closed,
-        archived: market.archived,
-        image: market.image,
-        event_id: market.event_id,
-        final_last_traded_price: latestPrice.last_traded_price,
-        final_best_ask: latestPrice.best_ask,
-        final_best_bid: latestPrice.best_bid,
-        final_volume: latestPrice.volume,
-        initial_last_traded_price: initialPrice.last_traded_price,
-        initial_volume: initialPrice.volume,
-        price_change: priceChange,
-        volume_change: latestPrice.volume - initialPrice.volume,
-        volume_change_percentage: ((latestPrice.volume - initialPrice.volume) / initialPrice.volume) * 100
-      }
-    })
-    .filter(market => market.price_change !== null && !isNaN(market.price_change))
-    .sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change))
-
-    console.log(`Returning ${processedMarkets.length} markets, sorted by absolute price change`)
-    processedMarkets.slice(0, 5).forEach((market, i) => {
+    // Log top 5 movers for debugging
+    console.log('\nTop 5 Movers by Absolute Price Change:')
+    allMarkets.slice(0, 5).forEach((market, i) => {
       console.log(`\n#${i + 1}:`)
       console.log(`Market: ${market.question}`)
       console.log(`Price Change: ${market.price_change.toFixed(6)}`)
       console.log(`Absolute Change: ${Math.abs(market.price_change).toFixed(6)}`)
+      console.log(`Initial Price: ${market.initial_last_traded_price.toFixed(6)}`)
+      console.log(`Final Price: ${market.final_last_traded_price.toFixed(6)}`)
     })
 
-    const { count } = await supabase
-      .from('markets')
-      .select('*', { count: 'exact', head: true })
-      .in('id', marketIds.map(m => m.output_market_id))
+    // Important stats for debugging
+    console.log('\nImportant Stats:')
+    const priceChanges = allMarkets.map(m => Math.abs(m.price_change))
+    console.log(`Total markets: ${allMarkets.length}`)
+    console.log(`Min abs change: ${Math.min(...priceChanges).toFixed(6)}`)
+    console.log(`Max abs change: ${Math.max(...priceChanges).toFixed(6)}`)
 
-    const hasMore = count ? count > page * limit : false
+    // Paginate results
+    const start = (page - 1) * limit
+    const paginatedMarkets = allMarkets.slice(start, start + limit)
+    const hasMore = start + limit < allMarkets.length
+
+    await redis.close()
 
     return new Response(
       JSON.stringify({
-        data: processedMarkets,
+        data: paginatedMarkets,
         hasMore
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
