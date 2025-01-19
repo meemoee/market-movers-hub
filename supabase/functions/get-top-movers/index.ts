@@ -1,5 +1,6 @@
+// Import from the correct Deno Redis package
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Redis } from "https://deno.land/x/redis@v0.29.0/mod.ts";
+import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,11 +17,16 @@ serve(async (req) => {
   try {
     const redisUrl = Deno.env.get('REDIS_URL');
     if (!redisUrl) {
+      console.error('REDIS_URL environment variable is not set');
       throw new Error('REDIS_URL environment variable is not set');
     }
 
-    redis = await new Redis({
-      url: redisUrl,
+    console.log('Attempting to connect to Redis...');
+    redis = await connect({
+      hostname: new URL(redisUrl).hostname,
+      port: parseInt(new URL(redisUrl).port),
+      password: new URL(redisUrl).password,
+      tls: redisUrl.startsWith('rediss://')
     });
     
     console.log('Connected to Redis successfully');
