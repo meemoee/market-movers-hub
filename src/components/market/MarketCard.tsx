@@ -31,7 +31,7 @@ export function MarketCard({
   onSell
 }: MarketCardProps) {
   return (
-    <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-200">
+    <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-200 w-full max-w-full">
       <div className="p-4 space-y-4">
         <MarketHeader
           image={market.image}
