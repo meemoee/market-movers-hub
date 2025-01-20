@@ -12,6 +12,7 @@ import { AxisLeft, AxisBottom } from '@visx/axis';
 import { ChartSegment } from './chart/ChartSegment';
 import { EventMarkers } from './chart/EventMarkers';
 import { useChartData } from './chart/useChartData';
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { PriceData, MarketEvent } from './chart/types';
 
 const intervals = [
@@ -111,151 +112,153 @@ function Chart({
 
   return (
     <div className="relative">
-      <svg width={width} height={height}>
-        <defs>
-          <LinearGradient
-            id="above-gradient"
-            from="rgba(21, 128, 61, 0.05)"
-            to="rgba(21, 128, 61, 0.05)"
-          />
-          <LinearGradient
-            id="below-gradient"
-            from="rgba(153, 27, 27, 0.05)"
-            to="rgba(153, 27, 27, 0.05)"
-          />
-        </defs>
-
-        <g transform={`translate(${margin.left},${margin.top})`}>
-          {/* 50% reference line */}
-          <line
-            x1={0}
-            x2={innerWidth}
-            y1={priceScale(50)}
-            y2={priceScale(50)}
-            stroke="#4a5568"
-            strokeWidth={1}
-          />
-
-          {/* Render segments */}
-          {segments.map((segment, i) => (
-            <ChartSegment
-              key={i}
-              segment={segment}
-              timeScale={timeScale}
-              priceScale={priceScale}
+      <TooltipProvider>
+        <svg width={width} height={height}>
+          <defs>
+            <LinearGradient
+              id="above-gradient"
+              from="rgba(21, 128, 61, 0.05)"
+              to="rgba(21, 128, 61, 0.05)"
             />
-          ))}
+            <LinearGradient
+              id="below-gradient"
+              from="rgba(153, 27, 27, 0.05)"
+              to="rgba(153, 27, 27, 0.05)"
+            />
+          </defs>
 
-          {/* Price line */}
-          <LinePath
-            data={data}
-            x={d => timeScale(d.time)}
-            y={d => priceScale(d.price)}
-            stroke="#3b82f6"
-            strokeWidth={2}
-            curve={curveStepAfter}
-          />
+          <g transform={`translate(${margin.left},${margin.top})`}>
+            {/* 50% reference line */}
+            <line
+              x1={0}
+              x2={innerWidth}
+              y1={priceScale(50)}
+              y2={priceScale(50)}
+              stroke="#4a5568"
+              strokeWidth={1}
+            />
 
-          <AxisLeft
-            scale={priceScale}
-            tickValues={[0, 25, 50, 75, 100]}
-            tickFormat={(value) => `${value}`}
-            stroke="#4a5568"
-            tickStroke="#4a5568"
-            tickLength={0}
-            hideTicks
-            tickLabelProps={() => ({
-              fill: '#9ca3af',
-              fontSize: 11,
-              textAnchor: 'end',
-              dy: '0.33em',
-              dx: '-0.5em',
-            })}
-          />
-
-          <AxisBottom
-            top={innerHeight}
-            scale={timeScale}
-            stroke="#4a5568"
-            tickStroke="#4a5568"
-            tickLength={0}
-            hideTicks
-            numTicks={6}
-            tickFormat={(value) => formatDate(new Date(+value))}
-            tickLabelProps={() => ({
-              fill: '#9ca3af',
-              fontSize: 11,
-              textAnchor: 'middle',
-              dy: '1em',
-            })}
-          />
-
-          {/* Tooltip overlay */}
-          <rect
-            x={0}
-            y={0}
-            width={innerWidth}
-            height={innerHeight}
-            fill="transparent"
-            onTouchStart={handleTooltip}
-            onTouchMove={handleTooltip}
-            onMouseMove={handleTooltip}
-            onMouseLeave={hideTooltip}
-            style={{ pointerEvents: 'all' }}
-          />
-
-          {/* Event markers - now rendered above the tooltip overlay */}
-          <EventMarkers
-            events={events}
-            timeScale={timeScale}
-            height={innerHeight}
-          />
-
-          {tooltipData && (
-            <g>
-              <line
-                x1={timeScale(tooltipData.time)}
-                x2={timeScale(tooltipData.time)}
-                y1={0}
-                y2={innerHeight}
-                stroke="#4a5568"
-                strokeWidth={1}
-                pointerEvents="none"
+            {/* Render segments */}
+            {segments.map((segment, i) => (
+              <ChartSegment
+                key={i}
+                segment={segment}
+                timeScale={timeScale}
+                priceScale={priceScale}
               />
-              <circle
-                cx={timeScale(tooltipData.time)}
-                cy={priceScale(tooltipData.price)}
-                r={4}
-                fill="#3b82f6"
-                pointerEvents="none"
-              />
-            </g>
-          )}
-        </g>
-      </svg>
+            ))}
 
-      {tooltipData && (
-        <div
-          style={{
-            position: 'absolute',
-            top: tooltipTop - 25,
-            left: tooltipLeft + 15,
-            background: 'rgba(17, 24, 39, 0.9)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            color: 'white',
-            fontSize: '11px',
-            pointerEvents: 'none',
-            whiteSpace: 'nowrap',
-            zIndex: 100,
-          }}
-        >
-          <div className="flex flex-col leading-tight">
-            <span>{tooltipDateFormat.format(tooltipData.time)}</span>
-            <span>{tooltipData.price.toFixed(2)}%</span>
+            {/* Price line */}
+            <LinePath
+              data={data}
+              x={d => timeScale(d.time)}
+              y={d => priceScale(d.price)}
+              stroke="#3b82f6"
+              strokeWidth={2}
+              curve={curveStepAfter}
+            />
+
+            <AxisLeft
+              scale={priceScale}
+              tickValues={[0, 25, 50, 75, 100]}
+              tickFormat={(value) => `${value}`}
+              stroke="#4a5568"
+              tickStroke="#4a5568"
+              tickLength={0}
+              hideTicks
+              tickLabelProps={() => ({
+                fill: '#9ca3af',
+                fontSize: 11,
+                textAnchor: 'end',
+                dy: '0.33em',
+                dx: '-0.5em',
+              })}
+            />
+
+            <AxisBottom
+              top={innerHeight}
+              scale={timeScale}
+              stroke="#4a5568"
+              tickStroke="#4a5568"
+              tickLength={0}
+              hideTicks
+              numTicks={6}
+              tickFormat={(value) => formatDate(new Date(+value))}
+              tickLabelProps={() => ({
+                fill: '#9ca3af',
+                fontSize: 11,
+                textAnchor: 'middle',
+                dy: '1em',
+              })}
+            />
+
+            {/* Tooltip overlay */}
+            <rect
+              x={0}
+              y={0}
+              width={innerWidth}
+              height={innerHeight}
+              fill="transparent"
+              onTouchStart={handleTooltip}
+              onTouchMove={handleTooltip}
+              onMouseMove={handleTooltip}
+              onMouseLeave={hideTooltip}
+              style={{ pointerEvents: 'all' }}
+            />
+
+            {/* Event markers - now rendered above the tooltip overlay */}
+            <EventMarkers
+              events={events}
+              timeScale={timeScale}
+              height={innerHeight}
+            />
+
+            {tooltipData && (
+              <g>
+                <line
+                  x1={timeScale(tooltipData.time)}
+                  x2={timeScale(tooltipData.time)}
+                  y1={0}
+                  y2={innerHeight}
+                  stroke="#4a5568"
+                  strokeWidth={1}
+                  pointerEvents="none"
+                />
+                <circle
+                  cx={timeScale(tooltipData.time)}
+                  cy={priceScale(tooltipData.price)}
+                  r={4}
+                  fill="#3b82f6"
+                  pointerEvents="none"
+                />
+              </g>
+            )}
+          </g>
+        </svg>
+
+        {tooltipData && (
+          <div
+            style={{
+              position: 'absolute',
+              top: tooltipTop - 25,
+              left: tooltipLeft + 15,
+              background: 'rgba(17, 24, 39, 0.9)',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              color: 'white',
+              fontSize: '11px',
+              pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+              zIndex: 100,
+            }}
+          >
+            <div className="flex flex-col leading-tight">
+              <span>{tooltipDateFormat.format(tooltipData.time)}</span>
+              <span>{tooltipData.price.toFixed(2)}%</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </TooltipProvider>
     </div>
   );
 }
