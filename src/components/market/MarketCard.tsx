@@ -42,7 +42,7 @@ export function MarketCard({
         bestAsk={market.final_best_ask}
         onBuy={onBuy}
         onSell={onSell}
-        outcomes={market.outcomes || ["Yes", "No"]}
+        outcomes={market.outcomes}
       />
       <MarketStats
         lastTradedPrice={market.final_last_traded_price}

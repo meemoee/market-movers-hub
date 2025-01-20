@@ -9,6 +9,7 @@ interface TopMover {
   yes_sub_title?: string;
   no_sub_title?: string;
   description?: string;
+  outcomes?: string[];
   image: string;
   final_last_traded_price: number;
   final_best_ask: number;
@@ -86,6 +87,7 @@ export function TopMoversContent({
               final_best_ask: mover.final_best_ask,
               final_best_bid: mover.final_best_bid,
               description: mover.description,
+              outcomes: mover.outcomes || ["Yes", "No"],
             }}
             isExpanded={expandedMarkets.has(mover.market_id)}
             onToggleExpand={() => toggleMarket(mover.market_id)}
