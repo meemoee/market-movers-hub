@@ -71,11 +71,16 @@ serve(async (req) => {
             }
             
             try {
+              // Only try to parse lines that start with 'data: '
               console.log('Attempting to parse JSON:', data)
               const parsed = JSON.parse(data)
               console.log('Successfully parsed JSON:', parsed)
-              controller.enqueue(line + '\n')
-              console.log('Enqueued line to stream')
+              
+              // Only forward actual content updates
+              if (parsed.choices?.[0]?.delta?.content) {
+                controller.enqueue(line + '\n')
+                console.log('Enqueued line to stream')
+              }
             } catch (e) {
               console.error('Error parsing SSE data:', e, 'Raw data:', data)
             }
