@@ -132,7 +132,9 @@ export default function TopMoversList({
         setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
       />
       
-      <ScrollArea className="h-[calc(100vh-144px)]">
+      <div className="h-3" /> {/* Added spacing div */}
+      
+      <ScrollArea className="h-[calc(100vh-156px)]"> {/* Adjusted height to account for new gap */}
         <div className="px-1 w-full space-y-3">
           <TopMoversContent
             isLoading={isLoading || false}
