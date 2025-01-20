@@ -2,7 +2,6 @@ import { AlertDialog, AlertDialogContent } from "@/components/ui/alert-dialog";
 import { LiveOrderBook } from "./LiveOrderBook";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import Image from "next/image";
 
 interface TransactionDialogProps {
   selectedMarket: { 
