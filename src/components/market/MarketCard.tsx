@@ -63,7 +63,12 @@ export function MarketCard({
         }`}
       >
         <div className="p-4 pt-0">
-          <MarketDetails description={market.description || ''} />
+          <MarketDetails
+            description={market.description || ''}
+            bestBid={market.final_best_bid}
+            bestAsk={market.final_best_ask}
+            marketId={market.market_id}
+          />
         </div>
       </div>
     </Card>
