@@ -86,31 +86,39 @@ function Chart({
       if (i > 0) {
         const prev = data[i - 1];
         if ((prev.price < 50 && d.price > 50) || (prev.price > 50 && d.price < 50)) {
-          // Add the previous point at its actual level
-          if (prev.price >= 50) {
-            above.push(prev);
-            below.push({ time: prev.time, price: 50 });
-          } else {
-            below.push(prev);
-            above.push({ time: prev.time, price: 50 });
-          }
+          // Add the previous point to both arrays to ensure continuous fill
+          above.push({ time: prev.time, price: prev.price >= 50 ? prev.price : 50 });
+          below.push({ time: prev.time, price: prev.price < 50 ? prev.price : 50 });
           
-          // Add the crossing point
+          // Calculate and add the crossing point
           const ratio = (50 - prev.price) / (d.price - prev.price);
           const crossingTime = prev.time + (d.time - prev.time) * ratio;
           const crossingPoint = { time: crossingTime, price: 50 };
           above.push(crossingPoint);
           below.push(crossingPoint);
+          
+          // Add the current point to both arrays to ensure continuous fill
+          above.push({ time: d.time, price: d.price >= 50 ? d.price : 50 });
+          below.push({ time: d.time, price: d.price < 50 ? d.price : 50 });
+        } else {
+          // No crossing, add point normally
+          if (d.price >= 50) {
+            above.push(d);
+            below.push({ time: d.time, price: 50 });
+          } else {
+            below.push(d);
+            above.push({ time: d.time, price: 50 });
+          }
         }
-      }
-
-      // Add current point
-      if (d.price >= 50) {
-        above.push(d);
-        below.push({ time: d.time, price: 50 });
       } else {
-        below.push(d);
-        above.push({ time: d.time, price: 50 });
+        // First point
+        if (d.price >= 50) {
+          above.push(d);
+          below.push({ time: d.time, price: 50 });
+        } else {
+          below.push(d);
+          above.push({ time: d.time, price: 50 });
+        }
       }
     });
     
