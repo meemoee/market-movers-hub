@@ -39,25 +39,21 @@ export function MarketStats({
           {formatPrice(lastTradedPrice)}
         </div>
         <div className="mt-1 space-y-2">
-          <StatsRow
-            leftContent={
-              <div className={`flex items-center gap-1 text-sm font-medium
-                ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
-              >
-                {priceChange >= 0 ? (
-                  <TrendingUp className="w-4 h-4" />
-                ) : (
-                  <TrendingDown className="w-4 h-4" />
-                )}
-                {formatPriceChange(priceChange)}
-              </div>
-            }
-            rightContent={
-              <span className="text-sm text-muted-foreground">
-                24h Volume
-              </span>
-            }
-          />
+          <div className="flex items-center justify-between">
+            <div className={`flex items-center gap-1 text-sm font-medium
+              ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+            >
+              {priceChange >= 0 ? (
+                <TrendingUp className="w-4 h-4" />
+              ) : (
+                <TrendingDown className="w-4 h-4" />
+              )}
+              {formatPriceChange(priceChange)}
+            </div>
+            <span className="text-sm text-muted-foreground">
+              24h Volume
+            </span>
+          </div>
           
           <div className="relative h-[3px] w-full">
             {/* Base white line showing current price position */}
