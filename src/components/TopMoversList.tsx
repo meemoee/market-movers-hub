@@ -122,7 +122,7 @@ export default function TopMoversList({
     : null;
 
   return (
-    <div className="flex flex-col items-center w-full">
+    <div className="flex flex-col items-center w-full max-w-2xl mx-auto">
       <TopMoversHeader
         timeIntervals={timeIntervals}
         selectedInterval={selectedInterval}
@@ -134,7 +134,7 @@ export default function TopMoversList({
       />
       
       <ScrollArea className="h-[calc(100vh-144px)] w-full">
-        <div className="flex flex-col items-center space-y-3 pr-4 w-full max-w-2xl mx-auto">
+        <div className="flex flex-col items-center space-y-3 pr-4">
           <MarketStatsBento />
 
           <TopMoversContent
