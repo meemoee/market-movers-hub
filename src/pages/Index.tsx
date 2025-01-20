@@ -37,16 +37,12 @@ export default function Index() {
     setAllMovers([]);
   }, [selectedInterval, openMarketsOnly]);
 
-  const handleLoadMore = () => {
-    setPage(prev => prev + 1);
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
       
       <main className="container mx-auto pt-14 lg:pr-[420px]">
-        <div className="relative flex gap-4 max-w-[1200px] mx-auto">
+        <div className="relative flex gap-2 max-w-[1200px] mx-auto">
           {/* Left sidebar with AccountIsland */}
           <aside className="w-[260px] relative">
             <div className="sticky top-[72px]">
