@@ -1,5 +1,4 @@
 import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react";
-import { StatsRow } from "./StatsRow";
 
 interface MarketStatsProps {
   lastTradedPrice: number;
@@ -33,8 +32,8 @@ export function MarketStats({
   };
 
   return (
-    <div className="grid grid-cols-[1fr,auto] gap-6 items-start">
-      <div>
+    <div className="flex justify-between items-start w-full">
+      <div className="flex-1">
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
@@ -99,7 +98,7 @@ export function MarketStats({
           </div>
         </div>
       </div>
-      <div className="text-right">
+      <div className="flex flex-col items-end min-w-[100px]">
         <div className="text-xl font-semibold">
           {formatVolume(volume)}
         </div>
