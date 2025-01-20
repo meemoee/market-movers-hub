@@ -39,7 +39,7 @@ export default function RightSidebar() {
       
       // Use raw fetch with the correct function URL
       const response = await fetch(
-        `${process.env.SUPABASE_URL}/functions/v1/market-analysis`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/market-analysis`,
         {
           method: 'POST',
           headers: {
