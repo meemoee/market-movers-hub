@@ -230,9 +230,9 @@ function Chart({
             hideTicks
             numTicks={6}
             tickFormat={(value: NumberValue) => {
-			  const date = value instanceof Date ? value : new Date(+value);
-			  return formatDate(date);
-			}}
+              const date = value instanceof Date ? value : new Date(+value);
+              return formatDate(date);
+            }}
             tickLabelProps={() => ({
               fill: '#9ca3af',
               fontSize: 11,
