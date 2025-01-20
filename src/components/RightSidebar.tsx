@@ -32,53 +32,34 @@ export default function RightSidebar() {
     setCurrentSynthesis('')
     
     try {
-      const response = await fetch(
-        `${supabase.functions.url}/market-analysis`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.session()?.access_token}`,
-          },
-          body: JSON.stringify({
-            message: userMessage,
-            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-          })
+      const { data, error } = await supabase.functions.invoke('market-analysis', {
+        body: {
+          message: userMessage,
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
-      )
+      })
 
-      if (!response.ok) throw new Error('Failed to fetch response')
+      if (error) throw error
+      if (!data) throw new Error('No response data')
 
-      const reader = response.body?.getReader()
-      if (!reader) throw new Error('No response body')
-
-      const decoder = new TextDecoder()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        const chunk = decoder.decode(value)
-        const lines = chunk.split('\n')
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(5))
-              
-              if (data.markets) {
-                setMessages(prev => [...prev, { 
-                  type: 'markets', 
-                  markets: data.markets
-                }])
-              }
-              
-              if (data.type === 'synthesis') {
-                setCurrentSynthesis(prev => prev + (data.content || ''))
-              }
-            } catch (error) {
-              console.error('Error parsing chunk:', error)
+      const lines = data.split('\n')
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const parsedData = JSON.parse(line.slice(5))
+            
+            if (parsedData.markets) {
+              setMessages(prev => [...prev, { 
+                type: 'markets', 
+                markets: parsedData.markets
+              }])
             }
+            
+            if (parsedData.type === 'synthesis') {
+              setCurrentSynthesis(prev => prev + (parsedData.content || ''))
+            }
+          } catch (error) {
+            console.error('Error parsing chunk:', error)
           }
         }
       }
