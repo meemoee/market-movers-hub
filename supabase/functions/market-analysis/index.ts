@@ -16,164 +16,101 @@ const corsHeaders = {
 
 const supabase = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!)
 
-function processJsonFields(df: any[]) {
+async function getActiveMarkets() {
+  const now = new Date()
+  const pastDate = new Date(now.getTime() - 60 * 60 * 1000) // Last hour
+  
   try {
-    df = df.filter(row => row.closed !== true)
-    const numericFields = ['volume', 'liquidity', 'yes_price', 'no_price', 
-                         'best_bid', 'best_ask', 'last_traded_price']
-    
-    df.forEach(row => {
-      numericFields.forEach(field => {
-        row[field] = parseFloat(row[field]) || 0
-      })
-    })
-  } catch (error) {
-    console.error(`Error processing fields: ${error}`)
-  }
-  return df
-}
+    // Get active markets
+    const { data: activeMarkets, error: marketError } = await supabase
+      .from('markets')
+      .select('id')
+      .eq('active', true)
+      .eq('closed', false)
+      .eq('archived', false)
+      .limit(100)
 
-async function fetchMarketData() {
-  console.log("Fetching from database...")
-  const startTime = Date.now()
+    if (marketError) throw marketError
+    if (!activeMarkets?.length) return []
 
-  try {
-    const { data: latestPrices, error: pricesError } = await supabase
+    // Get market prices for active markets
+    const { data: marketPrices, error: priceError } = await supabase
       .from('market_prices')
-      .select('*')
-      .order('timestamp', { ascending: false })
+      .select('market_id')
+      .in('market_id', activeMarkets.map(m => m.id))
+      .gte('timestamp', pastDate.toISOString())
+      .lte('timestamp', now.toISOString())
+      .limit(1000)
 
-    if (pricesError) throw pricesError
+    if (priceError) throw priceError
+    if (!marketPrices?.length) return []
 
-    const latestPricesMap: Record<string, any> = {}
-    latestPrices?.forEach(price => {
-      if (!latestPricesMap[price.market_id] || 
-          price.timestamp > latestPricesMap[price.market_id].timestamp) {
-        latestPricesMap[price.market_id] = price
-      }
-    })
+    // Get unique market IDs with prices
+    const marketIds = [...new Set(marketPrices.map(p => p.market_id))]
 
-    const { data: markets, error: marketsError } = await supabase
+    // Get full market details
+    const { data: marketDetails, error: detailsError } = await supabase
       .from('markets')
       .select(`
-        *,
+        id,
+        question,
+        url,
+        subtitle,
+        yes_sub_title,
+        no_sub_title,
+        description,
+        clobtokenids,
+        outcomes,
+        active,
+        closed,
+        archived,
+        image,
+        event_id,
         events (
-          title,
-          category,
-          sub_title,
-          mutually_exclusive
+          title
         )
       `)
-      .filter('closed', 'eq', false)
-      .or('end_date.gt.now,end_date.is.null')
-      .order('updated_at', { ascending: false })
+      .in('id', marketIds)
 
-    if (marketsError) throw marketsError
+    if (detailsError) throw detailsError
+    if (!marketDetails?.length) return []
 
-    const result = markets?.map(market => ({
-      ...market,
-      event_title: market.events?.title,
-      event_category: market.events?.category,
-      event_subtitle: market.events?.sub_title,
-      event_mutually_exclusive: market.events?.mutually_exclusive,
-      ...latestPricesMap[market.id]
-    }))
+    // Get initial and final prices
+    const processedMarkets = await Promise.all(
+      marketDetails.map(async (market) => {
+        const { data: prices } = await supabase
+          .from('market_prices')
+          .select('last_traded_price, best_ask, best_bid, volume, timestamp')
+          .eq('market_id', market.id)
+          .gte('timestamp', pastDate.toISOString())
+          .lte('timestamp', now.toISOString())
+          .order('timestamp', { ascending: true })
 
-    console.log(`Fetched ${result?.length} records in ${(Date.now() - startTime) / 1000} seconds`)
-    return processJsonFields(result || [])
+        if (!prices?.length) return null
+
+        const initialPrice = prices[0]
+        const finalPrice = prices[prices.length - 1]
+
+        return {
+          ...market,
+          final_last_traded_price: parseFloat(finalPrice.last_traded_price) || 0,
+          final_best_ask: parseFloat(finalPrice.best_ask) || 0,
+          final_best_bid: parseFloat(finalPrice.best_bid) || 0,
+          final_volume: parseFloat(finalPrice.volume) || 0,
+          initial_last_traded_price: parseFloat(initialPrice.last_traded_price) || 0,
+          initial_volume: parseFloat(initialPrice.volume) || 0,
+          price_change: parseFloat(finalPrice.last_traded_price - initialPrice.last_traded_price) || 0,
+          volume_change: parseFloat(finalPrice.volume - initialPrice.volume) || 0
+        }
+      })
+    )
+
+    return processedMarkets.filter(Boolean).sort((a, b) => 
+      Math.abs(b.price_change) - Math.abs(a.price_change)
+    )
   } catch (error) {
-    console.error("Error fetching market data:", error)
+    console.error('Error fetching market data:', error)
     throw error
-  }
-}
-
-async function getStructuredQuery(userInput: any) {
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: "perplexity/llama-3.1-sonar-small-128k-online",
-        messages: [
-          {
-            role: "system",
-            content: `You are an advanced market analysis assistant. CRITICAL CONTEXT PROCESSING RULES:
-1. ALWAYS analyze the entire chat history before generating a response
-2. Identify key topics, entities, and themes from previous messages
-3. Use previous conversation context to:
-   - Refine search queries
-   - Provide more targeted and relevant market suggestions
-   - Maintain continuity with previous discussions`
-          },
-          {
-            role: "user",
-            content: `Chat History:\n${userInput.chatHistory || 'No previous chat history'}\n\nCurrent Query: ${userInput.message}`
-          }
-        ],
-        temperature: 0.2
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
-
-    const result = await response.json()
-    const content = result.choices[0].message.content.trim()
-    const queries = content.split('\n')
-      .filter(line => {
-        line = line.trim()
-        return line.startsWith('df[') || 
-               line.includes('.sort_values') || 
-               line.includes('.head(') ||
-               line.includes('.query(')
-      })
-      .map(q => q.trim())
-      .filter(q => q)
-    
-    return queries.slice(0, 3)
-  } catch (error) {
-    console.error("Error getting structured query:", error)
-    return null
-  }
-}
-
-async function processMarketQuery(data: any[], query: string) {
-  try {
-    let filteredData = [...data]
-    
-    const containsPattern = /str\.contains\('([^']+)', *case=False\)/
-    const containsMatch = query.match(containsPattern)
-    if (containsMatch) {
-      const searchTerms = containsMatch[1].split('|').map(term => term.trim().toLowerCase())
-      console.log('Processing search terms:', searchTerms)
-      
-      filteredData = filteredData.filter(market => 
-        market.question && searchTerms.some(term => 
-          market.question.toLowerCase().includes(term)
-        )
-      )
-    }
-
-    const sortPattern = /sort_values\('([^']+)'.*\)/
-    const sortMatch = query.match(sortPattern)
-    if (sortMatch) {
-      const sortField = sortMatch[1]
-      filteredData.sort((a, b) => (b[sortField] || 0) - (a[sortField] || 0))
-    }
-
-    const headPattern = /\.head\((\d+)\)/
-    const headMatch = query.match(headPattern)
-    const requestedLimit = headMatch ? parseInt(headMatch[1]) : 25
-    filteredData = filteredData.slice(0, Math.min(requestedLimit, 25))
-
-    return filteredData
-  } catch (error) {
-    console.error("Error processing market query:", error)
-    return []
   }
 }
 
@@ -189,31 +126,16 @@ serve(async (req) => {
   try {
     const { message, chatHistory } = await req.json()
 
-    // Get structured queries from LLM
-    const queries = await getStructuredQuery({ message, chatHistory })
-    if (!queries) {
-      throw new Error("Failed to generate structured queries")
-    }
-
-    // Fetch market data
-    const marketData = await fetchMarketData()
-
-    // Process each query and combine results
-    let allResults: any[] = []
-    for (const query of queries) {
-      const results = await processMarketQuery(marketData, query)
-      allResults = [...allResults, ...results]
-    }
-
-    // Remove duplicates based on market ID
-    const uniqueResults = Array.from(
-      new Map(allResults.map(item => [item.id, item])).values()
-    )
-
+    // Get market data
+    const markets = await getActiveMarkets()
+    
     // Stream the market results first
-    await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'markets', markets: uniqueResults })}\n\n`))
+    await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+      type: 'markets', 
+      markets 
+    })}\n\n`))
 
-    // Stream synthesis from OpenRouter
+    // Get synthesis from OpenRouter
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -234,12 +156,11 @@ Today's Date: ${new Date().toISOString().split('T')[0]}
 Query: "${message}"
 
 Market Results:
-${uniqueResults.map(market => `
+${markets.map(market => `
 - ${market.question} (${market.id})
-  Price: Yes=${market.yes_price?.toFixed(3) || 'N/A'} No=${market.no_price?.toFixed(3) || 'N/A'}
-  Volume: $${market.volume?.toLocaleString()}
-  Liquidity: $${market.liquidity?.toLocaleString()}
-  End Date: ${market.end_date || 'N/A'}
+  Price: ${(market.final_last_traded_price * 100).toFixed(1)}%
+  Change: ${(market.price_change * 100).toFixed(1)}%
+  Volume: $${market.final_volume.toLocaleString()}
 `).join('\n')}
 
 Response (2-3 sentences only):`
@@ -272,8 +193,10 @@ Response (2-3 sentences only):`
             const parsed = JSON.parse(jsonStr)
             const content = parsed.choices[0]?.delta?.content || ''
             
-            // Stream each content chunk
-            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'synthesis', content })}\n\n`))
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+              type: 'synthesis', 
+              content 
+            })}\n\n`))
           } catch (error) {
             console.error('Error parsing JSON chunk:', error)
           }
