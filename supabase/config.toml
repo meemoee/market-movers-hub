@@ -1,3 +1,7 @@
 project_id = "lfmkoismabbhujycnqpn"
+
 [functions.get-top-movers]
+verify_jwt = false
+
+[functions.market-analysis]
 verify_jwt = false

@@ -1,40 +1,66 @@
 import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
 import { useState } from 'react'
+import { supabase } from "@/integrations/supabase/client"
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
-  const [isStreaming, setIsStreaming] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
 
   interface Market {
-    id: string;
-    question: string;
-    yes_price?: number;
-    volume?: number;
+    id: string
+    question: string
+    yes_price?: number
+    volume?: number
   }
 
   interface Message {
-    type: 'user' | 'assistant' | 'markets';
-    content?: string;
-    markets?: Market[];
+    type: 'user' | 'assistant' | 'markets'
+    content?: string
+    markets?: Market[]
   }
 
   const handleChatMessage = async (userMessage: string) => {
-    if (!userMessage.trim() || isStreaming) return;
+    if (!userMessage.trim() || isLoading) return
     
     setHasStartedChat(true)
+    setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
     
-    // For demo purposes, just echo the message back
-    setTimeout(() => {
+    try {
+      const { data, error } = await supabase.functions.invoke('market-analysis', {
+        body: {
+          message: userMessage,
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
+        }
+      })
+
+      if (error) throw error
+
+      if (data.markets?.length > 0) {
+        setMessages(prev => [...prev, { 
+          type: 'markets', 
+          markets: data.markets
+        }])
+      }
+
+      if (data.synthesis) {
+        setMessages(prev => [...prev, { 
+          type: 'assistant', 
+          content: data.synthesis
+        }])
+      }
+    } catch (error) {
+      console.error('Error in chat:', error)
       setMessages(prev => [...prev, { 
         type: 'assistant', 
-        content: `You said: ${userMessage}` 
+        content: 'Sorry, I encountered an error processing your request.' 
       }])
-    }, 1000)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const defaultContent = [
@@ -101,12 +127,26 @@ export default function RightSidebar() {
           <div className="space-y-4 mb-20">
             {messages.map((message, index) => (
               <div key={index} className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">{message.content}</p>
+                {message.type === 'markets' && message.markets ? (
+                  <div className="space-y-2">
+                    {message.markets.map((market, idx) => (
+                      <div key={idx} className="text-sm">
+                        <p className="font-medium">{market.question}</p>
+                        <div className="text-xs text-gray-400 mt-1">
+                          <span className="mr-3">Yes: {(market.yes_price || 0).toFixed(3)}</span>
+                          <span>Volume: ${market.volume?.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-white text-sm">{message.content}</p>
+                )}
               </div>
             ))}
-            {streamingContent && (
+            {isLoading && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">{streamingContent}</p>
+                <p className="text-white text-sm">Analyzing markets...</p>
               </div>
             )}
           </div>
@@ -121,7 +161,7 @@ export default function RightSidebar() {
               onChange={(e) => setChatMessage(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
-                  handleChatMessage(chatMessage);
+                  handleChatMessage(chatMessage)
                 }
               }}
               placeholder="What do you believe?"
@@ -130,6 +170,7 @@ export default function RightSidebar() {
             <button 
               className="p-2 hover:bg-white/10 rounded-lg transition-colors text-blue-500"
               onClick={() => handleChatMessage(chatMessage)}
+              disabled={isLoading}
             >
               <Send size={20} />
             </button>
