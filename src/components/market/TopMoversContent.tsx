@@ -16,6 +16,7 @@ interface TopMover {
   final_best_bid: number;
   final_volume: number;
   price_change: number;
+  clobtokenids?: string[];
 }
 
 interface TopMoversContentProps {
@@ -24,7 +25,7 @@ interface TopMoversContentProps {
   topMovers: TopMover[];
   expandedMarkets: Set<string>;
   toggleMarket: (marketId: string) => void;
-  setSelectedMarket: (market: { id: string; action: 'buy' | 'sell' } | null) => void;
+  setSelectedMarket: (market: { id: string; action: 'buy' | 'sell'; clobTokenId: string; } | null) => void;
   onLoadMore: () => void;
   hasMore: boolean;
   isLoadingMore?: boolean;
@@ -91,8 +92,18 @@ export function TopMoversContent({
             }}
             isExpanded={expandedMarkets.has(mover.market_id)}
             onToggleExpand={() => toggleMarket(mover.market_id)}
-            onBuy={() => setSelectedMarket({ id: mover.market_id, action: 'buy' })}
-            onSell={() => setSelectedMarket({ id: mover.market_id, action: 'sell' })}
+            onBuy={() => {
+              const clobTokenId = mover.clobtokenids?.[0];
+              if (clobTokenId) {
+                setSelectedMarket({ id: mover.market_id, action: 'buy', clobTokenId });
+              }
+            }}
+            onSell={() => {
+              const clobTokenId = mover.clobtokenids?.[0];
+              if (clobTokenId) {
+                setSelectedMarket({ id: mover.market_id, action: 'sell', clobTokenId });
+              }
+            }}
           />
         </div>
       ))}
