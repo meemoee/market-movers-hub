@@ -47,6 +47,8 @@ export default function RightSidebar() {
 
       console.log('Received response from market-analysis:', data)
       
+      let accumulatedContent = ''
+      
       // Create a new ReadableStream from the response body
       const stream = new ReadableStream({
         start(controller) {
@@ -69,17 +71,23 @@ export default function RightSidebar() {
               
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
-                  const data = line.slice(5).trim()
-                  if (data === '[DONE]') continue
+                  const jsonStr = line.slice(6).trim()
+                  console.log('Processing JSON string:', jsonStr)
+                  
+                  if (jsonStr === '[DONE]') continue
                   
                   try {
-                    const parsed = JSON.parse(data)
+                    const parsed = JSON.parse(jsonStr)
+                    console.log('Parsed JSON:', parsed)
+                    
                     const content = parsed.choices?.[0]?.delta?.content
                     if (content) {
-                      setStreamingContent(prev => prev + content)
+                      console.log('New content chunk:', content)
+                      accumulatedContent += content
+                      setStreamingContent(accumulatedContent)
                     }
                   } catch (e) {
-                    console.error('Error parsing SSE data:', e, 'Raw data:', data)
+                    console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
                   }
                 }
               }
@@ -101,7 +109,7 @@ export default function RightSidebar() {
       // After stream is complete, add the final message
       setMessages(prev => [...prev, { 
         type: 'assistant', 
-        content: streamingContent 
+        content: accumulatedContent 
       }])
 
     } catch (error) {
