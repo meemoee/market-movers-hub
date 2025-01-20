@@ -124,8 +124,8 @@ export default function TopMoversList({
         setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
       />
 
-      <ScrollArea className="h-[calc(100vh-200px)]">
-        <div className="w-full">
+      <ScrollArea className="h-[calc(100vh-200px)] mt-2">
+        <div className="w-full rounded-lg border border-border overflow-hidden">
           <TopMoversContent
             isLoading={isLoading || false}
             error={error}
