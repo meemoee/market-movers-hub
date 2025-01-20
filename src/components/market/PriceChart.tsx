@@ -77,66 +77,50 @@ function Chart({
     [innerHeight]
   );
 
-  const splitData = useMemo(() => {
+  // Create arrays for above and below 50% fills
+  const { aboveData, belowData } = useMemo(() => {
     const above: PriceData[] = [];
     const below: PriceData[] = [];
     
-    data.forEach((d, i) => {
-      if (i > 0) {
-        const prev = data[i - 1];
-        if ((prev.price < 50 && d.price > 50) || (prev.price > 50 && d.price < 50)) {
-          // Calculate the crossing point
-          const ratio = (50 - prev.price) / (d.price - prev.price);
-          const crossingTime = prev.time + (d.time - prev.time) * ratio;
-          
-          // Add points for the previous value's side
-          if (prev.price >= 50) {
-            above.push(prev);
-            above.push({ time: crossingTime, price: 50 });
-            below.push({ time: prev.time, price: 50 });
-            below.push({ time: crossingTime, price: 50 });
-          } else {
-            below.push(prev);
-            below.push({ time: crossingTime, price: 50 });
-            above.push({ time: prev.time, price: 50 });
-            above.push({ time: crossingTime, price: 50 });
-          }
-          
-          // Add points for the current value's side
-          if (d.price >= 50) {
-            above.push({ time: crossingTime, price: 50 });
-            above.push(d);
-            below.push({ time: crossingTime, price: 50 });
-            below.push({ time: d.time, price: 50 });
-          } else {
-            below.push({ time: crossingTime, price: 50 });
-            below.push(d);
-            above.push({ time: crossingTime, price: 50 });
-            above.push({ time: d.time, price: 50 });
-          }
-        } else {
-          // No crossing, add point normally
-          if (d.price >= 50) {
-            above.push(d);
-            below.push({ time: d.time, price: 50 });
-          } else {
-            below.push(d);
-            above.push({ time: d.time, price: 50 });
-          }
-        }
+    // Add initial point at 50 for both arrays
+    if (data.length > 0) {
+      const firstPoint = data[0];
+      if (firstPoint.price >= 50) {
+        above.push(firstPoint);
+        below.push({ ...firstPoint, price: 50 });
       } else {
-        // First point
-        if (d.price >= 50) {
-          above.push(d);
-          below.push({ time: d.time, price: 50 });
-        } else {
-          below.push(d);
-          above.push({ time: d.time, price: 50 });
-        }
+        below.push(firstPoint);
+        above.push({ ...firstPoint, price: 50 });
       }
-    });
-    
-    return { above, below };
+    }
+
+    // Process all points
+    for (let i = 1; i < data.length; i++) {
+      const point = data[i];
+      const prevPoint = data[i - 1];
+
+      // Always add the current point to its respective array
+      // and a corresponding point at 50 to the other array
+      if (point.price >= 50) {
+        above.push(point);
+        below.push({ ...point, price: 50 });
+      } else {
+        below.push(point);
+        above.push({ ...point, price: 50 });
+      }
+
+      // If we crossed the 50 line, add intermediate points
+      if ((prevPoint.price >= 50) !== (point.price >= 50)) {
+        const ratio = (50 - prevPoint.price) / (point.price - prevPoint.price);
+        const crossTime = prevPoint.time + (point.time - prevPoint.time) * ratio;
+        
+        // Add crossing point to both arrays
+        above.push({ time: crossTime, price: 50 });
+        below.push({ time: crossTime, price: 50 });
+      }
+    }
+
+    return { aboveData: above, belowData: below };
   }, [data]);
 
   const handleTooltip = useCallback(
@@ -154,13 +138,10 @@ function Chart({
       
       const d = xValue.getTime() - d0.time > d1.time - xValue.getTime() ? d1 : d0;
 
-      const tooltipLeftPosition = timeScale(d.time) + margin.left;
-      const tooltipTopPosition = priceScale(d.price) + margin.top;
-      
       showTooltip({
         tooltipData: d,
-        tooltipLeft: tooltipLeftPosition,
-        tooltipTop: tooltipTopPosition,
+        tooltipLeft: timeScale(d.time) + margin.left,
+        tooltipTop: priceScale(d.price) + margin.top,
       });
     },
     [timeScale, priceScale, data, margin, showTooltip]
@@ -190,9 +171,6 @@ function Chart({
             from="rgba(153, 27, 27, 0.05)"
             to="rgba(153, 27, 27, 0.05)"
           />
-          <clipPath id="chart-area">
-            <rect x={0} y={0} width={innerWidth} height={innerHeight} />
-          </clipPath>
         </defs>
 
         <g transform={`translate(${margin.left},${margin.top})`}>
@@ -205,33 +183,33 @@ function Chart({
             strokeWidth={1}
           />
 
-          <g clipPath="url(#chart-area)">
-            <Area
-              data={splitData.above}
-              x={d => timeScale(d.time)}
-              y={d => priceScale(d.price)}
-              y1={() => priceScale(50)}
-              curve={curveStepAfter}
-              fill="url(#above-gradient)"
-            />
-            <Area
-              data={splitData.below}
-              x={d => timeScale(d.time)}
-              y={d => priceScale(d.price)}
-              y1={() => priceScale(50)}
-              curve={curveStepAfter}
-              fill="url(#below-gradient)"
-            />
+          {/* Fill areas */}
+          <Area
+            data={aboveData}
+            x={d => timeScale(d.time)}
+            y={d => priceScale(d.price)}
+            y1={() => priceScale(50)}
+            curve={curveStepAfter}
+            fill="url(#above-gradient)"
+          />
+          <Area
+            data={belowData}
+            x={d => timeScale(d.time)}
+            y={d => priceScale(d.price)}
+            y1={() => priceScale(50)}
+            curve={curveStepAfter}
+            fill="url(#below-gradient)"
+          />
 
-            <LinePath
-              data={data}
-              x={d => timeScale(d.time)}
-              y={d => priceScale(d.price)}
-              stroke="#3b82f6"
-              strokeWidth={2}
-              curve={curveStepAfter}
-            />
-          </g>
+          {/* Price line */}
+          <LinePath
+            data={data}
+            x={d => timeScale(d.time)}
+            y={d => priceScale(d.price)}
+            stroke="#3b82f6"
+            strokeWidth={2}
+            curve={curveStepAfter}
+          />
 
           <AxisLeft
             scale={priceScale}
@@ -270,6 +248,7 @@ function Chart({
             })}
           />
 
+          {/* Tooltip overlay */}
           <rect
             x={0}
             y={0}
