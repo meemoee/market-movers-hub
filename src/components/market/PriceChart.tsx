@@ -77,67 +77,39 @@ function Chart({
     [innerHeight]
   );
 
-  // Create arrays for above and below 50% fills with precise intersection points
-  const { aboveData, belowData } = useMemo(() => {
+  // Generate fill data for above and below 50%
+  const { fillAbove, fillBelow } = useMemo(() => {
     const above: PriceData[] = [];
     const below: PriceData[] = [];
     
-    if (data.length === 0) return { aboveData: above, belowData: below };
+    if (data.length === 0) return { fillAbove: above, fillBelow: below };
 
-    // Handle first point
+    // Add first point
     const firstPoint = data[0];
-    if (firstPoint.price >= 50) {
-      above.push(firstPoint);
-      below.push({ ...firstPoint, price: 50 });
-    } else {
-      below.push(firstPoint);
-      above.push({ ...firstPoint, price: 50 });
-    }
+    above.push({ time: firstPoint.time, price: Math.max(firstPoint.price, 50) });
+    below.push({ time: firstPoint.time, price: Math.min(firstPoint.price, 50) });
 
-    // Process subsequent points
+    // Process all points
     for (let i = 1; i < data.length; i++) {
       const currentPoint = data[i];
       const prevPoint = data[i - 1];
-      const prevWasAbove = prevPoint.price >= 50;
-      const currentIsAbove = currentPoint.price >= 50;
 
-      if (prevWasAbove !== currentIsAbove) {
-        // Calculate intersection point with the 50% line
-        const timeRange = currentPoint.time - prevPoint.time;
-        const priceRange = currentPoint.price - prevPoint.price;
-        const ratio = (50 - prevPoint.price) / priceRange;
-        const intersectionTime = prevPoint.time + timeRange * ratio;
-        
+      // If we cross the 50% line, add intersection point
+      if ((prevPoint.price - 50) * (currentPoint.price - 50) < 0) {
+        const ratio = (50 - prevPoint.price) / (currentPoint.price - prevPoint.price);
+        const intersectionTime = prevPoint.time + (currentPoint.time - prevPoint.time) * ratio;
+
         // Add intersection point to both arrays
-        const intersectionPoint = {
-          time: intersectionTime,
-          price: 50
-        };
-
-        if (prevWasAbove) {
-          above.push(intersectionPoint);
-          below.push(intersectionPoint);
-          below.push(currentPoint);
-          above.push({ ...currentPoint, price: 50 });
-        } else {
-          below.push(intersectionPoint);
-          above.push(intersectionPoint);
-          above.push(currentPoint);
-          below.push({ ...currentPoint, price: 50 });
-        }
-      } else {
-        // No crossing, add to appropriate arrays
-        if (currentIsAbove) {
-          above.push(currentPoint);
-          below.push({ ...currentPoint, price: 50 });
-        } else {
-          below.push(currentPoint);
-          above.push({ ...currentPoint, price: 50 });
-        }
+        above.push({ time: intersectionTime, price: 50 });
+        below.push({ time: intersectionTime, price: 50 });
       }
+
+      // Add current point to appropriate arrays
+      above.push({ time: currentPoint.time, price: Math.max(currentPoint.price, 50) });
+      below.push({ time: currentPoint.time, price: Math.min(currentPoint.price, 50) });
     }
 
-    return { aboveData: above, belowData: below };
+    return { fillAbove: above, fillBelow: below };
   }, [data]);
 
   const handleTooltip = useCallback(
@@ -203,7 +175,7 @@ function Chart({
 
           {/* Fill areas */}
           <Area
-            data={aboveData}
+            data={fillAbove}
             x={d => timeScale(d.time)}
             y={d => priceScale(d.price)}
             y1={() => priceScale(50)}
@@ -211,7 +183,7 @@ function Chart({
             fill="url(#above-gradient)"
           />
           <Area
-            data={belowData}
+            data={fillBelow}
             x={d => timeScale(d.time)}
             y={d => priceScale(d.price)}
             y1={() => priceScale(50)}
