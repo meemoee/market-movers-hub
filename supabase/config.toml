@@ -27,7 +27,6 @@ enabled = true
 
 [auth]
 enabled = true
-port = 54325
 
 [analytics]
 enabled = true
