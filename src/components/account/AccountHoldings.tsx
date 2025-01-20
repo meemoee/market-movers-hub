@@ -17,6 +17,27 @@ export function AccountHoldings() {
 
   useEffect(() => {
     fetchHoldings();
+
+    // Subscribe to real-time updates
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'holdings'
+        },
+        (payload) => {
+          console.log('New holding detected:', payload);
+          fetchHoldings(); // Refresh the holdings list when a new one is added
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchHoldings = async () => {
