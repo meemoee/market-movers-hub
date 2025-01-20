@@ -14,8 +14,8 @@ const HoverButton = React.forwardRef<HTMLButtonElement, HoverButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "w-[80px] px-2 py-3",
-          "text-foreground font-medium text-xs",
+          "w-[80px] px-2 py-2",
+          "text-foreground font-medium text-xs leading-relaxed",
           "transition-colors duration-200",
           "backdrop-blur-sm",
           variant === 'buy' 
