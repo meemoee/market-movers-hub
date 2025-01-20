@@ -37,6 +37,10 @@ export default function Index() {
     setAllMovers([]);
   }, [selectedInterval, openMarketsOnly]);
 
+  const handleLoadMore = () => {
+    setPage(prev => prev + 1);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
