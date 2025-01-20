@@ -84,29 +84,67 @@ function Chart({
     
     if (data.length === 0) return { fillAbove: above, fillBelow: below };
 
-    // Add first point
-    const firstPoint = data[0];
-    above.push({ time: firstPoint.time, price: Math.max(firstPoint.price, 50) });
-    below.push({ time: firstPoint.time, price: Math.min(firstPoint.price, 50) });
-
     // Process all points
-    for (let i = 1; i < data.length; i++) {
+    for (let i = 0; i < data.length; i++) {
       const currentPoint = data[i];
-      const prevPoint = data[i - 1];
+      const prevPoint = i > 0 ? data[i - 1] : null;
 
-      // If we cross the 50% line, add intersection point
-      if ((prevPoint.price - 50) * (currentPoint.price - 50) < 0) {
-        const ratio = (50 - prevPoint.price) / (currentPoint.price - prevPoint.price);
-        const intersectionTime = prevPoint.time + (currentPoint.time - prevPoint.time) * ratio;
-
-        // Add intersection point to both arrays
-        above.push({ time: intersectionTime, price: 50 });
-        below.push({ time: intersectionTime, price: 50 });
+      // If there's a gap or crossing of 50%, handle it
+      if (prevPoint && 
+          ((prevPoint.price - 50) * (currentPoint.price - 50) < 0 || 
+           currentPoint.time - prevPoint.time > 3600000)) { // Gap larger than 1 hour
+        
+        // Add intersection or connection points
+        if ((prevPoint.price - 50) * (currentPoint.price - 50) < 0) {
+          // Calculate exact intersection
+          const ratio = (50 - prevPoint.price) / (currentPoint.price - prevPoint.price);
+          const intersectionTime = prevPoint.time + (currentPoint.time - prevPoint.time) * ratio;
+          
+          // Add points up to intersection
+          above.push({ 
+            time: intersectionTime, 
+            price: prevPoint.price >= 50 ? prevPoint.price : 50 
+          });
+          below.push({ 
+            time: intersectionTime, 
+            price: prevPoint.price < 50 ? prevPoint.price : 50 
+          });
+          
+          // Add intersection point
+          above.push({ time: intersectionTime, price: 50 });
+          below.push({ time: intersectionTime, price: 50 });
+          
+          // Add points after intersection
+          above.push({ 
+            time: currentPoint.time, 
+            price: currentPoint.price >= 50 ? currentPoint.price : 50 
+          });
+          below.push({ 
+            time: currentPoint.time, 
+            price: currentPoint.price < 50 ? currentPoint.price : 50 
+          });
+        } else {
+          // Handle gap by extending previous value
+          above.push({ 
+            time: currentPoint.time, 
+            price: prevPoint.price >= 50 ? prevPoint.price : 50 
+          });
+          below.push({ 
+            time: currentPoint.time, 
+            price: prevPoint.price < 50 ? prevPoint.price : 50 
+          });
+        }
       }
-
-      // Add current point to appropriate arrays
-      above.push({ time: currentPoint.time, price: Math.max(currentPoint.price, 50) });
-      below.push({ time: currentPoint.time, price: Math.min(currentPoint.price, 50) });
+      
+      // Add current point
+      above.push({ 
+        time: currentPoint.time, 
+        price: currentPoint.price >= 50 ? currentPoint.price : 50 
+      });
+      below.push({ 
+        time: currentPoint.time, 
+        price: currentPoint.price < 50 ? currentPoint.price : 50 
+      });
     }
 
     return { fillAbove: above, fillBelow: below };
