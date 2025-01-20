@@ -44,14 +44,19 @@ export function MarketDetails({
   const { data: marketEvents, isLoading: isEventsLoading } = useQuery({
     queryKey: ['marketEvents', marketId],
     queryFn: async () => {
+      console.log('Fetching market events for:', marketId);
       const { data, error } = await supabase
         .from('market_events')
         .select('*')
         .eq('market_id', marketId)
         .order('timestamp', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Market events error:', error);
+        throw error;
+      }
 
+      console.log('Market events response:', data);
       return data.map(event => ({
         ...event,
         timestamp: new Date(event.timestamp).getTime()
