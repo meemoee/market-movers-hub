@@ -94,12 +94,12 @@ export function MarketStats({
         </div>
       </div>
       <div className="flex flex-col items-end justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            24h Volume:
-          </span>
+        <div className="flex flex-col items-end">
           <span className="text-xl font-semibold">
             {formatVolume(volume)}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            24h Volume
           </span>
         </div>
         <button
