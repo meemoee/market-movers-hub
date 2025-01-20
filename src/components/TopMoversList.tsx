@@ -18,7 +18,7 @@ interface TopMover {
   yes_sub_title?: string;
   no_sub_title?: string;
   description?: string;
-  clobtokenids?: string[];
+  clobtokenids?: string;
   outcomes?: any;
   active: boolean;
   closed: boolean;
@@ -147,7 +147,7 @@ export default function TopMoversList({
                   }
                   
                   const mover = topMovers.find(m => m.market_id === market.id);
-                  if (!mover || !mover.clobtokenids || mover.clobtokenids.length < 2) {
+                  if (!mover || !mover.clobtokenids) {
                     toast({
                       title: "Error",
                       description: "Unable to process this market at the moment",
@@ -156,15 +156,27 @@ export default function TopMoversList({
                     return;
                   }
 
-                  // Use first token for buy, second for sell
-                  const clobTokenId = market.action === 'buy' ? 
-                    mover.clobtokenids[0] : 
-                    mover.clobtokenids[1];
+                  try {
+                    const tokenIds = JSON.parse(mover.clobtokenids) as string[];
+                    if (!Array.isArray(tokenIds) || tokenIds.length < 2) {
+                      throw new Error('Invalid CLOB token IDs format');
+                    }
 
-                  setSelectedMarket({
-                    ...market,
-                    clobTokenId
-                  });
+                    // Use first token for buy, second for sell
+                    const clobTokenId = market.action === 'buy' ? tokenIds[0] : tokenIds[1];
+                    
+                    setSelectedMarket({
+                      ...market,
+                      clobTokenId
+                    });
+                  } catch (err) {
+                    console.error('Error parsing CLOB token IDs:', err);
+                    toast({
+                      title: "Error",
+                      description: "Unable to process this market at the moment",
+                      variant: "destructive",
+                    });
+                  }
                 }}
                 onLoadMore={onLoadMore}
                 hasMore={hasMore}
