@@ -34,14 +34,17 @@ export default function RightSidebar() {
       // Initialize new assistant message
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
-      // Use raw fetch instead of supabase.functions.invoke()
+      // Get the current session
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      // Use raw fetch with the correct function URL
       const response = await fetch(
-        `${supabase.functions.url}/market-analysis`,
+        `${process.env.SUPABASE_URL}/functions/v1/market-analysis`,
         {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.getSession()?.access_token}`,
+            'Authorization': `Bearer ${session?.access_token}`,
           },
           body: JSON.stringify({
             message: userMessage,
