@@ -38,7 +38,7 @@ export function MarketStats({
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
-        <div className="mt-1 flex flex-col justify-between h-[48px]">
+        <div className="mt-1 space-y-2">
           <StatsRow
             leftContent={
               <div className={`flex items-center gap-1 text-sm font-medium
@@ -52,7 +52,11 @@ export function MarketStats({
                 {formatPriceChange(priceChange)}
               </div>
             }
-            rightContent={null}
+            rightContent={
+              <span className="text-sm text-muted-foreground">
+                24h Volume
+              </span>
+            }
           />
           
           <div className="relative h-[3px] w-full">
@@ -103,18 +107,10 @@ export function MarketStats({
         <div className="text-xl font-semibold">
           {formatVolume(volume)}
         </div>
-        <div className="mt-1 flex flex-col justify-between h-[48px]">
-          <StatsRow
-            leftContent={null}
-            rightContent={
-              <span className="text-sm text-muted-foreground">
-                24h Volume
-              </span>
-            }
-          />
+        <div className="mt-1 pt-[2px]">
           <button
             onClick={onToggleExpand}
-            className="inline-flex justify-center"
+            className="inline-flex justify-center mt-6"
           >
             {isExpanded ? (
               <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
