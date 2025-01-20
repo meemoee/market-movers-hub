@@ -21,17 +21,35 @@ export function EventIndicator({
   height, 
   iconSize = 16 
 }: EventIndicatorProps) {
-  const xPosition = timeScale(new Date(event.timestamp).getTime());
+  const xPosition = timeScale(event.timestamp);
   
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <g 
             transform={`translate(${xPosition}, 0)`}
             style={{ cursor: 'pointer' }}
-            className="group"
           >
+            {/* Icon container */}
+            <g transform={`translate(${-iconSize / 2}, 10)`}>
+              <foreignObject
+                width={iconSize + 16}
+                height={iconSize + 16}
+                x={-8}
+                y={-8}
+                style={{ overflow: 'visible' }}
+              >
+                <div className="p-1 rounded-full hover:bg-accent">
+                  <EventIcon
+                    type={event.icon}
+                    size={iconSize}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  />
+                </div>
+              </foreignObject>
+            </g>
+
             {/* Vertical line */}
             <line
               x1={0}
@@ -40,48 +58,14 @@ export function EventIndicator({
               y2={height}
               stroke="currentColor"
               strokeWidth={1}
-              className="text-muted-foreground/30 group-hover:text-muted-foreground/50"
+              className="text-muted-foreground/30"
               strokeDasharray="2,2"
             />
-            
-            {/* Interactive area for tooltip */}
-            <rect
-              x={-10}
-              y={0}
-              width={20}
-              height={height}
-              fill="transparent"
-              className="cursor-pointer"
-            />
-            
-            {/* Icon container */}
-            <g transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}>
-              <rect
-                width={iconSize + 8}
-                height={iconSize + 8}
-                x={-4}
-                y={-4}
-                fill="hsl(var(--background))"
-                fillOpacity={0.8}
-                rx={4}
-              />
-              <foreignObject
-                width={iconSize}
-                height={iconSize}
-                style={{ overflow: 'visible' }}
-              >
-                <EventIcon
-                  type={event.icon}
-                  size={iconSize}
-                  className="text-muted-foreground group-hover:text-foreground"
-                />
-              </foreignObject>
-            </g>
           </g>
         </TooltipTrigger>
         <TooltipContent 
           side="top" 
-          className="max-w-[240px] p-3 z-50"
+          className="max-w-[240px] p-3"
           sideOffset={5}
         >
           <div className="space-y-1">
