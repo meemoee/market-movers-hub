@@ -47,24 +47,40 @@ serve(async (req) => {
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    // Create a TransformStream to decode and process the stream
+    console.log('Creating TransformStream for response processing...')
     const transformStream = new TransformStream({
       transform(chunk, controller) {
+        console.log('Processing chunk:', chunk)
         // Convert the chunk to text
         const text = new TextDecoder().decode(chunk)
+        console.log('Decoded text:', text)
+        
         // Each chunk might contain multiple SSE messages
         const lines = text.split('\n').filter(line => line.trim() !== '')
+        console.log('Split lines:', lines)
         
         for (const line of lines) {
+          console.log('Processing line:', line)
           if (line.startsWith('data: ')) {
             const data = line.slice(5).trim()
-            if (data === '[DONE]') continue
-            try {
-              const parsed = JSON.parse(data)
-              controller.enqueue(line + '\n')
-            } catch (e) {
-              console.error('Error parsing SSE data:', e)
+            console.log('Extracted data:', data)
+            
+            if (data === '[DONE]') {
+              console.log('Received [DONE] signal')
+              continue
             }
+            
+            try {
+              console.log('Attempting to parse JSON:', data)
+              const parsed = JSON.parse(data)
+              console.log('Successfully parsed JSON:', parsed)
+              controller.enqueue(line + '\n')
+              console.log('Enqueued line to stream')
+            } catch (e) {
+              console.error('Error parsing SSE data:', e, 'Raw data:', data)
+            }
+          } else {
+            console.log('Skipping non-data line:', line)
           }
         }
       }
