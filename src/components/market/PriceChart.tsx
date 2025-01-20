@@ -146,13 +146,6 @@ function Chart({
             />
           ))}
 
-          {/* Event markers */}
-          <EventMarkers
-            events={events}
-            timeScale={timeScale}
-            height={innerHeight}
-          />
-
           {/* Price line */}
           <LinePath
             data={data}
@@ -208,6 +201,14 @@ function Chart({
             onTouchMove={handleTooltip}
             onMouseMove={handleTooltip}
             onMouseLeave={hideTooltip}
+            style={{ pointerEvents: 'all' }}
+          />
+
+          {/* Event markers - now rendered above the tooltip overlay */}
+          <EventMarkers
+            events={events}
+            timeScale={timeScale}
+            height={innerHeight}
           />
 
           {tooltipData && (

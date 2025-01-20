@@ -30,7 +30,18 @@ export const EventIndicator = ({
           <g 
             transform={`translate(${xPosition}, 0)`}
             style={{ cursor: 'pointer' }}
+            className="group"
           >
+            {/* Interactive hover area */}
+            <rect
+              x={-10}
+              y={0}
+              width={20}
+              height={height}
+              fill="transparent"
+              style={{ pointerEvents: 'all' }}
+            />
+            
             {/* Vertical line */}
             <line
               x1={0}
@@ -41,10 +52,14 @@ export const EventIndicator = ({
               strokeWidth={1}
               className="text-muted-foreground/30 group-hover:text-muted-foreground/50"
               strokeDasharray="2,2"
+              style={{ pointerEvents: 'none' }}
             />
             
             {/* Icon container */}
-            <g transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}>
+            <g 
+              transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}
+              style={{ pointerEvents: 'none' }}
+            >
               <rect
                 width={iconSize + 8}
                 height={iconSize + 8}
