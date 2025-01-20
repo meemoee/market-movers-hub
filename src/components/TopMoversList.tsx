@@ -133,12 +133,12 @@ export default function TopMoversList({
         setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
       />
       
-      <div className="px-4">
-        <MarketStatsBento />
-      </div>
-
       <ScrollArea className="h-[calc(100vh-144px)]">
         <div className="pt-3 px-1 w-full space-y-3">
+          <div className="px-4">
+            <MarketStatsBento />
+          </div>
+
           <TopMoversContent
             isLoading={isLoading || false}
             error={error}
