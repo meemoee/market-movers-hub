@@ -38,44 +38,62 @@ export default function RightSidebar() {
         }
       })
 
-      if (error) throw error
+      console.log('Raw response from market-analysis:', response)
 
-      console.log('Received response from market-analysis:', response)
+      if (error) {
+        console.error('Supabase function error:', error)
+        throw error
+      }
 
       // Initialize new assistant message
-      setMessages(prev => [...prev, { type: 'assistant', content: '' }])
+      console.log('Initializing new assistant message')
+      setMessages(prev => {
+        console.log('Previous messages:', prev)
+        return [...prev, { type: 'assistant', content: '' }]
+      })
 
       if (typeof response === 'string') {
         const lines = response.split('\n').filter(line => line.trim() !== '')
-        console.log('Split lines:', lines)
+        console.log('Split response into lines:', lines)
         
         let accumulatedContent = ''
         
         for (const line of lines) {
+          console.log('Processing line:', line)
+          
           if (!line.startsWith('data: ')) {
             console.log('Skipping non-data line:', line)
             continue
           }
           
           const data = line.slice(5).trim()
+          console.log('Extracted data:', data)
+          
           if (data === '[DONE]') {
             console.log('Received [DONE] signal')
             continue
           }
           
           try {
-            console.log('Parsing JSON data:', data)
+            console.log('Attempting to parse JSON:', data)
             const parsed = JSON.parse(data)
+            console.log('Successfully parsed JSON:', parsed)
+            
             const content = parsed.choices?.[0]?.delta?.content || ''
             console.log('Extracted content:', content)
             
             if (content) {
               accumulatedContent += content
+              console.log('Updated accumulated content:', accumulatedContent)
+              
               setMessages(prev => {
+                console.log('Updating messages with new content')
                 const newMessages = [...prev]
                 const lastMessage = newMessages[newMessages.length - 1]
                 if (lastMessage.type === 'assistant') {
+                  console.log('Previous content:', lastMessage.content)
                   lastMessage.content = accumulatedContent
+                  console.log('Updated content:', lastMessage.content)
                 }
                 return newMessages
               })
