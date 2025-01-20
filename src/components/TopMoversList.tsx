@@ -113,7 +113,7 @@ export default function TopMoversList({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto">
+    <div className="w-full max-w-3xl mx-auto space-y-4">
       <TopMoversHeader
         timeIntervals={timeIntervals}
         selectedInterval={selectedInterval}
