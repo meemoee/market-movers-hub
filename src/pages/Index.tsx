@@ -46,15 +46,7 @@ export default function Index() {
       <Header />
       
       <main className="pt-20 lg:pr-[420px]">
-        <div className="max-w-[1200px] flex">
-          {/* Account Island */}
-          <div className="w-[260px] shrink-0">
-            <div className="fixed w-[260px]">
-              <AccountIsland />
-            </div>
-          </div>
-          
-          {/* Top Movers List */}
+        <div className="max-w-[1200px] mx-auto flex gap-4">
           <div className="flex-1">
             <TopMoversList
               topMovers={allMovers}
@@ -69,6 +61,12 @@ export default function Index() {
               isLoading={isLoading && page === 1}
               isLoadingMore={isFetching && page > 1}
             />
+          </div>
+          
+          <div className="w-[260px] relative">
+            <div className="fixed w-[260px]">
+              <AccountIsland />
+            </div>
           </div>
         </div>
       </main>
