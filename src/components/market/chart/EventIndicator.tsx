@@ -45,7 +45,7 @@ export const EventIndicator = ({
         transform={`translate(${xPosition}, 0)`}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        style={{ pointerEvents: "boundingBox" }}
+        style={{ pointerEvents: "all" }}
         className="group cursor-pointer"
       >
         {/* Vertical line */}
