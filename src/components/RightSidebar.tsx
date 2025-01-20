@@ -7,6 +7,7 @@ export default function RightSidebar() {
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [currentSynthesis, setCurrentSynthesis] = useState('')
 
   interface Market {
     id: string
@@ -28,28 +29,56 @@ export default function RightSidebar() {
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
+    setCurrentSynthesis('')
     
     try {
-      const { data, error } = await supabase.functions.invoke('market-analysis', {
+      const response = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-        }
+        },
+        responseType: 'stream'
       })
 
-      if (error) throw error
+      if (!response.data) throw new Error('No response data')
 
-      if (data.markets?.length > 0) {
-        setMessages(prev => [...prev, { 
-          type: 'markets', 
-          markets: data.markets
-        }])
+      const reader = response.data.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(5))
+              
+              if (data.markets) {
+                setMessages(prev => [...prev, { 
+                  type: 'markets', 
+                  markets: data.markets
+                }])
+              }
+              
+              if (data.type === 'synthesis') {
+                setCurrentSynthesis(prev => prev + (data.content || ''))
+              }
+            } catch (error) {
+              console.error('Error parsing chunk:', error)
+            }
+          }
+        }
       }
 
-      if (data.synthesis) {
+      // After stream ends, add the complete synthesis message
+      if (currentSynthesis) {
         setMessages(prev => [...prev, { 
           type: 'assistant', 
-          content: data.synthesis
+          content: currentSynthesis
         }])
       }
     } catch (error) {
@@ -60,6 +89,7 @@ export default function RightSidebar() {
       }])
     } finally {
       setIsLoading(false)
+      setCurrentSynthesis('')
     }
   }
 
@@ -146,7 +176,9 @@ export default function RightSidebar() {
             ))}
             {isLoading && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">Analyzing markets...</p>
+                <p className="text-white text-sm">
+                  {currentSynthesis || "Analyzing markets..."}
+                </p>
               </div>
             )}
           </div>

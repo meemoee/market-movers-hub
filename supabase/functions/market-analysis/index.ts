@@ -9,6 +9,9 @@ const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive'
 }
 
 const supabase = createClient(SUPABASE_URL!, SUPABASE_ANON_KEY!)
@@ -179,6 +182,10 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders })
   }
 
+  const encoder = new TextEncoder()
+  const streamResponse = new TransformStream()
+  const writer = streamResponse.writable.getWriter()
+  
   try {
     const { message, chatHistory } = await req.json()
 
@@ -203,7 +210,10 @@ serve(async (req) => {
       new Map(allResults.map(item => [item.id, item])).values()
     )
 
-    // Get final synthesis from LLM
+    // Stream the market results first
+    await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'markets', markets: uniqueResults })}\n\n`))
+
+    // Stream synthesis from OpenRouter
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -235,7 +245,7 @@ ${uniqueResults.map(market => `
 Response (2-3 sentences only):`
           }
         ],
-        temperature: 0.2
+        stream: true
       })
     })
 
@@ -243,31 +253,42 @@ Response (2-3 sentences only):`
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    const synthesis = await response.json()
-    
-    return new Response(
-      JSON.stringify({
-        markets: uniqueResults,
-        synthesis: synthesis.choices[0].message.content
-      }),
-      { 
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json'
+    let synthesisText = ''
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6)
+          if (jsonStr === '[DONE]') continue
+
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const content = parsed.choices[0]?.delta?.content || ''
+            synthesisText += content
+            
+            // Stream each content chunk
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'synthesis', content })}\n\n`))
+          } catch (error) {
+            console.error('Error parsing JSON chunk:', error)
+          }
         }
       }
-    )
+    }
+
+    await writer.close()
+    return new Response(streamResponse.readable, { headers: corsHeaders })
   } catch (error) {
     console.error('Error in market-analysis function:', error)
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
+    await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
+    await writer.close()
+    return new Response(streamResponse.readable, { headers: corsHeaders })
   }
 })
