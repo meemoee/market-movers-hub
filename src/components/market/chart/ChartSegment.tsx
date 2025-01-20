@@ -1,12 +1,12 @@
 import { Area } from '@visx/shape';
 import { curveStepAfter } from '@visx/curve';
-import { ScaleInput } from '@visx/scale';
+import { ScaleTime, ScaleLinear } from '@visx/scale';
 import { FillSegment } from './types';
 
 interface ChartSegmentProps {
   segment: FillSegment;
-  timeScale: (n: ScaleInput<number>) => number;
-  priceScale: (n: ScaleInput<number>) => number;
+  timeScale: ScaleTime<number>;
+  priceScale: ScaleLinear<number>;
 }
 
 export const ChartSegment = ({ segment, timeScale, priceScale }: ChartSegmentProps) => {
