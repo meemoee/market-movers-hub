@@ -158,20 +158,7 @@ function Chart({
             height={innerHeight}
           />
 
-          {/* Tooltip overlay */}
-          <rect
-            x={0}
-            y={0}
-            width={innerWidth}
-            height={innerHeight}
-            fill="transparent"
-            onTouchStart={handleTooltip}
-            onTouchMove={handleTooltip}
-            onMouseMove={handleTooltip}
-            onMouseLeave={hideTooltip}
-            style={{ pointerEvents: 'all' }}
-          />
-
+          {/* Price tooltip line */}
           {tooltipData && (
             <g>
               <line
@@ -192,6 +179,19 @@ function Chart({
               />
             </g>
           )}
+
+          {/* Price tooltip overlay */}
+          <rect
+            x={0}
+            y={0}
+            width={innerWidth}
+            height={innerHeight}
+            fill="transparent"
+            onTouchStart={handleTooltip}
+            onTouchMove={handleTooltip}
+            onMouseMove={handleTooltip}
+            onMouseLeave={hideTooltip}
+          />
         </g>
       </svg>
 

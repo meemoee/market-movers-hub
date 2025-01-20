@@ -27,51 +27,30 @@ export function EventIndicator({
     <TooltipProvider>
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
-          <g 
-            transform={`translate(${xPosition}, 0)`}
-            style={{ pointerEvents: 'all' }}
+          <foreignObject
+            x={xPosition - 16}
+            y={height - 32}
+            width={32}
+            height={32}
+            style={{ overflow: 'visible' }}
           >
-            {/* Vertical line */}
-            <line
-              x1={0}
-              x2={0}
-              y1={0}
-              y2={height}
-              stroke="currentColor"
-              strokeWidth={1}
-              className="text-muted-foreground/30"
-              strokeDasharray="2,2"
-            />
-            
-            {/* Icon container at the bottom */}
-            <foreignObject
-              width={32}
-              height={32}
-              x={-16}
-              y={height - 32}
-              className="overflow-visible"
-              style={{ pointerEvents: 'all' }}
-            >
-              <div 
-                className="w-full h-full flex items-center justify-center"
+            <div className="w-full h-full flex items-center justify-center">
+              <button
+                type="button"
+                className="p-1.5 rounded-full bg-background hover:bg-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
               >
-                <button
-                  type="button"
-                  className="p-1.5 rounded-full bg-background hover:bg-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
-                >
-                  <EventIcon
-                    type={event.icon}
-                    size={iconSize}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  />
-                </button>
-              </div>
-            </foreignObject>
-          </g>
+                <EventIcon
+                  type={event.icon}
+                  size={iconSize}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                />
+              </button>
+            </div>
+          </foreignObject>
         </TooltipTrigger>
         <TooltipContent 
           side="top" 
-          className="max-w-[240px] p-3"
+          className="max-w-[240px] p-3 z-50"
           sideOffset={5}
         >
           <div className="space-y-1">
