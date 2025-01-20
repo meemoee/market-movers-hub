@@ -32,26 +32,21 @@ export function MarketStats({
   };
 
   return (
-    <div className="w-full grid grid-cols-[1fr_auto] gap-4">
+    <div className="w-full grid grid-cols-[1fr_200px] gap-4">
       <div>
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
         <div className="mt-1 space-y-2">
-          <div className="flex items-center gap-6">
-            <div className={`flex items-center gap-1 text-sm font-medium
-              ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
-            >
-              {priceChange >= 0 ? (
-                <TrendingUp className="w-4 h-4" />
-              ) : (
-                <TrendingDown className="w-4 h-4" />
-              )}
-              {formatPriceChange(priceChange)}
-            </div>
-            <span className="text-sm text-muted-foreground whitespace-nowrap">
-              24h Volume
-            </span>
+          <div className={`flex items-center gap-1 text-sm font-medium
+            ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+          >
+            {priceChange >= 0 ? (
+              <TrendingUp className="w-4 h-4" />
+            ) : (
+              <TrendingDown className="w-4 h-4" />
+            )}
+            {formatPriceChange(priceChange)}
           </div>
           
           <div className="relative h-[3px] w-full">
@@ -98,13 +93,18 @@ export function MarketStats({
           </div>
         </div>
       </div>
-      <div className="flex flex-col items-end justify-between min-w-[100px]">
-        <div className="text-xl font-semibold">
-          {formatVolume(volume)}
+      <div className="flex flex-col items-end justify-between">
+        <div>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            24h Volume
+          </span>
+          <div className="text-xl font-semibold mt-1">
+            {formatVolume(volume)}
+          </div>
         </div>
         <button
           onClick={onToggleExpand}
-          className="inline-flex justify-center mt-6"
+          className="inline-flex justify-center"
         >
           {isExpanded ? (
             <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
