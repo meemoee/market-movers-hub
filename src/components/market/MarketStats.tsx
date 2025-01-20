@@ -32,9 +32,9 @@ export function MarketStats({
   };
 
   return (
-    <div className="grid grid-cols-[1fr,auto] gap-6 items-center">
+    <div className="grid grid-cols-[1fr,auto] gap-6 items-start">
       <div>
-        <div className="text-3xl font-bold tracking-tight -mt-1">
+        <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
         <div className="space-y-4 mt-3">
