@@ -18,7 +18,7 @@ interface TopMover {
   yes_sub_title?: string;
   no_sub_title?: string;
   description?: string;
-  clobtokenids?: any;
+  clobtokenids?: string[];
   outcomes?: any;
   active: boolean;
   closed: boolean;
@@ -148,7 +148,11 @@ export default function TopMoversList({
                   
                   const mover = topMovers.find(m => m.market_id === market.id);
                   if (!mover || !mover.clobtokenids || mover.clobtokenids.length < 2) {
-                    console.error('No CLOB token IDs found for market:', market.id);
+                    toast({
+                      title: "Error",
+                      description: "Unable to process this market at the moment",
+                      variant: "destructive",
+                    });
                     return;
                   }
 
