@@ -17,12 +17,10 @@ export function MarketStats({
   onToggleExpand
 }: MarketStatsProps) {
   const formatPrice = (price: number): string => {
-    // Convert decimal to percentage with 1 decimal place
     return `${(price * 100).toFixed(1)}%`;
   };
 
   const formatPriceChange = (change: number): string => {
-    // Format price change as percentage points
     const prefix = change >= 0 ? '+' : '';
     return `${prefix}${(change * 100).toFixed(1)} pp`;
   };
@@ -33,10 +31,6 @@ export function MarketStats({
     if (vol >= 1e3) return `$${(vol / 1e3).toFixed(1)}K`;
     return `$${vol.toFixed(0)}`;
   };
-
-  // Calculate the progress value based on the absolute price change
-  // Cap it at 100% for visualization purposes
-  const progressValue = Math.min(Math.abs(priceChange * 100), 100);
 
   return (
     <div className="grid grid-cols-[1fr,auto] gap-6 items-center">
@@ -55,15 +49,49 @@ export function MarketStats({
             )}
             {formatPriceChange(priceChange)}
           </div>
-          <Progress 
-            value={progressValue} 
-            max={100}
-            className={`h-1.5 ${
-              priceChange >= 0 
-                ? 'bg-green-100 [&>div]:bg-green-500' 
-                : 'bg-red-100 [&>div]:bg-red-500'
-            }`}
-          />
+          
+          <div className="relative h-[2px] w-full">
+            {/* Base white line showing current price position */}
+            <div 
+              className="absolute bg-white/50 h-1 top-[-2px]" 
+              style={{ width: `${Math.abs(lastTradedPrice * 100)}%` }}
+            />
+            
+            {/* Price change visualization */}
+            {priceChange >= 0 ? (
+              <>
+                <div 
+                  className="absolute bg-green-900/90 h-1 top-[-2px]" 
+                  style={{ 
+                    width: `${Math.abs(priceChange * 100)}%`,
+                    right: `${100 - Math.abs(lastTradedPrice * 100)}%`
+                  }}
+                />
+                <div 
+                  className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
+                  style={{ 
+                    right: `${100 - Math.abs(lastTradedPrice * 100)}%`
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <div 
+                  className="absolute bg-red-500/50 h-1 top-[-2px]" 
+                  style={{ 
+                    width: `${Math.abs(priceChange * 100)}%`,
+                    left: `${Math.abs(lastTradedPrice * 100)}%`
+                  }}
+                />
+                <div 
+                  className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
+                  style={{ 
+                    left: `${Math.abs(lastTradedPrice * 100)}%`
+                  }}
+                />
+              </>
+            )}
+          </div>
         </div>
       </div>
       <div className="text-right">
