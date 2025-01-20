@@ -113,7 +113,7 @@ export default function TopMoversList({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-4">
+    <div className="w-full max-w-3xl mx-auto">
       <TopMoversHeader
         timeIntervals={timeIntervals}
         selectedInterval={selectedInterval}
@@ -125,7 +125,7 @@ export default function TopMoversList({
       />
 
       <ScrollArea className="h-[calc(100vh-200px)]">
-        <div className="space-y-3 px-1 w-full">
+        <div className="w-full">
           <TopMoversContent
             isLoading={isLoading || false}
             error={error}

@@ -70,9 +70,9 @@ export function TopMoversContent({
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full divide-y divide-border">
       {topMovers.map((mover) => (
-        <div key={mover.market_id} className="w-full mb-3">
+        <div key={mover.market_id}>
           <MarketCard
             market={{
               market_id: mover.market_id,
@@ -99,8 +99,8 @@ export function TopMoversContent({
         <button
           onClick={onLoadMore}
           disabled={isLoadingMore}
-          className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
-            flex items-center justify-center gap-2 disabled:opacity-50 mt-3"
+          className="w-full py-3 bg-accent/50 hover:bg-accent/70 transition-colors
+            flex items-center justify-center gap-2 disabled:opacity-50"
         >
           {isLoadingMore ? (
             <>
