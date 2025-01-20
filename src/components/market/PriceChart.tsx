@@ -169,6 +169,7 @@ function Chart({
             onTouchMove={handleTooltip}
             onMouseMove={handleTooltip}
             onMouseLeave={hideTooltip}
+            style={{ pointerEvents: 'all' }}
           />
 
           {tooltipData && (

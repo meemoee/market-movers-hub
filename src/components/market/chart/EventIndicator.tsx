@@ -27,7 +27,10 @@ export function EventIndicator({
     <TooltipProvider>
       <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
-          <g transform={`translate(${xPosition}, 0)`}>
+          <g 
+            transform={`translate(${xPosition}, 0)`}
+            style={{ pointerEvents: 'bounding-box' }}
+          >
             {/* Vertical line */}
             <line
               x1={0}
@@ -47,13 +50,14 @@ export function EventIndicator({
               x={-16}
               y={height - 32}
               className="overflow-visible"
+              style={{ pointerEvents: 'all' }}
             >
               <div 
                 className="w-full h-full flex items-center justify-center"
               >
                 <button
                   type="button"
-                  className="p-1.5 rounded-full hover:bg-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="p-1.5 rounded-full bg-background hover:bg-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring cursor-pointer"
                 >
                   <EventIcon
                     type={event.icon}
