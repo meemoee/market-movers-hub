@@ -51,7 +51,7 @@ export default function Index() {
             <div className="w-[260px]">
               <AccountIsland />
             </div>
-            <div className="flex-1 ml-8">
+            <div className="flex-1 ml-4">
               <TopMoversList
                 topMovers={allMovers}
                 error={error?.message || null}
