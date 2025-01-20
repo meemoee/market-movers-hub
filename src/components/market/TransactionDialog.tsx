@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { OrderBook } from './OrderBook';
 import { Button } from '../ui/button';
 import { Sheet, SheetContent } from '../ui/sheet';
-import Image from 'next/image';
 
 interface TransactionDialogProps {
   selectedMarket: { id: string; action: 'buy' | 'sell'; clobTokenId: string } | null;
