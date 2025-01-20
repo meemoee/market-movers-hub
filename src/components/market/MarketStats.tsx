@@ -34,7 +34,7 @@ export function MarketStats({
   return (
     <div className="w-full grid grid-cols-[1fr_200px] gap-4 -mt-2">
       <div>
-        <div className="flex flex-col">
+        <div className="flex flex-col pt-1">
           <span className="text-3xl font-bold tracking-tight">
             {formatPrice(lastTradedPrice)}
           </span>
@@ -94,7 +94,7 @@ export function MarketStats({
         </div>
       </div>
       <div className="flex flex-col items-end justify-between">
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-end pt-1">
           <span className="text-xl font-semibold">
             {formatVolume(volume)}
           </span>
