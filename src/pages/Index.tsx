@@ -46,7 +46,7 @@ export default function Index() {
       <Header />
       
       <main className="container mx-auto pt-14 lg:pr-[420px]">
-        <div className="relative flex gap-1 max-w-[1200px] mx-auto">
+        <div className="relative flex max-w-[1200px] mx-auto">
           {/* Left sidebar with AccountIsland */}
           <aside className="w-[260px] relative">
             <div className="sticky top-[72px]">
