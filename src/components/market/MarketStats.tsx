@@ -94,7 +94,7 @@ export function MarketStats({
         </div>
       </div>
       <div className="flex flex-col items-end justify-between">
-        <div className="flex flex-col items-end pt-1">
+        <div className="flex flex-col items-end pt-2">
           <span className="text-xl font-semibold">
             {formatVolume(volume)}
           </span>
