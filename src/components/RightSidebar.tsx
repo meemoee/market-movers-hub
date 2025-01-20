@@ -7,6 +7,7 @@ export default function RightSidebar() {
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [streamingContent, setStreamingContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
 
   interface Message {
@@ -31,13 +32,9 @@ export default function RightSidebar() {
       // Create new AbortController
       abortControllerRef.current = new AbortController()
 
-      // Initialize new assistant message
-      setMessages(prev => [...prev, { type: 'assistant', content: '' }])
-
       // Get the current session
       const { data: { session } } = await supabase.auth.getSession()
       
-      // Use raw fetch with the correct function URL
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/market-analysis`,
         {
@@ -60,56 +57,39 @@ export default function RightSidebar() {
 
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
+      let accumulatedContent = ''
 
       while (reader) {
         const { value, done } = await reader.read()
         if (done) break
 
         const chunk = decoder.decode(value)
-        console.log('Received chunk:', chunk)
-        
         const lines = chunk.split('\n').filter(line => line.trim() !== '')
-        console.log('Split into lines:', lines)
 
         for (const line of lines) {
-          console.log('Processing line:', line)
-          
-          if (!line.startsWith('data: ')) {
-            console.log('Skipping non-data line:', line)
-            continue
-          }
+          if (!line.startsWith('data: ')) continue
           
           const data = line.slice(5).trim()
-          console.log('Extracted data:', data)
+          if (data === '[DONE]') continue
           
-          if (data === '[DONE]') {
-            console.log('Received [DONE] signal')
-            continue
-          }
-
           try {
-            console.log('Attempting to parse JSON:', data)
             const parsed = JSON.parse(data)
-            console.log('Parsed JSON:', parsed)
-            
             const content = parsed.choices?.[0]?.delta?.content || ''
-            console.log('Extracted content:', content)
-            
             if (content) {
-              setMessages(prev => {
-                const newMessages = [...prev]
-                const lastMessage = newMessages[newMessages.length - 1]
-                if (lastMessage.type === 'assistant') {
-                  lastMessage.content = (lastMessage.content || '') + content
-                }
-                return newMessages
-              })
+              accumulatedContent += content
+              setStreamingContent(accumulatedContent)
             }
           } catch (e) {
             console.error('Error parsing SSE data:', e)
           }
         }
       }
+
+      // Add the final message with accumulated content
+      setMessages(prev => [...prev, { 
+        type: 'assistant', 
+        content: accumulatedContent 
+      }])
 
     } catch (error) {
       console.error('Error in chat:', error)
@@ -119,6 +99,7 @@ export default function RightSidebar() {
       }])
     } finally {
       setIsLoading(false)
+      setStreamingContent('')
       abortControllerRef.current = null
     }
   }
@@ -190,7 +171,12 @@ export default function RightSidebar() {
                 <p className="text-white text-sm">{message.content}</p>
               </div>
             ))}
-            {isLoading && (
+            {streamingContent && (
+              <div className="bg-[#2c2e33] p-3 rounded-lg">
+                <p className="text-white text-sm">{streamingContent}</p>
+              </div>
+            )}
+            {isLoading && !streamingContent && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
                 <p className="text-white text-sm">Thinking...</p>
               </div>
