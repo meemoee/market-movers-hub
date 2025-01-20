@@ -14,10 +14,10 @@ function BentoCard({ children, className }: { children: React.ReactNode; classNa
 
 export function MarketStatsBento() {
   return (
-    <div className="w-full mb-4">
+    <div className="w-full mb-4 mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Left side - tall card */}
-        <BentoCard className="md:row-span-2">
+        <BentoCard className="md:row-span-2 bg-gradient-to-br from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 transition-colors">
           <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <DollarSign className="h-4 w-4" />
@@ -44,7 +44,7 @@ export function MarketStatsBento() {
         </BentoCard>
 
         {/* Right side - two cards */}
-        <BentoCard>
+        <BentoCard className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 hover:from-blue-500/20 hover:to-cyan-500/20 transition-colors">
           <div className="flex flex-col">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <TrendingUp className="h-4 w-4" />
@@ -57,7 +57,7 @@ export function MarketStatsBento() {
           </div>
         </BentoCard>
 
-        <BentoCard>
+        <BentoCard className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 transition-colors">
           <div className="flex flex-col">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <Users className="h-4 w-4" />
