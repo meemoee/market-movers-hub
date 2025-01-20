@@ -1,42 +1,76 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import PriceChart from './PriceChart';
+
 interface MarketDetailsProps {
-  description?: string;
   bestBid: number;
   bestAsk: number;
+  description?: string;
   marketId: string;
 }
 
-import { OrderBook } from "./OrderBook";
+export function MarketDetails({
+  bestBid,
+  bestAsk,
+  description,
+  marketId,
+}: MarketDetailsProps) {
+  const [selectedInterval, setSelectedInterval] = useState('1d');
 
-export function MarketDetails({ description, bestBid, bestAsk, marketId }: MarketDetailsProps) {
-  const formatPrice = (price: number): string => {
-    return `${(price * 100).toFixed(1)}%`;
-  };
+  const { data: priceHistory, isLoading } = useQuery({
+    queryKey: ['priceHistory', marketId, selectedInterval],
+    queryFn: async () => {
+      const response = await supabase.functions.invoke<{ t: string; y: number }[]>('price-history', {
+        body: { marketId, interval: selectedInterval }
+      });
+
+      if (response.error) throw response.error;
+      return response.data.map(point => ({
+        time: new Date(point.t).getTime(),
+        price: point.y * 100 // Convert to percentage
+      }));
+    },
+    enabled: !!marketId
+  });
 
   return (
-    <div className="pt-4 border-t border-border space-y-4">
-      {description && (
-        <p className="text-sm text-muted-foreground">
-          {description}
-        </p>
-      )}
-      <div className="grid grid-cols-2 gap-6">
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
         <div>
-          <div className="text-sm text-muted-foreground mb-1">Best Bid</div>
-          <div className="text-lg font-medium text-green-500">
-            {formatPrice(bestBid)}
-          </div>
+          <div className="text-sm text-muted-foreground">Best Bid</div>
+          <div className="text-lg font-semibold">{(bestBid * 100).toFixed(2)}¢</div>
         </div>
         <div>
-          <div className="text-sm text-muted-foreground mb-1">Best Ask</div>
-          <div className="text-lg font-medium text-red-500">
-            {formatPrice(bestAsk)}
-          </div>
+          <div className="text-sm text-muted-foreground">Best Ask</div>
+          <div className="text-lg font-semibold">{(bestAsk * 100).toFixed(2)}¢</div>
         </div>
       </div>
-      
-      <div className="mt-6">
-        <h3 className="text-lg font-semibold mb-4">Live Order Book</h3>
-        <OrderBook marketId={marketId} />
+
+      {description && (
+        <div>
+          <div className="text-sm text-muted-foreground mb-1">Description</div>
+          <div className="text-sm">{description}</div>
+        </div>
+      )}
+
+      <div>
+        <div className="text-sm text-muted-foreground mb-2">Price History</div>
+        {isLoading ? (
+          <div className="h-[300px] flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        ) : priceHistory && priceHistory.length > 0 ? (
+          <PriceChart
+            data={priceHistory}
+            selectedInterval={selectedInterval}
+            onIntervalSelect={setSelectedInterval}
+          />
+        ) : (
+          <div className="h-[300px] flex items-center justify-center text-sm text-muted-foreground">
+            No price history available
+          </div>
+        )}
       </div>
     </div>
   );
