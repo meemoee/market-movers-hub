@@ -52,7 +52,7 @@ export function TransactionDialog({
             {selectedMarket && (
               <>
                 <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 bg-gray-800 rounded-lg" /> {/* Placeholder for image */}
+                  <div className="w-14 h-14 bg-gray-800 rounded-lg" />
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <Button
