@@ -38,8 +38,11 @@ export default function RightSidebar() {
         }
       })
 
-      console.log('Raw response from market-analysis:', response)
-
+      // Log the complete response object
+      console.log('Complete response object:', response)
+      console.log('Response type:', typeof response)
+      console.log('Response constructor:', response?.constructor?.name)
+      
       if (error) {
         console.error('Supabase function error:', error)
         throw error
@@ -53,21 +56,26 @@ export default function RightSidebar() {
       })
 
       if (typeof response === 'string') {
+        console.log('Response is a string, length:', response.length)
         const lines = response.split('\n').filter(line => line.trim() !== '')
         console.log('Split response into lines:', lines)
+        console.log('Number of lines:', lines.length)
         
         let accumulatedContent = ''
         
         for (const line of lines) {
-          console.log('Processing line:', line)
+          console.log('Raw line:', line)
+          console.log('Line type:', typeof line)
+          console.log('Line length:', line.length)
           
           if (!line.startsWith('data: ')) {
-            console.log('Skipping non-data line:', line)
+            console.log('Line does not start with "data: ":', line)
             continue
           }
           
           const data = line.slice(5).trim()
-          console.log('Extracted data:', data)
+          console.log('Extracted data after slice:', data)
+          console.log('Data length:', data.length)
           
           if (data === '[DONE]') {
             console.log('Received [DONE] signal')
@@ -75,19 +83,24 @@ export default function RightSidebar() {
           }
           
           try {
-            console.log('Attempting to parse JSON:', data)
+            console.log('About to parse JSON:', data)
             const parsed = JSON.parse(data)
             console.log('Successfully parsed JSON:', parsed)
+            console.log('Parsed object keys:', Object.keys(parsed))
             
             const content = parsed.choices?.[0]?.delta?.content || ''
             console.log('Extracted content:', content)
+            console.log('Content type:', typeof content)
+            console.log('Content length:', content.length)
             
             if (content) {
               accumulatedContent += content
               console.log('Updated accumulated content:', accumulatedContent)
+              console.log('Accumulated content length:', accumulatedContent.length)
               
               setMessages(prev => {
-                console.log('Updating messages with new content')
+                console.log('Updating messages state')
+                console.log('Current messages:', prev)
                 const newMessages = [...prev]
                 const lastMessage = newMessages[newMessages.length - 1]
                 if (lastMessage.type === 'assistant') {
@@ -99,7 +112,8 @@ export default function RightSidebar() {
               })
             }
           } catch (e) {
-            console.error('Error parsing SSE data:', e, 'Raw data:', data)
+            console.error('Error parsing SSE data:', e)
+            console.error('Failed to parse data:', data)
           }
         }
       } else {
