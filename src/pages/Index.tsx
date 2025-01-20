@@ -46,25 +46,33 @@ export default function Index() {
       <Header />
       
       <main className="pt-20 lg:pr-[420px]">
-        <div className="relative max-w-[1200px] mx-auto px-4">
-          <div className="flex gap-4">
-            <div className="fixed w-[260px]">
-              <AccountIsland />
-            </div>
-            <div className="ml-[276px] flex-1">
-              <TopMoversList
-                topMovers={allMovers}
-                error={error?.message || null}
-                timeIntervals={TIME_INTERVALS}
-                selectedInterval={selectedInterval}
-                onIntervalChange={setSelectedInterval}
-                onLoadMore={handleLoadMore}
-                hasMore={data?.hasMore || false}
-                openMarketsOnly={openMarketsOnly}
-                onOpenMarketsChange={setOpenMarketsOnly}
-                isLoading={isLoading && page === 1}
-                isLoadingMore={isFetching && page > 1}
-              />
+        <div className="flex">
+          {/* Center the content area with max-width */}
+          <div className="flex-1 flex justify-center">
+            <div className="w-full max-w-[1200px] px-4 relative flex gap-4">
+              {/* Account Island - Fixed position relative to the content area */}
+              <div className="w-[260px] shrink-0">
+                <div className="fixed w-[260px]">
+                  <AccountIsland />
+                </div>
+              </div>
+              
+              {/* Top Movers List */}
+              <div className="flex-1">
+                <TopMoversList
+                  topMovers={allMovers}
+                  error={error?.message || null}
+                  timeIntervals={TIME_INTERVALS}
+                  selectedInterval={selectedInterval}
+                  onIntervalChange={setSelectedInterval}
+                  onLoadMore={handleLoadMore}
+                  hasMore={data?.hasMore || false}
+                  openMarketsOnly={openMarketsOnly}
+                  onOpenMarketsChange={setOpenMarketsOnly}
+                  isLoading={isLoading && page === 1}
+                  isLoadingMore={isFetching && page > 1}
+                />
+              </div>
             </div>
           </div>
         </div>
