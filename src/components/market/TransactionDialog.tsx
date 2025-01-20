@@ -56,10 +56,23 @@ export function TransactionDialog({
     if (!selectedMarket) return;
 
     try {
+      // First get the current user's session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "You must be logged in to place orders.",
+        });
+        return;
+      }
+
       const { error } = await supabase
         .from('holdings')
         .insert({
           market_id: selectedMarket.id,
+          user_id: session.user.id,
         });
 
       if (error) throw error;
