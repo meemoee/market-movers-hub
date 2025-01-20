@@ -37,7 +37,7 @@ export function MarketStats({
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
-        <div className="mt-2">
+        <div className="mt-1">
           <div className={`flex items-center gap-1 text-sm font-medium
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
@@ -97,7 +97,7 @@ export function MarketStats({
         <div className="text-xl font-semibold">
           {formatVolume(volume)}
         </div>
-        <div className="text-sm text-muted-foreground mt-2">
+        <div className="text-sm text-muted-foreground mt-1">
           24h Volume
         </div>
         <button
