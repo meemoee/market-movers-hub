@@ -1,115 +1,73 @@
-import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronDown } from 'lucide-react';
+import { formatPercent } from '@/lib/utils';
 
 interface MarketStatsProps {
-  lastTradedPrice: number;
+  price: number;
   priceChange: number;
   volume: number;
   isExpanded: boolean;
   onToggleExpand: () => void;
 }
 
-export function MarketStats({ 
-  lastTradedPrice, 
-  priceChange, 
+export function MarketStats({
+  price,
+  priceChange,
   volume,
   isExpanded,
-  onToggleExpand
+  onToggleExpand,
 }: MarketStatsProps) {
-  const formatPrice = (price: number): string => {
-    return `${(price * 100).toFixed(1)}%`;
-  };
-
-  const formatPriceChange = (change: number): string => {
-    const prefix = change >= 0 ? '+' : '';
-    return `${prefix}${(change * 100).toFixed(1)} pp`;
-  };
-
-  const formatVolume = (vol: number): string => {
-    if (!vol && vol !== 0) return '$0';
-    if (vol >= 1e6) return `$${(vol / 1e6).toFixed(1)}M`;
-    if (vol >= 1e3) return `$${(vol / 1e3).toFixed(1)}K`;
-    return `$${vol.toFixed(0)}`;
-  };
+  const isPositive = priceChange >= 0;
+  const absChange = Math.abs(priceChange);
+  const percentChange = absChange * 100;
 
   return (
-    <div className="grid grid-cols-[1fr,auto] gap-6 items-center">
-      <div>
-        <div className="text-3xl font-bold tracking-tight">
-          {formatPrice(lastTradedPrice)}
-        </div>
-        <div className="space-y-4">
-          <div className={`flex items-center gap-1 text-sm font-medium
-            ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl font-bold">
+            {(price * 100).toFixed(1)}¢
+          </span>
+          <span
+            className={`text-sm font-medium ${
+              isPositive ? 'text-emerald-500' : 'text-red-500'
+            }`}
           >
-            {priceChange >= 0 ? (
-              <TrendingUp className="w-4 h-4" />
-            ) : (
-              <TrendingDown className="w-4 h-4" />
-            )}
-            {formatPriceChange(priceChange)}
-          </div>
-          
-          <div className="relative h-[3px] w-full">
-            {/* Base white line showing current price position */}
-            <div 
-              className="absolute bg-white/50 h-1.5 top-[-3px]" 
-              style={{ width: `${Math.abs(lastTradedPrice * 100)}%` }}
-            />
-            
-            {/* Price change visualization */}
-            {priceChange >= 0 ? (
-              <>
-                <div 
-                  className="absolute bg-green-900/90 h-1.5 top-[-3px]" 
-                  style={{ 
-                    width: `${Math.abs(priceChange * 100)}%`,
-                    right: `${100 - Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-                <div 
-                  className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
-                  style={{ 
-                    right: `${100 - Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-              </>
-            ) : (
-              <>
-                <div 
-                  className="absolute bg-red-500/50 h-1.5 top-[-3px]" 
-                  style={{ 
-                    width: `${Math.abs(priceChange * 100)}%`,
-                    left: `${Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-                <div 
-                  className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
-                  style={{ 
-                    left: `${Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-              </>
-            )}
-          </div>
+            {isPositive ? '+' : '-'}
+            {formatPercent(percentChange)}
+          </span>
         </div>
-      </div>
-      <div className="text-right">
-        <div className="text-xl font-semibold">
-          {formatVolume(volume)}
-        </div>
-        <div className="text-sm text-muted-foreground mt-1">
-          24h Volume
-        </div>
+
         <button
           onClick={onToggleExpand}
-          className="mt-4 inline-flex justify-center"
+          className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-          )}
+          <span>Details</span>
+          <ChevronDown 
+            className={`w-4 h-4 transition-transform duration-500 ease-out ${
+              isExpanded ? 'rotate-180' : 'rotate-0'
+            }`}
+          />
         </button>
+      </div>
+
+      <div className="relative">
+        <div className="absolute inset-0 h-[3px] bg-gradient-to-r from-emerald-500/20 via-transparent to-red-500/20" />
+        <div className="relative h-1.5">
+          <div
+            className={`absolute top-0 h-1.5 ${
+              isPositive ? 'bg-emerald-500' : 'bg-red-500'
+            }`}
+            style={{
+              width: `${Math.min(Math.abs(percentChange), 100)}%`,
+              left: isPositive ? '50%' : `${50 - Math.min(Math.abs(percentChange), 100)}%`,
+            }}
+          />
+          <div className="absolute top-0 left-1/2 h-2.5 w-0.5 -translate-x-1/2 bg-foreground/50" />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>24h Volume: {volume.toLocaleString()} shares</span>
       </div>
     </div>
   );
