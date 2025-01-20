@@ -70,28 +70,26 @@ function Chart({
 
   const { segments } = useChartData(data);
 
-  const handleTooltip = useCallback(
-    (event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
-      const { x } = localPoint(event) || { x: 0 };
-      const xValue = timeScale.invert(x - margin.left);
-      const index = bisectDate(data, xValue.getTime());
-      
-      if (index >= data.length || index < 0) return;
-      
-      const d0 = data[Math.max(0, index - 1)];
-      const d1 = data[Math.min(data.length - 1, index)];
-      
-      if (!d0 || !d1) return;
-      
-      const d = xValue.getTime() - d0.time > d1.time - xValue.getTime() ? d1 : d0;
+  const handleTooltip = useCallback((event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
+    const { x } = localPoint(event) || { x: 0 };
+    const xValue = timeScale.invert(x - margin.left);
+    const index = bisectDate(data, xValue.getTime());
+    
+    if (index >= data.length || index < 0) return;
+    
+    const d0 = data[Math.max(0, index - 1)];
+    const d1 = data[Math.min(data.length - 1, index)];
+    
+    if (!d0 || !d1) return;
+    
+    const d = xValue.getTime() - d0.time > d1.time - xValue.getTime() ? d1 : d0;
 
-      showTooltip({
-        tooltipData: d,
-        tooltipLeft: timeScale(d.time) + margin.left,
-        tooltipTop: priceScale(d.price) + margin.top,
-      });
-    },
-  , [timeScale, priceScale, data, margin, showTooltip]);
+    showTooltip({
+      tooltipData: d,
+      tooltipLeft: timeScale(d.time) + margin.left,
+      tooltipTop: priceScale(d.price) + margin.top,
+    });
+  }, [timeScale, priceScale, data, margin, showTooltip]);
 
   const tooltipDateFormat = useMemo(() => {
     return new Intl.DateTimeFormat('en-US', {
