@@ -40,53 +40,37 @@ export default function RightSidebar() {
       abortControllerRef.current = new AbortController()
 
       console.log('Sending request to market-analysis function...')
-      const { data: response, error } = await supabase.functions.invoke('market-analysis', {
+      const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
       })
 
-      console.log('Response from market-analysis:', response)
-      console.log('Response type:', typeof response)
-      
       if (error) {
         console.error('Supabase function error:', error)
         throw error
       }
 
-      if (!response) {
-        console.error('No response from function')
-        throw new Error('No response from function')
-      }
-
       // Initialize new assistant message
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
-      // Process the response as a stream
-      console.log('Creating ReadableStream from response...')
-      const reader = new ReadableStream({
-        start(controller) {
-          console.log('Stream controller starting, response:', response)
-          const encoder = new TextEncoder()
-          const encoded = encoder.encode(response)
-          console.log('Encoded response:', encoded)
-          controller.enqueue(encoded)
-          controller.close()
-        }
-      }).getReader()
+      // Create a new ReadableStream from the response
+      const response = await fetch(data.url)
+      const reader = response.body?.getReader()
+      
+      if (!reader) {
+        throw new Error('No reader available')
+      }
 
       const decoder = new TextDecoder()
-      console.log('Starting to read stream...')
-
+      
       while (true) {
         const { done, value } = await reader.read()
-        console.log('Stream read result:', { done, value })
-        
         if (done) break
-
+        
         const chunk = decoder.decode(value)
-        console.log('Decoded chunk:', chunk)
+        console.log('Received chunk:', chunk)
         
         setMessages(prev => {
           const newMessages = [...prev]

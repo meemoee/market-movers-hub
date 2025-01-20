@@ -15,6 +15,7 @@ serve(async (req) => {
 
   try {
     const { message, chatHistory } = await req.json()
+    console.log('Received message:', message)
 
     // Make request to OpenRouter API with streaming enabled
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -39,49 +40,39 @@ serve(async (req) => {
       })
     })
 
-    // Set up streaming response
-    let responseStream = new TransformStream()
-    const writer = responseStream.writable.getWriter()
-    const reader = response.body?.getReader()
-
-    // Stream the response
-    if (reader) {
-      ;(async () => {
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) {
-              await writer.close()
-              break
-            }
-            
-            const chunk = new TextDecoder().decode(value)
-            const lines = chunk
-              .split('\n')
-              .filter(line => line.trim() !== '')
-              .map(line => line.replace(/^data: /, ''))
-
-            for (const line of lines) {
-              if (line === '[DONE]') continue
-              try {
-                const json = JSON.parse(line)
-                const content = json.choices[0]?.delta?.content || ''
-                if (content) {
-                  await writer.write(new TextEncoder().encode(content))
-                }
-              } catch (e) {
-                console.error('Error parsing JSON:', e)
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error in streaming:', error)
-          await writer.abort(error)
-        }
-      })()
+    // Get the response body as a ReadableStream
+    const stream = response.body
+    if (!stream) {
+      throw new Error('No response stream available')
     }
 
-    return new Response(responseStream.readable, {
+    // Create a TransformStream to process the response
+    const transformStream = new TransformStream({
+      async transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk)
+        const lines = text.split('\n').filter(line => line.trim() !== '')
+        
+        for (const line of lines) {
+          const cleanLine = line.replace(/^data: /, '')
+          if (cleanLine === '[DONE]') continue
+          
+          try {
+            const parsed = JSON.parse(cleanLine)
+            const content = parsed.choices[0]?.delta?.content || ''
+            if (content) {
+              controller.enqueue(new TextEncoder().encode(content))
+            }
+          } catch (e) {
+            console.error('Error parsing JSON:', e)
+          }
+        }
+      }
+    })
+
+    // Pipe the response through our transform stream
+    const responseStream = stream.pipeThrough(transformStream)
+
+    return new Response(responseStream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
