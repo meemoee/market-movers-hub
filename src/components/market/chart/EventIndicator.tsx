@@ -27,8 +27,9 @@ export const EventIndicator = ({
       <TooltipTrigger asChild>
         <g 
           transform={`translate(${xPosition}, 0)`}
-          className="group cursor-pointer"
-          style={{ pointerEvents: 'bounding-box' }}
+          className="group cursor-pointer relative"
+          style={{ pointerEvents: 'all' }}
+          data-testid="event-indicator"
         >
           {/* Vertical line */}
           <line
@@ -40,11 +41,13 @@ export const EventIndicator = ({
             strokeWidth={1}
             className="text-muted-foreground/30 group-hover:text-muted-foreground/50"
             strokeDasharray="2,2"
+            style={{ pointerEvents: 'none' }}
           />
           
           {/* Icon container */}
           <g 
             transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}
+            style={{ pointerEvents: 'all' }}
           >
             <rect
               width={iconSize + 8}
@@ -55,11 +58,12 @@ export const EventIndicator = ({
               fillOpacity={0.8}
               rx={4}
               className="group-hover:fill-accent transition-colors"
+              style={{ pointerEvents: 'all' }}
             />
             <foreignObject 
               width={iconSize} 
-              height={iconSize} 
-              style={{ pointerEvents: 'none' }}
+              height={iconSize}
+              style={{ pointerEvents: 'all' }}
             >
               <EventIcon
                 type={event.icon}
