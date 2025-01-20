@@ -21,17 +21,17 @@ export function MarketDetails({
   const { data: priceHistory, isLoading } = useQuery({
     queryKey: ['priceHistory', marketId, selectedInterval],
     queryFn: async () => {
-      console.log('Fetching price history for market:', marketId); // Debug log
+      console.log('Fetching price history for market:', marketId);
       const response = await supabase.functions.invoke<{ t: string; y: number }[]>('price-history', {
         body: JSON.stringify({ marketId, interval: selectedInterval })
       });
 
       if (response.error) {
-        console.error('Price history error:', response.error); // Debug log
+        console.error('Price history error:', response.error);
         throw response.error;
       }
       
-      console.log('Price history response:', response.data); // Debug log
+      console.log('Price history response:', response.data);
       return response.data.map(point => ({
         time: new Date(point.t).getTime(),
         price: point.y * 100 // Convert to percentage
@@ -42,24 +42,6 @@ export function MarketDetails({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-sm text-muted-foreground">Best Bid</div>
-          <div className="text-lg font-semibold">{(bestBid * 100).toFixed(2)}¢</div>
-        </div>
-        <div>
-          <div className="text-sm text-muted-foreground">Best Ask</div>
-          <div className="text-lg font-semibold">{(bestAsk * 100).toFixed(2)}¢</div>
-        </div>
-      </div>
-
-      {description && (
-        <div>
-          <div className="text-sm text-muted-foreground mb-1">Description</div>
-          <div className="text-sm">{description}</div>
-        </div>
-      )}
-
       <div>
         <div className="text-sm text-muted-foreground mb-2">Price History</div>
         {isLoading ? (
@@ -78,6 +60,24 @@ export function MarketDetails({
           </div>
         )}
       </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-sm text-muted-foreground">Best Bid</div>
+          <div className="text-lg font-semibold">{(bestBid * 100).toFixed(2)}¢</div>
+        </div>
+        <div>
+          <div className="text-sm text-muted-foreground">Best Ask</div>
+          <div className="text-lg font-semibold">{(bestAsk * 100).toFixed(2)}¢</div>
+        </div>
+      </div>
+
+      {description && (
+        <div>
+          <div className="text-sm text-muted-foreground mb-1">Description</div>
+          <div className="text-sm">{description}</div>
+        </div>
+      )}
     </div>
   );
 }
