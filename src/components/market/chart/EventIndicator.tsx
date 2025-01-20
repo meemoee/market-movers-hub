@@ -21,42 +21,46 @@ export const EventIndicator = ({
   height, 
   iconSize = 16 
 }: EventIndicatorProps) => {
-  const xPosition = timeScale(event.timestamp);
+  const xPosition = timeScale(new Date(event.timestamp).getTime());
   
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div 
-            style={{ 
-              position: 'absolute',
-              left: `${xPosition}px`,
-              top: 0,
-              height: `${height}px`,
-              width: `${iconSize}px`,
-              transform: `translateX(-${iconSize / 2}px)`,
-              cursor: 'pointer',
-              pointerEvents: 'all',
-            }}
-            className="group"
+          <g 
+            transform={`translate(${xPosition}, 0)`}
+            style={{ cursor: 'pointer' }}
           >
             {/* Vertical line */}
-            <div 
-              className="absolute left-1/2 top-0 w-px h-full bg-muted-foreground/30 group-hover:bg-muted-foreground/50 transition-colors"
-              style={{ transform: 'translateX(-0.5px)' }}
+            <line
+              x1={0}
+              x2={0}
+              y1={0}
+              y2={height}
+              stroke="currentColor"
+              strokeWidth={1}
+              className="text-muted-foreground/30 group-hover:text-muted-foreground/50"
+              strokeDasharray="2,2"
             />
             
             {/* Icon container */}
-            <div 
-              className="absolute bottom-1 left-1/2 transform -translate-x-1/2 p-1 rounded-full bg-background/80 backdrop-blur-sm"
-            >
+            <g transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}>
+              <rect
+                width={iconSize + 8}
+                height={iconSize + 8}
+                x={-4}
+                y={-4}
+                fill="hsl(var(--background))"
+                fillOpacity={0.8}
+                rx={4}
+              />
               <EventIcon
                 type={event.icon}
                 size={iconSize}
-                className="text-muted-foreground group-hover:text-foreground transition-colors"
+                className="text-muted-foreground group-hover:text-foreground"
               />
-            </div>
-          </div>
+            </g>
+          </g>
         </TooltipTrigger>
         <TooltipContent 
           side="top" 
