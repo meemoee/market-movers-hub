@@ -39,21 +39,29 @@ export default function RightSidebar() {
       // Create new abort controller for this request
       abortControllerRef.current = new AbortController()
 
-      const { data: stream, error } = await supabase.functions.invoke('market-analysis', {
+      const { data: response, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-        },
-        signal: abortControllerRef.current.signal,
+        }
       })
 
       if (error) throw error
 
+      if (!response) throw new Error('No response from function')
+
       // Initialize new assistant message
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
-      // Process the stream
-      const reader = stream.getReader()
+      // Process the response as a stream
+      const reader = new ReadableStream({
+        start(controller) {
+          const encoder = new TextEncoder()
+          controller.enqueue(encoder.encode(response))
+          controller.close()
+        }
+      }).getReader()
+
       const decoder = new TextDecoder()
 
       while (true) {
