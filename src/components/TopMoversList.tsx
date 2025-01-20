@@ -116,7 +116,7 @@ export default function TopMoversList({
     <div className="w-full max-w-3xl mx-auto space-y-4">
       <div className="h-[calc(100vh-40px)] relative">
         <ScrollArea className="h-full absolute inset-0">
-          <div className="sticky top-4 z-40 -mt-4">
+          <div className="sticky top-4 z-40 -mt-0">
             <TopMoversHeader
               timeIntervals={timeIntervals}
               selectedInterval={selectedInterval}
