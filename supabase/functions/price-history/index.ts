@@ -8,113 +8,6 @@ const KALSHI_API_BASE_URL = Deno.env.get('KALSHI_API_BASE_URL') || 'https://api.
 const KALSHI_EMAIL = Deno.env.get('KALSHI_EMAIL');
 const KALSHI_PASSWORD = Deno.env.get('KALSHI_PASSWORD');
 
-// Type definitions
-interface KalshiToken {
-  token: string | null;
-  userId: string | null;
-  timestamp: number | null;
-}
-
-interface KalshiTokens {
-  elections: KalshiToken;
-}
-
-interface KalshiCandle {
-  end_period_ts: number;
-  yes_ask: {
-    close: string | number;
-  };
-}
-
-interface PriceHistoryPoint {
-  t: number;
-  p: string | number;
-}
-
-// Kalshi auth state
-const kalshiTokens: KalshiTokens = {
-  elections: { token: null, userId: null, timestamp: null }
-};
-
-// Interval mapping configuration
-const intervalMap = {
-  '1d': { duration: 24 * 60 * 60, periodInterval: 1 },
-  '1w': { duration: 7 * 24 * 60 * 60, periodInterval: 60 },
-  '1m': { duration: 30 * 24 * 60 * 60, periodInterval: 60 },
-  '3m': { duration: 90 * 24 * 60 * 60, periodInterval: 60 },
-  '1y': { duration: 365 * 24 * 60 * 60, periodInterval: 1440 },
-  '5y': { duration: 5 * 365 * 24 * 60 * 60, periodInterval: 1440 }
-};
-
-async function authenticateKalshiElections() {
-  try {
-    const response = await fetch(`${KALSHI_API_BASE_URL}/login`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: KALSHI_EMAIL,
-        password: KALSHI_PASSWORD
-      })
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      kalshiTokens.elections = {
-        token: data.token,
-        userId: data.member_id,
-        timestamp: Date.now()
-      };
-      return kalshiTokens.elections;
-    }
-    throw new Error('Elections authentication failed');
-  } catch (error) {
-    console.error('Kalshi elections authentication error:', error);
-    throw error;
-  }
-}
-
-async function refreshKalshiAuth() {
-  if (!kalshiTokens.elections.token || 
-      !kalshiTokens.elections.timestamp || 
-      Date.now() - kalshiTokens.elections.timestamp > 55 * 60 * 1000) {
-    await authenticateKalshiElections();
-  }
-  return kalshiTokens.elections;
-}
-
-async function getKalshiMarketCandlesticks(seriesTicker: string, ticker: string, startTs: number, endTs: number, periodInterval: number) {
-  const { userId, token } = kalshiTokens.elections;
-  if (!userId || !token) {
-    throw new Error('Kalshi authentication required');
-  }
-  
-  try {
-    const response = await fetch(
-      `${KALSHI_API_BASE_URL}/series/${seriesTicker}/markets/${ticker}/candlesticks?start_ts=${startTs}&end_ts=${endTs}&period_interval=${periodInterval}`, 
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `${userId} ${token}`
-        }
-      }
-    );
-    
-    if (response.ok) {
-      const data = await response.json();
-      if (data?.candlesticks?.length > 0) {
-        return data;
-      }
-    }
-    
-    throw new Error(`No candlesticks data returned from ${KALSHI_API_BASE_URL}`);
-  } catch (error) {
-    console.error(`Error fetching candlesticks from ${KALSHI_API_BASE_URL}:`, error);
-    throw error;
-  }
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -122,9 +15,8 @@ serve(async (req) => {
   }
 
   try {
-    const url = new URL(req.url);
-    const marketId = url.searchParams.get('marketId');
-    const interval = url.searchParams.get('interval') || '1d';
+    const { marketId, interval } = await req.json();
+    console.log('Received request for market:', marketId, 'interval:', interval); // Debug log
 
     if (!marketId) {
       return new Response(
@@ -133,10 +25,6 @@ serve(async (req) => {
       );
     }
 
-    const endTs = Math.floor(Date.now() / 1000);
-    const { duration, periodInterval } = intervalMap[interval as keyof typeof intervalMap] || intervalMap['1m'];
-    const startTs = endTs - duration;
-
     // Initialize Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -144,72 +32,75 @@ serve(async (req) => {
     );
 
     // Get market info from database
-    const { data: results, error: dbError } = await supabaseClient
+    const { data: market, error: dbError } = await supabaseClient
       .from('markets')
-      .select('clobtokenids, condid, event_id')
+      .select('clobtokenids')
       .eq('id', marketId)
       .single();
 
-    if (dbError || !results) {
+    if (dbError || !market) {
+      console.error('Database error:', dbError); // Debug log
       return new Response(
         JSON.stringify({ error: 'Market not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const { clobtokenids } = results;
-    let formattedData;
+    // Calculate time range based on interval
+    const endTs = Math.floor(Date.now() / 1000);
+    let startTs = endTs;
+    let periodInterval = 1;
 
-    const isKalshiMarket = marketId.includes('-') && !marketId.startsWith('0x');
-    
-    if (isKalshiMarket) {
-      const seriesTicker = marketId.split('-')[0];
-      await refreshKalshiAuth();
-      
-      const candlesticks = await getKalshiMarketCandlesticks(
-        seriesTicker, 
-        marketId, 
-        startTs, 
-        endTs, 
-        periodInterval
-      );
+    switch (interval) {
+      case '1d':
+        startTs = endTs - (24 * 60 * 60);
+        periodInterval = 1;
+        break;
+      case '1w':
+        startTs = endTs - (7 * 24 * 60 * 60);
+        periodInterval = 60;
+        break;
+      case '1m':
+        startTs = endTs - (30 * 24 * 60 * 60);
+        periodInterval = 60;
+        break;
+      case '3m':
+        startTs = endTs - (90 * 24 * 60 * 60);
+        periodInterval = 60;
+        break;
+      case 'all':
+        startTs = 0; // Get all available data
+        periodInterval = 1440;
+        break;
+      default:
+        startTs = endTs - (24 * 60 * 60);
+        periodInterval = 1;
+    }
 
-      formattedData = candlesticks.candlesticks.map((candle: KalshiCandle) => ({
-        t: new Date(candle.end_period_ts * 1000).toISOString(),
-        y: typeof candle.yes_ask.close === 'number' 
-          ? candle.yes_ask.close / 100 
-          : parseFloat(candle.yes_ask.close) / 100
-      }));
-    } else if (clobtokenids) {
-      const parsedTokenIds = JSON.parse(clobtokenids);
-      if (parsedTokenIds.length === 0) {
-        return new Response(
-          JSON.stringify({ error: 'No clobTokenIds found for this market' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    // Query market prices from database
+    const { data: priceHistory, error: priceError } = await supabaseClient
+      .from('market_prices')
+      .select('timestamp, last_traded_price')
+      .eq('market_id', marketId)
+      .gte('timestamp', new Date(startTs * 1000).toISOString())
+      .lte('timestamp', new Date(endTs * 1000).toISOString())
+      .order('timestamp', { ascending: true });
 
-      const response = await fetch(`${POLY_API_URL}/prices-history?market=${parsedTokenIds[0]}&startTs=${startTs}&endTs=${endTs}&fidelity=${periodInterval}`, {
-        headers: {
-          'Authorization': 'Bearer 0x4929c395a0fd63d0eeb6f851e160642bb01975a808bf6119b07e52f3eca4ee69'
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch from Polymarket API');
-      }
-
-      const data = await response.json();
-      formattedData = data.history.map((point: PriceHistoryPoint) => ({
-        t: new Date(point.t * 1000).toISOString(),
-        y: typeof point.p === 'string' ? parseFloat(point.p) : point.p
-      }));
-    } else {
+    if (priceError) {
+      console.error('Price history error:', priceError); // Debug log
       return new Response(
-        JSON.stringify({ error: 'Invalid market type or missing data' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Failed to fetch price history' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Transform the data
+    const formattedData = priceHistory.map(record => ({
+      t: record.timestamp,
+      y: record.last_traded_price
+    }));
+
+    console.log('Returning price history:', formattedData.length, 'points'); // Debug log
 
     return new Response(
       JSON.stringify(formattedData),
@@ -217,7 +108,7 @@ serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error fetching price history:', error);
+    console.error('Error in price-history function:', error); // Debug log
     return new Response(
       JSON.stringify({ 
         error: 'Error fetching price history',
