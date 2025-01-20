@@ -47,11 +47,26 @@ serve(async (req) => {
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    // Create a TransformStream to modify the stream
+    // Create a TransformStream to decode and process the stream
     const transformStream = new TransformStream({
       transform(chunk, controller) {
-        // Forward the chunk as-is
-        controller.enqueue(chunk)
+        // Convert the chunk to text
+        const text = new TextDecoder().decode(chunk)
+        // Each chunk might contain multiple SSE messages
+        const lines = text.split('\n').filter(line => line.trim() !== '')
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(5).trim()
+            if (data === '[DONE]') continue
+            try {
+              const parsed = JSON.parse(data)
+              controller.enqueue(line + '\n')
+            } catch (e) {
+              console.error('Error parsing SSE data:', e)
+            }
+          }
+        }
       }
     })
 
