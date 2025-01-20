@@ -1,4 +1,4 @@
-import { Button } from "@/components/ui/button";
+import { HoverButton } from "@/components/ui/hover-button";
 
 interface MarketHeaderProps {
   image: string;
@@ -39,11 +39,10 @@ export function MarketHeader({
       <div className="flex-shrink-0 relative h-8 min-w-[140px]">
         <div className="absolute inset-0 rounded-md bg-gradient-to-r from-emerald-500/20 to-red-500/20" />
         <div className="relative h-full flex">
-          <Button
-            variant="ghost"
-            size="sm"
+          <HoverButton
+            variant="buy"
             onClick={onBuy}
-            className="flex-1 h-full rounded-r-none hover:bg-emerald-500/20 text-emerald-600 font-medium flex flex-col items-center justify-center gap-0 px-3"
+            className="flex-1 h-full rounded-r-none flex flex-col items-center justify-center gap-0 px-3"
           >
             <span className="text-xs">Buy</span>
             {bestAsk !== undefined && (
@@ -51,12 +50,11 @@ export function MarketHeader({
                 {(bestAsk * 100).toFixed(1)}¢
               </span>
             )}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
+          </HoverButton>
+          <HoverButton
+            variant="sell"
             onClick={onSell}
-            className="flex-1 h-full rounded-l-none hover:bg-red-500/20 text-red-600 font-medium flex flex-col items-center justify-center gap-0 px-3"
+            className="flex-1 h-full rounded-l-none flex flex-col items-center justify-center gap-0 px-3"
           >
             <span className="text-xs">Sell</span>
             {bestBid !== undefined && (
@@ -64,7 +62,7 @@ export function MarketHeader({
                 {(bestBid * 100).toFixed(1)}¢
               </span>
             )}
-          </Button>
+          </HoverButton>
         </div>
       </div>
     </div>
