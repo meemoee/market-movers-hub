@@ -45,14 +45,19 @@ export function MarketCard({
         outcomes={market.outcomes || ["Yes", "No"]}
       />
       <MarketStats
-        price={market.final_last_traded_price}
+        lastTradedPrice={market.final_last_traded_price}
         priceChange={market.price_change}
         volume={market.volume}
         onToggleExpand={onToggleExpand}
         isExpanded={isExpanded}
       />
       {isExpanded && market.description && (
-        <MarketDetails description={market.description} />
+        <MarketDetails
+          description={market.description}
+          bestBid={market.final_best_bid}
+          bestAsk={market.final_best_ask}
+          marketId={market.market_id}
+        />
       )}
     </div>
   );
