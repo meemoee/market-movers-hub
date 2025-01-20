@@ -32,7 +32,7 @@ export function MarketStats({
   };
 
   return (
-    <div className="w-full grid grid-cols-[1fr_200px] gap-4">
+    <div className="w-full grid grid-cols-[1fr_200px] gap-4 -mt-2">
       <div>
         <div className="flex flex-col">
           <span className="text-3xl font-bold tracking-tight">
