@@ -19,12 +19,19 @@ interface OrderBookData {
   spread: number;
 }
 
+interface TopMover {
+  market_id: string;
+  question: string;
+  image: string;
+}
+
 interface TransactionDialogProps {
   selectedMarket: { 
     id: string; 
     action: 'buy' | 'sell';
     clobTokenId: string;
   } | null;
+  topMover: TopMover | null;
   onClose: () => void;
   orderBookData: OrderBookData | null;
   isOrderBookLoading: boolean;
@@ -34,14 +41,13 @@ interface TransactionDialogProps {
 
 export function TransactionDialog({
   selectedMarket,
+  topMover,
   onClose,
   orderBookData,
   isOrderBookLoading,
   onOrderBookData,
   onConfirm,
 }: TransactionDialogProps) {
-  const topMover = selectedMarket ? topMovers.find(m => m.market_id === selectedMarket.id) : null;
-
   return (
     <AlertDialog 
       open={selectedMarket !== null} 

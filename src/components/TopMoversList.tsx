@@ -116,6 +116,10 @@ export default function TopMoversList({
     });
   };
 
+  const selectedTopMover = selectedMarket 
+    ? topMovers.find(m => m.market_id === selectedMarket.id)
+    : null;
+
   return (
     <div className="w-full max-w-2xl mx-auto">
       <div className="fixed top-14 left-0 right-0 bottom-0">
@@ -201,6 +205,7 @@ export default function TopMoversList({
 
       <TransactionDialog
         selectedMarket={selectedMarket}
+        topMover={selectedTopMover}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
         isOrderBookLoading={isOrderBookLoading}
