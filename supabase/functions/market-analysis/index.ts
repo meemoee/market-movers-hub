@@ -47,52 +47,8 @@ serve(async (req) => {
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    console.log('Creating TransformStream for response processing...')
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        console.log('Processing chunk:', chunk)
-        // Convert the chunk to text
-        const text = new TextDecoder().decode(chunk)
-        console.log('Decoded text:', text)
-        
-        // Each chunk might contain multiple SSE messages
-        const lines = text.split('\n').filter(line => line.trim() !== '')
-        console.log('Split lines:', lines)
-        
-        for (const line of lines) {
-          console.log('Processing line:', line)
-          if (line.startsWith('data: ')) {
-            const data = line.slice(5).trim()
-            console.log('Extracted data:', data)
-            
-            if (data === '[DONE]') {
-              console.log('Received [DONE] signal')
-              continue
-            }
-            
-            try {
-              // Only try to parse lines that start with 'data: '
-              console.log('Attempting to parse JSON:', data)
-              const parsed = JSON.parse(data)
-              console.log('Successfully parsed JSON:', parsed)
-              
-              // Only forward actual content updates
-              if (parsed.choices?.[0]?.delta?.content) {
-                controller.enqueue(line + '\n')
-                console.log('Enqueued line to stream')
-              }
-            } catch (e) {
-              console.error('Error parsing SSE data:', e, 'Raw data:', data)
-            }
-          } else {
-            console.log('Skipping non-data line:', line)
-          }
-        }
-      }
-    })
-
-    console.log('Streaming response back to client...')
-    return new Response(openRouterResponse.body?.pipeThrough(transformStream), {
+    // Return the stream directly without transformation
+    return new Response(openRouterResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
