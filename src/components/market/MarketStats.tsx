@@ -37,8 +37,8 @@ export function MarketStats({
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
-        <div className="space-y-2">
-          <div className={`flex items-center gap-1 text-sm font-medium
+        <div className="mt-1 space-y-2">
+          <div className={`flex items-center gap-1 text-sm font-medium -mt-1
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
             {priceChange >= 0 ? (
