@@ -32,29 +32,19 @@ export default function RightSidebar() {
       // Create new AbortController
       abortControllerRef.current = new AbortController()
 
-      // Get the current session
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/market-analysis`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({
-            message: userMessage,
-            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-          }),
-          signal: abortControllerRef.current.signal
+      const { data, error } = await supabase.functions.invoke('market-analysis', {
+        body: {
+          message: userMessage,
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
-      )
+      })
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+      if (error) {
+        console.error('Supabase function error:', error)
+        throw error
       }
 
+      const response = new Response(data.body)
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let accumulatedContent = ''
