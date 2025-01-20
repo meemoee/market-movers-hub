@@ -23,7 +23,6 @@ const intervals = [
   { label: 'ALL', value: 'all' }
 ];
 
-const bisectDate = bisector<PriceData, number>((d) => d.time).left;
 const formatDate = timeFormat("%b %d");
 
 interface ChartProps {
@@ -76,28 +75,43 @@ function Chart({
 
   const { segments } = useChartData(data);
 
+  const getInterpolatedPrice = useCallback((xValue: number) => {
+    const time = timeScale.invert(xValue).getTime();
+    let leftIndex = 0;
+    let rightIndex = data.length - 1;
+
+    // Find the two closest points
+    for (let i = 0; i < data.length - 1; i++) {
+      if (data[i].time <= time && data[i + 1].time > time) {
+        leftIndex = i;
+        rightIndex = i + 1;
+        break;
+      }
+    }
+
+    // Use step-after interpolation (use the left point's price)
+    return {
+      time,
+      price: data[leftIndex].price
+    };
+  }, [data, timeScale]);
+
   const handleTooltip = useCallback(
     (event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
       const { x } = localPoint(event) || { x: 0 };
-      const xValue = timeScale.invert(x - margin.left);
-      const index = bisectDate(data, xValue.getTime());
+      const xValue = x - margin.left;
       
-      if (index >= data.length || index < 0) return;
+      if (xValue < 0 || xValue > innerWidth) return;
       
-      const d0 = data[Math.max(0, index - 1)];
-      const d1 = data[Math.min(data.length - 1, index)];
-      
-      if (!d0 || !d1) return;
-      
-      const d = xValue.getTime() - d0.time > d1.time - xValue.getTime() ? d1 : d0;
+      const interpolatedPoint = getInterpolatedPrice(xValue);
 
       showTooltip({
-        tooltipData: d,
-        tooltipLeft: timeScale(d.time) + margin.left,
-        tooltipTop: priceScale(d.price) + margin.top,
+        tooltipData: interpolatedPoint,
+        tooltipLeft: x,
+        tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
       });
     },
-    [timeScale, priceScale, data, margin, showTooltip]
+    [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]
   );
 
   const tooltipDateFormat = useMemo(() => {
@@ -206,7 +220,7 @@ function Chart({
               style={{ pointerEvents: 'all' }}
             />
 
-            {/* Event markers - now rendered above the tooltip overlay */}
+            {/* Event markers */}
             <EventMarkers
               events={events}
               timeScale={timeScale}
@@ -216,8 +230,8 @@ function Chart({
             {tooltipData && (
               <g>
                 <line
-                  x1={timeScale(tooltipData.time)}
-                  x2={timeScale(tooltipData.time)}
+                  x1={tooltipLeft - margin.left}
+                  x2={tooltipLeft - margin.left}
                   y1={0}
                   y2={innerHeight}
                   stroke="#4a5568"
@@ -225,7 +239,7 @@ function Chart({
                   pointerEvents="none"
                 />
                 <circle
-                  cx={timeScale(tooltipData.time)}
+                  cx={tooltipLeft - margin.left}
                   cy={priceScale(tooltipData.price)}
                   r={4}
                   fill="#3b82f6"
