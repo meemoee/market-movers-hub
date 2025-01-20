@@ -1,8 +1,8 @@
-import { ChevronDown } from 'lucide-react';
-import { Card } from '../ui/card';
-import { MarketHeader } from './MarketHeader';
-import { MarketStats } from './MarketStats';
-import { MarketDetails } from './MarketDetails';
+import { Card } from "../ui/card";
+import { MarketStats } from "./MarketStats";
+import { MarketHeader } from "./MarketHeader";
+import { MarketDetails } from "./MarketDetails";
+import { Button } from "../ui/button";
 
 interface Market {
   market_id: string;
@@ -37,13 +37,9 @@ export function MarketCard({
     <Card className="overflow-hidden">
       <div className="p-4">
         <MarketHeader
-          image={market.image}
           question={market.question}
+          image={market.image}
           yesSubTitle={market.yes_sub_title}
-          bestBid={market.final_best_bid}
-          bestAsk={market.final_best_ask}
-          onBuy={onBuy}
-          onSell={onSell}
         />
 
         <div className="mt-4">
@@ -54,6 +50,22 @@ export function MarketCard({
             isExpanded={isExpanded}
             onToggleExpand={onToggleExpand}
           />
+        </div>
+
+        <div className="mt-4 flex items-center gap-2">
+          <Button
+            onClick={onBuy}
+            className="flex-1 bg-emerald-500 hover:bg-emerald-600"
+          >
+            Buy
+          </Button>
+          <Button
+            onClick={onSell}
+            variant="destructive"
+            className="flex-1"
+          >
+            Sell
+          </Button>
         </div>
       </div>
 

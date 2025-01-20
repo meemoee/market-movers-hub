@@ -33,7 +33,7 @@ export function MarketStats({
             }`}
           >
             {isPositive ? '+' : '-'}
-            {formatPercent(percentChange)}
+            {formatPercent(percentChange / 100)}
           </span>
         </div>
 
