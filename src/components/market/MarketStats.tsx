@@ -38,7 +38,7 @@ export function MarketStats({
           <span className="text-3xl font-bold tracking-tight">
             {formatPrice(lastTradedPrice)}
           </span>
-          <span className={`text-sm font-medium flex items-center gap-1
+          <span className={`text-sm font-medium flex items-center gap-1 mb-2
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
             {priceChange >= 0 ? (
