@@ -8,6 +8,7 @@ import { Card } from "./ui/card";
 import { useNavigate } from "react-router-dom";
 import { AccountAvatar } from "./account/AccountAvatar";
 import { AccountBalance } from "./account/AccountBalance";
+import { AccountHoldings } from "./account/AccountHoldings";
 
 export default function AccountIsland() {
   const [session, setSession] = useState<any>(null);
@@ -105,6 +106,11 @@ export default function AccountIsland() {
             onAddBalance={() => setBalance(b => (b ?? 0) + 100)}
             onRemoveBalance={() => setBalance(b => Math.max(0, (b ?? 0) - 100))}
           />
+
+          <div className="space-y-3">
+            <h3 className="text-lg font-semibold">Holdings</h3>
+            <AccountHoldings />
+          </div>
 
           <Button
             onClick={handleSignOut}

@@ -42,6 +42,42 @@ export type Database = {
         }
         Relationships: []
       }
+      holdings: {
+        Row: {
+          created_at: string
+          id: string
+          market_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          market_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          market_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "holdings_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "holdings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       market_prices: {
         Row: {
           best_ask: number | null

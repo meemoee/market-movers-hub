@@ -10,6 +10,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { LiveOrderBook } from './LiveOrderBook';
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -48,6 +50,36 @@ export function TransactionDialog({
   onOrderBookData,
   onConfirm,
 }: TransactionDialogProps) {
+  const { toast } = useToast();
+
+  const handleConfirm = async () => {
+    if (!selectedMarket) return;
+
+    try {
+      const { error } = await supabase
+        .from('holdings')
+        .insert({
+          market_id: selectedMarket.id,
+        });
+
+      if (error) throw error;
+      
+      toast({
+        title: "Order confirmed",
+        description: "Your order has been placed successfully.",
+      });
+      
+      onConfirm();
+    } catch (error: any) {
+      console.error('Error storing holding:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to place your order. Please try again.",
+      });
+    }
+  };
+
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
@@ -137,7 +169,7 @@ export function TransactionDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Cancel</AlertDialogCancel>
           <AlertDialogAction
-            onClick={onConfirm}
+            onClick={handleConfirm}
             disabled={!orderBookData || isOrderBookLoading}
             className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
           >
