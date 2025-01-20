@@ -94,13 +94,13 @@ export function MarketStats({
         </div>
       </div>
       <div className="flex flex-col items-end justify-between">
-        <div>
+        <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground whitespace-nowrap">
-            24h Volume
+            24h Volume:
           </span>
-          <div className="text-xl font-semibold mt-1">
+          <span className="text-xl font-semibold">
             {formatVolume(volume)}
-          </div>
+          </span>
         </div>
         <button
           onClick={onToggleExpand}
