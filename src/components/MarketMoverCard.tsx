@@ -17,9 +17,9 @@ export default function MarketMoverCard({ title, price, change, volume }: Market
       <div className="flex justify-between items-start mb-2">
         <h3 className="font-medium text-sm line-clamp-2 flex-1">{title}</h3>
         {isPositive ? (
-          <ArrowUpCircle className="text-[#32CD80] ml-2 flex-shrink-0" size={20} />
+          <ArrowUpCircle className="text-green-500 ml-2 flex-shrink-0" size={20} />
         ) : (
-          <ArrowDownCircle className="text-[#CD327F] ml-2 flex-shrink-0" size={20} />
+          <ArrowDownCircle className="text-red-500 ml-2 flex-shrink-0" size={20} />
         )}
       </div>
       
@@ -30,7 +30,7 @@ export default function MarketMoverCard({ title, price, change, volume }: Market
         </div>
         <div>
           <p className="text-muted-foreground">Change</p>
-          <p className={`font-medium ${isPositive ? "text-[#32CD80]" : "text-[#CD327F]"}`}>
+          <p className={`font-medium ${isPositive ? "text-green-500" : "text-red-500"}`}>
             {isPositive ? "+" : ""}{changePercentage.toFixed(1)} pp
           </p>
         </div>

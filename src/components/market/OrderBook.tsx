@@ -115,7 +115,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
             .slice(0, 5)
             .map(([price, size]) => (
               <div key={price} className="flex justify-between text-sm">
-                <span className="text-[#32CD80]">{formatPrice(parseFloat(price))}</span>
+                <span className="text-green-500">{formatPrice(parseFloat(price))}</span>
                 <span>{formatSize(size)}</span>
               </div>
             ))}
@@ -130,7 +130,7 @@ export function OrderBook({ marketId }: OrderBookProps) {
             .slice(0, 5)
             .map(([price, size]) => (
               <div key={price} className="flex justify-between text-sm">
-                <span className="text-[#CD327F]">{formatPrice(parseFloat(price))}</span>
+                <span className="text-red-500">{formatPrice(parseFloat(price))}</span>
                 <span>{formatSize(size)}</span>
               </div>
             ))}
@@ -141,13 +141,13 @@ export function OrderBook({ marketId }: OrderBookProps) {
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">Best Bid</p>
-            <p className="font-medium text-[#32CD80]">
+            <p className="font-medium text-green-500">
               {formatPrice(orderBook.best_bid)}
             </p>
           </div>
           <div>
             <p className="text-muted-foreground">Best Ask</p>
-            <p className="font-medium text-[#CD327F]">
+            <p className="font-medium text-red-500">
               {formatPrice(orderBook.best_ask)}
             </p>
           </div>
