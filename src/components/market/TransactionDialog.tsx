@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { OrderBook } from './OrderBook';
 import { Button } from '../ui/button';
-import { Dialog, DialogContent } from '../ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 import { LiveOrderBook } from './LiveOrderBook';
+import { Loader2 } from 'lucide-react';
 
 interface TransactionDialogProps {
   selectedMarket: { id: string; action: 'buy' | 'sell'; clobTokenId: string } | null;
@@ -28,53 +29,6 @@ export function TransactionDialog({
   onConfirm,
 }: TransactionDialogProps) {
   const [amount, setAmount] = useState('1');
-  const [balancePercentage, setBalancePercentage] = useState(1); // 1% default
-  const [takeProfitEnabled, setTakeProfitEnabled] = useState(false);
-  const [stopLossEnabled, setStopLossEnabled] = useState(false);
-  const [takeProfitPrice, setTakeProfitPrice] = useState(0.75);
-  const [stopLossPrice, setStopLossPrice] = useState(0.25);
-
-  const interpolateColor = (percentage: number): string => {
-    const colors = [
-      { point: 0, color: '#1B5E20' },   // Deep Green
-      { point: 15, color: '#4CAF50' },  // Light Green
-      { point: 30, color: '#FFC107' },  // Yellow
-      { point: 45, color: '#FF9800' },  // Light Orange
-      { point: 60, color: '#F44336' }   // Red
-    ];
-    
-    let startColor = colors[0];
-    let endColor = colors[colors.length - 1];
-    
-    for (let i = 0; i < colors.length - 1; i++) {
-      if (percentage >= colors[i].point && percentage <= colors[i + 1].point) {
-        startColor = colors[i];
-        endColor = colors[i + 1];
-        break;
-      }
-    }
-    
-    const range = endColor.point - startColor.point;
-    const factor = range === 0 ? 1 : (percentage - startColor.point) / range;
-    
-    const start = {
-      r: parseInt(startColor.color.slice(1, 3), 16),
-      g: parseInt(startColor.color.slice(3, 5), 16),
-      b: parseInt(startColor.color.slice(5, 7), 16)
-    };
-    
-    const end = {
-      r: parseInt(endColor.color.slice(1, 3), 16),
-      g: parseInt(endColor.color.slice(3, 5), 16),
-      b: parseInt(endColor.color.slice(5, 7), 16)
-    };
-    
-    const r = Math.round(start.r + (end.r - start.r) * factor);
-    const g = Math.round(start.g + (end.g - start.g) * factor);
-    const b = Math.round(start.b + (end.b - start.b) * factor);
-    
-    return `rgb(${r}, ${g}, ${b})`;
-  };
 
   const price = selectedMarket?.action === 'buy' 
     ? orderBookData?.best_ask || 0 
@@ -85,32 +39,13 @@ export function TransactionDialog({
   return (
     <Dialog open={!!selectedMarket} onOpenChange={() => onClose()}>
       <DialogContent className="bg-[#1a1b1e] border-none max-w-[500px] max-h-[90vh] overflow-y-auto">
+        <DialogTitle className="text-xl font-bold">
+          {selectedMarket?.action === 'buy' ? 'Buy' : 'Sell'} Order
+        </DialogTitle>
+        
         <div className="space-y-6">
           {selectedMarket && (
             <>
-              <div className="flex items-start gap-4">
-                <div className="w-14 h-14 bg-gray-800 rounded-lg" />
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Button
-                      variant={selectedMarket.action === 'buy' ? 'default' : 'outline'}
-                      className={selectedMarket.action === 'buy' ? 'bg-green-600' : ''}
-                      size="sm"
-                    >
-                      Buy
-                    </Button>
-                    <Button
-                      variant={selectedMarket.action === 'sell' ? 'default' : 'outline'}
-                      className={selectedMarket.action === 'sell' ? 'bg-red-600' : ''}
-                      size="sm"
-                    >
-                      Sell
-                    </Button>
-                  </div>
-                  <h3 className="font-bold text-xl">Market Order</h3>
-                </div>
-              </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-sm text-gray-400">Amount</label>
