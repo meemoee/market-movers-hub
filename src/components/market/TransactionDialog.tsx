@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { OrderBook } from './OrderBook';
 import { Button } from '../ui/button';
-import { Sheet, SheetContent } from '../ui/sheet';
+import { Dialog, DialogContent } from '../ui/dialog';
 
 interface TransactionDialogProps {
   selectedMarket: { id: string; action: 'buy' | 'sell'; clobTokenId: string } | null;
@@ -33,7 +33,6 @@ export function TransactionDialog({
   const [takeProfitPrice, setTakeProfitPrice] = useState(0.75);
   const [stopLossPrice, setStopLossPrice] = useState(0.25);
 
-  // Color interpolation helper
   const interpolateColor = (percentage: number): string => {
     const colors = [
       { point: 0, color: '#1B5E20' },   // Deep Green
@@ -83,8 +82,8 @@ export function TransactionDialog({
   const totalCost = Number(amount) * price;
 
   return (
-    <Sheet open={!!selectedMarket} onOpenChange={() => onClose()}>
-      <SheetContent className="bg-[#1a1b1e] border-none">
+    <Dialog open={!!selectedMarket} onOpenChange={() => onClose()}>
+      <DialogContent className="bg-[#1a1b1e] border-none max-w-[500px] max-h-[90vh] overflow-y-auto">
         <div className="space-y-6">
           {selectedMarket && (
             <>
@@ -186,7 +185,7 @@ export function TransactionDialog({
             </>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
