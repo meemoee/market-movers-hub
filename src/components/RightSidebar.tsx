@@ -1,6 +1,7 @@
 import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
+import ReactMarkdown from 'react-markdown'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
@@ -24,12 +25,10 @@ export default function RightSidebar() {
     setChatMessage('')
     
     try {
-      // Cancel any ongoing stream
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
 
-      // Create new AbortController
       abortControllerRef.current = new AbortController()
 
       console.log('Sending request to market-analysis function...')
@@ -49,7 +48,6 @@ export default function RightSidebar() {
       
       let accumulatedContent = ''
       
-      // Create a new ReadableStream from the response body
       const stream = new ReadableStream({
         start(controller) {
           const textDecoder = new TextDecoder()
@@ -106,7 +104,6 @@ export default function RightSidebar() {
         if (done) break
       }
 
-      // After stream is complete, add the final message
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         content: accumulatedContent 
@@ -189,12 +186,20 @@ export default function RightSidebar() {
           <div className="space-y-4 mb-20">
             {messages.map((message, index) => (
               <div key={index} className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">{message.content}</p>
+                {message.type === 'user' ? (
+                  <p className="text-white text-sm">{message.content}</p>
+                ) : (
+                  <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                    {message.content || ''}
+                  </ReactMarkdown>
+                )}
               </div>
             ))}
             {streamingContent && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">{streamingContent}</p>
+                <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                  {streamingContent}
+                </ReactMarkdown>
               </div>
             )}
             {isLoading && !streamingContent && (
