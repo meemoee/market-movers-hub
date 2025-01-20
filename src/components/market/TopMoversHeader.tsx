@@ -26,7 +26,7 @@ export function TopMoversHeader({
   setIsTimeIntervalDropdownOpen,
 }: TopMoversHeaderProps) {
   return (
-    <div className="sticky top-14 z-40 -mt-[5px]">
+    <div className="sticky top-14 z-40 -mt-[25px]">
       <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-sm p-4 w-full">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
