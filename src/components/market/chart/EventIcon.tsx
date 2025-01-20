@@ -1,4 +1,4 @@
-import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown, Calendar, LucideIcon } from 'lucide-react';
+import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown, LucideIcon } from 'lucide-react';
 
 const iconMap: Record<string, LucideIcon> = {
   info: Info,
@@ -7,7 +7,6 @@ const iconMap: Record<string, LucideIcon> = {
   error: XCircle,
   up: ArrowUp,
   down: ArrowDown,
-  calendar: Calendar,
 };
 
 interface EventIconProps {
@@ -17,6 +16,6 @@ interface EventIconProps {
 }
 
 export function EventIcon({ type, size = 16, className }: EventIconProps) {
-  const IconComponent = iconMap[type.toLowerCase()] || Info;
+  const IconComponent = iconMap[type] || Info;
   return <IconComponent size={size} className={className} />;
 }

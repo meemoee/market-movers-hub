@@ -15,39 +15,67 @@ interface EventIndicatorProps {
   iconSize?: number;
 }
 
-export function EventIndicator({ 
+export const EventIndicator = ({ 
   event, 
   timeScale, 
   height, 
   iconSize = 16 
-}: EventIndicatorProps) {
-  const xPosition = timeScale(event.timestamp);
+}: EventIndicatorProps) => {
+  const xPosition = timeScale(new Date(event.timestamp).getTime());
   
   return (
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div 
-            style={{ 
-              position: 'absolute',
-              left: `${xPosition - 16}px`,
-              top: `${height - 32}px`,
-              width: '32px',
-              height: '32px',
-              zIndex: 50
-            }}
+          <g 
+            transform={`translate(${xPosition}, 0)`}
+            style={{ cursor: 'pointer' }}
+            className="group"
           >
-            <button
-              type="button"
-              className="w-full h-full p-1.5 rounded-full bg-background hover:bg-accent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group"
+            {/* Interactive hover area */}
+            <rect
+              x={-10}
+              y={0}
+              width={20}
+              height={height}
+              fill="transparent"
+              style={{ pointerEvents: 'all' }}
+            />
+            
+            {/* Vertical line */}
+            <line
+              x1={0}
+              x2={0}
+              y1={0}
+              y2={height}
+              stroke="currentColor"
+              strokeWidth={1}
+              className="text-muted-foreground/30 group-hover:text-muted-foreground/50"
+              strokeDasharray="2,2"
+              style={{ pointerEvents: 'none' }}
+            />
+            
+            {/* Icon container */}
+            <g 
+              transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}
+              style={{ pointerEvents: 'none' }}
             >
+              <rect
+                width={iconSize + 8}
+                height={iconSize + 8}
+                x={-4}
+                y={-4}
+                fill="hsl(var(--background))"
+                fillOpacity={0.8}
+                rx={4}
+              />
               <EventIcon
                 type={event.icon}
                 size={iconSize}
-                className="text-muted-foreground group-hover:text-foreground transition-colors"
+                className="text-muted-foreground group-hover:text-foreground"
               />
-            </button>
-          </div>
+            </g>
+          </g>
         </TooltipTrigger>
         <TooltipContent 
           side="top" 
@@ -64,4 +92,4 @@ export function EventIndicator({
       </Tooltip>
     </TooltipProvider>
   );
-}
+};
