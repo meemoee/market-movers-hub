@@ -9,8 +9,10 @@ interface EventMarkersProps {
 }
 
 export function EventMarkers({ events, timeScale, height }: EventMarkersProps) {
+  if (!events?.length) return null;
+  
   return (
-    <g className="event-markers">
+    <g className="event-markers pointer-events-auto">
       {events.map((event) => (
         <EventIndicator
           key={event.id}

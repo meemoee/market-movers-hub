@@ -25,7 +25,7 @@ export function EventIndicator({
   
   return (
     <TooltipProvider>
-      <Tooltip>
+      <Tooltip delayDuration={0}>
         <TooltipTrigger asChild>
           <g transform={`translate(${xPosition}, 0)`}>
             {/* Vertical line */}
@@ -40,29 +40,29 @@ export function EventIndicator({
               strokeDasharray="2,2"
             />
             
-            {/* Interactive area */}
-            <g transform={`translate(0, ${height - 24})`}>
-              <foreignObject
-                width={32}
-                height={32}
-                x={-16}
-                y={-16}
-                style={{ overflow: 'visible' }}
+            {/* Icon container at the bottom */}
+            <foreignObject
+              width={32}
+              height={32}
+              x={-16}
+              y={height - 32}
+              className="overflow-visible"
+            >
+              <div 
+                className="w-full h-full flex items-center justify-center"
               >
-                <div 
-                  className="w-full h-full flex items-center justify-center cursor-pointer"
-                  style={{ touchAction: 'none' }}
+                <button
+                  type="button"
+                  className="p-1.5 rounded-full hover:bg-accent/80 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <div className="p-2 rounded-full hover:bg-accent/80 transition-colors">
-                    <EventIcon
-                      type={event.icon}
-                      size={iconSize}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    />
-                  </div>
-                </div>
-              </foreignObject>
-            </g>
+                  <EventIcon
+                    type={event.icon}
+                    size={iconSize}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                  />
+                </button>
+              </div>
+            </foreignObject>
           </g>
         </TooltipTrigger>
         <TooltipContent 
