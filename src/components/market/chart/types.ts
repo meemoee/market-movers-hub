@@ -13,3 +13,12 @@ export interface FillSegment {
   data: PriceData[];
   type: 'above' | 'below';
 }
+
+export interface MarketEvent {
+  id: string;
+  event_type: string;
+  title: string;
+  description?: string;
+  timestamp: number;
+  icon: string;
+}

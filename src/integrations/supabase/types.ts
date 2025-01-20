@@ -78,6 +78,50 @@ export type Database = {
           },
         ]
       }
+      market_events: {
+        Row: {
+          created_at: string
+          description: string | null
+          event_type: string
+          icon: string
+          id: string
+          market_id: string
+          timestamp: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          event_type: string
+          icon: string
+          id?: string
+          market_id: string
+          timestamp: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          event_type?: string
+          icon?: string
+          id?: string
+          market_id?: string
+          timestamp?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_events_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       market_prices: {
         Row: {
           best_ask: number | null

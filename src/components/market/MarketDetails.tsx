@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
+import type { MarketEvent } from './chart/types';
 
 interface MarketDetailsProps {
   bestBid: number;
@@ -18,7 +19,7 @@ export function MarketDetails({
 }: MarketDetailsProps) {
   const [selectedInterval, setSelectedInterval] = useState('1d');
 
-  const { data: priceHistory, isLoading } = useQuery({
+  const { data: priceHistory, isLoading: isPriceLoading } = useQuery({
     queryKey: ['priceHistory', marketId, selectedInterval],
     queryFn: async () => {
       console.log('Fetching price history for market:', marketId);
@@ -34,11 +35,32 @@ export function MarketDetails({
       console.log('Price history response:', response.data);
       return response.data.map(point => ({
         time: new Date(point.t).getTime(),
-        price: point.y * 100 // Convert to percentage
+        price: point.y * 100
       }));
     },
     enabled: !!marketId
   });
+
+  const { data: marketEvents, isLoading: isEventsLoading } = useQuery({
+    queryKey: ['marketEvents', marketId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('market_events')
+        .select('*')
+        .eq('market_id', marketId)
+        .order('timestamp', { ascending: true });
+
+      if (error) throw error;
+
+      return data.map(event => ({
+        ...event,
+        timestamp: new Date(event.timestamp).getTime()
+      }));
+    },
+    enabled: !!marketId
+  });
+
+  const isLoading = isPriceLoading || isEventsLoading;
 
   return (
     <div className="space-y-4">
@@ -51,6 +73,7 @@ export function MarketDetails({
         ) : priceHistory && priceHistory.length > 0 ? (
           <PriceChart
             data={priceHistory}
+            events={marketEvents || []}
             selectedInterval={selectedInterval}
             onIntervalSelect={setSelectedInterval}
           />

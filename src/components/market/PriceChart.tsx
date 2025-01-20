@@ -10,9 +10,9 @@ import { timeFormat } from 'd3-time-format';
 import { curveStepAfter } from '@visx/curve';
 import { AxisLeft, AxisBottom } from '@visx/axis';
 import { ChartSegment } from './chart/ChartSegment';
+import { EventIndicator } from './chart/EventIndicator';
 import { useChartData } from './chart/useChartData';
-import type { PriceData, ChartDimensions } from './chart/types';
-import type { ScaleTime, ScaleLinear } from 'd3-scale';
+import type { PriceData, MarketEvent } from './chart/types';
 
 const intervals = [
   { label: '1D', value: '1d' },
@@ -25,17 +25,21 @@ const intervals = [
 const bisectDate = bisector<PriceData, number>((d) => d.time).left;
 const formatDate = timeFormat("%b %d");
 
+interface ChartProps {
+  data: PriceData[];
+  events: MarketEvent[];
+  width: number;
+  height: number;
+  margin?: { top: number; right: number; bottom: number; left: number };
+}
+
 function Chart({ 
   data, 
+  events,
   width, 
   height, 
   margin = { top: 20, right: 30, bottom: 30, left: 40 } 
-}: { 
-  data: PriceData[]; 
-  width: number; 
-  height: number;
-  margin?: ChartDimensions['margin'];
-}) {
+}: ChartProps) {
   const {
     showTooltip,
     hideTooltip,
@@ -149,6 +153,16 @@ function Chart({
             curve={curveStepAfter}
           />
 
+          {/* Event indicators */}
+          {events.map((event) => (
+            <EventIndicator
+              key={event.id}
+              event={event}
+              timeScale={timeScale}
+              height={innerHeight}
+            />
+          ))}
+
           <AxisLeft
             scale={priceScale}
             tickValues={[0, 25, 50, 75, 100]}
@@ -247,12 +261,14 @@ function Chart({
 
 interface PriceChartProps {
   data: PriceData[];
+  events: MarketEvent[];
   selectedInterval: string;
   onIntervalSelect?: (interval: string) => void;
 }
 
 export default function PriceChart({ 
   data, 
+  events,
   selectedInterval, 
   onIntervalSelect 
 }: PriceChartProps) {
@@ -270,6 +286,7 @@ export default function PriceChart({
           {({ width, height }) => (
             <Chart
               data={normalizedData}
+              events={events}
               width={width}
               height={height}
             />
