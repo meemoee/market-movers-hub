@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { OrderBook } from './OrderBook';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent } from '../ui/dialog';
+import { LiveOrderBook } from './LiveOrderBook';
 
 interface TransactionDialogProps {
   selectedMarket: { id: string; action: 'buy' | 'sell'; clobTokenId: string } | null;
@@ -110,77 +111,61 @@ export function TransactionDialog({
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-gray-400">Balance Percentage</label>
+                  <label className="text-sm text-gray-400">Amount</label>
                   <input
-                    type="range"
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full p-2 bg-[#2a2b2e] rounded mt-1 text-center"
                     min="0"
-                    max="100"
-                    value={balancePercentage}
-                    onChange={(e) => setBalancePercentage(Number(e.target.value))}
-                    className="w-full h-2 bg-[#2a2b2e] rounded-lg appearance-none cursor-pointer mt-2"
                   />
-                  <div className="flex justify-between text-xs text-gray-400 mt-1">
-                    <span>0%</span>
-                    <span>50%</span>
-                    <span>100%</span>
-                  </div>
-                  <div className="text-sm mt-2 text-center" style={{ color: interpolateColor(balancePercentage) }}>
-                    Using {balancePercentage}% of balance
-                  </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm text-gray-400">Amount</label>
-                    <input
-                      type="number"
-                      value={amount}
-                      onChange={(e) => setAmount(e.target.value)}
-                      className="w-full p-2 bg-[#2a2b2e] rounded mt-1 text-center"
-                      min="0"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm text-gray-400">Price (%)</label>
-                    <input
-                      type="number"
-                      value={(price * 100).toFixed(1)}
-                      readOnly
-                      className="w-full p-2 bg-[#2a2b2e] rounded mt-1 text-center"
-                    />
-                  </div>
+                <div>
+                  <label className="text-sm text-gray-400">Price (%)</label>
+                  <input
+                    type="number"
+                    value={(price * 100).toFixed(1)}
+                    readOnly
+                    className="w-full p-2 bg-[#2a2b2e] rounded mt-1 text-center"
+                  />
                 </div>
+              </div>
 
-                <div className="text-center">
-                  <div className="text-xl font-bold">
-                    Total: ${totalCost.toFixed(2)}
-                  </div>
-                  <div className="text-sm text-gray-400 mt-1">
-                    MARKET ORDER
-                  </div>
+              <div className="text-center">
+                <div className="text-xl font-bold">
+                  Total: ${totalCost.toFixed(2)}
                 </div>
-
-                {!isOrderBookLoading && (
-                  <OrderBook marketId={selectedMarket.id} />
-                )}
-
-                <div className="flex gap-4">
-                  <Button
-                    onClick={onConfirm}
-                    className="flex-1 bg-green-600 hover:bg-green-700"
-                  >
-                    Confirm
-                  </Button>
-                  <Button
-                    onClick={onClose}
-                    variant="destructive"
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
+                <div className="text-sm text-gray-400 mt-1">
+                  MARKET ORDER
                 </div>
+              </div>
+
+              {!isOrderBookLoading && (
+                <OrderBook marketId={selectedMarket.id} />
+              )}
+
+              <LiveOrderBook
+                onOrderBookData={onOrderBookData}
+                isLoading={isOrderBookLoading}
+                clobTokenId={selectedMarket.clobTokenId}
+              />
+
+              <div className="flex gap-4">
+                <Button
+                  onClick={onConfirm}
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                >
+                  Confirm
+                </Button>
+                <Button
+                  onClick={onClose}
+                  variant="destructive"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
               </div>
             </>
           )}
