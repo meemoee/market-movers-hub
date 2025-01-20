@@ -28,7 +28,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveO
 
     const connectWebSocket = async () => {
       try {
-        const wsUrl = 'wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws';
+        const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${clobTokenId}`;
         console.log('Connecting to WebSocket:', wsUrl);
         
         ws = new WebSocket(wsUrl);
