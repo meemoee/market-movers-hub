@@ -1,6 +1,7 @@
 import { AxisLeft, AxisBottom } from '@visx/axis';
-import { ScaleLinear, ScaleTime } from '@visx/scale';
+import { scaleLinear, scaleTime } from '@visx/scale';
 import { timeFormat } from 'd3-time-format';
+import type { ScaleLinear, ScaleTime } from 'd3-scale';
 
 const formatDate = timeFormat("%b %d");
 
