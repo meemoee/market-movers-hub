@@ -17,7 +17,6 @@ export default function RightSidebar() {
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
     
-    console.log('Starting chat message handling with:', userMessage)
     setHasStartedChat(true)
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
@@ -26,99 +25,87 @@ export default function RightSidebar() {
     try {
       // Cancel any ongoing stream
       if (abortControllerRef.current) {
-        console.log('Cancelling previous request')
         abortControllerRef.current.abort()
       }
 
-      console.log('Invoking market-analysis function...')
-      const { data: response, error } = await supabase.functions.invoke('market-analysis', {
-        body: {
-          message: userMessage,
-          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-        }
-      })
-
-      // Log the complete response object
-      console.log('Complete response object:', response)
-      console.log('Response type:', typeof response)
-      console.log('Response constructor:', response?.constructor?.name)
-      
-      if (error) {
-        console.error('Supabase function error:', error)
-        throw error
-      }
+      // Create new AbortController
+      abortControllerRef.current = new AbortController()
 
       // Initialize new assistant message
-      console.log('Initializing new assistant message')
-      setMessages(prev => {
-        console.log('Previous messages:', prev)
-        return [...prev, { type: 'assistant', content: '' }]
-      })
+      setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
-      if (typeof response === 'string') {
-        console.log('Response is a string, length:', response.length)
-        const lines = response.split('\n').filter(line => line.trim() !== '')
-        console.log('Split response into lines:', lines)
-        console.log('Number of lines:', lines.length)
+      // Use raw fetch instead of supabase.functions.invoke()
+      const response = await fetch(
+        `${supabase.functions.url}/market-analysis`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabase.auth.getSession()?.access_token}`,
+          },
+          body: JSON.stringify({
+            message: userMessage,
+            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
+          }),
+          signal: abortControllerRef.current.signal
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+
+      while (reader) {
+        const { value, done } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        console.log('Received chunk:', chunk)
         
-        let accumulatedContent = ''
-        
+        const lines = chunk.split('\n').filter(line => line.trim() !== '')
+        console.log('Split into lines:', lines)
+
         for (const line of lines) {
-          console.log('Raw line:', line)
-          console.log('Line type:', typeof line)
-          console.log('Line length:', line.length)
+          console.log('Processing line:', line)
           
           if (!line.startsWith('data: ')) {
-            console.log('Line does not start with "data: ":', line)
+            console.log('Skipping non-data line:', line)
             continue
           }
           
           const data = line.slice(5).trim()
-          console.log('Extracted data after slice:', data)
-          console.log('Data length:', data.length)
+          console.log('Extracted data:', data)
           
           if (data === '[DONE]') {
             console.log('Received [DONE] signal')
             continue
           }
-          
+
           try {
-            console.log('About to parse JSON:', data)
+            console.log('Attempting to parse JSON:', data)
             const parsed = JSON.parse(data)
-            console.log('Successfully parsed JSON:', parsed)
-            console.log('Parsed object keys:', Object.keys(parsed))
+            console.log('Parsed JSON:', parsed)
             
             const content = parsed.choices?.[0]?.delta?.content || ''
             console.log('Extracted content:', content)
-            console.log('Content type:', typeof content)
-            console.log('Content length:', content.length)
             
             if (content) {
-              accumulatedContent += content
-              console.log('Updated accumulated content:', accumulatedContent)
-              console.log('Accumulated content length:', accumulatedContent.length)
-              
               setMessages(prev => {
-                console.log('Updating messages state')
-                console.log('Current messages:', prev)
                 const newMessages = [...prev]
                 const lastMessage = newMessages[newMessages.length - 1]
                 if (lastMessage.type === 'assistant') {
-                  console.log('Previous content:', lastMessage.content)
-                  lastMessage.content = accumulatedContent
-                  console.log('Updated content:', lastMessage.content)
+                  lastMessage.content = (lastMessage.content || '') + content
                 }
                 return newMessages
               })
             }
           } catch (e) {
             console.error('Error parsing SSE data:', e)
-            console.error('Failed to parse data:', data)
           }
         }
-      } else {
-        console.error('Unexpected response format:', response)
-        throw new Error('Unexpected response format from market-analysis function')
       }
 
     } catch (error) {
@@ -128,7 +115,6 @@ export default function RightSidebar() {
         content: 'Sorry, I encountered an error processing your request.' 
       }])
     } finally {
-      console.log('Chat handling complete')
       setIsLoading(false)
       abortControllerRef.current = null
     }
@@ -209,7 +195,6 @@ export default function RightSidebar() {
           </div>
         )}
         
-        {/* Chat Input */}
         <div className="fixed bottom-0 right-0 w-[400px] p-4">
           <div className="flex items-center gap-2">
             <input
