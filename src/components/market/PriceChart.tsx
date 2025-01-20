@@ -8,7 +8,7 @@ import { localPoint } from '@visx/event';
 import { LinearGradient } from '@visx/gradient';
 import { bisector } from 'd3-array';
 import { timeFormat } from 'd3-time-format';
-import { curveStepAfter, curveLinear } from '@visx/curve';
+import { curveStepAfter } from '@visx/curve';
 import { AxisLeft, AxisBottom } from '@visx/axis';
 
 interface PriceData {
@@ -82,24 +82,38 @@ function Chart({
     const below: PriceData[] = [];
     
     data.forEach((d, i) => {
-      // Handle crossing points
       if (i > 0) {
         const prev = data[i - 1];
         if ((prev.price < 50 && d.price > 50) || (prev.price > 50 && d.price < 50)) {
-          // Add the previous point to both arrays to ensure continuous fill
-          above.push({ time: prev.time, price: prev.price >= 50 ? prev.price : 50 });
-          below.push({ time: prev.time, price: prev.price < 50 ? prev.price : 50 });
-          
-          // Calculate and add the crossing point
+          // Calculate the crossing point
           const ratio = (50 - prev.price) / (d.price - prev.price);
           const crossingTime = prev.time + (d.time - prev.time) * ratio;
-          const crossingPoint = { time: crossingTime, price: 50 };
-          above.push(crossingPoint);
-          below.push(crossingPoint);
           
-          // Add the current point to both arrays to ensure continuous fill
-          above.push({ time: d.time, price: d.price >= 50 ? d.price : 50 });
-          below.push({ time: d.time, price: d.price < 50 ? d.price : 50 });
+          // Add points for the previous value's side
+          if (prev.price >= 50) {
+            above.push(prev);
+            above.push({ time: crossingTime, price: 50 });
+            below.push({ time: prev.time, price: 50 });
+            below.push({ time: crossingTime, price: 50 });
+          } else {
+            below.push(prev);
+            below.push({ time: crossingTime, price: 50 });
+            above.push({ time: prev.time, price: 50 });
+            above.push({ time: crossingTime, price: 50 });
+          }
+          
+          // Add points for the current value's side
+          if (d.price >= 50) {
+            above.push({ time: crossingTime, price: 50 });
+            above.push(d);
+            below.push({ time: crossingTime, price: 50 });
+            below.push({ time: d.time, price: 50 });
+          } else {
+            below.push({ time: crossingTime, price: 50 });
+            below.push(d);
+            above.push({ time: crossingTime, price: 50 });
+            above.push({ time: d.time, price: 50 });
+          }
         } else {
           // No crossing, add point normally
           if (d.price >= 50) {
