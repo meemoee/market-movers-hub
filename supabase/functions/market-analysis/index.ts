@@ -22,7 +22,9 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173', // Required by OpenRouter
+        'X-Title': 'Market Analysis App', // Optional but recommended
       },
       body: JSON.stringify({
         model: "perplexity/llama-3.1-sonar-small-128k-online",
@@ -53,17 +55,22 @@ serve(async (req) => {
         const lines = text.split('\n').filter(line => line.trim() !== '')
         
         for (const line of lines) {
-          const cleanLine = line.replace(/^data: /, '')
-          if (cleanLine === '[DONE]') continue
+          if (line.trim() === '') continue
+          
+          const cleanLine = line.replace(/^data: /, '').trim()
+          if (cleanLine === '[DONE]') {
+            console.log('Stream complete')
+            continue
+          }
           
           try {
             const parsed = JSON.parse(cleanLine)
             const content = parsed.choices[0]?.delta?.content || ''
             if (content) {
-              controller.enqueue(new TextEncoder().encode(content))
+              controller.enqueue(content)
             }
           } catch (e) {
-            console.error('Error parsing JSON:', e)
+            console.error('Error parsing JSON line:', cleanLine, e)
           }
         }
       }
@@ -75,7 +82,7 @@ serve(async (req) => {
     return new Response(responseStream, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'text/event-stream',
+        'Content-Type': 'text/plain', // Changed from text/event-stream to text/plain
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
       }

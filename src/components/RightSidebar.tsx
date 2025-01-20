@@ -36,11 +36,8 @@ export default function RightSidebar() {
         abortControllerRef.current.abort()
       }
 
-      // Create new abort controller for this request
-      abortControllerRef.current = new AbortController()
-
       console.log('Sending request to market-analysis function...')
-      const { data, error } = await supabase.functions.invoke('market-analysis', {
+      const { data: { url }, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
@@ -56,9 +53,12 @@ export default function RightSidebar() {
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
       // Create a new ReadableStream from the response
-      const response = await fetch(data.url)
-      const reader = response.body?.getReader()
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
       
+      const reader = response.body?.getReader()
       if (!reader) {
         throw new Error('No reader available')
       }
