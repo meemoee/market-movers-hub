@@ -23,8 +23,8 @@ serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173', // Required by OpenRouter
-        'X-Title': 'Market Analysis App', // Optional but recommended
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
         model: "perplexity/llama-3.1-sonar-small-128k-online",
@@ -42,47 +42,15 @@ serve(async (req) => {
       })
     })
 
-    // Get the response body as a ReadableStream
-    const stream = response.body
-    if (!stream) {
-      throw new Error('No response stream available')
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
-    // Create a TransformStream to process the response
-    const transformStream = new TransformStream({
-      async transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        const lines = text.split('\n').filter(line => line.trim() !== '')
-        
-        for (const line of lines) {
-          if (line.trim() === '') continue
-          
-          const cleanLine = line.replace(/^data: /, '').trim()
-          if (cleanLine === '[DONE]') {
-            console.log('Stream complete')
-            continue
-          }
-          
-          try {
-            const parsed = JSON.parse(cleanLine)
-            const content = parsed.choices[0]?.delta?.content || ''
-            if (content) {
-              controller.enqueue(content)
-            }
-          } catch (e) {
-            console.error('Error parsing JSON line:', cleanLine, e)
-          }
-        }
-      }
-    })
-
-    // Pipe the response through our transform stream
-    const responseStream = stream.pipeThrough(transformStream)
-
-    return new Response(responseStream, {
+    // Stream the response directly back to the client
+    return new Response(response.body, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'text/plain', // Changed from text/event-stream to text/plain
+        'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
       }

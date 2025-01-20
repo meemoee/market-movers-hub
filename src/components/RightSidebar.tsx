@@ -1,5 +1,5 @@
 import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 
 export default function RightSidebar() {
@@ -37,7 +37,7 @@ export default function RightSidebar() {
       }
 
       console.log('Sending request to market-analysis function...')
-      const { data: { url }, error } = await supabase.functions.invoke('market-analysis', {
+      const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
@@ -52,12 +52,7 @@ export default function RightSidebar() {
       // Initialize new assistant message
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
-      // Create a new ReadableStream from the response
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      
+      const response = new Response(data)
       const reader = response.body?.getReader()
       if (!reader) {
         throw new Error('No reader available')
@@ -69,17 +64,31 @@ export default function RightSidebar() {
         const { done, value } = await reader.read()
         if (done) break
         
-        const chunk = decoder.decode(value)
-        console.log('Received chunk:', chunk)
+        const text = decoder.decode(value)
+        const lines = text.split('\n').filter(line => line.trim() !== '')
         
-        setMessages(prev => {
-          const newMessages = [...prev]
-          const lastMessage = newMessages[newMessages.length - 1]
-          if (lastMessage.type === 'assistant') {
-            lastMessage.content = (lastMessage.content || '') + chunk
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') continue
+          
+          try {
+            const parsed = JSON.parse(data)
+            const content = parsed.choices[0]?.delta?.content || ''
+            if (content) {
+              setMessages(prev => {
+                const newMessages = [...prev]
+                const lastMessage = newMessages[newMessages.length - 1]
+                if (lastMessage.type === 'assistant') {
+                  lastMessage.content = (lastMessage.content || '') + content
+                }
+                return newMessages
+              })
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e)
           }
-          return newMessages
-        })
+        }
       }
 
     } catch (error) {
