@@ -129,7 +129,7 @@ export default function TopMoversList({
               />
             </div>
 
-            <div className="pt-8 space-y-3 px-1 w-full">
+            <div className="pt-2 space-y-3 px-1 w-full">
               <TopMoversContent
                 isLoading={isLoading || false}
                 error={error}
