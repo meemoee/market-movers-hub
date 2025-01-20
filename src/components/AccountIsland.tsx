@@ -65,7 +65,7 @@ export default function AccountIsland() {
   };
 
   return (
-    <Card className="w-[400px] p-6 sticky top-[102px]">
+    <Card className="w-full p-6 sticky top-[102px]">
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
