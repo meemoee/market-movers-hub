@@ -7,7 +7,6 @@ export default function RightSidebar() {
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [currentSynthesis, setCurrentSynthesis] = useState('')
 
   interface Market {
     id: string
@@ -29,7 +28,6 @@ export default function RightSidebar() {
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
-    setCurrentSynthesis('')
     
     try {
       const { data, error } = await supabase.functions.invoke('market-analysis', {
@@ -40,35 +38,18 @@ export default function RightSidebar() {
       })
 
       if (error) throw error
-      if (!data) throw new Error('No response data')
 
-      const lines = data.split('\n')
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const parsedData = JSON.parse(line.slice(5))
-            
-            if (parsedData.markets) {
-              setMessages(prev => [...prev, { 
-                type: 'markets', 
-                markets: parsedData.markets
-              }])
-            }
-            
-            if (parsedData.type === 'synthesis') {
-              setCurrentSynthesis(prev => prev + (parsedData.content || ''))
-            }
-          } catch (error) {
-            console.error('Error parsing chunk:', error)
-          }
-        }
+      if (data.markets?.length > 0) {
+        setMessages(prev => [...prev, { 
+          type: 'markets', 
+          markets: data.markets
+        }])
       }
 
-      // After stream ends, add the complete synthesis message
-      if (currentSynthesis) {
+      if (data.synthesis) {
         setMessages(prev => [...prev, { 
           type: 'assistant', 
-          content: currentSynthesis
+          content: data.synthesis
         }])
       }
     } catch (error) {
@@ -79,7 +60,6 @@ export default function RightSidebar() {
       }])
     } finally {
       setIsLoading(false)
-      setCurrentSynthesis('')
     }
   }
 
@@ -166,9 +146,7 @@ export default function RightSidebar() {
             ))}
             {isLoading && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">
-                  {currentSynthesis || "Analyzing markets..."}
-                </p>
+                <p className="text-white text-sm">Analyzing markets...</p>
               </div>
             )}
           </div>
