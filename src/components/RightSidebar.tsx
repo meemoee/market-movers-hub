@@ -39,53 +39,57 @@ export default function RightSidebar() {
       }
 
       console.log('Invoking market-analysis function...')
-      const { data: streamData } = await supabase.functions.invoke('market-analysis', {
+      const { data: response } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
       })
 
-      console.log('Received response from market-analysis:', streamData)
+      console.log('Received response from market-analysis:', response)
 
       // Initialize new assistant message
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
-      const decoder = new TextDecoder()
-      const lines = decoder.decode(streamData).split('\n').filter(line => line.trim() !== '')
-      console.log('Split lines:', lines)
-      
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) {
-          console.log('Skipping non-data line:', line)
-          continue
-        }
+      if (typeof response === 'string') {
+        const lines = response.split('\n').filter(line => line.trim() !== '')
+        console.log('Split lines:', lines)
         
-        const data = line.slice(5).trim()
-        if (data === '[DONE]') {
-          console.log('Received [DONE] signal')
-          continue
-        }
-        
-        try {
-          console.log('Parsing JSON data:', data)
-          const parsed = JSON.parse(data)
-          const content = parsed.choices[0]?.delta?.content || ''
-          console.log('Extracted content:', content)
-          
-          if (content) {
-            setMessages(prev => {
-              const newMessages = [...prev]
-              const lastMessage = newMessages[newMessages.length - 1]
-              if (lastMessage.type === 'assistant') {
-                lastMessage.content = (lastMessage.content || '') + content
-              }
-              return newMessages
-            })
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) {
+            console.log('Skipping non-data line:', line)
+            continue
           }
-        } catch (e) {
-          console.error('Error parsing SSE data:', e, 'Raw data:', data)
+          
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') {
+            console.log('Received [DONE] signal')
+            continue
+          }
+          
+          try {
+            console.log('Parsing JSON data:', data)
+            const parsed = JSON.parse(data)
+            const content = parsed.choices[0]?.delta?.content || ''
+            console.log('Extracted content:', content)
+            
+            if (content) {
+              setMessages(prev => {
+                const newMessages = [...prev]
+                const lastMessage = newMessages[newMessages.length - 1]
+                if (lastMessage.type === 'assistant') {
+                  lastMessage.content = (lastMessage.content || '') + content
+                }
+                return newMessages
+              })
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e, 'Raw data:', data)
+          }
         }
+      } else {
+        console.error('Unexpected response format:', response)
+        throw new Error('Unexpected response format from market-analysis function')
       }
 
     } catch (error) {
