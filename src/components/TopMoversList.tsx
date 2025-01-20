@@ -113,32 +113,36 @@ export default function TopMoversList({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto space-y-4">
-      <TopMoversHeader
-        timeIntervals={timeIntervals}
-        selectedInterval={selectedInterval}
-        onIntervalChange={onIntervalChange}
-        openMarketsOnly={openMarketsOnly}
-        onOpenMarketsChange={onOpenMarketsChange}
-        isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
-        setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
-      />
+    <div className="w-full max-w-3xl mx-auto relative">
+      <div className="absolute inset-x-0 top-0 -mt-[25px] z-40">
+        <TopMoversHeader
+          timeIntervals={timeIntervals}
+          selectedInterval={selectedInterval}
+          onIntervalChange={onIntervalChange}
+          openMarketsOnly={openMarketsOnly}
+          onOpenMarketsChange={onOpenMarketsChange}
+          isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+          setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+        />
+      </div>
 
-      <ScrollArea className="h-[calc(100vh-200px)]">
-        <div className="space-y-3 px-1 w-full">
-          <TopMoversContent
-            isLoading={isLoading || false}
-            error={error}
-            topMovers={topMovers}
-            expandedMarkets={expandedMarkets}
-            toggleMarket={toggleMarket}
-            setSelectedMarket={setSelectedMarket}
-            onLoadMore={onLoadMore}
-            hasMore={hasMore}
-            isLoadingMore={isLoadingMore}
-          />
-        </div>
-      </ScrollArea>
+      <div className="mt-14 bg-card rounded-lg border border-border">
+        <ScrollArea className="h-[calc(100vh-120px)]">
+          <div className="divide-y divide-border">
+            <TopMoversContent
+              isLoading={isLoading || false}
+              error={error}
+              topMovers={topMovers}
+              expandedMarkets={expandedMarkets}
+              toggleMarket={toggleMarket}
+              setSelectedMarket={setSelectedMarket}
+              onLoadMore={onLoadMore}
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
+            />
+          </div>
+        </ScrollArea>
+      </div>
 
       <TransactionDialog
         selectedMarket={selectedMarket}
