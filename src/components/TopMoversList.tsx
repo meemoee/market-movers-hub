@@ -113,10 +113,10 @@ export default function TopMoversList({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto">
+    <div className="w-full max-w-2xl mx-auto">
       <div className="fixed top-14 left-0 right-0 bottom-0">
-        <div className="h-full mx-auto" style={{ maxWidth: "768px" }}>
-          <ScrollArea className="h-full px-4">
+        <div className="relative h-full max-w-2xl mx-auto px-4">
+          <ScrollArea className="h-full">
             <div className="sticky top-0 z-40">
               <TopMoversHeader
                 timeIntervals={timeIntervals}
