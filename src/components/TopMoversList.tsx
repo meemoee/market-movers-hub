@@ -148,10 +148,9 @@ export default function TopMoversList({
                   
                   const mover = topMovers.find(m => m.market_id === market.id);
                   console.log('Selected mover:', mover);
-                  console.log('Raw clobtokenids:', mover?.clobtokenids);
                   
-                  if (!mover || !mover.clobtokenids) {
-                    console.error('No mover or clobtokenids found:', { mover });
+                  if (!mover) {
+                    console.error('No mover found:', { market });
                     toast({
                       title: "Error",
                       description: "Unable to process this market at the moment",
@@ -160,32 +159,52 @@ export default function TopMoversList({
                     return;
                   }
 
-                  try {
-                    console.log('Attempting to parse clobtokenids:', mover.clobtokenids);
-                    const tokenIds = JSON.parse(mover.clobtokenids) as string[];
-                    console.log('Parsed tokenIds:', tokenIds);
-                    
-                    if (!Array.isArray(tokenIds) || tokenIds.length < 2) {
-                      console.error('Invalid tokenIds array:', tokenIds);
-                      throw new Error('Invalid CLOB token IDs format');
+                  // Handle the case where clobtokenids might be a string that needs parsing
+                  let tokenIds: string[] = [];
+                  if (typeof mover.clobtokenids === 'string') {
+                    try {
+                      tokenIds = JSON.parse(mover.clobtokenids);
+                      console.log('Parsed tokenIds from string:', tokenIds);
+                    } catch (err) {
+                      console.error('Error parsing string clobtokenids:', err);
+                      toast({
+                        title: "Error",
+                        description: "Unable to process this market at the moment",
+                        variant: "destructive",
+                      });
+                      return;
                     }
-
-                    // Use first token for buy, second for sell
-                    const clobTokenId = market.action === 'buy' ? tokenIds[0] : tokenIds[1];
-                    console.log('Selected clobTokenId:', clobTokenId);
-                    
-                    setSelectedMarket({
-                      ...market,
-                      clobTokenId
-                    });
-                  } catch (err) {
-                    console.error('Error parsing CLOB token IDs:', err);
+                  } else if (Array.isArray(mover.clobtokenids)) {
+                    tokenIds = mover.clobtokenids;
+                    console.log('Using array clobtokenids:', tokenIds);
+                  } else {
+                    console.error('Invalid clobtokenids format:', mover.clobtokenids);
                     toast({
                       title: "Error",
                       description: "Unable to process this market at the moment",
                       variant: "destructive",
                     });
+                    return;
                   }
+
+                  if (!Array.isArray(tokenIds) || tokenIds.length < 2) {
+                    console.error('Invalid tokenIds array:', tokenIds);
+                    toast({
+                      title: "Error",
+                      description: "Unable to process this market at the moment",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+
+                  // Use first token for buy, second for sell
+                  const clobTokenId = market.action === 'buy' ? tokenIds[0] : tokenIds[1];
+                  console.log('Selected clobTokenId:', clobTokenId);
+                  
+                  setSelectedMarket({
+                    ...market,
+                    clobTokenId
+                  });
                 }}
                 onLoadMore={onLoadMore}
                 hasMore={hasMore}
