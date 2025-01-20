@@ -134,12 +134,12 @@ export default function TopMoversList({
       />
       
       <ScrollArea className="h-[calc(100vh-144px)]">
-        <div className="w-full space-y-3">
-          <div className="pl-0 pr-4">
+        <div className="w-full space-y-3 pr-4">
+          <div>
             <MarketStatsBento />
           </div>
 
-          <div className="px-1">
+          <div>
             <TopMoversContent
               isLoading={isLoading || false}
               error={error}
