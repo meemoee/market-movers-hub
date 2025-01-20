@@ -2,8 +2,8 @@ import { Menu, Bell } from "lucide-react";
 
 export default function Header() {
   return (
-    <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-white/10 z-50 flex items-center">
-      <div className="h-full w-full flex items-center justify-between px-4">
+    <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-white/10 z-50">
+      <div className="absolute inset-0 flex items-center justify-between px-4">
         <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
           <Menu size={20} />
         </button>

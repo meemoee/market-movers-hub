@@ -114,34 +114,36 @@ export default function TopMoversList({
 
   return (
     <div className="w-full max-w-3xl mx-auto">
-      <div className="h-[calc(100vh-56px)] relative">
-        <ScrollArea className="h-full absolute inset-0">
-          <div className="sticky top-0 z-40">
-            <TopMoversHeader
-              timeIntervals={timeIntervals}
-              selectedInterval={selectedInterval}
-              onIntervalChange={onIntervalChange}
-              openMarketsOnly={openMarketsOnly}
-              onOpenMarketsChange={onOpenMarketsChange}
-              isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
-              setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
-            />
-          </div>
+      <div className="fixed top-14 left-0 right-0 bottom-0 overflow-hidden">
+        <div className="h-full max-w-3xl mx-auto">
+          <ScrollArea className="h-full">
+            <div className="sticky top-0 z-40">
+              <TopMoversHeader
+                timeIntervals={timeIntervals}
+                selectedInterval={selectedInterval}
+                onIntervalChange={onIntervalChange}
+                openMarketsOnly={openMarketsOnly}
+                onOpenMarketsChange={onOpenMarketsChange}
+                isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+                setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+              />
+            </div>
 
-          <div className="space-y-3 px-1 w-full">
-            <TopMoversContent
-              isLoading={isLoading || false}
-              error={error}
-              topMovers={topMovers}
-              expandedMarkets={expandedMarkets}
-              toggleMarket={toggleMarket}
-              setSelectedMarket={setSelectedMarket}
-              onLoadMore={onLoadMore}
-              hasMore={hasMore}
-              isLoadingMore={isLoadingMore}
-            />
-          </div>
-        </ScrollArea>
+            <div className="space-y-3 px-1 w-full">
+              <TopMoversContent
+                isLoading={isLoading || false}
+                error={error}
+                topMovers={topMovers}
+                expandedMarkets={expandedMarkets}
+                toggleMarket={toggleMarket}
+                setSelectedMarket={setSelectedMarket}
+                onLoadMore={onLoadMore}
+                hasMore={hasMore}
+                isLoadingMore={isLoadingMore}
+              />
+            </div>
+          </ScrollArea>
+        </div>
       </div>
 
       <TransactionDialog
