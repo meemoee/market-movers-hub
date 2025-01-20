@@ -113,8 +113,8 @@ export default function TopMoversList({
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto">
-      <div className="h-[calc(100vh-64px)] relative">
+    <div className="w-full max-w-3xl mx-auto -mt-4">
+      <div className="h-[calc(100vh-60px)] relative">
         <ScrollArea className="h-full absolute inset-0">
           <div className="sticky top-0 z-40">
             <TopMoversHeader
