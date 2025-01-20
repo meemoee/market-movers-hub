@@ -1,5 +1,4 @@
 import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
 
 interface MarketStatsProps {
   lastTradedPrice: number;
@@ -38,7 +37,7 @@ export function MarketStats({
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
-        <div className="space-y-2.5">
+        <div className="space-y-4">
           <div className={`flex items-center gap-1 text-sm font-medium
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
@@ -103,7 +102,7 @@ export function MarketStats({
         </div>
         <button
           onClick={onToggleExpand}
-          className="mt-2 inline-flex justify-center"
+          className="mt-4 inline-flex justify-center"
         >
           {isExpanded ? (
             <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />

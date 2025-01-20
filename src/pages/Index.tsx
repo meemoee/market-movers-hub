@@ -48,7 +48,7 @@ export default function Index() {
       <Header />
       
       <main className="pt-20 px-4 lg:pr-[420px]">
-        <div className="max-w-4xl mx-auto space-y-6 relative">
+        <div className="max-w-4xl mx-auto space-y-4 relative">
           <div className="flex gap-8 items-start">
             <AccountIsland />
             <TopMoversList
