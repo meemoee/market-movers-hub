@@ -21,11 +21,17 @@ export function MarketDetails({
   const { data: priceHistory, isLoading } = useQuery({
     queryKey: ['priceHistory', marketId, selectedInterval],
     queryFn: async () => {
+      console.log('Fetching price history for market:', marketId); // Debug log
       const response = await supabase.functions.invoke<{ t: string; y: number }[]>('price-history', {
-        body: { marketId, interval: selectedInterval }
+        body: JSON.stringify({ marketId, interval: selectedInterval })
       });
 
-      if (response.error) throw response.error;
+      if (response.error) {
+        console.error('Price history error:', response.error); // Debug log
+        throw response.error;
+      }
+      
+      console.log('Price history response:', response.data); // Debug log
       return response.data.map(point => ({
         time: new Date(point.t).getTime(),
         price: point.y * 100 // Convert to percentage
