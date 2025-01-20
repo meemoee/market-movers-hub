@@ -44,7 +44,7 @@ export const EventIndicator = ({
   }, [event.icon]);
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={0}>
       <Tooltip>
         <TooltipTrigger asChild>
           <g>
@@ -62,15 +62,16 @@ export const EventIndicator = ({
               y={height - iconSize - 4}
               width={iconSize}
               height={iconSize}
+              style={{ cursor: 'pointer' }}
             >
               <IconComponent 
                 size={iconSize} 
-                className="text-muted-foreground" 
+                className="text-muted-foreground hover:text-foreground transition-colors" 
               />
             </foreignObject>
           </g>
         </TooltipTrigger>
-        <TooltipContent>
+        <TooltipContent side="top" className="max-w-[200px]">
           <div className="space-y-1">
             <p className="font-medium">{event.title}</p>
             {event.description && (
