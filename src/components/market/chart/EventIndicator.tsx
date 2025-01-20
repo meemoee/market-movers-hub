@@ -29,7 +29,7 @@ export function EventIndicator({
         <TooltipTrigger asChild>
           <g 
             transform={`translate(${xPosition}, 0)`}
-            style={{ pointerEvents: 'bounding-box' }}
+            style={{ pointerEvents: 'all' }}
           >
             {/* Vertical line */}
             <line
