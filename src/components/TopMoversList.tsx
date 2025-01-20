@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { TopMoversHeader } from './market/TopMoversHeader';
 import { TopMoversContent } from './market/TopMoversContent';
 import { TransactionDialog } from './market/TransactionDialog';
+import { MarketStatsBento } from './market/MarketStatsBento';
 
 interface TimeInterval {
   label: string;
@@ -132,6 +133,10 @@ export default function TopMoversList({
         setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
       />
       
+      <div className="px-4">
+        <MarketStatsBento />
+      </div>
+
       <ScrollArea className="h-[calc(100vh-144px)]">
         <div className="pt-3 px-1 w-full space-y-3">
           <TopMoversContent
