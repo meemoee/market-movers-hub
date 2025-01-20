@@ -122,81 +122,77 @@ export default function TopMoversList({
 
   return (
     <div className="w-full max-w-2xl mx-auto">
-      <div className="relative h-[calc(100vh-56px)]">
-        <ScrollArea className="h-full">
-          <div className="sticky top-0 z-40 bg-background">
-            <TopMoversHeader
-              timeIntervals={timeIntervals}
-              selectedInterval={selectedInterval}
-              onIntervalChange={onIntervalChange}
-              openMarketsOnly={openMarketsOnly}
-              onOpenMarketsChange={onOpenMarketsChange}
-              isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
-              setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
-            />
-          </div>
-
-          <div className="pt-12 space-y-3 px-1 w-full">
-            <TopMoversContent
-              isLoading={isLoading || false}
-              error={error}
-              topMovers={topMovers}
-              expandedMarkets={expandedMarkets}
-              toggleMarket={toggleMarket}
-              setSelectedMarket={(market) => {
-                if (!market) {
-                  setSelectedMarket(null);
-                  return;
-                }
-                
-                const mover = topMovers.find(m => m.market_id === market.id);
-                console.log('Selected mover:', mover);
-                
-                if (!mover) {
-                  console.error('No mover found:', { market });
-                  toast({
-                    title: "Error",
-                    description: "Unable to process this market at the moment",
-                    variant: "destructive",
-                  });
-                  return;
-                }
-
-                const defaultTokenIds = ['1', '2'];
-                
-                let tokenIds: string[] = defaultTokenIds;
-                if (mover.clobtokenids) {
-                  try {
-                    if (typeof mover.clobtokenids === 'string') {
-                      const parsed = JSON.parse(mover.clobtokenids);
-                      if (Array.isArray(parsed) && parsed.length >= 2) {
-                        tokenIds = parsed;
-                      }
-                    } else if (Array.isArray(mover.clobtokenids) && mover.clobtokenids.length >= 2) {
-                      tokenIds = mover.clobtokenids;
-                    }
-                  } catch (err) {
-                    console.error('Error parsing clobtokenids:', err);
-                  }
-                }
-
-                console.log('Using tokenIds:', tokenIds);
-                
-                const clobTokenId = market.action === 'buy' ? tokenIds[0] : tokenIds[1];
-                console.log('Selected clobTokenId:', clobTokenId);
-                
-                setSelectedMarket({
-                  ...market,
-                  clobTokenId
+      <TopMoversHeader
+        timeIntervals={timeIntervals}
+        selectedInterval={selectedInterval}
+        onIntervalChange={onIntervalChange}
+        openMarketsOnly={openMarketsOnly}
+        onOpenMarketsChange={onOpenMarketsChange}
+        isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+        setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+      />
+      
+      <ScrollArea className="h-[calc(100vh-144px)]">
+        <div className="px-1 w-full space-y-3">
+          <TopMoversContent
+            isLoading={isLoading || false}
+            error={error}
+            topMovers={topMovers}
+            expandedMarkets={expandedMarkets}
+            toggleMarket={toggleMarket}
+            setSelectedMarket={(market) => {
+              if (!market) {
+                setSelectedMarket(null);
+                return;
+              }
+              
+              const mover = topMovers.find(m => m.market_id === market.id);
+              console.log('Selected mover:', mover);
+              
+              if (!mover) {
+                console.error('No mover found:', { market });
+                toast({
+                  title: "Error",
+                  description: "Unable to process this market at the moment",
+                  variant: "destructive",
                 });
-              }}
-              onLoadMore={onLoadMore}
-              hasMore={hasMore}
-              isLoadingMore={isLoadingMore}
-            />
-          </div>
-        </ScrollArea>
-      </div>
+                return;
+              }
+
+              const defaultTokenIds = ['1', '2'];
+              
+              let tokenIds: string[] = defaultTokenIds;
+              if (mover.clobtokenids) {
+                try {
+                  if (typeof mover.clobtokenids === 'string') {
+                    const parsed = JSON.parse(mover.clobtokenids);
+                    if (Array.isArray(parsed) && parsed.length >= 2) {
+                      tokenIds = parsed;
+                    }
+                  } else if (Array.isArray(mover.clobtokenids) && mover.clobtokenids.length >= 2) {
+                    tokenIds = mover.clobtokenids;
+                  }
+                } catch (err) {
+                  console.error('Error parsing clobtokenids:', err);
+                }
+              }
+
+              console.log('Using tokenIds:', tokenIds);
+              
+              const clobTokenId = market.action === 'buy' ? tokenIds[0] : tokenIds[1];
+              console.log('Selected clobTokenId:', clobTokenId);
+              
+              setSelectedMarket({
+                ...market,
+                clobTokenId
+              });
+            }}
+            onLoadMore={onLoadMore}
+            hasMore={hasMore}
+            isLoadingMore={isLoadingMore}
+          />
+        </div>
+      </ScrollArea>
 
       <TransactionDialog
         selectedMarket={selectedMarket}
