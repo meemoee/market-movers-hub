@@ -14,7 +14,7 @@ const HoverButton = React.forwardRef<HTMLButtonElement, HoverButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "w-[80px] min-h-[64px] px-2 py-2",
+          "w-[80px] min-h-[48px] px-2 py-1.5",
           "text-foreground font-medium",
           "transition-colors duration-200",
           "backdrop-blur-sm",
@@ -27,10 +27,10 @@ const HoverButton = React.forwardRef<HTMLButtonElement, HoverButtonProps>(
         )}
         {...props}
       >
-        <div className="text-xs leading-normal mb-1">
+        <div className="text-xs leading-tight">
           {React.Children.toArray(children)[0]}
         </div>
-        <div className="text-[11px] font-medium opacity-90">
+        <div className="text-[11px] font-medium opacity-90 mt-0.5">
           {React.Children.toArray(children)[1]}
         </div>
       </button>
