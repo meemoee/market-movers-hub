@@ -116,20 +116,20 @@ export default function TopMoversList({
     <div className="w-full max-w-2xl mx-auto">
       <div className="fixed top-14 left-0 right-0 bottom-0">
         <div className="relative h-full max-w-2xl mx-auto px-4">
-          <ScrollArea className="h-full">
-            <div className="sticky top-0 z-40">
-              <TopMoversHeader
-                timeIntervals={timeIntervals}
-                selectedInterval={selectedInterval}
-                onIntervalChange={onIntervalChange}
-                openMarketsOnly={openMarketsOnly}
-                onOpenMarketsChange={onOpenMarketsChange}
-                isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
-                setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
-              />
-            </div>
-
-            <div className="pt-12 space-y-3 px-1 w-full">
+          <div className="sticky top-0 z-40 bg-background">
+            <TopMoversHeader
+              timeIntervals={timeIntervals}
+              selectedInterval={selectedInterval}
+              onIntervalChange={onIntervalChange}
+              openMarketsOnly={openMarketsOnly}
+              onOpenMarketsChange={onOpenMarketsChange}
+              isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+              setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+            />
+          </div>
+          
+          <ScrollArea className="h-[calc(100vh-130px)] mt-3">
+            <div className="space-y-3 px-1 w-full">
               <TopMoversContent
                 isLoading={isLoading || false}
                 error={error}
