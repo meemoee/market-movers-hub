@@ -45,13 +45,13 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <Header />
       
-      <main className="pt-20 px-4 lg:pr-[420px]">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex gap-0">
-            <div className="w-[260px] mr-4">
+      <main className="pt-20 lg:pr-[420px]">
+        <div className="container px-0 mx-auto">
+          <div className="flex">
+            <div className="w-[260px]">
               <AccountIsland />
             </div>
-            <div className="flex-1">
+            <div className="flex-1 pl-4">
               <TopMoversList
                 topMovers={allMovers}
                 error={error?.message || null}
