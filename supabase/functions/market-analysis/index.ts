@@ -18,7 +18,7 @@ serve(async (req) => {
     console.log('Received request:', { message, chatHistory })
 
     console.log('Making request to OpenRouter API...')
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -42,13 +42,21 @@ serve(async (req) => {
       })
     })
 
-    if (!response.ok) {
-      console.error('OpenRouter API error:', response.status, await response.text())
-      throw new Error(`OpenRouter API error: ${response.status}`)
+    if (!openRouterResponse.ok) {
+      console.error('OpenRouter API error:', openRouterResponse.status, await openRouterResponse.text())
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
+    // Create a TransformStream to modify the stream
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        // Forward the chunk as-is
+        controller.enqueue(chunk)
+      }
+    })
+
     console.log('Streaming response back to client...')
-    return new Response(response.body, {
+    return new Response(openRouterResponse.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
