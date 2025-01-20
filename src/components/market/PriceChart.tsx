@@ -86,16 +86,25 @@ function Chart({
       if (i > 0) {
         const prev = data[i - 1];
         if ((prev.price < 50 && d.price > 50) || (prev.price > 50 && d.price < 50)) {
+          // Add the previous point at its actual level
+          if (prev.price >= 50) {
+            above.push(prev);
+            below.push({ time: prev.time, price: 50 });
+          } else {
+            below.push(prev);
+            above.push({ time: prev.time, price: 50 });
+          }
+          
+          // Add the crossing point
           const ratio = (50 - prev.price) / (d.price - prev.price);
           const crossingTime = prev.time + (d.time - prev.time) * ratio;
           const crossingPoint = { time: crossingTime, price: 50 };
-          
           above.push(crossingPoint);
           below.push(crossingPoint);
         }
       }
 
-      // Add point to appropriate arrays
+      // Add current point
       if (d.price >= 50) {
         above.push(d);
         below.push({ time: d.time, price: 50 });
