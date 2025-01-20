@@ -1,4 +1,3 @@
-import { scaleTime } from '@visx/scale';
 import type { ScaleTime } from 'd3-scale';
 import { MarketEvent } from './types';
 import { EventIndicator } from './EventIndicator';
@@ -9,11 +8,9 @@ interface EventMarkersProps {
   height: number;
 }
 
-export const EventMarkers = ({ events, timeScale, height }: EventMarkersProps) => {
-  if (!events?.length) return null;
-
+export function EventMarkers({ events, timeScale, height }: EventMarkersProps) {
   return (
-    <g>
+    <g className="event-markers">
       {events.map((event) => (
         <EventIndicator
           key={event.id}
@@ -24,4 +21,4 @@ export const EventMarkers = ({ events, timeScale, height }: EventMarkersProps) =
       ))}
     </g>
   );
-};
+}

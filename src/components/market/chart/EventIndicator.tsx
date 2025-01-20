@@ -27,29 +27,7 @@ export function EventIndicator({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <g 
-            transform={`translate(${xPosition}, 0)`}
-            style={{ cursor: 'pointer' }}
-          >
-            {/* Icon container */}
-            <g transform={`translate(${-iconSize / 2}, 10)`}>
-              <foreignObject
-                width={iconSize + 16}
-                height={iconSize + 16}
-                x={-8}
-                y={-8}
-                style={{ overflow: 'visible' }}
-              >
-                <div className="p-1 rounded-full hover:bg-accent">
-                  <EventIcon
-                    type={event.icon}
-                    size={iconSize}
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                  />
-                </div>
-              </foreignObject>
-            </g>
-
+          <g transform={`translate(${xPosition}, 0)`}>
             {/* Vertical line */}
             <line
               x1={0}
@@ -61,6 +39,30 @@ export function EventIndicator({
               className="text-muted-foreground/30"
               strokeDasharray="2,2"
             />
+            
+            {/* Interactive area */}
+            <g transform={`translate(0, ${height - 24})`}>
+              <foreignObject
+                width={32}
+                height={32}
+                x={-16}
+                y={-16}
+                style={{ overflow: 'visible' }}
+              >
+                <div 
+                  className="w-full h-full flex items-center justify-center cursor-pointer"
+                  style={{ touchAction: 'none' }}
+                >
+                  <div className="p-2 rounded-full hover:bg-accent/80 transition-colors">
+                    <EventIcon
+                      type={event.icon}
+                      size={iconSize}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                    />
+                  </div>
+                </div>
+              </foreignObject>
+            </g>
           </g>
         </TooltipTrigger>
         <TooltipContent 
