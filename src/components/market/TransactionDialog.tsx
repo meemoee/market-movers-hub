@@ -1,22 +1,34 @@
-import { useEffect, useState } from 'react';
-import { OrderBook } from './OrderBook';
-import { Button } from '../ui/button';
-import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
-import { LiveOrderBook } from './LiveOrderBook';
 import { Loader2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { LiveOrderBook } from './LiveOrderBook';
+
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
 
 interface TransactionDialogProps {
-  selectedMarket: { id: string; action: 'buy' | 'sell'; clobTokenId: string } | null;
-  onClose: () => void;
-  orderBookData: {
-    bids: Record<string, number>;
-    asks: Record<string, number>;
-    best_bid: number;
-    best_ask: number;
-    spread: number;
+  selectedMarket: { 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
   } | null;
+  onClose: () => void;
+  orderBookData: OrderBookData | null;
   isOrderBookLoading: boolean;
-  onOrderBookData: (data: any) => void;
+  onOrderBookData: (data: OrderBookData) => void;
   onConfirm: () => void;
 }
 
@@ -28,84 +40,94 @@ export function TransactionDialog({
   onOrderBookData,
   onConfirm,
 }: TransactionDialogProps) {
-  const [amount, setAmount] = useState('1');
-
-  const price = selectedMarket?.action === 'buy' 
-    ? orderBookData?.best_ask || 0 
-    : orderBookData?.best_bid || 0;
-
-  const totalCost = Number(amount) * price;
-
   return (
-    <Dialog open={!!selectedMarket} onOpenChange={() => onClose()}>
-      <DialogContent className="bg-[#1a1b1e] border-none max-w-[500px] max-h-[90vh] overflow-y-auto">
-        <DialogTitle className="text-xl font-bold">
-          {selectedMarket?.action === 'buy' ? 'Buy' : 'Sell'} Order
-        </DialogTitle>
-        
-        <div className="space-y-6">
-          {selectedMarket && (
-            <>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-gray-400">Amount</label>
-                  <input
-                    type="number"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full p-2 bg-[#2a2b2e] rounded mt-1 text-center"
-                    min="0"
-                  />
+    <AlertDialog 
+      open={selectedMarket !== null} 
+      onOpenChange={onClose}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
+          </AlertDialogTitle>
+          <AlertDialogDescription className="space-y-4">
+            <LiveOrderBook 
+              onOrderBookData={onOrderBookData}
+              isLoading={isOrderBookLoading}
+              clobTokenId={selectedMarket?.clobTokenId}
+            />
+            
+            {orderBookData && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Bids</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                      {Object.entries(orderBookData.bids)
+                        .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
+                        .slice(0, 5)
+                        .map(([price, size]) => (
+                          <div key={price} className="flex justify-between text-sm">
+                            <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                            <span>{size.toFixed(2)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Asks</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                      {Object.entries(orderBookData.asks)
+                        .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
+                        .slice(0, 5)
+                        .map(([price, size]) => (
+                          <div key={price} className="flex justify-between text-sm">
+                            <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                            <span>{size.toFixed(2)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <label className="text-sm text-gray-400">Price (%)</label>
-                  <input
-                    type="number"
-                    value={(price * 100).toFixed(1)}
-                    readOnly
-                    className="w-full p-2 bg-[#2a2b2e] rounded mt-1 text-center"
-                  />
+                <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Best Bid</div>
+                    <div className="text-lg font-medium text-green-500">
+                      {(orderBookData.best_bid * 100).toFixed(2)}¢
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Best Ask</div>
+                    <div className="text-lg font-medium text-red-500">
+                      {(orderBookData.best_ask * 100).toFixed(2)}¢
+                    </div>
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
                 </div>
               </div>
-
-              <div className="text-center">
-                <div className="text-xl font-bold">
-                  Total: ${totalCost.toFixed(2)}
-                </div>
-                <div className="text-sm text-gray-400 mt-1">
-                  MARKET ORDER
-                </div>
-              </div>
-
-              {!isOrderBookLoading && (
-                <OrderBook marketId={selectedMarket.id} />
-              )}
-
-              <LiveOrderBook
-                onOrderBookData={onOrderBookData}
-                isLoading={isOrderBookLoading}
-                clobTokenId={selectedMarket.clobTokenId}
-              />
-
-              <div className="flex gap-4">
-                <Button
-                  onClick={onConfirm}
-                  className="flex-1 bg-green-600 hover:bg-green-700"
-                >
-                  Confirm
-                </Button>
-                <Button
-                  onClick={onClose}
-                  variant="destructive"
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-              </div>
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={!orderBookData || isOrderBookLoading}
+            className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+          >
+            {isOrderBookLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Connecting...
+              </>
+            ) : (
+              `Confirm ${selectedMarket?.action}`
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
