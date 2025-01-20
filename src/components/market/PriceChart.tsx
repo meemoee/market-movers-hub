@@ -6,12 +6,12 @@ import { useTooltip } from '@visx/tooltip';
 import { localPoint } from '@visx/event';
 import { LinearGradient } from '@visx/gradient';
 import { bisector } from 'd3-array';
-import { timeFormat } from 'd3-time-format';
 import { curveStepAfter } from '@visx/curve';
-import { AxisLeft, AxisBottom } from '@visx/axis';
 import { ChartSegment } from './chart/ChartSegment';
 import { EventMarkers } from './chart/EventMarkers';
 import { useChartData } from './chart/useChartData';
+import { ChartTooltip } from './chart/ChartTooltip';
+import { ChartAxes } from './chart/ChartAxes';
 import type { PriceData, MarketEvent } from './chart/types';
 
 const intervals = [
@@ -23,7 +23,6 @@ const intervals = [
 ];
 
 const bisectDate = bisector<PriceData, number>((d) => d.time).left;
-const formatDate = timeFormat("%b %d");
 
 interface ChartProps {
   data: PriceData[];
@@ -99,16 +98,6 @@ function Chart({
     [timeScale, priceScale, data, margin, showTooltip]
   );
 
-  const tooltipDateFormat = useMemo(() => {
-    return new Intl.DateTimeFormat('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
-  }, []);
-
   return (
     <div className="relative">
       <svg width={width} height={height}>
@@ -156,38 +145,17 @@ function Chart({
             curve={curveStepAfter}
           />
 
-          <AxisLeft
-            scale={priceScale}
-            tickValues={[0, 25, 50, 75, 100]}
-            tickFormat={(value) => `${value}`}
-            stroke="#4a5568"
-            tickStroke="#4a5568"
-            tickLength={0}
-            hideTicks
-            tickLabelProps={() => ({
-              fill: '#9ca3af',
-              fontSize: 11,
-              textAnchor: 'end',
-              dy: '0.33em',
-              dx: '-0.5em',
-            })}
+          <ChartAxes
+            timeScale={timeScale}
+            priceScale={priceScale}
+            innerHeight={innerHeight}
           />
 
-          <AxisBottom
-            top={innerHeight}
-            scale={timeScale}
-            stroke="#4a5568"
-            tickStroke="#4a5568"
-            tickLength={0}
-            hideTicks
-            numTicks={6}
-            tickFormat={(value) => formatDate(new Date(+value))}
-            tickLabelProps={() => ({
-              fill: '#9ca3af',
-              fontSize: 11,
-              textAnchor: 'middle',
-              dy: '1em',
-            })}
+          {/* Event markers */}
+          <EventMarkers
+            events={events}
+            timeScale={timeScale}
+            height={innerHeight}
           />
 
           {/* Tooltip overlay */}
@@ -201,14 +169,6 @@ function Chart({
             onTouchMove={handleTooltip}
             onMouseMove={handleTooltip}
             onMouseLeave={hideTooltip}
-            style={{ pointerEvents: 'all' }}
-          />
-
-          {/* Event markers - now rendered above the tooltip overlay */}
-          <EventMarkers
-            events={events}
-            timeScale={timeScale}
-            height={innerHeight}
           />
 
           {tooltipData && (
@@ -234,28 +194,11 @@ function Chart({
         </g>
       </svg>
 
-      {tooltipData && (
-        <div
-          style={{
-            position: 'absolute',
-            top: tooltipTop - 25,
-            left: tooltipLeft + 15,
-            background: 'rgba(17, 24, 39, 0.9)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            color: 'white',
-            fontSize: '11px',
-            pointerEvents: 'none',
-            whiteSpace: 'nowrap',
-            zIndex: 100,
-          }}
-        >
-          <div className="flex flex-col leading-tight">
-            <span>{tooltipDateFormat.format(tooltipData.time)}</span>
-            <span>{tooltipData.price.toFixed(2)}%</span>
-          </div>
-        </div>
-      )}
+      <ChartTooltip
+        tooltipData={tooltipData}
+        tooltipLeft={tooltipLeft}
+        tooltipTop={tooltipTop}
+      />
     </div>
   );
 }
