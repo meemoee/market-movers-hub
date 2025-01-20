@@ -1,4 +1,4 @@
-import { DollarSign, TrendingUp, Users, Activity } from "lucide-react";
+import { DollarSign, TrendingUp, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function BentoCard({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -15,18 +15,35 @@ function BentoCard({ children, className }: { children: React.ReactNode; classNa
 export function MarketStatsBento() {
   return (
     <div className="w-full mb-4">
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        <BentoCard>
-          <div className="flex flex-col">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {/* Left side - tall card */}
+        <BentoCard className="md:row-span-2">
+          <div className="flex flex-col h-full">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
               <DollarSign className="h-4 w-4" />
               <span className="text-sm font-medium">Total Volume</span>
             </div>
-            <div className="text-2xl font-bold">$1.2M</div>
-            <div className="text-xs text-muted-foreground mt-1">+12% from last week</div>
+            <div className="text-4xl font-bold mt-auto">$1.2M</div>
+            <div className="text-sm text-muted-foreground mt-2">
+              <span className="text-emerald-500">↑ 12%</span> from last week
+            </div>
+            <div className="mt-4 pt-4 border-t border-border/50">
+              <div className="text-sm text-muted-foreground">Monthly trend</div>
+              <div className="flex items-end justify-between mt-2 h-24">
+                {[30, 45, 25, 60, 75, 45, 65].map((height, i) => (
+                  <div key={i} className="w-[8%] bg-primary/20 rounded-t">
+                    <div 
+                      className="bg-primary rounded-t transition-all duration-500"
+                      style={{ height: `${height}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </BentoCard>
 
+        {/* Right side - two cards */}
         <BentoCard>
           <div className="flex flex-col">
             <div className="flex items-center gap-2 text-muted-foreground mb-2">
@@ -34,7 +51,9 @@ export function MarketStatsBento() {
               <span className="text-sm font-medium">Active Markets</span>
             </div>
             <div className="text-2xl font-bold">245</div>
-            <div className="text-xs text-muted-foreground mt-1">+5 new today</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              <span className="text-emerald-500">+5</span> new today
+            </div>
           </div>
         </BentoCard>
 
@@ -45,18 +64,9 @@ export function MarketStatsBento() {
               <span className="text-sm font-medium">Active Traders</span>
             </div>
             <div className="text-2xl font-bold">1,893</div>
-            <div className="text-xs text-muted-foreground mt-1">+23% this month</div>
-          </div>
-        </BentoCard>
-
-        <BentoCard>
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Activity className="h-4 w-4" />
-              <span className="text-sm font-medium">Price Changes</span>
+            <div className="text-xs text-muted-foreground mt-1">
+              <span className="text-emerald-500">+23%</span> this month
             </div>
-            <div className="text-2xl font-bold">+31%</div>
-            <div className="text-xs text-muted-foreground mt-1">Average daily movement</div>
           </div>
         </BentoCard>
       </div>
