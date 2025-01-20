@@ -39,12 +39,14 @@ export default function RightSidebar() {
       }
 
       console.log('Invoking market-analysis function...')
-      const { data: response } = await supabase.functions.invoke('market-analysis', {
+      const { data: response, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
       })
+
+      if (error) throw error
 
       console.log('Received response from market-analysis:', response)
 
@@ -70,7 +72,7 @@ export default function RightSidebar() {
           try {
             console.log('Parsing JSON data:', data)
             const parsed = JSON.parse(data)
-            const content = parsed.choices[0]?.delta?.content || ''
+            const content = parsed.choices?.[0]?.delta?.content || ''
             console.log('Extracted content:', content)
             
             if (content) {
@@ -169,21 +171,7 @@ export default function RightSidebar() {
           <div className="space-y-4 mb-20">
             {messages.map((message, index) => (
               <div key={index} className="bg-[#2c2e33] p-3 rounded-lg">
-                {message.type === 'markets' && message.markets ? (
-                  <div className="space-y-2">
-                    {message.markets.map((market, idx) => (
-                      <div key={idx} className="text-sm">
-                        <p className="font-medium">{market.question}</p>
-                        <div className="text-xs text-gray-400 mt-1">
-                          <span className="mr-3">Yes: {(market.yes_price || 0).toFixed(3)}</span>
-                          <span>Volume: ${market.volume?.toLocaleString()}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-white text-sm">{message.content}</p>
-                )}
+                <p className="text-white text-sm">{message.content}</p>
               </div>
             ))}
             {isLoading && (
