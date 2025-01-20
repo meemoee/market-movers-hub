@@ -159,44 +159,28 @@ export default function TopMoversList({
                     return;
                   }
 
-                  // Handle the case where clobtokenids might be a string that needs parsing
-                  let tokenIds: string[] = [];
-                  if (typeof mover.clobtokenids === 'string') {
+                  // Default token IDs if none are provided
+                  const defaultTokenIds = ['1', '2'];
+                  
+                  // Try to parse clobtokenids if it exists
+                  let tokenIds: string[] = defaultTokenIds;
+                  if (mover.clobtokenids) {
                     try {
-                      tokenIds = JSON.parse(mover.clobtokenids);
-                      console.log('Parsed tokenIds from string:', tokenIds);
+                      if (typeof mover.clobtokenids === 'string') {
+                        const parsed = JSON.parse(mover.clobtokenids);
+                        if (Array.isArray(parsed) && parsed.length >= 2) {
+                          tokenIds = parsed;
+                        }
+                      } else if (Array.isArray(mover.clobtokenids) && mover.clobtokenids.length >= 2) {
+                        tokenIds = mover.clobtokenids;
+                      }
                     } catch (err) {
-                      console.error('Error parsing string clobtokenids:', err);
-                      toast({
-                        title: "Error",
-                        description: "Unable to process this market at the moment",
-                        variant: "destructive",
-                      });
-                      return;
+                      console.error('Error parsing clobtokenids:', err);
                     }
-                  } else if (Array.isArray(mover.clobtokenids)) {
-                    tokenIds = mover.clobtokenids;
-                    console.log('Using array clobtokenids:', tokenIds);
-                  } else {
-                    console.error('Invalid clobtokenids format:', mover.clobtokenids);
-                    toast({
-                      title: "Error",
-                      description: "Unable to process this market at the moment",
-                      variant: "destructive",
-                    });
-                    return;
                   }
 
-                  if (!Array.isArray(tokenIds) || tokenIds.length < 2) {
-                    console.error('Invalid tokenIds array:', tokenIds);
-                    toast({
-                      title: "Error",
-                      description: "Unable to process this market at the moment",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-
+                  console.log('Using tokenIds:', tokenIds);
+                  
                   // Use first token for buy, second for sell
                   const clobTokenId = market.action === 'buy' ? tokenIds[0] : tokenIds[1];
                   console.log('Selected clobTokenId:', clobTokenId);
