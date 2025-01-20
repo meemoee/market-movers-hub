@@ -27,8 +27,8 @@ export const EventIndicator = ({
       <TooltipTrigger asChild>
         <g 
           transform={`translate(${xPosition}, 0)`}
-          className="group"
-          style={{ cursor: 'pointer' }}
+          className="group cursor-pointer"
+          style={{ pointerEvents: 'bounding-box' }}
         >
           {/* Vertical line */}
           <line
@@ -45,7 +45,6 @@ export const EventIndicator = ({
           {/* Icon container */}
           <g 
             transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}
-            style={{ pointerEvents: 'all' }}
           >
             <rect
               width={iconSize + 8}
@@ -55,20 +54,27 @@ export const EventIndicator = ({
               fill="hsl(var(--background))"
               fillOpacity={0.8}
               rx={4}
-              className="group-hover:fill-accent"
+              className="group-hover:fill-accent transition-colors"
             />
-            <EventIcon
-              type={event.icon}
-              size={iconSize}
-              className="text-muted-foreground group-hover:text-foreground"
-            />
+            <foreignObject 
+              width={iconSize} 
+              height={iconSize} 
+              style={{ pointerEvents: 'none' }}
+            >
+              <EventIcon
+                type={event.icon}
+                size={iconSize}
+                className="text-muted-foreground group-hover:text-foreground transition-colors"
+              />
+            </foreignObject>
           </g>
         </g>
       </TooltipTrigger>
       <TooltipContent 
         side="top" 
-        className="max-w-[240px] p-3"
+        className="max-w-[240px] p-3 z-50"
         sideOffset={5}
+        style={{ zIndex: 9999 }}
       >
         <div className="space-y-1">
           <p className="font-medium text-sm">{event.title}</p>
