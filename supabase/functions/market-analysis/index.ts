@@ -29,7 +29,7 @@ serve(async (req) => {
     const stream = new TransformStream()
     const writer = stream.writable.getWriter()
 
-    // Get active markets
+    // Get active markets with prices
     const { data: markets, error: marketError } = await supabase
       .from('markets')
       .select(`
@@ -86,7 +86,9 @@ serve(async (req) => {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://lovable.dev', // Required for OpenRouter
+        'X-Title': 'Lovable Market Analysis' // Required for OpenRouter
       },
       body: JSON.stringify({
         model: "perplexity/llama-3.1-sonar-small-128k-online",
@@ -111,35 +113,40 @@ Response (2-3 sentences only):`
     })
 
     if (!response.ok) {
+      console.error('OpenRouter API error:', response.status)
       throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
     const reader = response.body!.getReader()
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
 
-      const chunk = new TextDecoder().decode(value)
-      const lines = chunk.split('\n')
+        const chunk = new TextDecoder().decode(value)
+        const lines = chunk.split('\n')
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6)
-          if (jsonStr === '[DONE]') continue
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6)
+            if (jsonStr === '[DONE]') continue
 
-          try {
-            const parsed = JSON.parse(jsonStr)
-            const content = parsed.choices[0]?.delta?.content || ''
-            
-            await writer.write(
-              encoder.encode(`data: ${JSON.stringify({ type: 'synthesis', content })}\n\n`)
-            )
-          } catch (error) {
-            console.error('Error parsing chunk:', error)
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const content = parsed.choices[0]?.delta?.content || ''
+              
+              await writer.write(
+                encoder.encode(`data: ${JSON.stringify({ type: 'synthesis', content })}\n\n`)
+              )
+            } catch (error) {
+              console.error('Error parsing chunk:', error)
+            }
           }
         }
       }
+    } finally {
+      reader.releaseLock()
     }
 
     await writer.close()
