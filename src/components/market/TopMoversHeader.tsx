@@ -26,9 +26,9 @@ export function TopMoversHeader({
   setIsTimeIntervalDropdownOpen,
 }: TopMoversHeaderProps) {
   return (
-    <div className="sticky top-14 z-40 w-full">
-      <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-sm p-4 max-w-2xl mx-auto">
-        <div className="flex items-center justify-between">
+    <div className="sticky top-14 z-40 w-full px-4">
+      <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-sm p-4 w-full">
+        <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-3">
             <h2 className="text-2xl font-bold">Market Movers</h2>
             <div className="relative">
@@ -61,14 +61,14 @@ export function TopMoversHeader({
             </div>
           </div>
 
-          <label className="flex items-center gap-2">
+          <label className="flex items-center gap-2 shrink-0">
             <input
               type="checkbox"
               checked={openMarketsOnly}
               onChange={e => onOpenMarketsChange(e.target.checked)}
               className="rounded border-border bg-transparent"
             />
-            <span className="text-sm text-muted-foreground">Open Markets Only</span>
+            <span className="text-sm text-muted-foreground whitespace-nowrap">Open Markets Only</span>
           </label>
         </div>
       </Card>
