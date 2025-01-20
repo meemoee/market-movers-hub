@@ -11,7 +11,7 @@ interface TimeInterval {
   value: string;
 }
 
-interface TopMover {
+export interface TopMover {
   market_id: string;
   question: string;
   url: string;
@@ -19,8 +19,8 @@ interface TopMover {
   yes_sub_title?: string;
   no_sub_title?: string;
   description?: string;
-  clobtokenids?: string[] | string;
-  outcomes?: any;
+  clobtokenids?: string[];
+  outcomes?: string[];
   active: boolean;
   closed: boolean;
   archived: boolean;

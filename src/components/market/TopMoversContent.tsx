@@ -1,23 +1,6 @@
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
-
-interface TopMover {
-  market_id: string;
-  question: string;
-  url: string;
-  subtitle?: string;
-  yes_sub_title?: string;
-  no_sub_title?: string;
-  description?: string;
-  outcomes?: string[];
-  image: string;
-  final_last_traded_price: number;
-  final_best_ask: number;
-  final_best_bid: number;
-  final_volume: number;
-  price_change: number;
-  clobtokenids?: string[];
-}
+import { TopMover } from '../TopMoversList';
 
 interface TopMoversContentProps {
   isLoading: boolean;
