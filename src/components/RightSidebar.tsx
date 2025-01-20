@@ -25,6 +25,7 @@ export default function RightSidebar() {
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
     
+    console.log('Starting chat message handling with:', userMessage)
     setHasStartedChat(true)
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
@@ -33,10 +34,11 @@ export default function RightSidebar() {
     try {
       // Cancel any ongoing stream
       if (abortControllerRef.current) {
+        console.log('Cancelling previous request')
         abortControllerRef.current.abort()
       }
 
-      console.log('Sending request to market-analysis function...')
+      console.log('Invoking market-analysis function...')
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
@@ -49,32 +51,55 @@ export default function RightSidebar() {
         throw error
       }
 
+      console.log('Received response from market-analysis:', data)
+
       // Initialize new assistant message
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
       const response = new Response(data)
+      console.log('Created Response object:', response)
+
       const reader = response.body?.getReader()
       if (!reader) {
         throw new Error('No reader available')
       }
 
+      console.log('Got reader from response')
       const decoder = new TextDecoder()
       
       while (true) {
         const { done, value } = await reader.read()
-        if (done) break
+        console.log('Read chunk:', { done, valueLength: value?.length })
+        
+        if (done) {
+          console.log('Stream complete')
+          break
+        }
         
         const text = decoder.decode(value)
+        console.log('Decoded text:', text)
+        
         const lines = text.split('\n').filter(line => line.trim() !== '')
+        console.log('Split lines:', lines)
         
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
+          if (!line.startsWith('data: ')) {
+            console.log('Skipping non-data line:', line)
+            continue
+          }
+          
           const data = line.slice(5).trim()
-          if (data === '[DONE]') continue
+          if (data === '[DONE]') {
+            console.log('Received [DONE] signal')
+            continue
+          }
           
           try {
+            console.log('Parsing JSON data:', data)
             const parsed = JSON.parse(data)
             const content = parsed.choices[0]?.delta?.content || ''
+            console.log('Extracted content:', content)
+            
             if (content) {
               setMessages(prev => {
                 const newMessages = [...prev]
@@ -86,7 +111,7 @@ export default function RightSidebar() {
               })
             }
           } catch (e) {
-            console.error('Error parsing SSE data:', e)
+            console.error('Error parsing SSE data:', e, 'Raw data:', data)
           }
         }
       }
@@ -98,6 +123,7 @@ export default function RightSidebar() {
         content: 'Sorry, I encountered an error processing your request.' 
       }])
     } finally {
+      console.log('Chat handling complete')
       setIsLoading(false)
       abortControllerRef.current = null
     }

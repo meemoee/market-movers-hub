@@ -15,9 +15,9 @@ serve(async (req) => {
 
   try {
     const { message, chatHistory } = await req.json()
-    console.log('Received message:', message)
+    console.log('Received request:', { message, chatHistory })
 
-    // Make request to OpenRouter API with streaming enabled
+    console.log('Making request to OpenRouter API...')
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -43,10 +43,11 @@ serve(async (req) => {
     })
 
     if (!response.ok) {
+      console.error('OpenRouter API error:', response.status, await response.text())
       throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
-    // Stream the response directly back to the client
+    console.log('Streaming response back to client...')
     return new Response(response.body, {
       headers: {
         ...corsHeaders,
