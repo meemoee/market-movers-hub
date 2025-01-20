@@ -18,7 +18,7 @@ interface TopMover {
   yes_sub_title?: string;
   no_sub_title?: string;
   description?: string;
-  clobtokenids?: string;
+  clobtokenids?: string[] | string;  // Updated type to handle both string and array
   outcomes?: any;
   active: boolean;
   closed: boolean;
