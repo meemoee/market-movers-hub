@@ -8,7 +8,7 @@ import { localPoint } from '@visx/event';
 import { LinearGradient } from '@visx/gradient';
 import { bisector } from 'd3-array';
 import { timeFormat } from 'd3-time-format';
-import { curveMonotoneX, curveLinear } from '@visx/curve';
+import { curveStepAfter, curveLinear } from '@visx/curve';
 import { AxisLeft, AxisBottom } from '@visx/axis';
 
 interface PriceData {
@@ -98,11 +98,9 @@ function Chart({
       // Add point to appropriate arrays
       if (d.price >= 50) {
         above.push(d);
-        // Add to below array at 50 to maintain continuous fill
         below.push({ time: d.time, price: 50 });
       } else {
         below.push(d);
-        // Add to above array at 50 to maintain continuous fill
         above.push({ time: d.time, price: 50 });
       }
     });
@@ -182,7 +180,7 @@ function Chart({
               x={d => timeScale(d.time)}
               y={d => priceScale(d.price)}
               y1={() => priceScale(50)}
-              curve={curveLinear}
+              curve={curveStepAfter}
               fill="url(#above-gradient)"
             />
             <Area
@@ -190,7 +188,7 @@ function Chart({
               x={d => timeScale(d.time)}
               y={d => priceScale(d.price)}
               y1={() => priceScale(50)}
-              curve={curveLinear}
+              curve={curveStepAfter}
               fill="url(#below-gradient)"
             />
 
@@ -200,7 +198,7 @@ function Chart({
               y={d => priceScale(d.price)}
               stroke="#3b82f6"
               strokeWidth={2}
-              curve={curveMonotoneX}
+              curve={curveStepAfter}
             />
           </g>
 
