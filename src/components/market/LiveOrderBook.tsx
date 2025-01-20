@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -13,17 +12,22 @@ interface OrderBookData {
 interface LiveOrderBookProps {
   onOrderBookData: (data: OrderBookData | null) => void;
   isLoading: boolean;
+  clobTokenId?: string;
 }
 
-export function LiveOrderBook({ onOrderBookData, isLoading }: LiveOrderBookProps) {
+export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveOrderBookProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!clobTokenId) {
+      console.log('No CLOB token ID provided');
+      return;
+    }
+
     let ws: WebSocket | null = null;
 
     const connectWebSocket = async () => {
       try {
-        // Use the URL directly from the environment configuration
         const wsUrl = 'wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws';
         console.log('Connecting to WebSocket:', wsUrl);
         
@@ -71,7 +75,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading }: LiveOrderBookProps
         ws.close();
       }
     };
-  }, [onOrderBookData]);
+  }, [onOrderBookData, clobTokenId]);
 
   if (isLoading) {
     return (

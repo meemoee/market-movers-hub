@@ -74,7 +74,11 @@ export default function TopMoversList({
 }: TopMoversListProps) {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
-  const [selectedMarket, setSelectedMarket] = useState<{ id: string; action: 'buy' | 'sell' } | null>(null);
+  const [selectedMarket, setSelectedMarket] = useState<{ 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
+  } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const { toast } = useToast();
@@ -136,7 +140,28 @@ export default function TopMoversList({
                 topMovers={topMovers}
                 expandedMarkets={expandedMarkets}
                 toggleMarket={toggleMarket}
-                setSelectedMarket={setSelectedMarket}
+                setSelectedMarket={(market) => {
+                  if (!market) {
+                    setSelectedMarket(null);
+                    return;
+                  }
+                  
+                  const mover = topMovers.find(m => m.market_id === market.id);
+                  if (!mover || !mover.clobtokenids || mover.clobtokenids.length < 2) {
+                    console.error('No CLOB token IDs found for market:', market.id);
+                    return;
+                  }
+
+                  // Use first token for buy, second for sell
+                  const clobTokenId = market.action === 'buy' ? 
+                    mover.clobtokenids[0] : 
+                    mover.clobtokenids[1];
+
+                  setSelectedMarket({
+                    ...market,
+                    clobTokenId
+                  });
+                }}
                 onLoadMore={onLoadMore}
                 hasMore={hasMore}
                 isLoadingMore={isLoadingMore}

@@ -7,13 +7,14 @@ const corsHeaders = {
 
 class PolymarketStream {
   private ws: WebSocket | null = null;
-  private assetId = "112079176993929604864779457945097054417527947802930131576938601640669350643880";
+  private assetId: string;
   private orderbook: any = null;
   private clientSocket: WebSocket | null = null;
 
-  constructor(clientSocket: WebSocket) {
+  constructor(clientSocket: WebSocket, assetId: string) {
     this.clientSocket = clientSocket;
-    console.log('PolymarketStream initialized with client socket');
+    this.assetId = assetId;
+    console.log('PolymarketStream initialized with client socket and asset ID:', assetId);
   }
 
   async connect() {
@@ -34,7 +35,7 @@ class PolymarketStream {
           asset_id: this.assetId
         };
         this.ws?.send(JSON.stringify(snapshotRequest));
-        console.log('Requested market snapshot');
+        console.log('Requested market snapshot for asset ID:', this.assetId);
       };
 
       this.ws.onmessage = (event) => {
@@ -133,39 +134,8 @@ class PolymarketStream {
 
 serve(async (req) => {
   const url = new URL(req.url);
+  const assetId = url.searchParams.get('assetId');
   
-  // Test endpoint for backward compatibility
-  if (url.pathname.endsWith('/test')) {
-    console.log("Test endpoint hit");
-    try {
-      const mockOrderbook = {
-        bids: { "0.17": 3042.65, "0.09": 133.33, "0.08": 125, "0.07": 100, "0.05": 200 },
-        asks: { "0.19": 22.65, "0.20": 1172.1, "0.22": 205, "0.34": 18.18, "0.35": 15.38 },
-        best_bid: 0.17,
-        best_ask: 0.19,
-        spread: 0.02,
-        timestamp: new Date().toISOString()
-      };
-      
-      return new Response(JSON.stringify({ 
-        message: "Test completed",
-        received_data: true,
-        orderbook: mockOrderbook
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
-    } catch (error) {
-      console.error("Error in test endpoint:", error);
-      return new Response(JSON.stringify({ 
-        error: "Failed to fetch orderbook data",
-        details: error.message 
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 500
-      });
-    }
-  }
-
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -180,11 +150,19 @@ serve(async (req) => {
     });
   }
 
+  // Validate assetId
+  if (!assetId) {
+    return new Response('Missing assetId parameter', {
+      status: 400,
+      headers: corsHeaders
+    });
+  }
+
   try {
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
-    console.log("WebSocket connection established with client");
+    console.log("WebSocket connection established with client for asset ID:", assetId);
     
-    const stream = new PolymarketStream(clientSocket);
+    const stream = new PolymarketStream(clientSocket, assetId);
     await stream.connect();
 
     clientSocket.onclose = () => {

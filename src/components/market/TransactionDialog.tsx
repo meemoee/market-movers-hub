@@ -20,7 +20,11 @@ interface OrderBookData {
 }
 
 interface TransactionDialogProps {
-  selectedMarket: { id: string; action: 'buy' | 'sell' } | null;
+  selectedMarket: { 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
+  } | null;
   onClose: () => void;
   orderBookData: OrderBookData | null;
   isOrderBookLoading: boolean;
@@ -50,6 +54,7 @@ export function TransactionDialog({
             <LiveOrderBook 
               onOrderBookData={onOrderBookData}
               isLoading={isOrderBookLoading}
+              clobTokenId={selectedMarket?.clobTokenId}
             />
             
             {orderBookData && (
