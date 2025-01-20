@@ -39,80 +39,52 @@ export default function RightSidebar() {
       }
 
       console.log('Invoking market-analysis function...')
-      const { data, error } = await supabase.functions.invoke('market-analysis', {
+      const { data: streamData } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
       })
 
-      if (error) {
-        console.error('Supabase function error:', error)
-        throw error
-      }
-
-      console.log('Received response from market-analysis:', data)
+      console.log('Received response from market-analysis:', streamData)
 
       // Initialize new assistant message
       setMessages(prev => [...prev, { type: 'assistant', content: '' }])
 
-      const response = new Response(data)
-      console.log('Created Response object:', response)
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('No reader available')
-      }
-
-      console.log('Got reader from response')
       const decoder = new TextDecoder()
+      const lines = decoder.decode(streamData).split('\n').filter(line => line.trim() !== '')
+      console.log('Split lines:', lines)
       
-      while (true) {
-        const { done, value } = await reader.read()
-        console.log('Read chunk:', { done, valueLength: value?.length })
-        
-        if (done) {
-          console.log('Stream complete')
-          break
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) {
+          console.log('Skipping non-data line:', line)
+          continue
         }
         
-        const text = decoder.decode(value)
-        console.log('Decoded text:', text)
+        const data = line.slice(5).trim()
+        if (data === '[DONE]') {
+          console.log('Received [DONE] signal')
+          continue
+        }
         
-        const lines = text.split('\n').filter(line => line.trim() !== '')
-        console.log('Split lines:', lines)
-        
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) {
-            console.log('Skipping non-data line:', line)
-            continue
-          }
+        try {
+          console.log('Parsing JSON data:', data)
+          const parsed = JSON.parse(data)
+          const content = parsed.choices[0]?.delta?.content || ''
+          console.log('Extracted content:', content)
           
-          const data = line.slice(5).trim()
-          if (data === '[DONE]') {
-            console.log('Received [DONE] signal')
-            continue
+          if (content) {
+            setMessages(prev => {
+              const newMessages = [...prev]
+              const lastMessage = newMessages[newMessages.length - 1]
+              if (lastMessage.type === 'assistant') {
+                lastMessage.content = (lastMessage.content || '') + content
+              }
+              return newMessages
+            })
           }
-          
-          try {
-            console.log('Parsing JSON data:', data)
-            const parsed = JSON.parse(data)
-            const content = parsed.choices[0]?.delta?.content || ''
-            console.log('Extracted content:', content)
-            
-            if (content) {
-              setMessages(prev => {
-                const newMessages = [...prev]
-                const lastMessage = newMessages[newMessages.length - 1]
-                if (lastMessage.type === 'assistant') {
-                  lastMessage.content = (lastMessage.content || '') + content
-                }
-                return newMessages
-              })
-            }
-          } catch (e) {
-            console.error('Error parsing SSE data:', e, 'Raw data:', data)
-          }
+        } catch (e) {
+          console.error('Error parsing SSE data:', e, 'Raw data:', data)
         }
       }
 
