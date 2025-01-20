@@ -32,17 +32,16 @@ export default function RightSidebar() {
     setCurrentSynthesis('')
     
     try {
-      const response = await supabase.functions.invoke('market-analysis', {
+      const { data } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-        },
-        responseType: 'stream'
+        }
       })
 
-      if (!response.data) throw new Error('No response data')
+      if (!data) throw new Error('No response data')
 
-      const reader = response.data.getReader()
+      const reader = data.getReader()
       const decoder = new TextDecoder()
 
       while (true) {
