@@ -46,12 +46,12 @@ export default function Index() {
       <Header />
       
       <main className="pt-20 lg:pr-[420px]">
-        <div className="container">
-          <div className="flex gap-4 max-w-[1200px] mx-auto">
-            <div className="w-[260px] shrink-0">
+        <div className="relative max-w-[1200px] mx-auto px-4">
+          <div className="flex gap-4">
+            <div className="fixed w-[260px]">
               <AccountIsland />
             </div>
-            <div className="w-[calc(100%-276px)]">
+            <div className="ml-[276px] flex-1">
               <TopMoversList
                 topMovers={allMovers}
                 error={error?.message || null}
