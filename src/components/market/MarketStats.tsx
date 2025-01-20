@@ -1,4 +1,5 @@
 import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react";
+import { StatsRow } from "./StatsRow";
 
 interface MarketStatsProps {
   lastTradedPrice: number;
@@ -38,16 +39,21 @@ export function MarketStats({
           {formatPrice(lastTradedPrice)}
         </div>
         <div className="mt-1 flex flex-col justify-between h-[48px]">
-          <div className={`flex items-center gap-1 text-sm font-medium h-[20px]
-            ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
-          >
-            {priceChange >= 0 ? (
-              <TrendingUp className="w-4 h-4" />
-            ) : (
-              <TrendingDown className="w-4 h-4" />
-            )}
-            {formatPriceChange(priceChange)}
-          </div>
+          <StatsRow
+            leftContent={
+              <div className={`flex items-center gap-1 text-sm font-medium
+                ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+              >
+                {priceChange >= 0 ? (
+                  <TrendingUp className="w-4 h-4" />
+                ) : (
+                  <TrendingDown className="w-4 h-4" />
+                )}
+                {formatPriceChange(priceChange)}
+              </div>
+            }
+            rightContent={null}
+          />
           
           <div className="relative h-[3px] w-full">
             {/* Base white line showing current price position */}
@@ -98,9 +104,14 @@ export function MarketStats({
           {formatVolume(volume)}
         </div>
         <div className="mt-1 flex flex-col justify-between h-[48px]">
-          <div className="text-sm text-muted-foreground h-[20px] flex items-center justify-end">
-            24h Volume
-          </div>
+          <StatsRow
+            leftContent={null}
+            rightContent={
+              <span className="text-sm text-muted-foreground">
+                24h Volume
+              </span>
+            }
+          />
           <button
             onClick={onToggleExpand}
             className="inline-flex justify-center"
