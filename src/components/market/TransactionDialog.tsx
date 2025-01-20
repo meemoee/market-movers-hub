@@ -40,6 +40,8 @@ export function TransactionDialog({
   onOrderBookData,
   onConfirm,
 }: TransactionDialogProps) {
+  const topMover = selectedMarket ? topMovers.find(m => m.market_id === selectedMarket.id) : null;
+
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
@@ -47,9 +49,25 @@ export function TransactionDialog({
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>
-            Confirm {selectedMarket?.action === 'buy' ? 'Purchase' : 'Sale'}
-          </AlertDialogTitle>
+          <div className="flex items-start gap-4 mb-4">
+            {topMover && (
+              <>
+                <img
+                  src={topMover.image}
+                  alt=""
+                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <AlertDialogTitle className="text-lg font-semibold mb-1">
+                    {selectedMarket?.action === 'buy' ? 'Buy' : 'Sell'}
+                  </AlertDialogTitle>
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {topMover.question}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
           <AlertDialogDescription className="space-y-4">
             <LiveOrderBook 
               onOrderBookData={onOrderBookData}
