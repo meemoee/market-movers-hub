@@ -151,13 +151,6 @@ function Chart({
             innerHeight={innerHeight}
           />
 
-          {/* Event markers */}
-          <EventMarkers
-            events={events}
-            timeScale={timeScale}
-            height={innerHeight}
-          />
-
           {/* Price tooltip line */}
           {tooltipData && (
             <g>
@@ -194,6 +187,13 @@ function Chart({
           />
         </g>
       </svg>
+
+      {/* Event markers */}
+      <EventMarkers
+        events={events}
+        timeScale={timeScale}
+        height={height}
+      />
 
       <ChartTooltip
         tooltipData={tooltipData}

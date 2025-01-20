@@ -12,15 +12,17 @@ export function EventMarkers({ events, timeScale, height }: EventMarkersProps) {
   if (!events?.length) return null;
   
   return (
-    <g className="event-markers pointer-events-auto">
-      {events.map((event) => (
-        <EventIndicator
-          key={event.id}
-          event={event}
-          timeScale={timeScale}
-          height={height}
-        />
-      ))}
-    </g>
+    <div className="absolute inset-0 pointer-events-none">
+      <div className="relative w-full h-full pointer-events-none">
+        {events.map((event) => (
+          <EventIndicator
+            key={event.id}
+            event={event}
+            timeScale={timeScale}
+            height={height}
+          />
+        ))}
+      </div>
+    </div>
   );
 }
