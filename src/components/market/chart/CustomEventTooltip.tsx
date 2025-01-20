@@ -3,7 +3,6 @@ import { cn } from "@/lib/utils";
 interface CustomEventTooltipProps {
   title: string;
   description?: string;
-  isVisible: boolean;
   x: number;
   y: number;
 }
@@ -11,16 +10,13 @@ interface CustomEventTooltipProps {
 export const CustomEventTooltip = ({
   title,
   description,
-  isVisible,
   x,
   y,
 }: CustomEventTooltipProps) => {
-  if (!isVisible) return null;
-
   return (
     <div
       className={cn(
-        "absolute z-50 min-w-[200px] max-w-[240px] rounded-lg border border-border/50",
+        "fixed z-[100] min-w-[200px] max-w-[240px] rounded-lg border border-border/50",
         "bg-background/95 px-3 py-2 shadow-xl backdrop-blur-sm"
       )}
       style={{
@@ -28,6 +24,7 @@ export const CustomEventTooltip = ({
         top: `${y}px`,
         transform: 'translate(-50%, -100%)',
         marginTop: '-8px',
+        pointerEvents: 'none',
       }}
     >
       <div className="space-y-1">

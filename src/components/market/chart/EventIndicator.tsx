@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { ScaleTime } from 'd3-scale';
 import { MarketEvent } from './types';
 import { EventIcon } from './EventIcon';
@@ -19,26 +19,34 @@ export const EventIndicator = ({
 }: EventIndicatorProps) => {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<SVGGElement>(null);
   
   const xPosition = timeScale(new Date(event.timestamp).getTime());
-  
-  const handleMouseEnter = (e: React.MouseEvent<SVGGElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = rect.x + rect.width / 2;
-    const y = rect.y;
-    setTooltipPosition({ x, y });
-    setShowTooltip(true);
-  };
+
+  useEffect(() => {
+    const updateTooltipPosition = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const x = rect.x + rect.width / 2;
+        const y = rect.y;
+        setTooltipPosition({ x, y });
+      }
+    };
+
+    if (showTooltip) {
+      updateTooltipPosition();
+    }
+  }, [showTooltip]);
 
   return (
     <>
       <g 
+        ref={containerRef}
         transform={`translate(${xPosition}, 0)`}
-        className="group cursor-pointer"
-        onMouseEnter={handleMouseEnter}
+        onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        style={{ pointerEvents: 'all' }}
-        data-testid="event-indicator"
+        style={{ pointerEvents: 'bounding-box' }}
+        className="group cursor-pointer"
       >
         {/* Vertical line */}
         <line
@@ -50,14 +58,10 @@ export const EventIndicator = ({
           strokeWidth={1}
           className="text-muted-foreground/30 group-hover:text-muted-foreground/50"
           strokeDasharray="2,2"
-          style={{ pointerEvents: 'none' }}
         />
         
         {/* Icon container */}
-        <g 
-          transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}
-          style={{ pointerEvents: 'all' }}
-        >
+        <g transform={`translate(${-iconSize / 2}, ${height - iconSize - 4})`}>
           <rect
             width={iconSize + 8}
             height={iconSize + 8}
@@ -71,6 +75,7 @@ export const EventIndicator = ({
           <foreignObject 
             width={iconSize} 
             height={iconSize}
+            style={{ pointerEvents: 'none' }}
           >
             <EventIcon
               type={event.icon}
@@ -81,13 +86,14 @@ export const EventIndicator = ({
         </g>
       </g>
 
-      <CustomEventTooltip
-        title={event.title}
-        description={event.description}
-        isVisible={showTooltip}
-        x={tooltipPosition.x}
-        y={tooltipPosition.y}
-      />
+      {showTooltip && (
+        <CustomEventTooltip
+          title={event.title}
+          description={event.description}
+          x={tooltipPosition.x}
+          y={tooltipPosition.y}
+        />
+      )}
     </>
   );
 };
