@@ -1,5 +1,5 @@
 import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 
 export default function RightSidebar() {
@@ -7,6 +7,7 @@ export default function RightSidebar() {
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   interface Market {
     id: string
@@ -30,28 +31,46 @@ export default function RightSidebar() {
     setChatMessage('')
     
     try {
-      const { data, error } = await supabase.functions.invoke('market-analysis', {
+      // Cancel any ongoing stream
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+
+      // Create new abort controller for this request
+      abortControllerRef.current = new AbortController()
+
+      const { data: stream, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-        }
+        },
+        signal: abortControllerRef.current.signal,
       })
 
       if (error) throw error
 
-      if (data.markets?.length > 0) {
-        setMessages(prev => [...prev, { 
-          type: 'markets', 
-          markets: data.markets
-        }])
+      // Initialize new assistant message
+      setMessages(prev => [...prev, { type: 'assistant', content: '' }])
+
+      // Process the stream
+      const reader = stream.getReader()
+      const decoder = new TextDecoder()
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        setMessages(prev => {
+          const newMessages = [...prev]
+          const lastMessage = newMessages[newMessages.length - 1]
+          if (lastMessage.type === 'assistant') {
+            lastMessage.content = (lastMessage.content || '') + chunk
+          }
+          return newMessages
+        })
       }
 
-      if (data.synthesis) {
-        setMessages(prev => [...prev, { 
-          type: 'assistant', 
-          content: data.synthesis
-        }])
-      }
     } catch (error) {
       console.error('Error in chat:', error)
       setMessages(prev => [...prev, { 
@@ -60,6 +79,7 @@ export default function RightSidebar() {
       }])
     } finally {
       setIsLoading(false)
+      abortControllerRef.current = null
     }
   }
 
@@ -146,7 +166,7 @@ export default function RightSidebar() {
             ))}
             {isLoading && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">Analyzing markets...</p>
+                <p className="text-white text-sm">Thinking...</p>
               </div>
             )}
           </div>
