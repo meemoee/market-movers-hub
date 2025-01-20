@@ -137,7 +137,7 @@ export function TransactionDialog({
                         .slice(0, 5)
                         .map(([price, size]) => (
                           <div key={price} className="flex justify-between text-sm">
-                            <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                            <span className="text-[#32CD80]">{(Number(price) * 100).toFixed(2)}¢</span>
                             <span>{size.toFixed(2)}</span>
                           </div>
                         ))}
@@ -151,7 +151,7 @@ export function TransactionDialog({
                         .slice(0, 5)
                         .map(([price, size]) => (
                           <div key={price} className="flex justify-between text-sm">
-                            <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                            <span className="text-[#CD327F]">{(Number(price) * 100).toFixed(2)}¢</span>
                             <span>{size.toFixed(2)}</span>
                           </div>
                         ))}
@@ -161,13 +161,13 @@ export function TransactionDialog({
                 <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
                   <div>
                     <div className="text-sm text-muted-foreground">Best Bid</div>
-                    <div className="text-lg font-medium text-green-500">
+                    <div className="text-lg font-medium text-[#32CD80]">
                       {(orderBookData.best_bid * 100).toFixed(2)}¢
                     </div>
                   </div>
                   <div>
                     <div className="text-sm text-muted-foreground">Best Ask</div>
-                    <div className="text-lg font-medium text-red-500">
+                    <div className="text-lg font-medium text-[#CD327F]">
                       {(orderBookData.best_ask * 100).toFixed(2)}¢
                     </div>
                   </div>
@@ -184,7 +184,7 @@ export function TransactionDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={!orderBookData || isOrderBookLoading}
-            className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+            className={selectedMarket?.action === 'buy' ? 'bg-[#32CD80] hover:bg-[#32CD80]/80' : 'bg-[#CD327F] hover:bg-[#CD327F]/80'}
           >
             {isOrderBookLoading ? (
               <>

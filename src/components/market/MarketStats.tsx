@@ -39,7 +39,7 @@ export function MarketStats({
             {formatPrice(lastTradedPrice)}
           </span>
           <span className={`text-sm font-medium flex items-center gap-1 mb-2
-            ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+            ${priceChange >= 0 ? 'text-[#32CD80]' : 'text-[#CD327F]'}`}
           >
             {priceChange >= 0 ? (
               <TrendingUp className="w-4 h-4" />
@@ -61,7 +61,7 @@ export function MarketStats({
           {priceChange >= 0 ? (
             <>
               <div 
-                className="absolute bg-green-900/90 h-1.5 top-[-3px]" 
+                className="absolute bg-[#32CD80]/90 h-1.5 top-[-3px]" 
                 style={{ 
                   width: `${Math.abs(priceChange * 100)}%`,
                   right: `${100 - Math.abs(lastTradedPrice * 100)}%`
@@ -77,7 +77,7 @@ export function MarketStats({
           ) : (
             <>
               <div 
-                className="absolute bg-red-500/50 h-1.5 top-[-3px]" 
+                className="absolute bg-[#CD327F]/50 h-1.5 top-[-3px]" 
                 style={{ 
                   width: `${Math.abs(priceChange * 100)}%`,
                   left: `${Math.abs(lastTradedPrice * 100)}%`
