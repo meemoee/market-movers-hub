@@ -34,11 +34,11 @@ export function MarketStats({
   return (
     <div className="w-full grid grid-cols-[1fr_200px] gap-4">
       <div>
-        <div className="text-3xl font-bold tracking-tight">
-          {formatPrice(lastTradedPrice)}
-        </div>
-        <div className="mt-1 space-y-2">
-          <div className={`flex items-center gap-1 text-sm font-medium
+        <div className="flex flex-col">
+          <span className="text-3xl font-bold tracking-tight">
+            {formatPrice(lastTradedPrice)}
+          </span>
+          <span className={`text-sm font-medium flex items-center gap-1
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
             {priceChange >= 0 ? (
@@ -47,50 +47,50 @@ export function MarketStats({
               <TrendingDown className="w-4 h-4" />
             )}
             {formatPriceChange(priceChange)}
-          </div>
+          </span>
+        </div>
+        
+        <div className="relative h-[3px] w-full mt-2">
+          {/* Base white line showing current price position */}
+          <div 
+            className="absolute bg-white/50 h-1.5 top-[-3px]" 
+            style={{ width: `${Math.abs(lastTradedPrice * 100)}%` }}
+          />
           
-          <div className="relative h-[3px] w-full">
-            {/* Base white line showing current price position */}
-            <div 
-              className="absolute bg-white/50 h-1.5 top-[-3px]" 
-              style={{ width: `${Math.abs(lastTradedPrice * 100)}%` }}
-            />
-            
-            {/* Price change visualization */}
-            {priceChange >= 0 ? (
-              <>
-                <div 
-                  className="absolute bg-green-900/90 h-1.5 top-[-3px]" 
-                  style={{ 
-                    width: `${Math.abs(priceChange * 100)}%`,
-                    right: `${100 - Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-                <div 
-                  className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
-                  style={{ 
-                    right: `${100 - Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-              </>
-            ) : (
-              <>
-                <div 
-                  className="absolute bg-red-500/50 h-1.5 top-[-3px]" 
-                  style={{ 
-                    width: `${Math.abs(priceChange * 100)}%`,
-                    left: `${Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-                <div 
-                  className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
-                  style={{ 
-                    left: `${Math.abs(lastTradedPrice * 100)}%`
-                  }}
-                />
-              </>
-            )}
-          </div>
+          {/* Price change visualization */}
+          {priceChange >= 0 ? (
+            <>
+              <div 
+                className="absolute bg-green-900/90 h-1.5 top-[-3px]" 
+                style={{ 
+                  width: `${Math.abs(priceChange * 100)}%`,
+                  right: `${100 - Math.abs(lastTradedPrice * 100)}%`
+                }}
+              />
+              <div 
+                className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
+                style={{ 
+                  right: `${100 - Math.abs(lastTradedPrice * 100)}%`
+                }}
+              />
+            </>
+          ) : (
+            <>
+              <div 
+                className="absolute bg-red-500/50 h-1.5 top-[-3px]" 
+                style={{ 
+                  width: `${Math.abs(priceChange * 100)}%`,
+                  left: `${Math.abs(lastTradedPrice * 100)}%`
+                }}
+              />
+              <div 
+                className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
+                style={{ 
+                  left: `${Math.abs(lastTradedPrice * 100)}%`
+                }}
+              />
+            </>
+          )}
         </div>
       </div>
       <div className="flex flex-col items-end justify-between">
