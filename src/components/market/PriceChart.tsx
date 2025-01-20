@@ -1,26 +1,17 @@
 import { useMemo, useCallback } from 'react';
 import { ParentSize } from '@visx/responsive';
 import { scaleTime, scaleLinear } from '@visx/scale';
-import { LinePath, Area } from '@visx/shape';
+import { LinePath } from '@visx/shape';
 import { useTooltip } from '@visx/tooltip';
-import type { NumberValue } from 'd3-scale';
 import { localPoint } from '@visx/event';
 import { LinearGradient } from '@visx/gradient';
 import { bisector } from 'd3-array';
 import { timeFormat } from 'd3-time-format';
 import { curveStepAfter } from '@visx/curve';
 import { AxisLeft, AxisBottom } from '@visx/axis';
-
-interface PriceData {
-  time: number;
-  price: number;
-}
-
-interface PriceChartProps {
-  data: PriceData[];
-  selectedInterval: string;
-  onIntervalSelect?: (interval: string) => void;
-}
+import { ChartSegment } from './chart/ChartSegment';
+import { useChartData } from './chart/useChartData';
+import type { PriceData, ChartDimensions } from './chart/types';
 
 const intervals = [
   { label: '1D', value: '1d' },
@@ -42,7 +33,7 @@ function Chart({
   data: PriceData[]; 
   width: number; 
   height: number;
-  margin?: { top: number; right: number; bottom: number; left: number };
+  margin?: ChartDimensions['margin'];
 }) {
   const {
     showTooltip,
@@ -77,78 +68,7 @@ function Chart({
     [innerHeight]
   );
 
-  // Generate fill data for above and below 50%
-  const { fillAbove, fillBelow } = useMemo(() => {
-    const above: PriceData[] = [];
-    const below: PriceData[] = [];
-    
-    if (data.length === 0) return { fillAbove: above, fillBelow: below };
-
-    // Process all points
-    for (let i = 0; i < data.length; i++) {
-      const currentPoint = data[i];
-      const prevPoint = i > 0 ? data[i - 1] : null;
-
-      // If there's a gap or crossing of 50%, handle it
-      if (prevPoint && 
-          ((prevPoint.price - 50) * (currentPoint.price - 50) < 0 || 
-           currentPoint.time - prevPoint.time > 3600000)) { // Gap larger than 1 hour
-        
-        // Add intersection or connection points
-        if ((prevPoint.price - 50) * (currentPoint.price - 50) < 0) {
-          // Calculate exact intersection
-          const ratio = (50 - prevPoint.price) / (currentPoint.price - prevPoint.price);
-          const intersectionTime = prevPoint.time + (currentPoint.time - prevPoint.time) * ratio;
-          
-          // Add points up to intersection
-          above.push({ 
-            time: intersectionTime, 
-            price: prevPoint.price >= 50 ? prevPoint.price : 50 
-          });
-          below.push({ 
-            time: intersectionTime, 
-            price: prevPoint.price < 50 ? prevPoint.price : 50 
-          });
-          
-          // Add intersection point
-          above.push({ time: intersectionTime, price: 50 });
-          below.push({ time: intersectionTime, price: 50 });
-          
-          // Add points after intersection
-          above.push({ 
-            time: currentPoint.time, 
-            price: currentPoint.price >= 50 ? currentPoint.price : 50 
-          });
-          below.push({ 
-            time: currentPoint.time, 
-            price: currentPoint.price < 50 ? currentPoint.price : 50 
-          });
-        } else {
-          // Handle gap by extending previous value
-          above.push({ 
-            time: currentPoint.time, 
-            price: prevPoint.price >= 50 ? prevPoint.price : 50 
-          });
-          below.push({ 
-            time: currentPoint.time, 
-            price: prevPoint.price < 50 ? prevPoint.price : 50 
-          });
-        }
-      }
-      
-      // Add current point
-      above.push({ 
-        time: currentPoint.time, 
-        price: currentPoint.price >= 50 ? currentPoint.price : 50 
-      });
-      below.push({ 
-        time: currentPoint.time, 
-        price: currentPoint.price < 50 ? currentPoint.price : 50 
-      });
-    }
-
-    return { fillAbove: above, fillBelow: below };
-  }, [data]);
+  const { segments } = useChartData(data);
 
   const handleTooltip = useCallback(
     (event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
@@ -171,8 +91,7 @@ function Chart({
         tooltipTop: priceScale(d.price) + margin.top,
       });
     },
-    [timeScale, priceScale, data, margin, showTooltip]
-  );
+  , [timeScale, priceScale, data, margin, showTooltip]);
 
   const tooltipDateFormat = useMemo(() => {
     return new Intl.DateTimeFormat('en-US', {
@@ -211,23 +130,15 @@ function Chart({
             strokeWidth={1}
           />
 
-          {/* Fill areas */}
-          <Area
-            data={fillAbove}
-            x={d => timeScale(d.time)}
-            y={d => priceScale(d.price)}
-            y1={() => priceScale(50)}
-            curve={curveStepAfter}
-            fill="url(#above-gradient)"
-          />
-          <Area
-            data={fillBelow}
-            x={d => timeScale(d.time)}
-            y={d => priceScale(d.price)}
-            y1={() => priceScale(50)}
-            curve={curveStepAfter}
-            fill="url(#below-gradient)"
-          />
+          {/* Render segments */}
+          {segments.map((segment, i) => (
+            <ChartSegment
+              key={i}
+              segment={segment}
+              timeScale={timeScale}
+              priceScale={priceScale}
+            />
+          ))}
 
           {/* Price line */}
           <LinePath
@@ -264,10 +175,7 @@ function Chart({
             tickLength={0}
             hideTicks
             numTicks={6}
-            tickFormat={(value: NumberValue) => {
-              const date = value instanceof Date ? value : new Date(+value);
-              return formatDate(date);
-            }}
+            tickFormat={(value) => formatDate(new Date(+value))}
             tickLabelProps={() => ({
               fill: '#9ca3af',
               fontSize: 11,
@@ -336,6 +244,12 @@ function Chart({
       )}
     </div>
   );
+}
+
+interface PriceChartProps {
+  data: PriceData[];
+  selectedInterval: string;
+  onIntervalSelect?: (interval: string) => void;
 }
 
 export default function PriceChart({ 
