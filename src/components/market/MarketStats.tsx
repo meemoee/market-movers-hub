@@ -34,10 +34,10 @@ export function MarketStats({
   return (
     <div className="grid grid-cols-[1fr,auto] gap-6 items-center">
       <div>
-        <div className="text-3xl font-bold tracking-tight">
+        <div className="text-3xl font-bold tracking-tight -mt-1">
           {formatPrice(lastTradedPrice)}
         </div>
-        <div className="space-y-4">
+        <div className="space-y-4 mt-3">
           <div className={`flex items-center gap-1 text-sm font-medium
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
