@@ -33,7 +33,7 @@ export function MarketCard({
   onSell,
 }: MarketCardProps) {
   return (
-    <div className="rounded-lg bg-card border border-border p-3 space-y-3">
+    <div className="w-full rounded-lg bg-card border border-border p-3 space-y-3">
       <MarketHeader
         image={market.image}
         question={market.question}
@@ -44,13 +44,15 @@ export function MarketCard({
         onSell={onSell}
         outcomes={market.outcomes}
       />
-      <MarketStats
-        lastTradedPrice={market.final_last_traded_price}
-        priceChange={market.price_change}
-        volume={market.volume}
-        onToggleExpand={onToggleExpand}
-        isExpanded={isExpanded}
-      />
+      <div className="w-full">
+        <MarketStats
+          lastTradedPrice={market.final_last_traded_price}
+          priceChange={market.price_change}
+          volume={market.volume}
+          onToggleExpand={onToggleExpand}
+          isExpanded={isExpanded}
+        />
+      </div>
       {isExpanded && market.description && (
         <MarketDetails
           description={market.description}
