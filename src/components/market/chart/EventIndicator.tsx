@@ -1,4 +1,4 @@
-import { ScaleTime } from 'd3-scale';
+import type { ScaleTime } from 'd3-scale';
 import { MarketEvent } from './types';
 import { EventIcon } from './EventIcon';
 import {

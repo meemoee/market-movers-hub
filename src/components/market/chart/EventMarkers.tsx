@@ -1,4 +1,5 @@
-import { ScaleTime } from '@visx/scale';
+import { scaleTime } from '@visx/scale';
+import type { ScaleTime } from 'd3-scale';
 import { MarketEvent } from './types';
 import { EventIndicator } from './EventIndicator';
 
