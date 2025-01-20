@@ -37,35 +37,27 @@ export function TopMoversHeader({
                 className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors"
               >
                 <span>{timeIntervals.find(i => i.value === selectedInterval)?.label}</span>
-                <ChevronDown 
-                  className={`w-4 h-4 transition-transform duration-500 ease-out ${
-                    isTimeIntervalDropdownOpen ? 'rotate-180' : 'rotate-0'
-                  }`} 
-                />
+                <ChevronDown className="w-4 h-4" />
               </button>
 
-              <div
-                className={`absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-50 transition-all duration-500 ease-out transform origin-top ${
-                  isTimeIntervalDropdownOpen
-                    ? 'opacity-100 scale-y-100 translate-y-0'
-                    : 'opacity-0 scale-y-95 -translate-y-2 pointer-events-none'
-                }`}
-              >
-                {timeIntervals.map((interval) => (
-                  <button
-                    key={interval.value}
-                    className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors ${
-                      selectedInterval === interval.value ? 'bg-accent/30' : ''
-                    }`}
-                    onClick={() => {
-                      setIsTimeIntervalDropdownOpen(false);
-                      onIntervalChange(interval.value);
-                    }}
-                  >
-                    {interval.label}
-                  </button>
-                ))}
-              </div>
+              {isTimeIntervalDropdownOpen && (
+                <div className="absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-50">
+                  {timeIntervals.map((interval) => (
+                    <button
+                      key={interval.value}
+                      className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors ${
+                        selectedInterval === interval.value ? 'bg-accent/30' : ''
+                      }`}
+                      onClick={() => {
+                        setIsTimeIntervalDropdownOpen(false);
+                        onIntervalChange(interval.value);
+                      }}
+                    >
+                      {interval.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 
