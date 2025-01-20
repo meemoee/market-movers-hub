@@ -9,17 +9,9 @@ export default function RightSidebar() {
   const [isLoading, setIsLoading] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  interface Market {
-    id: string
-    question: string
-    yes_price?: number
-    volume?: number
-  }
-
   interface Message {
-    type: 'user' | 'assistant' | 'markets'
+    type: 'user' | 'assistant'
     content?: string
-    markets?: Market[]
   }
 
   const handleChatMessage = async (userMessage: string) => {
@@ -57,6 +49,8 @@ export default function RightSidebar() {
         const lines = response.split('\n').filter(line => line.trim() !== '')
         console.log('Split lines:', lines)
         
+        let accumulatedContent = ''
+        
         for (const line of lines) {
           if (!line.startsWith('data: ')) {
             console.log('Skipping non-data line:', line)
@@ -76,11 +70,12 @@ export default function RightSidebar() {
             console.log('Extracted content:', content)
             
             if (content) {
+              accumulatedContent += content
               setMessages(prev => {
                 const newMessages = [...prev]
                 const lastMessage = newMessages[newMessages.length - 1]
                 if (lastMessage.type === 'assistant') {
-                  lastMessage.content = (lastMessage.content || '') + content
+                  lastMessage.content = accumulatedContent
                 }
                 return newMessages
               })
