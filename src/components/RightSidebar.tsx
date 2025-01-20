@@ -32,6 +32,7 @@ export default function RightSidebar() {
       // Create new AbortController
       abortControllerRef.current = new AbortController()
 
+      console.log('Sending request to market-analysis function...')
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
@@ -44,37 +45,54 @@ export default function RightSidebar() {
         throw error
       }
 
+      console.log('Received response from market-analysis:', data)
       const response = new Response(data.body)
       const reader = response.body?.getReader()
       const decoder = new TextDecoder()
       let accumulatedContent = ''
 
+      console.log('Starting to read stream...')
       while (reader) {
         const { value, done } = await reader.read()
-        if (done) break
+        if (done) {
+          console.log('Stream complete')
+          break
+        }
 
         const chunk = decoder.decode(value)
+        console.log('Received chunk:', chunk)
+        
         const lines = chunk.split('\n').filter(line => line.trim() !== '')
+        console.log('Processing lines:', lines)
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
+          if (!line.startsWith('data: ')) {
+            console.log('Skipping non-data line:', line)
+            continue
+          }
           
           const data = line.slice(5).trim()
-          if (data === '[DONE]') continue
+          if (data === '[DONE]') {
+            console.log('Received [DONE] signal')
+            continue
+          }
           
           try {
+            console.log('Parsing data:', data)
             const parsed = JSON.parse(data)
             const content = parsed.choices?.[0]?.delta?.content || ''
             if (content) {
+              console.log('New content:', content)
               accumulatedContent += content
               setStreamingContent(accumulatedContent)
             }
           } catch (e) {
-            console.error('Error parsing SSE data:', e)
+            console.error('Error parsing SSE data:', e, 'Raw data:', data)
           }
         }
       }
 
+      console.log('Final accumulated content:', accumulatedContent)
       // Add the final message with accumulated content
       setMessages(prev => [...prev, { 
         type: 'assistant', 
