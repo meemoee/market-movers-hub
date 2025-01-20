@@ -12,6 +12,7 @@ import { AxisLeft, AxisBottom } from '@visx/axis';
 import { ChartSegment } from './chart/ChartSegment';
 import { useChartData } from './chart/useChartData';
 import type { PriceData, ChartDimensions } from './chart/types';
+import type { ScaleTime, ScaleLinear } from 'd3-scale';
 
 const intervals = [
   { label: '1D', value: '1d' },
@@ -48,7 +49,7 @@ function Chart({
 
   const timeScale = useMemo(
     () =>
-      scaleTime({
+      scaleTime<number>({
         range: [0, innerWidth],
         domain: [
           Math.min(...data.map((d) => d.time)),
@@ -60,7 +61,7 @@ function Chart({
 
   const priceScale = useMemo(
     () =>
-      scaleLinear({
+      scaleLinear<number>({
         range: [innerHeight, 0],
         domain: [0, 100],
         nice: true,
