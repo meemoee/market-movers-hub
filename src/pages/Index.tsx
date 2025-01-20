@@ -46,34 +46,28 @@ export default function Index() {
       <Header />
       
       <main className="pt-20 lg:pr-[420px]">
-        <div className="flex">
-          {/* Center the content area with max-width */}
-          <div className="flex-1 flex justify-center">
-            <div className="w-full max-w-[1200px] px-4 relative flex gap-4">
-              {/* Account Island - Fixed position relative to the content area */}
-              <div className="w-[260px] shrink-0">
-                <div className="fixed w-[260px]">
-                  <AccountIsland />
-                </div>
-              </div>
-              
-              {/* Top Movers List */}
-              <div className="flex-1">
-                <TopMoversList
-                  topMovers={allMovers}
-                  error={error?.message || null}
-                  timeIntervals={TIME_INTERVALS}
-                  selectedInterval={selectedInterval}
-                  onIntervalChange={setSelectedInterval}
-                  onLoadMore={handleLoadMore}
-                  hasMore={data?.hasMore || false}
-                  openMarketsOnly={openMarketsOnly}
-                  onOpenMarketsChange={setOpenMarketsOnly}
-                  isLoading={isLoading && page === 1}
-                  isLoadingMore={isFetching && page > 1}
-                />
-              </div>
-            </div>
+        {/* Main content wrapper */}
+        <div className="max-w-[1200px] mx-auto relative">
+          {/* Account Island - Absolutely positioned relative to the max-width container */}
+          <div className="absolute left-4 w-[260px]">
+            <AccountIsland />
+          </div>
+          
+          {/* Top Movers List - With left margin to account for Account Island */}
+          <div className="pl-[276px] pr-4">
+            <TopMoversList
+              topMovers={allMovers}
+              error={error?.message || null}
+              timeIntervals={TIME_INTERVALS}
+              selectedInterval={selectedInterval}
+              onIntervalChange={setSelectedInterval}
+              onLoadMore={handleLoadMore}
+              hasMore={data?.hasMore || false}
+              openMarketsOnly={openMarketsOnly}
+              onOpenMarketsChange={setOpenMarketsOnly}
+              isLoading={isLoading && page === 1}
+              isLoadingMore={isFetching && page > 1}
+            />
           </div>
         </div>
       </main>
