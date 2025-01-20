@@ -45,15 +45,17 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <Header />
       
-      <main className="pt-20 lg:pr-[420px]">
-        <div className="max-w-[1200px] mx-auto grid grid-cols-[260px_1fr] gap-4">
-          <div>
-            <div className="fixed w-[260px]">
+      <main className="container mx-auto pt-20 lg:pr-[420px]">
+        <div className="relative flex gap-4 max-w-[1200px] mx-auto">
+          {/* Left sidebar with AccountIsland */}
+          <aside className="w-[260px] relative">
+            <div className="sticky top-[102px]">
               <AccountIsland />
             </div>
-          </div>
-          
-          <div>
+          </aside>
+
+          {/* Main content area with TopMoversList */}
+          <div className="flex-1 min-w-0">
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
