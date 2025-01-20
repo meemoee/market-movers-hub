@@ -26,7 +26,7 @@ export function MarketHeader({
         alt=""
         className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
       />
-      <div className="flex-1 min-w-0 my-auto">
+      <div className="flex-1 min-w-0">
         <h3 className="font-medium text-base leading-tight">
           {question}
         </h3>
@@ -36,7 +36,7 @@ export function MarketHeader({
           </p>
         )}
       </div>
-      <div className="flex-shrink-0 relative h-8 min-w-[140px]">
+      <div className="flex-shrink-0 relative h-full min-w-[140px]">
         <div className="absolute inset-0 rounded-md bg-gradient-to-r from-emerald-500/20 to-red-500/20" />
         <div className="relative h-full flex">
           <HoverButton
