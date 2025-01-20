@@ -32,16 +32,26 @@ export default function RightSidebar() {
     setCurrentSynthesis('')
     
     try {
-      const { data } = await supabase.functions.invoke('market-analysis', {
-        body: {
-          message: userMessage,
-          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
+      const response = await fetch(
+        `${supabase.functions.url}/market-analysis`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabase.auth.session()?.access_token}`,
+          },
+          body: JSON.stringify({
+            message: userMessage,
+            chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
+          })
         }
-      })
+      )
 
-      if (!data) throw new Error('No response data')
+      if (!response.ok) throw new Error('Failed to fetch response')
 
-      const reader = data.getReader()
+      const reader = response.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
       const decoder = new TextDecoder()
 
       while (true) {

@@ -253,7 +253,6 @@ Response (2-3 sentences only):`
       throw new Error(`HTTP error! status: ${response.status}`)
     }
 
-    let synthesisText = ''
     const reader = response.body!.getReader()
     const decoder = new TextDecoder()
 
@@ -272,7 +271,6 @@ Response (2-3 sentences only):`
           try {
             const parsed = JSON.parse(jsonStr)
             const content = parsed.choices[0]?.delta?.content || ''
-            synthesisText += content
             
             // Stream each content chunk
             await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'synthesis', content })}\n\n`))
