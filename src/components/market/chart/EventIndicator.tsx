@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { MarketEvent } from './types';
-import { ScaleTime, ScaleLinear } from 'd3-scale';
-import * as Icons from 'lucide-react';
+import { ScaleTime } from 'd3-scale';
+import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -25,17 +25,22 @@ export const EventIndicator = ({
   const xPosition = timeScale(event.timestamp);
   
   const IconComponent = useMemo(() => {
-    const iconMap: Record<string, keyof typeof Icons> = {
-      'info': 'Info',
-      'alert': 'AlertCircle',
-      'success': 'CheckCircle',
-      'error': 'XCircle',
-      'up': 'ArrowUp',
-      'down': 'ArrowDown'
-    };
-    
-    const IconName = iconMap[event.icon] || 'Info';
-    return Icons[IconName];
+    switch (event.icon) {
+      case 'info':
+        return Info;
+      case 'alert':
+        return AlertCircle;
+      case 'success':
+        return CheckCircle;
+      case 'error':
+        return XCircle;
+      case 'up':
+        return ArrowUp;
+      case 'down':
+        return ArrowDown;
+      default:
+        return Info;
+    }
   }, [event.icon]);
 
   return (
@@ -58,7 +63,10 @@ export const EventIndicator = ({
               width={iconSize}
               height={iconSize}
             >
-              <IconComponent size={iconSize} className="text-muted-foreground" />
+              <IconComponent 
+                size={iconSize} 
+                className="text-muted-foreground" 
+              />
             </foreignObject>
           </g>
         </TooltipTrigger>
