@@ -37,21 +37,17 @@ export default function Index() {
     setAllMovers([]);
   }, [selectedInterval, openMarketsOnly]);
 
-  const handleLoadMore = () => {
-    setPage(prev => prev + 1);
-  };
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
       
       <main className="pt-20 lg:pr-[420px]">
         <div className="container">
-          <div className="max-w-[1200px] mx-auto flex">
-            <div className="w-[260px]">
+          <div className="flex gap-4 max-w-[1200px] mx-auto">
+            <div className="w-[260px] shrink-0">
               <AccountIsland />
             </div>
-            <div className="flex-1 ml-4">
+            <div className="flex-1">
               <TopMoversList
                 topMovers={allMovers}
                 error={error?.message || null}
