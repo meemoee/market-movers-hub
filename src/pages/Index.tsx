@@ -24,6 +24,7 @@ export default function Index() {
     page
   );
 
+  // Update allMovers when initial data loads or interval/openMarketsOnly changes
   useEffect(() => {
     if (data?.data && page === 1) {
       setAllMovers(data.data);
@@ -32,6 +33,7 @@ export default function Index() {
     }
   }, [data?.data, page]);
 
+  // Reset page and allMovers when filters change
   useEffect(() => {
     setPage(1);
     setAllMovers([]);
@@ -47,25 +49,21 @@ export default function Index() {
       
       <main className="pt-20 px-4 lg:pr-[420px]">
         <div className="max-w-4xl mx-auto space-y-4 relative">
-          <div className="flex flex-col-reverse lg:flex-row gap-8 items-start">
-            <div className="flex-1 w-full">
-              <TopMoversList
-                topMovers={allMovers}
-                error={error?.message || null}
-                timeIntervals={TIME_INTERVALS}
-                selectedInterval={selectedInterval}
-                onIntervalChange={setSelectedInterval}
-                onLoadMore={handleLoadMore}
-                hasMore={data?.hasMore || false}
-                openMarketsOnly={openMarketsOnly}
-                onOpenMarketsChange={setOpenMarketsOnly}
-                isLoading={isLoading && page === 1}
-                isLoadingMore={isFetching && page > 1}
-              />
-            </div>
-            <div className="w-full lg:w-auto lg:sticky lg:top-[200px]">
-              <AccountIsland />
-            </div>
+          <div className="flex gap-8 items-start">
+            <AccountIsland />
+            <TopMoversList
+              topMovers={allMovers}
+              error={error?.message || null}
+              timeIntervals={TIME_INTERVALS}
+              selectedInterval={selectedInterval}
+              onIntervalChange={setSelectedInterval}
+              onLoadMore={handleLoadMore}
+              hasMore={data?.hasMore || false}
+              openMarketsOnly={openMarketsOnly}
+              onOpenMarketsChange={setOpenMarketsOnly}
+              isLoading={isLoading && page === 1}
+              isLoadingMore={isFetching && page > 1}
+            />
           </div>
         </div>
       </main>
