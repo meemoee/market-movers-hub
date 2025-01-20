@@ -14,14 +14,15 @@ const HoverButton = React.forwardRef<HTMLButtonElement, HoverButtonProps>(
       <button
         ref={ref}
         className={cn(
-          "w-[80px] px-2 pt-2 pb-2.5",
-          "text-foreground font-medium text-xs leading-relaxed",
+          "w-[80px] px-2 py-3",
+          "text-foreground font-medium text-xs",
           "transition-colors duration-200",
           "backdrop-blur-sm",
           variant === 'buy' 
             ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500"
             : "bg-red-500/10 hover:bg-red-500/20 text-red-500",
           "rounded-md",
+          "flex flex-col items-center justify-center gap-1",
           className
         )}
         {...props}
