@@ -1,7 +1,6 @@
-import { useMemo } from 'react';
-import { MarketEvent } from './types';
 import { ScaleTime } from 'd3-scale';
-import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown } from 'lucide-react';
+import { MarketEvent } from './types';
+import { EventIcon } from './EventIcon';
 import {
   Tooltip,
   TooltipContent,
@@ -24,58 +23,50 @@ export const EventIndicator = ({
 }: EventIndicatorProps) => {
   const xPosition = timeScale(event.timestamp);
   
-  const IconComponent = useMemo(() => {
-    switch (event.icon) {
-      case 'info':
-        return Info;
-      case 'alert':
-        return AlertCircle;
-      case 'success':
-        return CheckCircle;
-      case 'error':
-        return XCircle;
-      case 'up':
-        return ArrowUp;
-      case 'down':
-        return ArrowDown;
-      default:
-        return Info;
-    }
-  }, [event.icon]);
-
   return (
-    <TooltipProvider delayDuration={0}>
+    <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <g>
-            <line
-              x1={xPosition}
-              x2={xPosition}
-              y1={0}
-              y2={height}
-              stroke="#4a5568"
-              strokeWidth={1}
-              strokeDasharray="4,4"
+          <div 
+            style={{ 
+              position: 'absolute',
+              left: `${xPosition}px`,
+              top: 0,
+              height: `${height}px`,
+              width: `${iconSize}px`,
+              transform: `translateX(-${iconSize / 2}px)`,
+              cursor: 'pointer',
+              pointerEvents: 'all',
+            }}
+            className="group"
+          >
+            {/* Vertical line */}
+            <div 
+              className="absolute left-1/2 top-0 w-px h-full bg-muted-foreground/30 group-hover:bg-muted-foreground/50 transition-colors"
+              style={{ transform: 'translateX(-0.5px)' }}
             />
-            <foreignObject
-              x={xPosition - (iconSize / 2)}
-              y={height - iconSize - 4}
-              width={iconSize}
-              height={iconSize}
-              style={{ cursor: 'pointer' }}
+            
+            {/* Icon container */}
+            <div 
+              className="absolute bottom-1 left-1/2 transform -translate-x-1/2 p-1 rounded-full bg-background/80 backdrop-blur-sm"
             >
-              <IconComponent 
-                size={iconSize} 
-                className="text-muted-foreground hover:text-foreground transition-colors" 
+              <EventIcon
+                type={event.icon}
+                size={iconSize}
+                className="text-muted-foreground group-hover:text-foreground transition-colors"
               />
-            </foreignObject>
-          </g>
+            </div>
+          </div>
         </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-[200px]">
+        <TooltipContent 
+          side="top" 
+          className="max-w-[240px] p-3"
+          sideOffset={5}
+        >
           <div className="space-y-1">
-            <p className="font-medium">{event.title}</p>
+            <p className="font-medium text-sm">{event.title}</p>
             {event.description && (
-              <p className="text-sm text-muted-foreground">{event.description}</p>
+              <p className="text-xs text-muted-foreground">{event.description}</p>
             )}
           </div>
         </TooltipContent>
