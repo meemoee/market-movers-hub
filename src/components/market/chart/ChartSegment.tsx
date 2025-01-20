@@ -1,12 +1,12 @@
 import { Area } from '@visx/shape';
 import { curveStepAfter } from '@visx/curve';
-import { ScaleTime, ScaleLinear } from '@visx/scale';
+import { ScaleTypeToD3Scale } from '@visx/scale';
 import { FillSegment } from './types';
 
 interface ChartSegmentProps {
   segment: FillSegment;
-  timeScale: ScaleTime<number>;
-  priceScale: ScaleLinear<number>;
+  timeScale: ScaleTypeToD3Scale<'time'>;
+  priceScale: ScaleTypeToD3Scale<'linear'>;
 }
 
 export const ChartSegment = ({ segment, timeScale, priceScale }: ChartSegmentProps) => {
