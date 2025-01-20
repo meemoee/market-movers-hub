@@ -8,6 +8,7 @@ interface MarketHeaderProps {
   bestAsk?: number;
   onBuy: () => void;
   onSell: () => void;
+  outcomes?: string[];
 }
 
 export function MarketHeader({ 
@@ -17,7 +18,8 @@ export function MarketHeader({
   bestBid,
   bestAsk,
   onBuy, 
-  onSell 
+  onSell,
+  outcomes = ["Yes", "No"]  // Default to Yes/No if no outcomes provided
 }: MarketHeaderProps) {
   return (
     <div className="flex items-center gap-4">
@@ -44,7 +46,7 @@ export function MarketHeader({
             onClick={onBuy}
             className="flex-1 h-full rounded-r-none flex flex-col items-center justify-center gap-0 px-3"
           >
-            <span className="text-xs">Buy</span>
+            <span className="text-xs">{outcomes[0]}</span>
             {bestAsk !== undefined && (
               <span className="text-[11px] font-medium opacity-90 -mt-0.5 text-emerald-500">
                 {(bestAsk * 100).toFixed(1)}¢
@@ -56,7 +58,7 @@ export function MarketHeader({
             onClick={onSell}
             className="flex-1 h-full rounded-l-none flex flex-col items-center justify-center gap-0 px-3"
           >
-            <span className="text-xs">Sell</span>
+            <span className="text-xs">{outcomes[1]}</span>
             {bestBid !== undefined && (
               <span className="text-[11px] font-medium opacity-90 -mt-0.5 text-red-500">
                 {(bestBid * 100).toFixed(1)}¢
