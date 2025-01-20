@@ -47,7 +47,7 @@ export default function Index() {
       
       <main className="pt-20 px-4 lg:pr-[420px]">
         <div className="max-w-7xl mx-auto">
-          <div className="flex gap-6">
+          <div className="flex gap-2">
             <div className="w-[280px]">
               <AccountIsland />
             </div>
