@@ -37,7 +37,7 @@ export function MarketStats({
         <div className="text-3xl font-bold tracking-tight">
           {formatPrice(lastTradedPrice)}
         </div>
-        <div className="mt-1">
+        <div className="mt-1 flex flex-col justify-between h-[48px]">
           <div className={`flex items-center gap-1 text-sm font-medium h-[20px]
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
@@ -49,7 +49,7 @@ export function MarketStats({
             {formatPriceChange(priceChange)}
           </div>
           
-          <div className="relative h-[3px] w-full mt-4">
+          <div className="relative h-[3px] w-full">
             {/* Base white line showing current price position */}
             <div 
               className="absolute bg-white/50 h-1.5 top-[-3px]" 
@@ -97,19 +97,21 @@ export function MarketStats({
         <div className="text-xl font-semibold">
           {formatVolume(volume)}
         </div>
-        <div className="text-sm text-muted-foreground mt-1 h-[20px] flex items-center justify-end">
-          24h Volume
+        <div className="mt-1 flex flex-col justify-between h-[48px]">
+          <div className="text-sm text-muted-foreground h-[20px] flex items-center justify-end">
+            24h Volume
+          </div>
+          <button
+            onClick={onToggleExpand}
+            className="inline-flex justify-center"
+          >
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+            ) : (
+              <ChevronDown className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
+            )}
+          </button>
         </div>
-        <button
-          onClick={onToggleExpand}
-          className="mt-4 inline-flex justify-center"
-        >
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-          )}
-        </button>
       </div>
     </div>
   );
