@@ -103,16 +103,16 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     const newEdges: Edge[] = [];
     let completedStreams = 0;
     
-    for (let i = 0; i < childrenCount; i++) {
-      const timestamp = Date.now() + i;
+    const processNode = (index: number) => {
+      const timestamp = Date.now() + index;
       const newNodeId = `node-${timestamp}-${currentLayer}`;
       
       // Check if this node would have multiple parents
       const hasParent = edges.some(edge => edge.target === newNodeId);
-      if (hasParent) continue;
+      if (hasParent) return;
 
       const position = generateNodePosition(
-        i,
+        index,
         childrenCount,
         parent.position.x,
         parent.position.y,
@@ -133,24 +133,28 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      setTimeout(() => {
-        streamText(newNodeId, true, currentLayer, () => {
-          completedStreams++;
-          if (completedStreams === childrenCount) {
-            newNodes.forEach((node, index) => {
-              setTimeout(() => {
-                generateChildNodes(
-                  node.id,
-                  currentLayer + 1,
-                  maxLayers,
-                  childrenCount,
-                  node
-                );
-              }, index * 300);
+      streamText(newNodeId, true, currentLayer, () => {
+        completedStreams++;
+        if (completedStreams === childrenCount) {
+          // Wait for all nodes in current layer to be processed before generating their children
+          setTimeout(() => {
+            newNodes.forEach((node) => {
+              generateChildNodes(
+                node.id,
+                currentLayer + 1,
+                maxLayers,
+                childrenCount,
+                node
+              );
             });
-          }
-        });
-      }, i * 200);
+          }, 500);
+        }
+      });
+    };
+
+    // Process nodes sequentially with a small delay between each
+    for (let i = 0; i < childrenCount; i++) {
+      setTimeout(() => processNode(i), i * 300);
     }
 
     // Only add nodes that don't already exist
@@ -167,7 +171,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       return [...eds, ...uniqueNewEdges];
     });
     
-  }, [nodes, edges, setNodes, setEdges, streamText]);
+  }, [nodes, edges, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
 
   const addChildNode = useCallback((parentId: string) => {
     setSelectedParentId(parentId);
