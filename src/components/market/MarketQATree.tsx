@@ -127,7 +127,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
-    let completedStreams = 0;
     
     for (let i = 0; i < childrenCount; i++) {
       const timestamp = Date.now() + i;
@@ -159,7 +158,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       newEdges.push(newEdge);
     }
 
-    // Add all nodes and edges at once
     setNodes(nds => {
       const existingNodeIds = new Set(nds.map(n => n.id));
       const uniqueNewNodes = newNodes.filter(n => !existingNodeIds.has(n.id));
@@ -172,14 +170,12 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       return [...eds, ...uniqueNewEdges];
     });
 
-    // Process nodes with reliable completion tracking
     newNodes.forEach((node, index) => {
       generationQueue.current = generationQueue.current.then(() => 
         new Promise<void>((resolve) => {
           setTimeout(() => {
             streamText(node.id, true, currentLayer, () => {
-              completedStreams++;
-              if (completedStreams === newNodes.length && currentLayer < maxLayers) {
+              if (currentLayer < maxLayers) {
                 generateChildNodes(
                   node.id,
                   currentLayer + 1,
