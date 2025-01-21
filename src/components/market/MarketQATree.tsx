@@ -13,6 +13,11 @@ import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
 import { supabase } from '@/integrations/supabase/client';
 
+interface QAResponse {
+  question: string;
+  answer: string;
+}
+
 export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -109,7 +114,22 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                         if (content) {
                           console.log('New content chunk:', content);
                           accumulatedContent += content;
-                          updateNodeData('node-1', 'answer', accumulatedContent);
+                          
+                          try {
+                            // Try to parse the accumulated content as JSON
+                            const qaContent: QAResponse = JSON.parse(accumulatedContent);
+                            console.log('Parsed QA content:', qaContent);
+                            
+                            if (qaContent.question) {
+                              updateNodeData('node-1', 'question', qaContent.question);
+                            }
+                            if (qaContent.answer) {
+                              updateNodeData('node-1', 'answer', qaContent.answer);
+                            }
+                          } catch (e) {
+                            // If we can't parse as JSON yet, continue accumulating
+                            console.log('Accumulated content not yet valid JSON:', accumulatedContent);
+                          }
                         }
                       } catch (e) {
                         console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr);
