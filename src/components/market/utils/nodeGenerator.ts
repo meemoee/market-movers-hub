@@ -33,53 +33,55 @@ const getNodeDimensions = (layer: number) => ({
   height: 120
 });
 
+// Pre-calculate total width needed for the entire tree
+const calculateTotalTreeWidth = (childrenCount: number, maxLayers: number): number => {
+  // Calculate max number of nodes at the deepest layer
+  const maxNodesAtDeepestLayer = Math.pow(childrenCount, maxLayers - 1);
+  // Base spacing between nodes at the deepest layer
+  const baseNodeSpacing = 300;
+  return maxNodesAtDeepestLayer * baseNodeSpacing;
+};
+
+// Calculate spacing for a specific layer
+const calculateLayerSpacing = (
+  childrenCount: number,
+  currentLayer: number,
+  maxLayers: number,
+  totalWidth: number
+): { horizontalGap: number; verticalGap: number } => {
+  // Calculate how many nodes could be at this layer
+  const nodesAtCurrentLayer = Math.pow(childrenCount, currentLayer - 1);
+  // Distribute total width proportionally
+  const horizontalGap = totalWidth / (nodesAtCurrentLayer + 1);
+  // Fixed vertical gap between layers
+  const verticalGap = 200;
+  
+  return { horizontalGap, verticalGap };
+};
+
 export const generateNodePosition = (
   index: number,
   childrenCount: number,
   parentX: number,
   parentY: number,
   currentLayer: number,
-  parentId: string,
-  nodes: Node[] = []
+  maxLayers: number
 ) => {
-  // Reset layout when starting from root
-  if (currentLayer === 1) {
-    resetLayout();
-  }
+  // Calculate total tree width needed
+  const totalWidth = calculateTotalTreeWidth(childrenCount, maxLayers);
+  const { horizontalGap, verticalGap } = calculateLayerSpacing(
+    childrenCount,
+    currentLayer,
+    maxLayers,
+    totalWidth
+  );
 
-  // Build ancestor path
-  const ancestorPath = buildAncestorPath(parentId, nodes);
-  const channel = getAncestorChannel(ancestorPath);
-  
-  // Calculate horizontal position
-  const LAYER_HORIZONTAL_GAP = 400;
-  const x = currentLayer * LAYER_HORIZONTAL_GAP;
-
-  // Calculate vertical position based on channel and siblings
-  const CHANNEL_VERTICAL_GAP = 200; // Gap between channels
-  const SIBLING_VERTICAL_GAP = 40;  // Gap between siblings in same channel
-  const channelBaseY = channel * CHANNEL_VERTICAL_GAP;
-  
-  // Position within channel based on sibling index
-  const siblingOffset = (childrenCount - 1) / 2;
-  const relativeY = (index - siblingOffset) * (getNodeDimensions(currentLayer).height + SIBLING_VERTICAL_GAP);
-  
-  const y = channelBaseY + relativeY;
+  // Calculate x position based on index and total width
+  const x = (index + 1) * horizontalGap - totalWidth / 2;
+  // Calculate y position based on layer
+  const y = currentLayer * verticalGap;
 
   return { x, y };
-};
-
-// Helper to build ancestor path string
-const buildAncestorPath = (nodeId: string, nodes: Node[]): string => {
-  const path: string[] = [nodeId];
-  let current = nodes.find(n => n.id === nodeId);
-  
-  while (current?.data?.parentId) {
-    path.unshift(current.data.parentId);
-    current = nodes.find(n => n.id === current?.data.parentId);
-  }
-  
-  return path.join('-');
 };
 
 export const createNode = (
@@ -92,10 +94,11 @@ export const createNode = (
   position,
   data: {
     ...data,
-    parentId: data.parentId,
+    question: '',
+    answer: '',
     style: {
-      width: getNodeDimensions(data.currentLayer).width,
-      opacity: Math.max(0.7, 1 - data.currentLayer * 0.1)
+      width: getNodeDimensions(data.currentLayer || 1).width,
+      opacity: Math.max(0.7, 1 - (data.currentLayer || 1) * 0.1)
     }
   }
 });
@@ -108,8 +111,6 @@ export const createEdge = (
   id: `edge-${sourceId}-${targetId}`,
   source: sourceId,
   target: targetId,
-  sourceHandle: 'right',
-  targetHandle: 'left',
   type: 'smoothstep',
   style: { 
     stroke: getEdgeColor(currentLayer),
@@ -129,4 +130,48 @@ const getEdgeColor = (layer: number): string => {
     '#9B59B6'  // Fourth level
   ];
   return colors[layer - 1] || colors[colors.length - 1];
+};
+
+// Generate entire tree structure upfront
+export const generateTreeStructure = (
+  rootId: string,
+  maxLayers: number,
+  childrenCount: number
+): { nodes: Node[]; edges: Edge[] } => {
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+  
+  // Create root node
+  nodes.push(createNode(rootId, { x: 0, y: 0 }, { currentLayer: 1 }));
+  
+  // Generate nodes layer by layer
+  const generateLayer = (parentIds: string[], currentLayer: number) => {
+    if (currentLayer > maxLayers) return;
+    
+    const newParentIds: string[] = [];
+    
+    parentIds.forEach((parentId, parentIndex) => {
+      for (let i = 0; i < childrenCount; i++) {
+        const nodeId = `node-${Date.now()}-${currentLayer}-${i}-${parentIndex}`;
+        const position = generateNodePosition(
+          i,
+          childrenCount,
+          0, // Will be calculated based on parent later
+          0,
+          currentLayer,
+          maxLayers
+        );
+        
+        nodes.push(createNode(nodeId, position, { currentLayer }));
+        edges.push(createEdge(parentId, nodeId, currentLayer));
+        newParentIds.push(nodeId);
+      }
+    });
+    
+    generateLayer(newParentIds, currentLayer + 1);
+  };
+  
+  generateLayer([rootId], 2);
+  
+  return { nodes, edges };
 };

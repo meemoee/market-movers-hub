@@ -4,8 +4,6 @@ import {
   ReactFlow, 
   Background, 
   Controls,
-  Node, 
-  Edge, 
   Connection, 
   useNodesState, 
   useEdgesState, 
@@ -13,7 +11,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
-import { generateNodePosition, createNode, createEdge } from './utils/nodeGenerator';
+import { generateTreeStructure, createNode } from './utils/nodeGenerator';
 import {
   Dialog,
   DialogContent,
@@ -30,7 +28,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [layers, setLayers] = useState(2);
   const [childrenPerLayer, setChildrenPerLayer] = useState(2);
-  const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
@@ -41,10 +38,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
             ...node,
             data: {
               ...node.data,
-              [field]: value,
-              updateNodeData,
-              addChildNode,
-              removeNode
+              [field]: value
             },
           };
         }
@@ -55,7 +49,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
   const streamText = useCallback((
     nodeId: string, 
-    isQuestion: boolean = true, 
+    isQuestion: boolean = true,
     currentLayer: number,
     onComplete?: () => void
   ) => {
@@ -87,107 +81,39 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     }, 50);
   }, [updateNodeData]);
 
-  const generateChildNodes = useCallback((
-    parentId: string, 
-    currentLayer: number = 1, 
-    maxLayers: number,
-    childrenCount: number,
-    parentNode?: Node
-  ) => {
-    if (currentLayer > maxLayers) return;
-
-    const parent = parentNode || nodes.find(node => node.id === parentId);
-    if (!parent) return;
-
-    const newNodes: Node[] = [];
-    const newEdges: Edge[] = [];
-    let completedStreams = 0;
+  const generateTree = useCallback(() => {
+    // Generate the entire tree structure upfront
+    const rootId = 'node-1';
+    const { nodes: newNodes, edges: newEdges } = generateTreeStructure(
+      rootId,
+      layers,
+      childrenPerLayer
+    );
     
-    for (let i = 0; i < childrenCount; i++) {
-      const timestamp = Date.now() + i;
-      const newNodeId = `node-${timestamp}-${currentLayer}`;
+    setNodes(newNodes);
+    setEdges(newEdges);
+
+    // Start streaming text to nodes in sequence
+    const streamToNodesInOrder = (nodeIndex: number = 0) => {
+      if (nodeIndex >= newNodes.length) return;
       
-      const position = generateNodePosition(
-        i,
-        childrenCount,
-        parent.position.x,
-        parent.position.y,
-        currentLayer
-      );
-      
-      const newNode = createNode(newNodeId, position, {
-        question: '',
-        answer: '',
-        updateNodeData,
-        addChildNode,
-        removeNode
-      });
-
-      const newEdge = createEdge(parentId, newNodeId, currentLayer);
-
-      newNodes.push(newNode);
-      newEdges.push(newEdge);
-
-      setTimeout(() => {
-        streamText(newNodeId, true, currentLayer, () => {
-          completedStreams++;
-          if (completedStreams === childrenCount) {
-            newNodes.forEach((node, index) => {
-              setTimeout(() => {
-                generateChildNodes(
-                  node.id,
-                  currentLayer + 1,
-                  maxLayers,
-                  childrenCount,
-                  node
-                );
-              }, index * 300);
-            });
-          }
-        });
-      }, i * 200);
-    }
-
-    setNodes(nds => [...nds, ...newNodes]);
-    setEdges(eds => [...eds, ...newEdges]);
-    
-  }, [nodes, setNodes, setEdges, streamText]);
-
-  const addChildNode = useCallback((parentId: string) => {
-    setSelectedParentId(parentId);
-    setIsDialogOpen(true);
-  }, []);
-
-  const removeNode = useCallback((nodeId: string) => {
-    const nodesToRemove = new Set<string>();
-    const edgesToRemove = new Set<string>();
-    
-    const findDescendants = (id: string) => {
-      nodesToRemove.add(id);
-      edges.forEach(edge => {
-        if (edge.source === id) {
-          edgesToRemove.add(edge.id);
-          findDescendants(edge.target);
-        }
+      const node = newNodes[nodeIndex];
+      streamText(node.id, true, node.data.currentLayer, () => {
+        setTimeout(() => {
+          streamToNodesInOrder(nodeIndex + 1);
+        }, 300);
       });
     };
-    
-    findDescendants(nodeId);
-    
-    setNodes((nds) => nds.filter((node) => !nodesToRemove.has(node.id)));
-    setEdges((eds) => eds.filter((edge) => !edgesToRemove.has(edge.id)));
-  }, [edges, setNodes, setEdges]);
+
+    streamToNodesInOrder();
+  }, [layers, childrenPerLayer, setNodes, setEdges, streamText]);
 
   const onConnect = useCallback(
     (params: Connection) => {
+      // Check if target node already has a parent
       const targetHasParent = edges.some(edge => edge.target === params.target);
       if (!targetHasParent) {
-        setEdges((eds) => addEdge({
-          ...params,
-          type: 'smoothstep',
-          animated: false,
-          style: { stroke: '#666', strokeWidth: 2 }
-        }, eds));
+        setEdges((eds) => addEdge(params, eds));
       }
     },
     [edges, setEdges]
@@ -195,18 +121,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
   useState(() => {
     if (nodes.length === 0) {
-      const rootNode: Node = {
-        id: 'node-1',
-        type: 'qaNode',
-        position: { x: 0, y: 0 },
-        data: {
-          question: 'Root Question',
-          answer: 'Root Answer',
-          updateNodeData,
-          addChildNode,
-          removeNode
-        }
-      };
+      const rootNode = createNode('node-1', { x: 0, y: 0 }, { currentLayer: 1 });
       setNodes([rootNode]);
     }
   });
@@ -244,7 +159,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Generate Child Nodes</DialogTitle>
+            <DialogTitle>Generate Tree</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="flex flex-col gap-2">
@@ -272,10 +187,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           </div>
           <DialogFooter>
             <Button onClick={() => {
-              if (selectedParentId) {
-                generateChildNodes(selectedParentId, 1, layers, childrenPerLayer);
-                setIsDialogOpen(false);
-              }
+              generateTree();
+              setIsDialogOpen(false);
             }}>Generate</Button>
           </DialogFooter>
         </DialogContent>
