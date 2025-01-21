@@ -9,6 +9,7 @@ interface MarketHeaderProps {
   onBuy: () => void;
   onSell: () => void;
   outcomes?: string[];
+  onToggleExpand: () => void;
 }
 
 export function MarketHeader({ 
@@ -19,7 +20,8 @@ export function MarketHeader({
   bestAsk,
   onBuy, 
   onSell,
-  outcomes = ["Yes", "No"]
+  outcomes = ["Yes", "No"],
+  onToggleExpand
 }: MarketHeaderProps) {
   return (
     <div className="flex items-center gap-4">
@@ -28,7 +30,10 @@ export function MarketHeader({
         alt=""
         className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
       />
-      <div className="flex-1 min-w-0">
+      <div 
+        className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+        onClick={onToggleExpand}
+      >
         <h3 className="font-medium text-base leading-tight">
           {question}
         </h3>

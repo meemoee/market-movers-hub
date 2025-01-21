@@ -43,14 +43,15 @@ export function MarketCard({
         onBuy={onBuy}
         onSell={onSell}
         outcomes={market.outcomes}
+        onToggleExpand={onToggleExpand}
       />
       <div className="w-full">
         <MarketStats
           lastTradedPrice={market.final_last_traded_price}
           priceChange={market.price_change}
           volume={market.volume}
-          onToggleExpand={onToggleExpand}
           isExpanded={isExpanded}
+          onToggleExpand={onToggleExpand}
         />
       </div>
       {isExpanded && market.description && (

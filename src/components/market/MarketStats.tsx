@@ -1,4 +1,4 @@
-import { TrendingUp, TrendingDown, ChevronUp, ChevronDown } from "lucide-react";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface MarketStatsProps {
   lastTradedPrice: number;
@@ -13,7 +13,6 @@ export function MarketStats({
   priceChange, 
   volume,
   isExpanded,
-  onToggleExpand
 }: MarketStatsProps) {
   const formatPrice = (price: number): string => {
     return `${(price * 100).toFixed(1)}%`;
@@ -33,7 +32,7 @@ export function MarketStats({
 
   return (
     <div className="w-full grid grid-cols-[1fr_200px] gap-4 -mt-2">
-      <div>
+      <div className="flex-1">
         <div className="flex flex-col pt-1">
           <span className="text-3xl font-bold tracking-tight">
             {formatPrice(lastTradedPrice)}
@@ -53,8 +52,7 @@ export function MarketStats({
         <div className="relative h-[3px] w-full mt-2">
           {/* Base white line showing current price position */}
           <div 
-            className="absolute bg-white/50 h-1.5 top-[-3px]" 
-            style={{ width: `${Math.abs(lastTradedPrice * 100)}%` }}
+            className="absolute bg-white/50 h-1.5 top-[-3px] w-full" 
           />
           
           {/* Price change visualization */}
@@ -102,16 +100,6 @@ export function MarketStats({
             24h Volume
           </span>
         </div>
-        <button
-          onClick={onToggleExpand}
-          className="inline-flex justify-center"
-        >
-          {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-          ) : (
-            <ChevronDown className="w-4 h-4 text-muted-foreground hover:text-foreground transition-colors" />
-          )}
-        </button>
       </div>
     </div>
   );
