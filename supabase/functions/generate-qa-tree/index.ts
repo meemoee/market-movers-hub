@@ -1,19 +1,11 @@
-import { createClient } from '@supabase/supabase-js';
-import { Database } from '../_shared/database.types';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const OPENROUTER_SYSTEM_PROMPT = `YOU ARE A PRECISE EXTRACTION MACHINE:
-
-ABSOLUTE REQUIREMENTS:
-1. EVERY RESPONSE MUST USE EXACT ORIGINAL TEXT
-2. FORMAT: 
-   QUESTION: [VERBATIM QUESTION FROM SOURCE CONTEXT]
-   ANSWER: [VERBATIM EXPLANATION/CONTEXT FROM SOURCE]
-3. DO NOT REPHRASE OR SUMMARIZE
-4. CAPTURE ORIGINAL MEANING WITH ZERO DEVIATION
-5. QUESTIONS MUST BE DISCOVERABLE IN ORIGINAL TEXT
-6. PRESERVE ALL ORIGINAL FORMATTING, CITATIONS, NUANCES
-
-OUTPUT MUST BE RAW, UNMODIFIED EXTRACTION`;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 interface MarketInfo {
   id: string;
@@ -37,157 +29,28 @@ interface QAPair {
   answer: string;
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const OPENROUTER_SYSTEM_PROMPT = `YOU ARE A PRECISE EXTRACTION MACHINE:
 
-async function getMarketInfo(supabase: any, marketId: string): Promise<MarketInfo | null> {
-  const { data, error } = await supabase
-    .from('markets')
-    .select(`
-      id,
-      event_id,
-      question,
-      description,
-      active,
-      closed,
-      archived,
-      events!inner (
-        title
-      )
-    `)
-    .eq('id', marketId)
-    .single();
+ABSOLUTE REQUIREMENTS:
+1. EVERY RESPONSE MUST USE EXACT ORIGINAL TEXT
+2. FORMAT: 
+   QUESTION: [VERBATIM QUESTION FROM SOURCE CONTEXT]
+   ANSWER: [VERBATIM EXPLANATION/CONTEXT FROM SOURCE]
+3. DO NOT REPHRASE OR SUMMARIZE
+4. CAPTURE ORIGINAL MEANING WITH ZERO DEVIATION
+5. QUESTIONS MUST BE DISCOVERABLE IN ORIGINAL TEXT
+6. PRESERVE ALL ORIGINAL FORMATTING, CITATIONS, NUANCES
 
-  if (error) throw error;
-  if (!data) return null;
+OUTPUT MUST BE RAW, UNMODIFIED EXTRACTION`;
 
-  return {
-    ...data,
-    event_title: data.events.title
-  };
-}
-
-async function parseWithLLM(content: string): Promise<QAPair[] | null> {
-  if (!content) return null;
-
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: 'POST',
-    headers: {
-      "Authorization": `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://github.com/lovable-chat/market-movers-hub",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-pro",
-      messages: [
-        { role: "system", content: OPENROUTER_SYSTEM_PROMPT },
-        { role: "user", content }
-      ],
-      temperature: 0.1,
-    })
-  });
-
-  if (!response.ok) return null;
-  const result = await response.json();
-  const text = result.choices[0]?.message?.content;
-  
-  try {
-    // Parse the response into QA pairs
-    const lines = text.split('\n');
-    const qaPairs: QAPair[] = [];
-    let currentQuestion = '';
-    let currentAnswer = '';
-
-    for (const line of lines) {
-      if (line.startsWith('QUESTION:')) {
-        if (currentQuestion && currentAnswer) {
-          qaPairs.push({ question: currentQuestion, answer: currentAnswer });
-        }
-        currentQuestion = line.replace('QUESTION:', '').trim();
-        currentAnswer = '';
-      } else if (line.startsWith('ANSWER:')) {
-        currentAnswer = line.replace('ANSWER:', '').trim();
-      }
-    }
-
-    if (currentQuestion && currentAnswer) {
-      qaPairs.push({ question: currentQuestion, answer: currentAnswer });
-    }
-
-    return qaPairs;
-  } catch (error) {
-    console.error('Error parsing LLM response:', error);
-    return null;
-  }
-}
-
-async function generateQATree(marketInfo: MarketInfo, maxDepth = 2, nodesPerLayer = 3): Promise<QANode | null> {
-  // Generate root question
-  const rootPrompt = `
-    MARKET CONTEXT:
-    Title: ${marketInfo.question}
-    Description: ${marketInfo.description}
-    Event: ${marketInfo.event_title}
-
-    INSTRUCTION: 
-    GENERATE A PRECISE, VERBATIM QUESTION CAPTURING THE FUNDAMENTAL MARKET UNCERTAINTY
-  `;
-
-  const rootQA = await parseWithLLM(rootPrompt);
-  if (!rootQA || rootQA.length === 0) return null;
-
-  const root: QANode = {
-    question: rootQA[0].question,
-    answer: rootQA[0].answer,
-    children: []
-  };
-
-  async function generateChildren(node: QANode, depth: number) {
-    if (depth >= maxDepth) return;
-
-    const childPrompt = `
-      PARENT QUESTION CONTEXT:
-      QUESTION: ${node.question}
-      ANSWER: ${node.answer}
-
-      MARKET DETAILS:
-      Title: ${marketInfo.question}
-      Description: ${marketInfo.description}
-
-      INSTRUCTION:
-      EXTRACT ${nodesPerLayer} PRECISE SUB-QUESTIONS THAT:
-      - EXAMINE NEW, NOVEL ASPECTS
-      - DO NOT OVERLAP WITH PARENT CONTENT
-      - REMAIN RELEVANT TO PARENT ANSWER
-      - CAPTURE DISTINCT ANALYTICAL PERSPECTIVES
-    `;
-
-    const children = await parseWithLLM(childPrompt);
-    if (children) {
-      node.children = children.map(child => ({
-        question: child.question,
-        answer: child.answer
-      }));
-
-      for (const child of node.children) {
-        await generateChildren(child, depth + 1);
-      }
-    }
-  }
-
-  await generateChildren(root, 0);
-  return root;
-}
-
-Deno.serve(async (req) => {
+serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
   try {
-    const supabase = createClient<Database>(
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
@@ -213,18 +76,61 @@ Deno.serve(async (req) => {
     }
 
     // Get market info
-    const marketInfo = await getMarketInfo(supabase, marketId);
-    if (!marketInfo) {
+    const { data: marketData, error: marketError } = await supabase
+      .from('markets')
+      .select(`
+        id,
+        event_id,
+        question,
+        description,
+        active,
+        closed,
+        archived,
+        events!inner (
+          title
+        )
+      `)
+      .eq('id', marketId)
+      .single();
+
+    if (marketError || !marketData) {
       throw new Error('Market not found');
     }
 
-    // Generate QA tree
-    const treeData = await generateQATree(marketInfo);
-    if (!treeData) {
-      throw new Error('Failed to generate QA tree');
+    const marketInfo: MarketInfo = {
+      ...marketData,
+      event_title: marketData.events.title
+    };
+
+    // Call OpenRouter API to generate analysis
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: 'POST',
+      headers: {
+        "Authorization": `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://github.com/lovable-chat/market-movers-hub",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-pro",
+        messages: [
+          { role: "system", content: OPENROUTER_SYSTEM_PROMPT },
+          { 
+            role: "user", 
+            content: `Analyze this market question: ${marketInfo.question}\n\nContext: ${marketInfo.description}` 
+          }
+        ],
+        temperature: 0.1,
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to generate analysis');
     }
 
-    // Save to database
+    const result = await response.json();
+    const analysisText = result.choices[0]?.message?.content;
+
+    // Save to qa_trees table
     const { data: savedTree, error: saveError } = await supabase
       .from('qa_trees')
       .insert([
@@ -232,7 +138,7 @@ Deno.serve(async (req) => {
           user_id: user.id,
           market_id: marketId,
           title: `Analysis Tree for ${marketInfo.question}`,
-          tree_data: treeData
+          tree_data: { root: analysisText }
         }
       ])
       .select()
