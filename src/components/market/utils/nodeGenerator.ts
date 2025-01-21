@@ -21,9 +21,12 @@ const calculateSubtreeWidth = (childrenCount: number, currentLayer: number, maxL
   const layersBelow = maxLayers - currentLayer;
   const nodesInDeepestLayer = Math.pow(childrenCount, layersBelow);
   
+  // Add extra padding for leaf nodes to prevent overlap
+  const leafNodePadding = currentLayer === maxLayers - 1 ? 50 : 0;
+  
   // The subtree width should be wide enough to accommodate the maximum possible nodes
-  // in its deepest layer, plus some padding
-  return nodesInDeepestLayer * baseNodeWidth;
+  // in its deepest layer, plus padding
+  return (nodesInDeepestLayer * baseNodeWidth) + (leafNodePadding * (nodesInDeepestLayer - 1));
 };
 
 const calculateNodeSpacing = (
@@ -35,7 +38,7 @@ const calculateNodeSpacing = (
   const subtreeWidth = calculateSubtreeWidth(childrenCount, currentLayer, maxLayers);
   
   // Add padding between subtrees
-  const paddingBetweenSubtrees = 100;
+  const paddingBetweenSubtrees = 150;
   
   // Calculate horizontal spacing based on subtree width
   const horizontalSpacing = (subtreeWidth + paddingBetweenSubtrees) / Math.max(1, childrenCount - 1);
