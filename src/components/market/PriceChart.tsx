@@ -5,14 +5,12 @@ import { LinePath } from '@visx/shape';
 import { useTooltip } from '@visx/tooltip';
 import { localPoint } from '@visx/event';
 import { LinearGradient } from '@visx/gradient';
-import { bisector } from 'd3-array';
 import { timeFormat } from 'd3-time-format';
 import { curveStepAfter } from '@visx/curve';
 import { AxisLeft, AxisBottom } from '@visx/axis';
 import { ChartSegment } from './chart/ChartSegment';
 import { EventMarkers } from './chart/EventMarkers';
 import { useChartData } from './chart/useChartData';
-import { TooltipProvider } from "@/components/ui/tooltip";
 import type { PriceData, MarketEvent } from './chart/types';
 
 const intervals = [
@@ -78,12 +76,10 @@ function Chart({
   const getInterpolatedPrice = useCallback((xValue: number) => {
     const time = timeScale.invert(xValue).getTime();
     let leftIndex = 0;
-    let rightIndex = data.length - 1;
 
     for (let i = 0; i < data.length - 1; i++) {
       if (data[i].time <= time && data[i + 1].time > time) {
         leftIndex = i;
-        rightIndex = i + 1;
         break;
       }
     }
@@ -124,31 +120,36 @@ function Chart({
 
   return (
     <div className="relative">
-      <TooltipProvider>
-        <svg 
-          width={width} 
-          height={height} 
-          style={{ 
-            overflow: 'visible', // Important: Allow elements to render outside SVG
-            position: 'relative',
-            zIndex: 1 
-          }}
-        >
-          <defs>
-            <LinearGradient
-              id="above-gradient"
-              from="rgba(21, 128, 61, 0.05)"
-              to="rgba(21, 128, 61, 0.05)"
-            />
-            <LinearGradient
-              id="below-gradient"
-              from="rgba(153, 27, 27, 0.05)"
-              to="rgba(153, 27, 27, 0.05)"
-            />
-          </defs>
+      <svg 
+        width={width} 
+        height={height} 
+        style={{ overflow: 'visible' }}
+      >
+        <defs>
+          <LinearGradient
+            id="above-gradient"
+            from="rgba(21, 128, 61, 0.05)"
+            to="rgba(21, 128, 61, 0.05)"
+          />
+          <LinearGradient
+            id="below-gradient"
+            from="rgba(153, 27, 27, 0.05)"
+            to="rgba(153, 27, 27, 0.05)"
+          />
+        </defs>
 
-          <g transform={`translate(${margin.left},${margin.top})`}>
-            {/* 50% reference line */}
+        <g transform={`translate(${margin.left},${margin.top})`}>
+          {/* Background layer */}
+          <g className="chart-background">
+            <rect
+              x={0}
+              y={0}
+              width={innerWidth}
+              height={innerHeight}
+              fill="transparent"
+            />
+            
+            {/* Reference line */}
             <line
               x1={0}
               x2={innerWidth}
@@ -158,7 +159,7 @@ function Chart({
               strokeWidth={1}
             />
 
-            {/* Render segments */}
+            {/* Segments */}
             {segments.map((segment, i) => (
               <ChartSegment
                 key={i}
@@ -178,6 +179,7 @@ function Chart({
               curve={curveStepAfter}
             />
 
+            {/* Axes */}
             <AxisLeft
               scale={priceScale}
               tickValues={[0, 25, 50, 75, 100]}
@@ -211,74 +213,79 @@ function Chart({
                 dy: '1em',
               })}
             />
-
-            {/* Event markers */}
-            <EventMarkers
-              events={events}
-              timeScale={timeScale}
-              height={innerHeight}
-            />
-
-            {/* Tooltip overlay */}
-            <rect
-              x={0}
-              y={0}
-              width={innerWidth}
-              height={innerHeight}
-              fill="transparent"
-              onTouchStart={handleTooltip}
-              onTouchMove={handleTooltip}
-              onMouseMove={handleTooltip}
-              onMouseLeave={hideTooltip}
-              style={{ pointerEvents: 'all' }}
-            />
-
-            {tooltipData && (
-              <>
-                <line
-                  x1={tooltipLeft - margin.left}
-                  x2={tooltipLeft - margin.left}
-                  y1={0}
-                  y2={innerHeight}
-                  stroke="#4a5568"
-                  strokeWidth={1}
-                  pointerEvents="none"
-                />
-                <circle
-                  cx={tooltipLeft - margin.left}
-                  cy={priceScale(tooltipData.price)}
-                  r={4}
-                  fill="#3b82f6"
-                  pointerEvents="none"
-                />
-              </>
-            )}
           </g>
-        </svg>
 
-        {tooltipData && (
-          <div
-            style={{
-              position: 'absolute',
-              top: tooltipTop - 25,
-              left: tooltipLeft + 15,
-              background: 'rgba(17, 24, 39, 0.9)',
-              padding: '4px 8px',
-              borderRadius: '4px',
-              color: 'white',
-              fontSize: '11px',
-              pointerEvents: 'none',
-              whiteSpace: 'nowrap',
-              zIndex: 100,
+          {/* Event markers layer */}
+          <EventMarkers
+            events={events}
+            timeScale={timeScale}
+            height={innerHeight}
+          />
+
+          {/* Price tooltip overlay */}
+          <rect
+            x={0}
+            y={0}
+            width={innerWidth}
+            height={innerHeight}
+            fill="transparent"
+            onTouchStart={handleTooltip}
+            onTouchMove={handleTooltip}
+            onMouseMove={handleTooltip}
+            onMouseLeave={hideTooltip}
+            style={{ 
+              pointerEvents: 'all',
+              opacity: 0 
             }}
-          >
-            <div className="flex flex-col leading-tight">
-              <span>{tooltipDateFormat.format(tooltipData.time)}</span>
-              <span>{tooltipData.price.toFixed(2)}%</span>
-            </div>
+          />
+
+          {/* Price tooltip markers */}
+          {tooltipData && (
+            <>
+              <line
+                x1={tooltipLeft - margin.left}
+                x2={tooltipLeft - margin.left}
+                y1={0}
+                y2={innerHeight}
+                stroke="#4a5568"
+                strokeWidth={1}
+                pointerEvents="none"
+              />
+              <circle
+                cx={tooltipLeft - margin.left}
+                cy={priceScale(tooltipData.price)}
+                r={4}
+                fill="#3b82f6"
+                pointerEvents="none"
+              />
+            </>
+          )}
+        </g>
+      </svg>
+
+      {/* Price tooltip overlay */}
+      {tooltipData && (
+        <div
+          style={{
+            position: 'absolute',
+            top: tooltipTop - 25,
+            left: tooltipLeft + 15,
+            background: 'rgba(17, 24, 39, 0.9)',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            color: 'white',
+            fontSize: '11px',
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            zIndex: 100,
+          }}
+        >
+          <div className="flex flex-col leading-tight">
+            <span>{tooltipDateFormat.format(tooltipData.time)}</span>
+            <span>{tooltipData.price.toFixed(2)}%</span>
           </div>
-        )}
-      </TooltipProvider>
+        </div>
+      )}
     </div>
   );
 }
@@ -304,7 +311,7 @@ export default function PriceChart({
   , [data]);
 
   return (
-    <div className="relative">      
+    <div>      
       <div className="h-[300px] w-full">
         <ParentSize>
           {({ width, height }) => (
