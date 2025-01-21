@@ -31,43 +31,104 @@ interface ChartProps {
   margin?: { top: number; right: number; bottom: number; left: number };
 }
 
-return (
+function Chart({ 
+  data, 
+  events,
+  width, 
+  height, 
+  margin = { top: 20, right: 30, bottom: 30, left: 40 } 
+}: ChartProps) {
+  const {
+    showTooltip,
+    hideTooltip,
+    tooltipData,
+    tooltipLeft = 0,
+    tooltipTop = 0,
+  } = useTooltip<PriceData>();
+
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+
+  const timeScale = useMemo(
+    () =>
+      scaleTime<number>({
+        range: [0, innerWidth],
+        domain: [
+          Math.min(...data.map((d) => d.time)),
+          Math.max(...data.map((d) => d.time)),
+        ],
+      }),
+    [innerWidth, data]
+  );
+
+  const priceScale = useMemo(
+    () =>
+      scaleLinear<number>({
+        range: [innerHeight, 0],
+        domain: [0, 100],
+        nice: true,
+      }),
+    [innerHeight]
+  );
+
+  const { segments } = useChartData(data);
+
+  const getInterpolatedPrice = useCallback((xValue: number) => {
+    const time = timeScale.invert(xValue).getTime();
+    let leftIndex = 0;
+
+    for (let i = 0; i < data.length - 1; i++) {
+      if (data[i].time <= time && data[i + 1].time > time) {
+        leftIndex = i;
+        break;
+      }
+    }
+
+    return {
+      time,
+      price: data[leftIndex].price
+    };
+  }, [data, timeScale]);
+
+  const handleTooltip = useCallback(
+    (event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
+      const { x } = localPoint(event) || { x: 0 };
+      const xValue = x - margin.left;
+      
+      if (xValue < 0 || xValue > innerWidth) return;
+      
+      const interpolatedPoint = getInterpolatedPrice(xValue);
+
+      showTooltip({
+        tooltipData: interpolatedPoint,
+        tooltipLeft: x,
+        tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
+      });
+    },
+    [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]
+  );
+
+  const tooltipDateFormat = useMemo(() => {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  }, []);
+
+  return (
     <div className="relative">
-      <svg 
-        width={width} 
-        height={height} 
-        style={{ overflow: 'visible' }}
-      >
+      <svg width={width} height={height} style={{ overflow: 'visible' }}>
         <defs>
-          <LinearGradient
-            id="above-gradient"
-            from="rgba(21, 128, 61, 0.05)"
-            to="rgba(21, 128, 61, 0.05)"
-          />
-          <LinearGradient
-            id="below-gradient"
-            from="rgba(153, 27, 27, 0.05)"
-            to="rgba(153, 27, 27, 0.05)"
-          />
+          <LinearGradient id="above-gradient" from="rgba(21, 128, 61, 0.05)" to="rgba(21, 128, 61, 0.05)" />
+          <LinearGradient id="below-gradient" from="rgba(153, 27, 27, 0.05)" to="rgba(153, 27, 27, 0.05)" />
         </defs>
 
         <g transform={`translate(${margin.left},${margin.top})`}>
-          {/* Price tooltip overlay - MOVED TO BOTTOM */}
-          <rect
-            x={0}
-            y={0}
-            width={innerWidth}
-            height={innerHeight}
-            fill="transparent"
-            onTouchStart={handleTooltip}
-            onTouchMove={handleTooltip}
-            onMouseMove={handleTooltip}
-            onMouseLeave={hideTooltip}
-            className="pointer-events-auto"
-          />
-
-          {/* Base chart elements */}
-          <g className="pointer-events-none">
+          {/* Base layer - price line, segments, etc. */}
+          <g>
             <line
               x1={0}
               x2={innerWidth}
@@ -130,18 +191,29 @@ return (
             />
           </g>
 
-          {/* Event markers - ON TOP with pointer events */}
-          <g style={{ pointerEvents: 'none' }} className="z-10">
-            <EventMarkers
-              events={events}
-              timeScale={timeScale}
-              height={innerHeight}
-            />
-          </g>
+          {/* Upper chart area - mouse tracking */}
+          <rect
+            x={0}
+            y={0}
+            width={innerWidth}
+            height={innerHeight - 40} // Leave space for event markers
+            fill="transparent"
+            onTouchStart={handleTooltip}
+            onTouchMove={handleTooltip}
+            onMouseMove={handleTooltip}
+            onMouseLeave={hideTooltip}
+          />
 
-          {/* Price tooltip elements - MOVED TO TOP */}
+          {/* Event markers area - interactive */}
+          <EventMarkers
+            events={events}
+            timeScale={timeScale}
+            height={innerHeight}
+          />
+
+          {/* Price tooltip indicators */}
           {tooltipData && (
-            <g className="pointer-events-none">
+            <g>
               <line
                 x1={tooltipLeft - margin.left}
                 x2={tooltipLeft - margin.left}
@@ -149,12 +221,14 @@ return (
                 y2={innerHeight}
                 stroke="#4a5568"
                 strokeWidth={1}
+                pointerEvents="none"
               />
               <circle
                 cx={tooltipLeft - margin.left}
                 cy={priceScale(tooltipData.price)}
                 r={4}
                 fill="#3b82f6"
+                pointerEvents="none"
               />
             </g>
           )}
@@ -164,8 +238,8 @@ return (
       {/* Price tooltip overlay */}
       {tooltipData && (
         <div
-          className="absolute pointer-events-none"
           style={{
+            position: 'absolute',
             top: tooltipTop - 25,
             left: tooltipLeft + 15,
             background: 'rgba(17, 24, 39, 0.9)',
@@ -173,7 +247,9 @@ return (
             borderRadius: '4px',
             color: 'white',
             fontSize: '11px',
+            pointerEvents: 'none',
             whiteSpace: 'nowrap',
+            zIndex: 100,
           }}
         >
           <div className="flex flex-col leading-tight">
