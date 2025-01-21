@@ -70,6 +70,7 @@ export function MarketDetails({
 
   return (
     <div className="space-y-4">
+      {/* Price History Section */}
       <div>
         <div className="text-sm text-muted-foreground mb-2">Price History</div>
         {isLoading ? (
@@ -90,8 +91,13 @@ export function MarketDetails({
         )}
       </div>
 
-      <MarketQATree marketId={marketId} />
+      {/* QA Tree Section */}
+      <div className="mt-6 border-t border-border pt-4">
+        <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
+        <MarketQATree marketId={marketId} />
+      </div>
 
+      {/* Market Details Section */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <div className="text-sm text-muted-foreground">Best Bid</div>
