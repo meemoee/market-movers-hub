@@ -1,7 +1,7 @@
 import { Node, Edge } from '@xyflow/react';
 import { calculateChildPosition } from './treeSpacing';
 
-export interface NodeData {
+export interface NodeData extends Record<string, unknown> {
   question: string;
   answer: string;
   updateNodeData?: (id: string, field: string, value: string) => void;
