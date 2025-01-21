@@ -34,11 +34,54 @@ serve(async (req) => {
       .eq('id', marketId)
       .maybeSingle();
 
-    if (dbError || !market) {
+    if (dbError) {
       console.error('Database error:', dbError);
+      return new Response(
+        JSON.stringify({ error: 'Database error', details: dbError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!market) {
       return new Response(
         JSON.stringify({ error: 'Market not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Market data:', market);
+
+    // Parse clobtokenids with better error handling
+    let clobTokenId;
+    try {
+      // Handle both string and array formats
+      if (typeof market.clobtokenids === 'string') {
+        try {
+          const parsed = JSON.parse(market.clobtokenids);
+          clobTokenId = Array.isArray(parsed) ? parsed[0] : parsed;
+        } catch {
+          clobTokenId = market.clobtokenids;
+        }
+      } else if (Array.isArray(market.clobtokenids)) {
+        clobTokenId = market.clobtokenids[0];
+      } else if (market.clobtokenids && typeof market.clobtokenids === 'object') {
+        clobTokenId = Object.values(market.clobtokenids)[0];
+      }
+
+      if (!clobTokenId) {
+        throw new Error('No valid clobTokenId found');
+      }
+
+      console.log('Parsed clobTokenId:', clobTokenId);
+    } catch (error) {
+      console.error('Error parsing clobtokenids:', error, 'Raw value:', market.clobtokenids);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid clobTokenIds format', 
+          details: error.message,
+          rawValue: market.clobtokenids 
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -67,25 +110,6 @@ serve(async (req) => {
     }
 
     const startTs = endTs - duration;
-
-    // Parse clobtokenids
-    let clobTokenId;
-    try {
-      const parsedTokenIds = JSON.parse(market.clobtokenids);
-      if (!parsedTokenIds || parsedTokenIds.length === 0) {
-        return new Response(
-          JSON.stringify({ error: 'No clobTokenIds found for this market' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-      clobTokenId = parsedTokenIds[0];
-    } catch (error) {
-      console.error('Error parsing clobtokenids:', error);
-      return new Response(
-        JSON.stringify({ error: 'Invalid clobTokenIds format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
 
     // Query Polymarket API
     console.log('Querying Polymarket API with params:', {
