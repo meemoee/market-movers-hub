@@ -19,11 +19,16 @@ export const QANodeComponent = ({ data, id }: QANodeProps) => {
   return (
     <div className="bg-[#1a1b1e] border border-white/10 rounded-lg p-4 w-[300px] min-h-[150px]">
       <div className="flex justify-between items-start gap-2 mb-2">
-        <Input
-          className="font-medium text-sm text-white bg-transparent border-none hover:bg-white/5 focus:bg-white/5 break-words whitespace-normal h-auto min-h-[40px]"
+        <textarea
+          className="font-medium text-sm text-white bg-transparent border-none hover:bg-white/5 focus:bg-white/5 break-words whitespace-pre-wrap w-full resize-none overflow-hidden focus:outline-none min-h-[40px]"
           value={data.question}
-          onChange={(e) => updateNodeData(id, 'question', e.target.value)}
+          onChange={(e) => {
+            e.target.style.height = 'auto';
+            e.target.style.height = e.target.scrollHeight + 'px';
+            updateNodeData(id, 'question', e.target.value);
+          }}
           placeholder="Enter question..."
+          rows={1}
         />
         <div className="flex space-x-1 shrink-0">
           <button 
