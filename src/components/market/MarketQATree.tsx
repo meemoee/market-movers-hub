@@ -47,6 +47,43 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes]);
 
+  const addChildNode = useCallback((parentId: string) => {
+    const parentNode = nodes.find(node => node.id === parentId);
+    if (!parentNode) return;
+
+    const newNodeId = `node-${Date.now()}`;
+    const currentLayer = (parentNode.data.currentLayer as number) + 1;
+    
+    const newNode = createNode(
+      newNodeId,
+      {
+        x: parentNode.position.x + 300,
+        y: parentNode.position.y + 100
+      },
+      { 
+        currentLayer,
+        updateNodeData,
+        addChildNode,
+        removeNode: () => removeNode(newNodeId)
+      }
+    );
+
+    setNodes(nds => [...nds, newNode]);
+    setEdges(eds => [...eds, {
+      id: `edge-${parentId}-${newNodeId}`,
+      source: parentId,
+      target: newNodeId,
+      type: 'smoothstep'
+    }]);
+  }, [nodes, setNodes, setEdges, updateNodeData]);
+
+  const removeNode = useCallback((nodeId: string) => {
+    setNodes(nodes => nodes.filter(node => node.id !== nodeId));
+    setEdges(edges => edges.filter(edge => 
+      edge.source !== nodeId && edge.target !== nodeId
+    ));
+  }, [setNodes, setEdges]);
+
   const streamText = useCallback((
     nodeId: string, 
     isQuestion: boolean = true,
@@ -89,14 +126,25 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       childrenPerLayer
     );
     
-    setNodes(newNodes);
+    // Add the necessary functions to each node's data
+    const nodesWithFunctions = newNodes.map(node => ({
+      ...node,
+      data: {
+        ...node.data,
+        updateNodeData,
+        addChildNode,
+        removeNode: () => removeNode(node.id)
+      }
+    }));
+    
+    setNodes(nodesWithFunctions);
     setEdges(newEdges);
 
     const streamToNodesInOrder = (nodeIndex: number = 0) => {
-      if (nodeIndex >= newNodes.length) return;
+      if (nodeIndex >= nodesWithFunctions.length) return;
       
-      const node = newNodes[nodeIndex];
-      const currentLayer = node.data.currentLayer as number; // Type assertion here
+      const node = nodesWithFunctions[nodeIndex];
+      const currentLayer = node.data.currentLayer as number;
       
       streamText(node.id, true, currentLayer, () => {
         setTimeout(() => {
@@ -106,11 +154,10 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     };
 
     streamToNodesInOrder();
-  }, [layers, childrenPerLayer, setNodes, setEdges, streamText]);
+  }, [layers, childrenPerLayer, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
 
   const onConnect = useCallback(
     (params: Connection) => {
-      // Check if target node already has a parent
       const targetHasParent = edges.some(edge => edge.target === params.target);
       if (!targetHasParent) {
         setEdges((eds) => addEdge(params, eds));
@@ -121,7 +168,12 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
   useState(() => {
     if (nodes.length === 0) {
-      const rootNode = createNode('node-1', { x: 0, y: 0 }, { currentLayer: 1 });
+      const rootNode = createNode('node-1', { x: 0, y: 0 }, { 
+        currentLayer: 1,
+        updateNodeData,
+        addChildNode,
+        removeNode: () => removeNode('node-1')
+      });
       setNodes([rootNode]);
     }
   });
