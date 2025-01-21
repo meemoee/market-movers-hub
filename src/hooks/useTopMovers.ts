@@ -56,7 +56,7 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
     },
     // Prevent refetching while loading more
     staleTime: 30000,
-    // Keep previous data while fetching new data
-    keepPreviousData: true
+    // Use placeholderData instead of keepPreviousData
+    placeholderData: (previousData) => previousData
   })
 }
