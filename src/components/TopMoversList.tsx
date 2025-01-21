@@ -11,6 +11,26 @@ interface TimeInterval {
   value: string;
 }
 
+const formatInterval = (minutes: number): string => {
+  if (minutes < 60) return `${minutes} minutes`;
+  if (minutes === 60) return '1 hour';
+  if (minutes < 1440) return `${minutes / 60} hours`;
+  if (minutes === 1440) return '1 day';
+  if (minutes === 10080) return '1 week';
+  return `${minutes / 1440} days`;
+};
+
+const TIME_INTERVALS: TimeInterval[] = [
+  { label: formatInterval(5), value: '5' },
+  { label: formatInterval(10), value: '10' },
+  { label: formatInterval(30), value: '30' },
+  { label: formatInterval(60), value: '60' },
+  { label: formatInterval(240), value: '240' },
+  { label: formatInterval(480), value: '480' },
+  { label: formatInterval(1440), value: '1440' },
+  { label: formatInterval(10080), value: '10080' },
+];
+
 export interface TopMover {
   market_id: string;
   question: string;
@@ -61,7 +81,7 @@ interface OrderBookData {
 }
 
 export default function TopMoversList({
-  timeIntervals,
+  timeIntervals = TIME_INTERVALS,
   selectedInterval,
   onIntervalChange,
   topMovers,
