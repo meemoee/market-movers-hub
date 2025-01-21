@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Card } from "@/components/ui/card";
 import { 
   ReactFlow, 
@@ -9,9 +9,7 @@ import {
   Connection, 
   useNodesState, 
   useEdgesState, 
-  addEdge,
-  Position,
-  MarkerType
+  addEdge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
@@ -75,17 +73,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
-  // Initialize root node if needed
-  useEffect(() => {
-    if (nodes.length === 0) {
-      const rootNode = createNode('root', { x: 0, y: 0 }, {
-        question: 'Root Question',
-        answer: 'Root Answer'
-      });
-      setNodes([rootNode]);
-    }
-  }, [nodes.length, setNodes]);
-
+  // Create callback functions using useCallback
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes(nds => 
       nds.map(node => 
@@ -102,7 +90,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, []);
 
   const removeNode = useCallback((nodeId: string) => {
-    // Find all descendant nodes
     const getDescendants = (id: string): string[] => {
       const childEdges = edges.filter(e => e.source === id);
       return childEdges.reduce(
@@ -119,6 +106,13 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       !idsToRemove.includes(edge.source) && !idsToRemove.includes(edge.target)
     ));
   }, [edges, setNodes, setEdges]);
+
+  // Node callbacks object
+  const nodeCallbacks = useMemo(() => ({
+    updateNodeData,
+    addChildNode,
+    removeNode
+  }), [updateNodeData, addChildNode, removeNode]);
 
   const streamText = useCallback((
     nodeId: string,
@@ -158,6 +152,22 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     }, 50);
   }, [updateNodeData]);
 
+  // Initialize root node if needed
+  useEffect(() => {
+    if (nodes.length === 0) {
+      const rootNode = createNode(
+        'root',
+        { x: 0, y: 0 },
+        {
+          question: 'Root Question',
+          answer: 'Root Answer'
+        },
+        nodeCallbacks
+      );
+      setNodes([rootNode]);
+    }
+  }, [nodes.length, setNodes, nodeCallbacks]);
+
   const generateChildNodes = useCallback((
     parentId: string,
     currentLayer: number = 1,
@@ -187,13 +197,15 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         currentLayer
       );
 
-      const newNode = createNode(newNodeId, position, {
-        question: '',
-        answer: '',
-        updateNodeData,
-        addChildNode,
-        removeNode
-      });
+      const newNode = createNode(
+        newNodeId,
+        position,
+        {
+          question: '',
+          answer: ''
+        },
+        nodeCallbacks
+      );
 
       const newEdge = createEdge(parentId, newNodeId, currentLayer);
 
@@ -221,12 +233,10 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
-  }, [nodes, edges, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
+  }, [nodes, edges, setNodes, setEdges, nodeCallbacks, streamText]);
 
   const onConnect = useCallback(
-    (params: Connection) => {
-      setEdges(eds => addEdge(params, eds));
-    },
+    (params: Connection) => setEdges(eds => addEdge(params, eds)),
     [setEdges]
   );
 
