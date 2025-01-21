@@ -229,6 +229,12 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           minZoom={0.1}
           maxZoom={1.5}
           defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
+          fitViewOptions={{ 
+            padding: 0.2,
+            minZoom: 0.1,
+            maxZoom: 1.5,
+            duration: 200
+          }}
         >
           <Background />
           <Controls className="!bg-transparent [&>button]:!bg-transparent" />
