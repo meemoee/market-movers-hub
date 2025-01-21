@@ -30,20 +30,15 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '24h', openOnly = false, page = 1, limit = 20 } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval}, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
+    const { interval = '1440', openOnly = false, page = 1, limit = 20 } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
     
-    // Convert interval to minutes
-    const redisInterval = {
-      '1h': 60,
-      '24h': 1440,
-      '7d': 10080,
-      '30d': 43200
-    }[interval] || 1440;
+    // The interval is now passed directly in minutes
+    const redisInterval = interval;
 
     // Get latest key for this interval
     const latestKey = await redis.get(`topMovers:${redisInterval}:latest`);
-    console.log(`Latest key lookup result:`, latestKey);
+    console.log(`Latest key lookup result for interval ${redisInterval}:`, latestKey);
     
     if (!latestKey) {
       console.log(`No latest key found for interval: ${redisInterval}`);
@@ -79,7 +74,7 @@ serve(async (req) => {
     }
 
     const manifest = JSON.parse(manifestData);
-    console.log(`Found manifest with ${manifest.chunks} chunks`);
+    console.log(`Found manifest with ${manifest.chunks} chunks for interval ${redisInterval}`);
 
     // Get all markets from chunks
     let allMarkets = [];
@@ -91,7 +86,7 @@ serve(async (req) => {
         allMarkets.push(...markets);
       }
     }
-    console.log(`Retrieved ${allMarkets.length} markets total`);
+    console.log(`Retrieved ${allMarkets.length} markets total for interval ${redisInterval}`);
 
     // Sort by absolute price change
     allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
@@ -99,14 +94,14 @@ serve(async (req) => {
     // Apply filters if needed
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
-      console.log(`Filtered to ${allMarkets.length} open markets`);
+      console.log(`Filtered to ${allMarkets.length} open markets for interval ${redisInterval}`);
     }
 
     // Apply pagination
     const start = (page - 1) * limit;
     const paginatedMarkets = allMarkets.slice(start, start + limit);
     const hasMore = allMarkets.length > start + limit;
-    console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}`);
+    console.log(`Returning ${paginatedMarkets.length} markets for interval ${redisInterval}, hasMore: ${hasMore}`);
 
     await redis.close();
 
