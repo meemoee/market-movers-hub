@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { ChartBar } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import PriceChart from './PriceChart';
 import { MarketQATree } from './MarketQATree';
 import type { MarketEvent } from './chart/types';
@@ -19,6 +21,7 @@ export function MarketDetails({
   marketId,
 }: MarketDetailsProps) {
   const [selectedInterval, setSelectedInterval] = useState('1d');
+  const [isGenerating, setIsGenerating] = useState(false);
 
   const { data: priceHistory, isLoading: isPriceLoading } = useQuery({
     queryKey: ['priceHistory', marketId, selectedInterval],
@@ -66,6 +69,19 @@ export function MarketDetails({
     enabled: !!marketId
   });
 
+  const handleGenerateAnalysis = async () => {
+    setIsGenerating(true);
+    try {
+      await supabase.functions.invoke('generate-qa-tree', {
+        body: { marketId }
+      });
+    } catch (error) {
+      console.error('Error generating analysis:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const isLoading = isPriceLoading || isEventsLoading;
 
   return (
@@ -91,12 +107,6 @@ export function MarketDetails({
         )}
       </div>
 
-      {/* QA Tree Section */}
-      <div className="mt-6 border-t border-border pt-4">
-        <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
-        <MarketQATree marketId={marketId} />
-      </div>
-
       {/* Market Details Section */}
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -115,6 +125,32 @@ export function MarketDetails({
           <div className="text-sm">{description}</div>
         </div>
       )}
+
+      {/* Analysis Tree Section */}
+      <div className="mt-6 border-t border-border pt-4">
+        <div className="flex justify-between items-center mb-2">
+          <div className="text-sm text-muted-foreground">Analysis Tree</div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleGenerateAnalysis}
+            disabled={isGenerating}
+          >
+            {isGenerating ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
+                <span className="ml-2">Generating...</span>
+              </>
+            ) : (
+              <>
+                <ChartBar className="mr-2 h-4 w-4" />
+                Generate Analysis
+              </>
+            )}
+          </Button>
+        </div>
+        <MarketQATree marketId={marketId} />
+      </div>
     </div>
   );
 }
