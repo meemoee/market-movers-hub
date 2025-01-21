@@ -22,6 +22,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const contentBufferRef = useRef('');
 
   const onConnect = useCallback(
     (params: Connection) => setEdges((eds) => addEdge(params, eds)),
@@ -44,6 +45,48 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       })
     );
   }, [setNodes]);
+
+  const processStreamChunk = (chunk: string) => {
+    // Append new chunk to buffer
+    contentBufferRef.current += chunk;
+    
+    // Try to extract complete fields from the buffer
+    let questionMatch = contentBufferRef.current.match(/"question"\s*:\s*"([^"]*)/);
+    let answerMatch = contentBufferRef.current.match(/"answer"\s*:\s*"([^"]*)/);
+    
+    if (questionMatch) {
+      const question = questionMatch[1].replace(/\\"/g, '"');
+      updateNodeData('node-1', 'question', question);
+    }
+    
+    if (answerMatch) {
+      const answer = answerMatch[1].replace(/\\"/g, '"');
+      updateNodeData('node-1', 'answer', answer);
+    }
+
+    // Handle content that might be continuation of a field
+    if (!questionMatch && !answerMatch) {
+      const content = chunk
+        .replace(/^\s*"/, '')
+        .replace(/"\s*$/, '')
+        .replace(/\\"/g, '"')
+        .replace(/[{}]/g, '')
+        .trim();
+
+      if (content) {
+        // Check if this is part of the current answer
+        if (contentBufferRef.current.includes('"answer"')) {
+          const currentAnswer = nodes.find(n => n.id === 'node-1')?.data?.answer || '';
+          updateNodeData('node-1', 'answer', currentAnswer + content);
+        }
+        // Check if this is part of the current question
+        else if (contentBufferRef.current.includes('"question"')) {
+          const currentQuestion = nodes.find(n => n.id === 'node-1')?.data?.question || '';
+          updateNodeData('node-1', 'question', currentQuestion + content);
+        }
+      }
+    }
+  };
 
   useState(() => {
     if (nodes.length === 0) {
@@ -76,10 +119,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           if (error) throw error;
 
           console.log('Received response from generate-qa-tree:', data);
-          
-          let currentField = '';
-          let questionContent = '';
-          let answerContent = '';
           
           const stream = new ReadableStream({
             start(controller) {
@@ -114,28 +153,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                         const content = parsed.choices?.[0]?.delta?.content;
                         if (content) {
                           console.log('New content chunk:', content);
-                          
-                          if (content.includes('"question"')) {
-                            currentField = 'question';
-                          } else if (content.includes('"answer"')) {
-                            currentField = 'answer';
-                          }
-                          
-                          // Remove JSON syntax and accumulate content
-                          const cleanContent = content
-                            .replace(/"question"\s*:\s*"/, '')
-                            .replace(/"answer"\s*:\s*"/, '')
-                            .replace(/^\s*{?\s*"/, '')
-                            .replace(/"\s*}?\s*$/, '')
-                            .replace(/\\"/g, '"');
-                          
-                          if (currentField === 'question') {
-                            questionContent += cleanContent;
-                            updateNodeData('node-1', 'question', questionContent);
-                          } else if (currentField === 'answer') {
-                            answerContent += cleanContent;
-                            updateNodeData('node-1', 'answer', answerContent);
-                          }
+                          processStreamChunk(content);
                         }
                       } catch (e) {
                         console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr);
