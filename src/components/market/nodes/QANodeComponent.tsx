@@ -20,7 +20,20 @@ export const QANodeComponent = ({ data, id }: QANodeProps) => {
   const { updateNodeData, addChildNode, removeNode } = data;
   const layer = data.currentLayer || 1;
 
-  // Get different background colors for different depths
+  const handleAddChild = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (addChildNode) {
+      addChildNode(id);
+    }
+  };
+
+  const handleRemove = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (removeNode) {
+      removeNode();
+    }
+  };
+
   const getBackgroundColor = () => {
     const colors = [
       'rgba(26, 27, 30, 1)',      // First level
@@ -50,14 +63,14 @@ export const QANodeComponent = ({ data, id }: QANodeProps) => {
         <div className="flex space-x-1 shrink-0">
           <button 
             className="p-1 hover:bg-white/10 rounded transition-colors"
-            onClick={() => addChildNode(id)}
+            onClick={handleAddChild}
             type="button"
           >
             <Plus size={16} className="text-blue-500" />
           </button>
           <button 
             className="p-1 hover:bg-white/10 rounded transition-colors"
-            onClick={() => removeNode()}
+            onClick={handleRemove}
             type="button"
           >
             <X size={16} className="text-red-500" />

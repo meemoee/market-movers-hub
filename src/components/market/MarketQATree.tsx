@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { 
   ReactFlow, 
@@ -56,12 +56,20 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes]);
 
+  const removeNode = useCallback((nodeId: string) => {
+    setNodes(nodes => nodes.filter(node => node.id !== nodeId));
+    setEdges(edges => edges.filter(edge => 
+      edge.source !== nodeId && edge.target !== nodeId
+    ));
+  }, [setNodes, setEdges]);
+
   const addChildNode = useCallback((parentId: string) => {
     const parentNode = nodes.find(node => node.id === parentId);
     if (!parentNode) return;
 
     const newNodeId = `node-${Date.now()}`;
-    const currentLayer = (parentNode.data as NodeData).currentLayer + 1;
+    const parentData = parentNode.data as NodeData;
+    const currentLayer = parentData.currentLayer + 1;
     
     const newNode = createNode(
       newNodeId,
@@ -84,14 +92,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       target: newNodeId,
       type: 'smoothstep'
     }]);
-  }, [nodes, setNodes, setEdges, updateNodeData]);
-
-  const removeNode = useCallback((nodeId: string) => {
-    setNodes(nodes => nodes.filter(node => node.id !== nodeId));
-    setEdges(edges => edges.filter(edge => 
-      edge.source !== nodeId && edge.target !== nodeId
-    ));
-  }, [setNodes, setEdges]);
+  }, [nodes, setNodes, setEdges, updateNodeData, removeNode]);
 
   const streamText = useCallback((
     nodeId: string, 
@@ -174,7 +175,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     [edges, setEdges]
   );
 
-  useState(() => {
+  useEffect(() => {
     if (nodes.length === 0) {
       const rootNode = createNode('node-1', { x: 0, y: 0 }, { 
         currentLayer: 1,
@@ -184,7 +185,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       });
       setNodes([rootNode]);
     }
-  });
+  }, [nodes.length, setNodes, updateNodeData, addChildNode, removeNode]);
 
   const nodeTypes = {
     qaNode: QANodeComponent
