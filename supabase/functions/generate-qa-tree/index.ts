@@ -48,8 +48,8 @@ serve(async (req) => {
       )
     }
 
-    console.log('Making request to OpenRouter API...')
-    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // Stream the OpenRouter response
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -76,13 +76,8 @@ serve(async (req) => {
       })
     })
 
-    if (!openRouterResponse.ok) {
-      console.error('OpenRouter API error:', openRouterResponse.status)
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
-    }
-
     // Return the stream directly to the client
-    return new Response(openRouterResponse.body, {
+    return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

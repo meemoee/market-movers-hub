@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { 
   ReactFlow, 
@@ -8,7 +8,7 @@ import {
   Edge, 
   Connection, 
   useNodesState, 
-  useEdgesState,
+  useEdgesState, 
   addEdge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -32,33 +32,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [layers, setLayers] = useState(2);
   const [childrenPerLayer, setChildrenPerLayer] = useState(2);
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
-  const [streamingContent, setStreamingContent] = useState('');
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
-  );
-
-  const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === nodeId) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              [field]: value,
-              updateNodeData,
-              addChildNode,
-              removeNode
-            },
-          };
-        }
-        return node;
-      })
-    );
-  }, [setNodes]);
+  const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
+  const generationQueue = useRef<Promise<void>>(Promise.resolve());
 
   const removeNode = useCallback((nodeId: string) => {
     const nodesToRemove = new Set<string>();
@@ -85,66 +60,29 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     setIsDialogOpen(true);
   }, []);
 
-  const generateChildNodes = useCallback((
-    parentId: string,
-    currentLayer: number,
-    maxLayers: number,
-    childrenCount: number
-  ) => {
-    const parentNode = nodes.find(node => node.id === parentId);
-    if (!parentNode) return;
-
-    const newNodes: Node[] = [];
-    const newEdges: Edge[] = [];
-
-    for (let i = 0; i < childrenCount; i++) {
-      const newNodeId = `${parentId}-${i + 1}`;
-      const position = generateNodePosition(
-        i,
-        childrenCount,
-        parentNode.position.x,
-        parentNode.position.y,
-        currentLayer,
-        maxLayers,
-        document.querySelector(`[data-id="${parentId}"]`) as HTMLElement
-      );
-
-      const newNode = createNode(newNodeId, position, {
-        question: `Question ${currentLayer}.${i + 1}`,
-        answer: `Answer ${currentLayer}.${i + 1}`,
-        updateNodeData,
-        addChildNode,
-        removeNode
-      });
-
-      const newEdge = createEdge(parentId, newNodeId, currentLayer);
-
-      newNodes.push(newNode);
-      newEdges.push(newEdge);
-
-      if (currentLayer < maxLayers) {
-        const childResults = generateChildNodes(
-          newNodeId,
-          currentLayer + 1,
-          maxLayers,
-          childrenCount
-        );
-        if (childResults) {
-          newNodes.push(...childResults.nodes);
-          newEdges.push(...childResults.edges);
+  const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              [field]: value,
+              updateNodeData,
+              addChildNode,
+              removeNode
+            },
+          };
         }
-      }
-    }
+        return node;
+      })
+    );
+  }, [setNodes, addChildNode, removeNode]);
 
-    setNodes(nds => [...nds, ...newNodes]);
-    setEdges(eds => [...eds, ...newEdges]);
-
-    return { nodes: newNodes, edges: newEdges };
-  }, [nodes, setNodes, setEdges, updateNodeData, addChildNode, removeNode]);
-
-  const handleStreamResponse = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+  const handleStreamResponse = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string) => {
     const decoder = new TextDecoder();
-    let accumulatedContent = '';
+    let accumulatedResponse = '';
     
     try {
       while (true) {
@@ -162,11 +100,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
             try {
               const parsed = JSON.parse(jsonStr);
               const content = parsed.choices[0]?.delta?.content || '';
-              accumulatedContent += content;
-              setStreamingContent(accumulatedContent);
-              
-              // Update the root node with the streaming content
-              updateNodeData('node-1', 'answer', accumulatedContent);
+              accumulatedResponse += content;
+              updateNodeData(nodeId, 'answer', accumulatedResponse);
             } catch (e) {
               console.error('Error parsing JSON:', e);
             }
@@ -178,7 +113,102 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     }
   };
 
-  useEffect(() => {
+  const generateChildNodes = useCallback((
+    parentId: string, 
+    currentLayer: number = 1, 
+    maxLayers: number,
+    childrenCount: number,
+    parentNode?: Node
+  ) => {
+    if (currentLayer > maxLayers) return;
+
+    const parent = parentNode || nodes.find(node => node.id === parentId);
+    if (!parent) return;
+
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
+    
+    const parentElement = document.querySelector(`[data-id="${parentId}"]`) as HTMLElement;
+    
+    for (let i = 0; i < childrenCount; i++) {
+      const timestamp = Date.now() + i;
+      const newNodeId = `node-${timestamp}-${currentLayer}`;
+      
+      const hasParent = edges.some(edge => edge.target === newNodeId);
+      if (hasParent) continue;
+
+      const position = generateNodePosition(
+        i,
+        childrenCount,
+        parent.position.x,
+        parent.position.y,
+        currentLayer,
+        maxLayers,
+        parentElement
+      );
+      
+      const newNode = createNode(newNodeId, position, {
+        question: '',
+        answer: '',
+        updateNodeData,
+        addChildNode,
+        removeNode
+      });
+
+      const newEdge = createEdge(parentId, newNodeId, currentLayer);
+
+      newNodes.push(newNode);
+      newEdges.push(newEdge);
+    }
+
+    setNodes(nds => {
+      const existingNodeIds = new Set(nds.map(n => n.id));
+      const uniqueNewNodes = newNodes.filter(n => !existingNodeIds.has(n.id));
+      return [...nds, ...uniqueNewNodes];
+    });
+
+    setEdges(eds => {
+      const existingTargets = new Set(eds.map(e => e.target));
+      const uniqueNewEdges = newEdges.filter(e => !existingTargets.has(e.target));
+      return [...eds, ...uniqueNewEdges];
+    });
+
+    newNodes.forEach((node, index) => {
+      generationQueue.current = generationQueue.current.then(() => 
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            if (currentLayer < maxLayers) {
+              generateChildNodes(
+                node.id,
+                currentLayer + 1,
+                maxLayers,
+                childrenCount,
+                node
+              );
+            }
+            resolve();
+          }, index * 300);
+        })
+      );
+    });
+  }, [nodes, edges, setNodes, setEdges, updateNodeData, addChildNode, removeNode]);
+
+  const onConnect = useCallback(
+    (params: Connection) => {
+      const targetHasParent = edges.some(edge => edge.target === params.target);
+      if (!targetHasParent) {
+        setEdges((eds) => addEdge({
+          ...params,
+          type: 'smoothstep',
+          animated: false,
+          style: { stroke: '#666', strokeWidth: 2 }
+        }, eds));
+      }
+    },
+    [edges, setEdges]
+  );
+
+  useState(() => {
     if (nodes.length === 0) {
       const rootNode: Node = {
         id: 'node-1',
@@ -186,7 +216,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         position: { x: 0, y: 0 },
         data: {
           question: 'Root Question',
-          answer: 'Analyzing market data...',
+          answer: 'Root Answer',
           updateNodeData,
           addChildNode,
           removeNode
@@ -194,49 +224,29 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       };
       setNodes([rootNode]);
 
+      // Start streaming for the root node
       const streamResponse = async () => {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
 
-          if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-          }
-          abortControllerRef.current = new AbortController();
-
-          console.log('Generating analysis for market:', marketId, 'user:', user.id);
           const response = await supabase.functions.invoke('generate-qa-tree', {
             body: { marketId, userId: user.id }
           });
 
           if (response.error) throw response.error;
 
-          const stream = new ReadableStream({
-            start(controller) {
-              const reader = new Response(response.data).body?.getReader();
-              if (!reader) throw new Error('No reader available');
-              
-              handleStreamResponse(reader);
-            }
-          });
-
-          const reader = stream.getReader();
-          while (true) {
-            const { done } = await reader.read();
-            if (done) break;
-          }
-
+          // Handle the streaming response
+          const reader = response.data.getReader();
+          await handleStreamResponse(reader, 'node-1');
         } catch (error) {
           console.error('Error streaming response:', error);
-          updateNodeData('node-1', 'answer', 'Error generating analysis');
-        } finally {
-          abortControllerRef.current = null;
         }
       };
 
       streamResponse();
     }
-  }, [marketId, setNodes, updateNodeData, addChildNode, removeNode]);
+  });
 
   const nodeTypes = {
     qaNode: QANodeComponent
