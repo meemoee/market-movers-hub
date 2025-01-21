@@ -1,12 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-
-const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,35 +15,12 @@ serve(async (req) => {
 
   try {
     const { marketId, userId } = await req.json()
+    console.log('Received request:', { marketId, userId })
 
     if (!marketId || !userId) {
-      return new Response(
-        JSON.stringify({ error: 'Market ID and user ID are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      throw new Error('Market ID and user ID are required')
     }
 
-    // Get market info
-    const { data: marketInfo, error: marketError } = await supabase
-      .from('markets')
-      .select(`
-        *,
-        events (
-          title
-        )
-      `)
-      .eq('id', marketId)
-      .single()
-
-    if (marketError || !marketInfo) {
-      console.error('Error fetching market:', marketError)
-      return new Response(
-        JSON.stringify({ error: 'Market not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Stream the OpenRouter response
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -66,10 +38,7 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Generate a root question and detailed answer about this market:
-              Title: ${marketInfo.question}
-              Description: ${marketInfo.description}
-              Event: ${marketInfo.event_title}`
+            content: `Generate a root question and detailed answer about this market ID: ${marketId}`
           }
         ],
         stream: true
@@ -90,7 +59,13 @@ serve(async (req) => {
     console.error('Error in generate-qa-tree function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      { 
+        status: 500, 
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        } 
+      }
     )
   }
 })
