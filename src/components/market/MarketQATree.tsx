@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { 
   ReactFlow, 
@@ -32,8 +32,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [layers, setLayers] = useState(2);
   const [childrenPerLayer, setChildrenPerLayer] = useState(2);
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
-  const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
-  const generationQueue = useRef<Promise<void>>(Promise.resolve());
+  const [streamingContent, setStreamingContent] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const removeNode = useCallback((nodeId: string) => {
     const nodesToRemove = new Set<string>();
@@ -80,9 +80,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes, addChildNode, removeNode]);
 
-  const handleStreamResponse = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string) => {
+  const handleStreamResponse = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
     const decoder = new TextDecoder();
-    let accumulatedResponse = '';
+    let accumulatedContent = '';
     
     try {
       while (true) {
@@ -100,8 +100,11 @@ export function MarketQATree({ marketId }: { marketId: string }) {
             try {
               const parsed = JSON.parse(jsonStr);
               const content = parsed.choices[0]?.delta?.content || '';
-              accumulatedResponse += content;
-              updateNodeData(nodeId, 'answer', accumulatedResponse);
+              accumulatedContent += content;
+              setStreamingContent(accumulatedContent);
+              
+              // Update the root node with the streaming content
+              updateNodeData('node-1', 'answer', accumulatedContent);
             } catch (e) {
               console.error('Error parsing JSON:', e);
             }
@@ -113,102 +116,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     }
   };
 
-  const generateChildNodes = useCallback((
-    parentId: string, 
-    currentLayer: number = 1, 
-    maxLayers: number,
-    childrenCount: number,
-    parentNode?: Node
-  ) => {
-    if (currentLayer > maxLayers) return;
-
-    const parent = parentNode || nodes.find(node => node.id === parentId);
-    if (!parent) return;
-
-    const newNodes: Node[] = [];
-    const newEdges: Edge[] = [];
-    
-    const parentElement = document.querySelector(`[data-id="${parentId}"]`) as HTMLElement;
-    
-    for (let i = 0; i < childrenCount; i++) {
-      const timestamp = Date.now() + i;
-      const newNodeId = `node-${timestamp}-${currentLayer}`;
-      
-      const hasParent = edges.some(edge => edge.target === newNodeId);
-      if (hasParent) continue;
-
-      const position = generateNodePosition(
-        i,
-        childrenCount,
-        parent.position.x,
-        parent.position.y,
-        currentLayer,
-        maxLayers,
-        parentElement
-      );
-      
-      const newNode = createNode(newNodeId, position, {
-        question: '',
-        answer: '',
-        updateNodeData,
-        addChildNode,
-        removeNode
-      });
-
-      const newEdge = createEdge(parentId, newNodeId, currentLayer);
-
-      newNodes.push(newNode);
-      newEdges.push(newEdge);
-    }
-
-    setNodes(nds => {
-      const existingNodeIds = new Set(nds.map(n => n.id));
-      const uniqueNewNodes = newNodes.filter(n => !existingNodeIds.has(n.id));
-      return [...nds, ...uniqueNewNodes];
-    });
-
-    setEdges(eds => {
-      const existingTargets = new Set(eds.map(e => e.target));
-      const uniqueNewEdges = newEdges.filter(e => !existingTargets.has(e.target));
-      return [...eds, ...uniqueNewEdges];
-    });
-
-    newNodes.forEach((node, index) => {
-      generationQueue.current = generationQueue.current.then(() => 
-        new Promise<void>((resolve) => {
-          setTimeout(() => {
-            if (currentLayer < maxLayers) {
-              generateChildNodes(
-                node.id,
-                currentLayer + 1,
-                maxLayers,
-                childrenCount,
-                node
-              );
-            }
-            resolve();
-          }, index * 300);
-        })
-      );
-    });
-  }, [nodes, edges, setNodes, setEdges, updateNodeData, addChildNode, removeNode]);
-
-  const onConnect = useCallback(
-    (params: Connection) => {
-      const targetHasParent = edges.some(edge => edge.target === params.target);
-      if (!targetHasParent) {
-        setEdges((eds) => addEdge({
-          ...params,
-          type: 'smoothstep',
-          animated: false,
-          style: { stroke: '#666', strokeWidth: 2 }
-        }, eds));
-      }
-    },
-    [edges, setEdges]
-  );
-
-  useState(() => {
+  useEffect(() => {
     if (nodes.length === 0) {
       const rootNode: Node = {
         id: 'node-1',
@@ -216,7 +124,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         position: { x: 0, y: 0 },
         data: {
           question: 'Root Question',
-          answer: 'Root Answer',
+          answer: 'Analyzing market data...',
           updateNodeData,
           addChildNode,
           removeNode
@@ -224,29 +132,49 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       };
       setNodes([rootNode]);
 
-      // Start streaming for the root node
       const streamResponse = async () => {
         try {
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
 
+          if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+          }
+          abortControllerRef.current = new AbortController();
+
+          console.log('Generating analysis for market:', marketId, 'user:', user.id);
           const response = await supabase.functions.invoke('generate-qa-tree', {
             body: { marketId, userId: user.id }
           });
 
           if (response.error) throw response.error;
 
-          // Handle the streaming response
-          const reader = response.data.getReader();
-          await handleStreamResponse(reader, 'node-1');
+          const stream = new ReadableStream({
+            start(controller) {
+              const reader = new Response(response.data).body?.getReader();
+              if (!reader) throw new Error('No reader available');
+              
+              handleStreamResponse(reader);
+            }
+          });
+
+          const reader = stream.getReader();
+          while (true) {
+            const { done } = await reader.read();
+            if (done) break;
+          }
+
         } catch (error) {
           console.error('Error streaming response:', error);
+          updateNodeData('node-1', 'answer', 'Error generating analysis');
+        } finally {
+          abortControllerRef.current = null;
         }
       };
 
       streamResponse();
     }
-  });
+  }, [marketId, setNodes, updateNodeData, addChildNode, removeNode]);
 
   const nodeTypes = {
     qaNode: QANodeComponent
