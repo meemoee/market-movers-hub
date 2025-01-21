@@ -5,15 +5,28 @@ import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
 import { useTopMovers } from '@/hooks/useTopMovers';
 
+const formatInterval = (minutes: number): string => {
+  if (minutes < 60) return `${minutes} minutes`;
+  if (minutes === 60) return '1 hour';
+  if (minutes < 1440) return `${minutes / 60} hours`;
+  if (minutes === 1440) return '1 day';
+  if (minutes === 10080) return '1 week';
+  return `${minutes / 1440} days`;
+};
+
 const TIME_INTERVALS = [
-  { label: "1 hour", value: "1h" },
-  { label: "24 hours", value: "24h" },
-  { label: "7 days", value: "7d" },
-  { label: "30 days", value: "30d" },
+  { label: formatInterval(5), value: '5' },
+  { label: formatInterval(10), value: '10' },
+  { label: formatInterval(30), value: '30' },
+  { label: formatInterval(60), value: '60' },
+  { label: formatInterval(240), value: '240' },
+  { label: formatInterval(480), value: '480' },
+  { label: formatInterval(1440), value: '1440' },
+  { label: formatInterval(10080), value: '10080' },
 ] as const;
 
 export default function Index() {
-  const [selectedInterval, setSelectedInterval] = useState<string>("24h");
+  const [selectedInterval, setSelectedInterval] = useState<string>("1440");
   const [openMarketsOnly, setOpenMarketsOnly] = useState(true);
   const [page, setPage] = useState(1);
   const [allMovers, setAllMovers] = useState<any[]>([]);
