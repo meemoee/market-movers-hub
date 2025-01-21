@@ -112,7 +112,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         childrenCount,
         parent.position.x,
         parent.position.y,
-        currentLayer
+        currentLayer,
+        maxLayers
       );
       
       const newNode = createNode(newNodeId, position, {

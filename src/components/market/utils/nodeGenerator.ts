@@ -9,26 +9,36 @@ export interface NodeGeneratorOptions {
   nodes: Node[];
 }
 
-const calculateSubtreeWidth = (childrenCount: number, currentLayer: number): number => {
-  // Base node spacing that accounts for node width and minimum separation
+const calculateSubtreeWidth = (childrenCount: number, currentLayer: number, maxLayers: number): number => {
+  // Base width for a single node
   const baseNodeWidth = 400;
-  // Calculate how many potential nodes could be at this layer
-  const potentialNodes = Math.pow(childrenCount, currentLayer);
-  return potentialNodes * baseNodeWidth;
+  
+  if (currentLayer >= maxLayers) {
+    return baseNodeWidth;
+  }
+  
+  // Calculate how many potential nodes could be in the deepest layer of this subtree
+  const layersBelow = maxLayers - currentLayer;
+  const nodesInDeepestLayer = Math.pow(childrenCount, layersBelow);
+  
+  // The subtree width should be wide enough to accommodate the maximum possible nodes
+  // in its deepest layer, plus some padding
+  return nodesInDeepestLayer * baseNodeWidth;
 };
 
 const calculateNodeSpacing = (
   childrenCount: number,
-  currentLayer: number
+  currentLayer: number,
+  maxLayers: number
 ): { horizontalSpacing: number; verticalSpacing: number } => {
   // Calculate subtree width for this layer
-  const subtreeWidth = calculateSubtreeWidth(childrenCount, currentLayer);
+  const subtreeWidth = calculateSubtreeWidth(childrenCount, currentLayer, maxLayers);
   
   // Add padding between subtrees
-  const paddingBetweenSubtrees = 200;
+  const paddingBetweenSubtrees = 100;
   
   // Calculate horizontal spacing based on subtree width
-  const horizontalSpacing = (subtreeWidth + paddingBetweenSubtrees) / childrenCount;
+  const horizontalSpacing = (subtreeWidth + paddingBetweenSubtrees) / Math.max(1, childrenCount - 1);
   
   // Keep vertical spacing consistent
   const verticalSpacing = 200;
@@ -41,9 +51,10 @@ export const generateNodePosition = (
   childrenCount: number,
   parentX: number,
   parentY: number,
-  currentLayer: number
+  currentLayer: number,
+  maxLayers: number
 ) => {
-  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer);
+  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer, maxLayers);
   
   // Calculate offset from parent's center
   const totalWidth = horizontalSpacing * (childrenCount - 1);
