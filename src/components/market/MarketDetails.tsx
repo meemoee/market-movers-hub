@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { ChartBar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useToast } from '@/components/ui/use-toast';
 import PriceChart from './PriceChart';
 import { MarketQATree } from './MarketQATree';
 import type { MarketEvent } from './chart/types';
@@ -22,6 +23,7 @@ export function MarketDetails({
 }: MarketDetailsProps) {
   const [selectedInterval, setSelectedInterval] = useState('1d');
   const [isGenerating, setIsGenerating] = useState(false);
+  const { toast } = useToast();
 
   const { data: priceHistory, isLoading: isPriceLoading } = useQuery({
     queryKey: ['priceHistory', marketId, selectedInterval],
@@ -72,11 +74,37 @@ export function MarketDetails({
   const handleGenerateAnalysis = async () => {
     setIsGenerating(true);
     try {
-      await supabase.functions.invoke('generate-qa-tree', {
-        body: { marketId }
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to generate analysis.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('Generating analysis for market:', marketId, 'user:', user.id);
+      const response = await supabase.functions.invoke('generate-qa-tree', {
+        body: { marketId, userId: user.id }
       });
+
+      if (response.error) {
+        console.error('Generate analysis error:', response.error);
+        toast({
+          title: "Error",
+          description: "Failed to generate analysis. Please try again.",
+          variant: "destructive"
+        });
+      }
     } catch (error) {
       console.error('Error generating analysis:', error);
+      toast({
+        title: "Error",
+        description: "Failed to generate analysis. Please try again.",
+        variant: "destructive"
+      });
     } finally {
       setIsGenerating(false);
     }
