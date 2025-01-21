@@ -115,8 +115,6 @@ export const createEdge = (
   style: { 
     stroke: getEdgeColor(currentLayer),
     strokeWidth: Math.max(3 - currentLayer * 0.5, 1),
-    // Make deeper edges more curvey to avoid overlap
-    curvature: currentLayer * 0.2
   },
   // Animate only first level
   animated: currentLayer === 1

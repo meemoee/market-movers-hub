@@ -82,7 +82,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [updateNodeData]);
 
   const generateTree = useCallback(() => {
-    // Generate the entire tree structure upfront
     const rootId = 'node-1';
     const { nodes: newNodes, edges: newEdges } = generateTreeStructure(
       rootId,
@@ -93,12 +92,13 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     setNodes(newNodes);
     setEdges(newEdges);
 
-    // Start streaming text to nodes in sequence
     const streamToNodesInOrder = (nodeIndex: number = 0) => {
       if (nodeIndex >= newNodes.length) return;
       
       const node = newNodes[nodeIndex];
-      streamText(node.id, true, node.data.currentLayer, () => {
+      const currentLayer = node.data.currentLayer as number; // Type assertion here
+      
+      streamText(node.id, true, currentLayer, () => {
         setTimeout(() => {
           streamToNodesInOrder(nodeIndex + 1);
         }, 300);
