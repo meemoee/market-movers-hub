@@ -6,6 +6,9 @@ interface QANodeProps {
   data: {
     question: string;
     answer: string;
+    style?: {
+      width?: number;
+    };
     updateNodeData: (id: string, field: string, value: string) => void;
     addChildNode: (id: string) => void;
     removeNode: (id: string) => void;
@@ -15,9 +18,13 @@ interface QANodeProps {
 
 export const QANodeComponent = ({ data, id }: QANodeProps) => {
   const { updateNodeData, addChildNode, removeNode } = data;
+  const width = data.style?.width || 300;
 
   return (
-    <div className="bg-[#1a1b1e] border border-white/10 rounded-lg p-4 w-[300px]">
+    <div 
+      className="bg-[#1a1b1e] border border-white/10 rounded-lg p-4"
+      style={{ width: `${width}px` }}
+    >
       <div className="flex justify-between items-start gap-2 mb-2">
         <Input
           className="font-medium text-sm text-white bg-transparent border-none hover:bg-white/5 focus:bg-white/5"
@@ -47,8 +54,27 @@ export const QANodeComponent = ({ data, id }: QANodeProps) => {
         onChange={(e) => updateNodeData(id, 'answer', e.target.value)}
         placeholder="Enter answer..."
       />
-      <Handle type="target" position={Position.Top} id="target" />
-      <Handle type="source" position={Position.Bottom} id="source" />
+      
+      <Handle 
+        type="target" 
+        position={Position.Left} 
+        id="left"
+        style={{ 
+          background: '#4a5568',
+          width: '8px',
+          height: '8px'
+        }}
+      />
+      <Handle 
+        type="source" 
+        position={Position.Right} 
+        id="right"
+        style={{ 
+          background: '#4a5568',
+          width: '8px',
+          height: '8px'
+        }}
+      />
     </div>
   );
 };
