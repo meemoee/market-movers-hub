@@ -1,7 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +24,52 @@ serve(async (req) => {
       throw new Error('Market ID and user ID are required')
     }
 
+    // Initialize Supabase client
+    const supabase = createClient(
+      SUPABASE_URL!,
+      SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { persistSession: false } }
+    )
+
+    // Fetch market data
+    console.log('Fetching market data for:', marketId)
+    const { data: market, error: marketError } = await supabase
+      .from('markets')
+      .select(`
+        *,
+        event:events(
+          title,
+          category,
+          sub_title
+        )
+      `)
+      .eq('id', marketId)
+      .single()
+
+    if (marketError) {
+      console.error('Error fetching market:', marketError)
+      throw marketError
+    }
+
+    if (!market) {
+      throw new Error('Market not found')
+    }
+
+    console.log('Market data fetched:', market)
+
+    // Construct market context
+    const marketContext = `
+      Market Question: ${market.question}
+      Description: ${market.description || 'No description available'}
+      Event: ${market.event?.title || 'No event title'}
+      Category: ${market.event?.category || 'No category'}
+      Status: ${market.status}
+      Active: ${market.active}
+      Closed: ${market.closed}
+    `.trim()
+
+    console.log('Sending context to OpenRouter:', marketContext)
+
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -34,11 +83,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates insightful questions and detailed answers about market predictions."
+            content: "You are a helpful assistant that generates insightful questions and detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
           },
           {
             role: "user",
-            content: `Generate a root question and detailed answer about this market ID: ${marketId}`
+            content: `Based on this market information, generate a root question and detailed answer:\n\n${marketContext}`
           }
         ],
         stream: true
