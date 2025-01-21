@@ -118,6 +118,51 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     });
   }, [edges, setNodes, setEdges]);
 
+  const generateChildNodes = useCallback((
+    parentId: string,
+    currentLayer: number = 1,
+    maxLayers: number,
+    childrenCount: number
+  ) => {
+    if (currentLayer > maxLayers) return;
+
+    try {
+      const { nodes: newNodes, edges: newEdges } = generateNodes(
+        parentId,
+        childrenCount,
+        currentLayer,
+        nodes,
+        edges
+      );
+
+      setNodes(nds => [...nds, ...newNodes]);
+      setEdges(eds => [...eds, ...newEdges]);
+
+      let completedStreams = 0;
+      newNodes.forEach((node, index) => {
+        setTimeout(() => {
+          streamText(node.id, true, currentLayer, () => {
+            completedStreams++;
+            if (completedStreams === newNodes.length && currentLayer < maxLayers) {
+              newNodes.forEach((node, index) => {
+                setTimeout(() => {
+                  generateChildNodes(
+                    node.id,
+                    currentLayer + 1,
+                    maxLayers,
+                    childrenCount
+                  );
+                }, index * 300);
+              });
+            }
+          });
+        }, index * 200);
+      });
+    } catch (error) {
+      console.error("Error generating nodes:", error);
+    }
+  }, [nodes, edges, setNodes, setEdges, streamText]);
+
   // Initialize root node if needed
   useState(() => {
     if (nodes.length === 0) {
