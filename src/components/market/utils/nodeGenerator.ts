@@ -9,45 +9,55 @@ export interface NodeGeneratorOptions {
   nodes: Node[];
 }
 
-// Calculate total width needed for a complete subtree at a given depth
-const calculateSubtreeWidth = (
-  childrenCount: number, 
-  layersBelow: number
+// Calculate total nodes at a given layer
+const calculateNodesAtLayer = (
+  childrenCount: number,
+  layer: number
 ): number => {
-  // Base width for a leaf node
-  const baseNodeWidth = 300;
-
-  if (layersBelow === 0) {
-    return baseNodeWidth;
-  }
-
-  // Calculate width needed for bottom layer of this subtree
-  const childrenAtBottom = Math.pow(childrenCount, layersBelow);
-  const bottomLayerWidth = childrenAtBottom * baseNodeWidth;
-
-  // Add padding proportional to the number of layers below
-  const padding = layersBelow * 100;
-
-  return bottomLayerWidth + padding;
+  return Math.pow(childrenCount, layer);
 };
 
-// Calculate appropriate spacing for nodes at the current layer
+// Calculate the total width needed for all nodes at a specific layer
+const calculateLayerWidth = (
+  childrenCount: number,
+  layer: number,
+  baseNodeWidth: number = 300
+): number => {
+  const nodesInLayer = calculateNodesAtLayer(childrenCount, layer);
+  const minSpacingBetweenNodes = baseNodeWidth * 1.5; // Ensure minimum spacing between nodes
+  return nodesInLayer * minSpacingBetweenNodes;
+};
+
+// Find the widest layer in the entire tree
+const findWidestLayerWidth = (
+  childrenCount: number,
+  currentLayer: number,
+  maxLayers: number
+): number => {
+  let maxWidth = 0;
+  // Check width of current layer and all layers below it
+  for (let layer = currentLayer; layer <= maxLayers; layer++) {
+    const layerWidth = calculateLayerWidth(childrenCount, layer);
+    maxWidth = Math.max(maxWidth, layerWidth);
+  }
+  return maxWidth;
+};
+
 const calculateNodeSpacing = (
   childrenCount: number,
   currentLayer: number,
   maxLayers: number
 ): { horizontalSpacing: number; verticalSpacing: number } => {
-  // Calculate how many layers are below this one
-  const layersBelow = maxLayers - currentLayer;
+  // Get the width of the widest layer in the remaining tree
+  const widestLayerWidth = findWidestLayerWidth(childrenCount, currentLayer, maxLayers);
   
-  // Calculate width needed for a complete subtree at this level
-  const subtreeWidth = calculateSubtreeWidth(childrenCount, layersBelow);
+  // Calculate how many nodes are at the current layer
+  const nodesAtCurrentLayer = calculateNodesAtLayer(childrenCount, currentLayer - 1);
   
-  // For first layer, space nodes far apart to accommodate all descendants
-  // For deeper layers, bring nodes closer together
-  const horizontalSpacing = subtreeWidth / childrenCount;
+  // Calculate spacing needed to fit widest layer underneath
+  const horizontalSpacing = widestLayerWidth / nodesAtCurrentLayer;
   
-  // Consistent vertical spacing
+  // Maintain consistent vertical spacing
   const verticalSpacing = 200;
   
   return { horizontalSpacing, verticalSpacing };
@@ -61,11 +71,25 @@ export const generateNodePosition = (
   currentLayer: number,
   maxLayers: number = 3  // Default to 3 if not specified
 ) => {
-  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer, maxLayers);
+  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(
+    childrenCount, 
+    currentLayer,
+    maxLayers
+  );
   
-  // Center the nodes around the parent
-  const totalWidth = (childrenCount - 1) * horizontalSpacing;
-  const startX = parentX - totalWidth / 2;
+  // For first layer nodes
+  if (currentLayer === 1) {
+    const startX = -((childrenCount - 1) * horizontalSpacing) / 2;
+    return {
+      x: startX + (index * horizontalSpacing),
+      y: parentY + verticalSpacing
+    };
+  }
+  
+  // For subsequent layer nodes
+  const nodesInCurrentLayer = calculateNodesAtLayer(childrenCount, currentLayer - 1);
+  const totalWidth = horizontalSpacing * (nodesInCurrentLayer - 1);
+  const startX = parentX - (totalWidth / 2);
   
   return {
     x: startX + (index * horizontalSpacing),
