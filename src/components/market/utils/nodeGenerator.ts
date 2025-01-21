@@ -1,6 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 
-interface NodeGeneratorOptions {
+export interface NodeGeneratorOptions {
   parentId: string;
   currentLayer: number;
   maxLayers: number;
@@ -13,15 +13,19 @@ export const calculateNodeSpacing = (
   childrenCount: number,
   currentLayer: number
 ): { horizontalSpacing: number; verticalSpacing: number } => {
-  // Calculate total possible nodes at this layer
+  // Calculate total possible nodes at current layer
   const maxNodesAtLayer = Math.pow(childrenCount, currentLayer);
   
-  // Base horizontal spacing that grows with the layer depth
-  // We multiply by 2 for each layer to ensure enough space for all possible children
-  const baseHorizontalSpacing = 400;
-  const horizontalSpacing = baseHorizontalSpacing * Math.pow(2, currentLayer - 1);
+  // Base spacing per node that ensures no overlap
+  const baseNodeSpacing = 350;
   
-  // Consistent vertical spacing between layers
+  // Calculate total width needed for this layer
+  const totalWidthNeeded = maxNodesAtLayer * baseNodeSpacing;
+  
+  // Scale horizontal spacing based on total width needed
+  const horizontalSpacing = totalWidthNeeded / childrenCount;
+  
+  // Keep vertical spacing consistent
   const verticalSpacing = 250;
   
   return { horizontalSpacing, verticalSpacing };
@@ -36,14 +40,17 @@ export const generateNodePosition = (
 ) => {
   const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer);
   
-  // Calculate total width needed for all nodes at this layer
-  const totalWidth = (childrenCount - 1) * horizontalSpacing;
+  // Calculate parent's section width
+  const parentSectionWidth = horizontalSpacing * childrenCount;
   
-  // Center the nodes relative to the parent
-  const xOffset = (index - (childrenCount - 1) / 2) * horizontalSpacing;
+  // Calculate starting X position for this parent's children
+  const startX = parentX - (parentSectionWidth / 2) + (horizontalSpacing / 2);
+  
+  // Position node within parent's section
+  const x = startX + (index * horizontalSpacing);
   
   return {
-    x: parentX + xOffset,
+    x: x,
     y: parentY + verticalSpacing
   };
 };
