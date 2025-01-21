@@ -156,6 +156,15 @@ function Chart({
               curve={curveStepAfter}
             />
 
+            {/* Event markers - lines on bottom layer */}
+            <g>
+              <EventMarkers
+                events={events}
+                timeScale={timeScale}
+                height={innerHeight}
+              />
+            </g>
+
             <AxisLeft
               scale={priceScale}
               tickValues={[0, 25, 50, 75, 100]}
@@ -191,14 +200,14 @@ function Chart({
             />
           </g>
 
-          {/* Split into interaction areas */}
+          {/* Interactive layers */}
           <g>
             {/* Main price tracking area */}
             <rect
               x={0}
               y={0}
               width={innerWidth}
-              height={innerHeight - 50} // Leave space for event markers
+              height={innerHeight}
               fill="transparent"
               onTouchStart={handleTooltip}
               onTouchMove={handleTooltip}
@@ -207,12 +216,13 @@ function Chart({
               style={{ pointerEvents: 'all' }}
             />
 
-            {/* Event markers area - must be on top */}
-            <g transform={`translate(0, ${innerHeight - 50})`} style={{ pointerEvents: 'all' }}>
+            {/* Interactive event markers icons - must be on top */}
+            <g>
               <EventMarkers
                 events={events}
                 timeScale={timeScale}
-                height={50}
+                height={innerHeight}
+                iconsOnly
               />
             </g>
 
