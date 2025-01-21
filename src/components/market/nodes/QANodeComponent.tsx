@@ -1,4 +1,3 @@
-import { Input } from "@/components/ui/input";
 import { Handle, Position } from '@xyflow/react';
 import { Plus, X } from "lucide-react";
 
@@ -46,11 +45,16 @@ export const QANodeComponent = ({ data, id }: QANodeProps) => {
         </div>
       </div>
       <div className="border-t border-white/10 my-2" />
-      <Input
-        className="text-xs text-gray-300 bg-transparent border-none hover:bg-white/5 focus:bg-white/5"
+      <textarea
+        className="text-xs text-gray-300 bg-transparent border-none hover:bg-white/5 focus:bg-white/5 w-full resize-none overflow-hidden focus:outline-none min-h-[40px] break-words whitespace-pre-wrap"
         value={data.answer}
-        onChange={(e) => updateNodeData(id, 'answer', e.target.value)}
+        onChange={(e) => {
+          e.target.style.height = 'auto';
+          e.target.style.height = e.target.scrollHeight + 'px';
+          updateNodeData(id, 'answer', e.target.value);
+        }}
         placeholder="Enter answer..."
+        rows={1}
       />
       <Handle type="target" position={Position.Top} id="target" />
       <Handle type="source" position={Position.Bottom} id="source" />
