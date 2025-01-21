@@ -68,9 +68,10 @@ serve(async (req) => {
       Closed: ${market.closed}
     `.trim()
 
-    console.log('Sending context to OpenRouter:', marketContext)
+    console.log('Sending context to Perplexity:', marketContext)
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // First call to Perplexity for analysis
+    const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -89,13 +90,48 @@ serve(async (req) => {
             role: "user",
             content: `Based on this market information, generate a root question and detailed answer:\n\n${marketContext}`
           }
+        ]
+      })
+    })
+
+    if (!perplexityResponse.ok) {
+      throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
+    }
+
+    const perplexityData = await perplexityResponse.json()
+    const perplexityContent = perplexityData.choices[0].message.content
+
+    console.log('Perplexity response:', perplexityContent)
+    console.log('Sending to Gemini Flash for parsing...')
+
+    // Second call to Gemini Flash for parsing into Q&A format
+    const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Analysis App',
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5-8b",
+        messages: [
+          {
+            role: "system",
+            content: "You are a parser that extracts questions and answers from analysis text. Return only a JSON object with 'question' and 'answer' fields."
+          },
+          {
+            role: "user",
+            content: perplexityContent
+          }
         ],
+        response_format: { type: "json_object" },
         stream: true
       })
     })
 
-    // Return the stream directly to the client
-    return new Response(response.body, {
+    // Return the Gemini Flash stream directly to the client
+    return new Response(geminiResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
