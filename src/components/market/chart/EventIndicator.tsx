@@ -8,35 +8,23 @@ interface EventIndicatorProps {
   timeScale: ScaleTime<number, number>;
   height: number;
   iconSize?: number;
+  iconsOnly?: boolean;
 }
 
 export const EventIndicator = ({ 
   event, 
   timeScale, 
   height, 
-  iconSize = 16 
+  iconSize = 16,
+  iconsOnly = false
 }: EventIndicatorProps) => {
   const [showTooltip, setShowTooltip] = React.useState(false);
   const xPosition = timeScale(new Date(event.timestamp).getTime());
   const iconY = height - iconSize - 4;
   
-  return (
-    <>
-      {/* Non-interactive full height line */}
-      <g transform={`translate(${xPosition}, 0)`} style={{ pointerEvents: 'none' }}>
-        <line
-          x1={0}
-          x2={0}
-          y1={0}
-          y2={height}
-          stroke="currentColor"
-          strokeWidth={1}
-          className="text-muted-foreground/30"
-          strokeDasharray="2,2"
-        />
-      </g>
-      
-      {/* Interactive icon and tooltip container */}
+  // If iconsOnly is true, only render the interactive part
+  if (iconsOnly) {
+    return (
       <g transform={`translate(${xPosition}, 0)`} style={{ pointerEvents: 'all' }}>
         <g transform={`translate(0, ${iconY})`} className="cursor-pointer">
           {/* Larger invisible hit area for better interaction */}
@@ -93,6 +81,22 @@ export const EventIndicator = ({
           )}
         </g>
       </g>
-    </>
+    );
+  }
+
+  // If not iconsOnly, just render the vertical line
+  return (
+    <g transform={`translate(${xPosition}, 0)`} style={{ pointerEvents: 'none' }}>
+      <line
+        x1={0}
+        x2={0}
+        y1={0}
+        y2={height}
+        stroke="currentColor"
+        strokeWidth={1}
+        className="text-muted-foreground/30"
+        strokeDasharray="2,2"
+      />
+    </g>
   );
 };
