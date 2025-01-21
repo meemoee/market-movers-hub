@@ -4,7 +4,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
 const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
@@ -14,66 +13,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface MarketInfo {
-  id: string
-  event_id: string
-  question: string
-  description: string
-  active: boolean
-  closed: boolean
-  archived: boolean
-  event_title: string
-}
-
-async function getMarketInfo(marketId: string): Promise<MarketInfo | null> {
-  const { data, error } = await supabase
-    .from('markets')
-    .select(`
-      id,
-      event_id,
-      question,
-      description,
-      active,
-      closed,
-      archived,
-      events!inner (
-        title
-      )
-    `)
-    .eq('id', marketId)
-    .single()
-
-  if (error || !data) {
-    console.error('Error fetching market:', error)
-    return null
-  }
-
-  return {
-    ...data,
-    event_title: data.events.title
-  }
-}
-
-async function streamLLMResponse(messages: any[], model = "perplexity/llama-3.1-sonar-small-128k-online") {
+async function streamLLMResponse(messages: any[]) {
   try {
+    console.log('Making request to OpenRouter API...')
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:3000',
+        'HTTP-Referer': 'http://localhost:5173',
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model,
+        model: "perplexity/llama-3.1-sonar-small-128k-online",
         messages,
-        stream: true,
-        temperature: 0.2,
-        max_tokens: 1000,
-      }),
+        stream: true
+      })
     })
 
     if (!response.ok) {
+      console.error('OpenRouter API error:', response.status)
       throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
@@ -110,7 +69,7 @@ async function streamLLMResponse(messages: any[], model = "perplexity/llama-3.1-
   }
 }
 
-async function generateQATree(marketInfo: MarketInfo, maxDepth = 2, nodesPerLayer = 2) {
+async function generateQATree(marketInfo: any) {
   // Generate root question
   const rootResponse = await streamLLMResponse([
     {
@@ -130,67 +89,20 @@ async function generateQATree(marketInfo: MarketInfo, maxDepth = 2, nodesPerLaye
     throw new Error('Failed to generate root question')
   }
 
-  const treeData = {
+  return {
     question: `${marketInfo.question}?`,
     answer: rootResponse,
     children: []
   }
-
-  async function generateChildren(node: any, depth: number) {
-    if (depth >= maxDepth) return
-
-    const childrenResponse = await streamLLMResponse([
-      {
-        role: "system",
-        content: "Generate follow-up questions and answers that explore different aspects of the market prediction."
-      },
-      {
-        role: "user",
-        content: `Based on this question and answer:
-          Question: ${node.question}
-          Answer: ${node.answer}
-          
-          Generate ${nodesPerLayer} follow-up questions and detailed answers that explore different aspects.`
-      }
-    ])
-
-    if (childrenResponse) {
-      // Split the response into questions and answers
-      const segments = childrenResponse.split('\n\n')
-      const children = []
-
-      for (let i = 0; i < segments.length && children.length < nodesPerLayer; i++) {
-        const segment = segments[i]
-        if (segment.includes('?')) {
-          children.push({
-            question: segment.trim(),
-            answer: segments[i + 1]?.trim() || 'Analysis pending...',
-            children: []
-          })
-        }
-      }
-
-      node.children = children
-
-      // Generate children for each child node
-      for (const child of node.children) {
-        await generateChildren(child, depth + 1)
-      }
-    }
-  }
-
-  await generateChildren(treeData, 0)
-  return treeData
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { marketId, maxDepth = 2, nodesPerLayer = 2, userId } = await req.json()
+    const { marketId, userId } = await req.json()
 
     if (!marketId || !userId) {
       return new Response(
@@ -199,15 +111,27 @@ serve(async (req) => {
       )
     }
 
-    const marketInfo = await getMarketInfo(marketId)
-    if (!marketInfo) {
+    // Get market info
+    const { data: marketInfo, error: marketError } = await supabase
+      .from('markets')
+      .select(`
+        *,
+        events (
+          title
+        )
+      `)
+      .eq('id', marketId)
+      .single()
+
+    if (marketError || !marketInfo) {
+      console.error('Error fetching market:', marketError)
       return new Response(
         JSON.stringify({ error: 'Market not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    const treeData = await generateQATree(marketInfo, maxDepth, nodesPerLayer)
+    const treeData = await generateQATree(marketInfo)
 
     // Save to qa_trees table
     const { data: savedTree, error: saveError } = await supabase
