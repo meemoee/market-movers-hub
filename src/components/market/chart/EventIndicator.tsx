@@ -19,46 +19,36 @@ export const EventIndicator = ({
   const [showTooltip, setShowTooltip] = React.useState(false);
   const xPosition = timeScale(new Date(event.timestamp).getTime());
   const iconY = height - iconSize - 4;
-
-  // Separate groups for line and interactive elements  
+  
   return (
-    <>
-      {/* Non-interactive vertical line */}
-      <g 
-        transform={`translate(${xPosition}, 0)`} 
+    <g transform={`translate(${xPosition}, 0)`} style={{ pointerEvents: 'all' }}>
+      {/* Vertical connecting line */}
+      <line
+        x1={0}
+        x2={0}
+        y1={0}
+        y2={height - 10} // Stop slightly above icon
+        stroke="currentColor"
+        strokeWidth={1}
+        className="text-muted-foreground/30"
+        strokeDasharray="2,2"
         style={{ pointerEvents: 'none' }}
-      >
-        <line
-          x1={0}
-          x2={0}
-          y1={0}
-          y2={height}
-          stroke="currentColor"
-          strokeWidth={1}
-          className="text-muted-foreground/30"
-          strokeDasharray="2,2"
-        />
-      </g>
-
-      {/* Interactive icon and tooltip group */}
-      <g 
-        transform={`translate(${xPosition}, ${iconY})`}
-        style={{ pointerEvents: 'all' }}
-        onMouseEnter={() => setShowTooltip(true)}
-        onMouseLeave={() => setShowTooltip(false)}
-        className="cursor-pointer"
-      >
-        {/* Larger invisible hit area */}
+      />
+      
+      {/* Interactive icon container */}
+      <g transform={`translate(0, ${iconY})`} className="cursor-pointer">
+        {/* Larger invisible hit area for better interaction */}
         <rect
           x={-12}
           y={-12}
           width={24}
           height={24}
           fill="transparent"
-          style={{ pointerEvents: 'all' }}
+          onMouseEnter={() => setShowTooltip(true)}
+          onMouseLeave={() => setShowTooltip(false)}
         />
         
-        {/* Visual background */}
+        {/* Icon background */}
         <rect
           x={-10}
           y={-10}
@@ -85,9 +75,13 @@ export const EventIndicator = ({
             y={-80}
             width={200}
             height={60}
-            style={{ overflow: 'visible', pointerEvents: 'none' }}
+            style={{ 
+              overflow: 'visible', 
+              pointerEvents: 'none',
+              zIndex: 1000,
+            }}
           >
-            <div className="z-50 bg-background/95 border border-border p-2 rounded-md shadow-lg">
+            <div className="relative z-50 bg-background/95 border border-border p-2 rounded-md shadow-lg">
               <p className="font-medium text-sm">{event.title}</p>
               {event.description && (
                 <p className="text-xs text-muted-foreground">{event.description}</p>
@@ -96,6 +90,6 @@ export const EventIndicator = ({
           </foreignObject>
         )}
       </g>
-    </>
+    </g>
   );
 };
