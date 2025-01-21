@@ -95,74 +95,28 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, []);
 
   const removeNode = useCallback((nodeId: string) => {
-    // Remove the node and all its descendants
-    const nodesToRemove = new Set<string>();
-    const edgesToRemove = new Set<string>();
-    
-    const findDescendants = (id: string) => {
-      nodesToRemove.add(id);
-      edges.forEach(edge => {
-        if (edge.source === id) {
-          edgesToRemove.add(edge.id);
-          findDescendants(edge.target);
-        }
-      });
-    };
-    
-    findDescendants(nodeId);
-    
-    setNodes((nds) => nds.filter((node) => !nodesToRemove.has(node.id)));
-    setEdges((eds) => eds.filter((edge) => !edgesToRemove.has(edge.id)));
-  }, [edges, setNodes, setEdges]);
+    setNodes((nds) => {
+      const nodesToRemove = new Set<string>();
+      const findDescendants = (id: string) => {
+        nodesToRemove.add(id);
+        edges.forEach(edge => {
+          if (edge.source === id) {
+            findDescendants(edge.target);
+          }
+        });
+      };
+      
+      findDescendants(nodeId);
+      return nds.filter((node) => !nodesToRemove.has(node.id));
+    });
 
-  const generateChildNodes = useCallback((
-    parentId: string,
-    currentLayer: number = 1,
-    maxLayers: number,
-    childrenCount: number
-  ) => {
-    if (currentLayer > maxLayers) return;
-
-    try {
-      // Generate new nodes and edges using the utility
-      const { nodes: newNodes, edges: newEdges } = generateNodes(
-        parentId,
-        childrenCount,
-        currentLayer,
-        nodes,
-        edges
+    setEdges((eds) => {
+      if (!eds) return [];
+      return eds.filter((edge) => 
+        !edge.source.includes(nodeId) && !edge.target.includes(nodeId)
       );
-
-      // Add the new nodes and edges to the state
-      setNodes(nds => [...nds, ...newNodes]);
-      setEdges(eds => [...eds, ...newEdges]);
-
-      // Start streaming text for each new node
-      let completedStreams = 0;
-      newNodes.forEach((node, index) => {
-        setTimeout(() => {
-          streamText(node.id, true, currentLayer, () => {
-            completedStreams++;
-            // When all nodes at this level are done, generate the next layer
-            if (completedStreams === newNodes.length) {
-              newNodes.forEach((node, index) => {
-                setTimeout(() => {
-                  generateChildNodes(
-                    node.id,
-                    currentLayer + 1,
-                    maxLayers,
-                    childrenCount
-                  );
-                }, index * 300);
-              });
-            }
-          });
-        }, index * 200);
-      });
-    } catch (error) {
-      console.error("Error generating nodes:", error);
-    }
-  }, [nodes, edges, setNodes, setEdges, streamText]);
+    });
+  }, [edges, setNodes, setEdges]);
 
   // Initialize root node if needed
   useState(() => {
