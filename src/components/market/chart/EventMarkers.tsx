@@ -7,19 +7,26 @@ interface EventMarkersProps {
   events: MarketEvent[];
   timeScale: ScaleTime<number, number>;
   height: number;
+  iconsOnly?: boolean;
 }
 
-export const EventMarkers = ({ events, timeScale, height }: EventMarkersProps) => {
+export const EventMarkers = ({ 
+  events, 
+  timeScale, 
+  height,
+  iconsOnly = false
+}: EventMarkersProps) => {
   if (!events?.length) return null;
 
   return (
-    <g style={{ pointerEvents: 'none' }}>
+    <g>
       {events.map((event) => (
         <EventIndicator
           key={event.id}
           event={event}
           timeScale={timeScale}
           height={height}
+          iconsOnly={iconsOnly}
         />
       ))}
     </g>
