@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
+import { MarketQATree } from './MarketQATree';
 import type { MarketEvent } from './chart/types';
 
 interface MarketDetailsProps {
@@ -88,6 +89,8 @@ export function MarketDetails({
           </div>
         )}
       </div>
+
+      <MarketQATree marketId={marketId} />
 
       <div className="grid grid-cols-2 gap-4">
         <div>
