@@ -80,7 +80,6 @@ function Chart({
     let leftIndex = 0;
     let rightIndex = data.length - 1;
 
-    // Find the two closest points
     for (let i = 0; i < data.length - 1; i++) {
       if (data[i].time <= time && data[i + 1].time > time) {
         leftIndex = i;
@@ -89,7 +88,6 @@ function Chart({
       }
     }
 
-    // Use step-after interpolation (use the left point's price)
     return {
       time,
       price: data[leftIndex].price
@@ -127,7 +125,15 @@ function Chart({
   return (
     <div className="relative">
       <TooltipProvider>
-        <svg width={width} height={height}>
+        <svg 
+          width={width} 
+          height={height} 
+          style={{ 
+            overflow: 'visible', // Important: Allow elements to render outside SVG
+            position: 'relative',
+            zIndex: 1 
+          }}
+        >
           <defs>
             <LinearGradient
               id="above-gradient"
@@ -206,6 +212,13 @@ function Chart({
               })}
             />
 
+            {/* Event markers */}
+            <EventMarkers
+              events={events}
+              timeScale={timeScale}
+              height={innerHeight}
+            />
+
             {/* Tooltip overlay */}
             <rect
               x={0}
@@ -220,15 +233,8 @@ function Chart({
               style={{ pointerEvents: 'all' }}
             />
 
-            {/* Event markers */}
-            <EventMarkers
-              events={events}
-              timeScale={timeScale}
-              height={innerHeight}
-            />
-
             {tooltipData && (
-              <g>
+              <>
                 <line
                   x1={tooltipLeft - margin.left}
                   x2={tooltipLeft - margin.left}
@@ -245,7 +251,7 @@ function Chart({
                   fill="#3b82f6"
                   pointerEvents="none"
                 />
-              </g>
+              </>
             )}
           </g>
         </svg>
@@ -298,7 +304,7 @@ export default function PriceChart({
   , [data]);
 
   return (
-    <div>      
+    <div className="relative">      
       <div className="h-[300px] w-full">
         <ParentSize>
           {({ width, height }) => (
