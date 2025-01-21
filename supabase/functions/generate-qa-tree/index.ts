@@ -4,6 +4,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
 const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
@@ -183,12 +184,13 @@ async function generateQATree(marketInfo: MarketInfo, maxDepth = 2, nodesPerLaye
 }
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { marketId, userId } = await req.json()
+    const { marketId, maxDepth = 2, nodesPerLayer = 2, userId } = await req.json()
 
     if (!marketId || !userId) {
       return new Response(
@@ -205,7 +207,7 @@ serve(async (req) => {
       )
     }
 
-    const treeData = await generateQATree(marketInfo)
+    const treeData = await generateQATree(marketInfo, maxDepth, nodesPerLayer)
 
     // Save to qa_trees table
     const { data: savedTree, error: saveError } = await supabase
