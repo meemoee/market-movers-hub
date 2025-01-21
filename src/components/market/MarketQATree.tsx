@@ -123,12 +123,14 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     maxLayers: number,
     childrenCount: number
   ) => {
-    if (currentLayer > maxLayers) return;
+    if (currentLayer > maxLayers) {
+      return;
+    }
 
     const parent = nodes.find(node => node.id === parentId);
     if (!parent) return;
 
-    const newNodes = [];
+    const newNodes: Node<NodeData>[] = [];
     const newEdges = [];
     let completedStreams = 0;
 
@@ -159,30 +161,37 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         }
       );
 
-      const newEdge = createEdge(parentId, newNodeId, currentLayer);
+      const newEdge = createEdge(parentId, newNodeId);
 
       newNodes.push(newNode);
       newEdges.push(newEdge);
+    }
 
+    // Add all nodes and edges first
+    setNodes(nds => [...nds, ...newNodes]);
+    setEdges(eds => [...eds, ...newEdges]);
+
+    // Then start streaming text for each node
+    newNodes.forEach((node, index) => {
       setTimeout(() => {
-        streamText(newNodeId, true, currentLayer, () => {
+        streamText(node.id, true, currentLayer, () => {
           completedStreams++;
-          if (completedStreams === childrenCount) {
-            newNodes.forEach(node => {
-              generateChildNodes(
-                node.id,
-                currentLayer + 1,
-                maxLayers,
-                childrenCount
-              );
+          if (completedStreams === childrenCount && currentLayer < maxLayers) {
+            // Only proceed to next layer if we haven't reached maxLayers
+            newNodes.forEach(childNode => {
+              setTimeout(() => {
+                generateChildNodes(
+                  childNode.id,
+                  currentLayer + 1,
+                  maxLayers,
+                  childrenCount
+                );
+              }, 500); // Add delay between generating children
             });
           }
         });
-      }, i * 200);
-    }
-
-    setNodes(nds => [...nds, ...newNodes]);
-    setEdges(eds => [...eds, ...newEdges]);
+      }, index * 200);
+    });
   }, [nodes, edges, setNodes, setEdges, updateNodeData, addChildNode, removeNode, streamText]);
 
   // Initialize root node
