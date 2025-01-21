@@ -125,8 +125,8 @@ export default function RightSidebar() {
   const defaultContent = [
     {
       icon: Zap,
-      question: "How does it work?",
-      answer: "Get instant insights on market movements",
+      question: "Use AI to turn your opinions into portfolios",
+      answer: "Hunchex will find relevant markets to what you say and track their performance over time.",
       subPoints: [
         { icon: TrendingUp, text: "Track price changes in real-time" },
         { icon: DollarSign, text: "Identify profitable opportunities" }
