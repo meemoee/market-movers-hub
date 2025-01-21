@@ -51,7 +51,6 @@ export function MarketCard({
           priceChange={market.price_change}
           volume={market.volume}
           isExpanded={isExpanded}
-          onToggleExpand={onToggleExpand}
         />
       </div>
       {isExpanded && market.description && (
