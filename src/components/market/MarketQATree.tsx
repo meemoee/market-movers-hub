@@ -119,7 +119,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
   const generateChildNodes = useCallback((
     parentId: string,
-    currentLayer: number = 1,
+    currentLayer: number,
     maxLayers: number,
     childrenCount: number
   ) => {
@@ -146,12 +146,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         currentLayer
       );
 
-      const nodeCallbacks = {
-        updateNodeData,
-        addChildNode,
-        removeNode: () => removeNode(newNodeId)
-      };
-
       const newNode = createNode(
         newNodeId,
         position,
@@ -159,7 +153,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           question: '',
           answer: '',
           currentLayer,
-          ...nodeCallbacks
+          updateNodeData,
+          addChildNode,
+          removeNode
         }
       );
 
@@ -172,15 +168,13 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         streamText(newNodeId, true, currentLayer, () => {
           completedStreams++;
           if (completedStreams === childrenCount) {
-            newNodes.forEach((node, index) => {
-              setTimeout(() => {
-                generateChildNodes(
-                  node.id,
-                  currentLayer + 1,
-                  maxLayers,
-                  childrenCount
-                );
-              }, index * 300);
+            newNodes.forEach(node => {
+              generateChildNodes(
+                node.id,
+                currentLayer + 1,
+                maxLayers,
+                childrenCount
+              );
             });
           }
         });
@@ -204,7 +198,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           currentLayer: 1,
           updateNodeData,
           addChildNode,
-          removeNode: () => removeNode(rootNodeId)
+          removeNode
         }
       );
       setNodes([rootNode]);
