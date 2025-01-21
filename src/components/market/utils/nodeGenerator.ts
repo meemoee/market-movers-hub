@@ -1,48 +1,19 @@
 import { Node, Edge } from '@xyflow/react';
+import { calculateChildPosition } from './treeSpacing';
 
-interface NodeGeneratorOptions {
-  parentId: string;
-  currentLayer: number;
-  maxLayers: number;
-  childrenCount: number;
-  parentNode?: Node;
-  nodes: Node[];
+export interface NodeData {
+  question: string;
+  answer: string;
+  updateNodeData?: (id: string, field: string, value: string) => void;
+  addChildNode?: (id: string) => void;
+  removeNode?: (id: string) => void;
 }
-
-export const calculateNodeSpacing = (
-  childrenCount: number,
-  currentLayer: number
-): { horizontalSpacing: number; verticalSpacing: number } => {
-  // Increase spacing exponentially with layer depth to prevent overlapping
-  const baseHorizontalSpacing = 400;
-  const horizontalSpacing = baseHorizontalSpacing * Math.pow(1.2, currentLayer - 1);
-  const verticalSpacing = 250; // Consistent vertical spacing
-  
-  return { horizontalSpacing, verticalSpacing };
-};
-
-export const generateNodePosition = (
-  index: number,
-  childrenCount: number,
-  parentX: number,
-  parentY: number,
-  currentLayer: number
-) => {
-  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer);
-  const totalWidth = (childrenCount - 1) * horizontalSpacing;
-  const xOffset = (index - (childrenCount - 1) / 2) * horizontalSpacing;
-  
-  return {
-    x: parentX + xOffset,
-    y: parentY + verticalSpacing
-  };
-};
 
 export const createNode = (
   id: string,
   position: { x: number; y: number },
-  data: any
-): Node => ({
+  data: NodeData
+): Node<NodeData> => ({
   id,
   type: 'qaNode',
   position,
@@ -57,9 +28,23 @@ export const createEdge = (
   id: `edge-${sourceId}-${targetId}`,
   source: sourceId,
   target: targetId,
-  sourceHandle: 'source',
-  targetHandle: 'target',
   type: 'smoothstep',
-  style: { stroke: '#666', strokeWidth: 2 },
-  animated: currentLayer === 1
+  animated: currentLayer === 1,
+  style: { stroke: '#666', strokeWidth: 2 }
 });
+
+export const generateNodePosition = (
+  index: number,
+  childrenCount: number,
+  parentX: number,
+  parentY: number,
+  currentLayer: number
+) => {
+  return calculateChildPosition(
+    index,
+    childrenCount,
+    parentX,
+    parentY,
+    currentLayer
+  );
+};
