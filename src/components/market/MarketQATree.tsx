@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { 
   ReactFlow, 
@@ -9,11 +9,19 @@ import {
   Connection, 
   useNodesState, 
   useEdgesState, 
-  addEdge
+  addEdge,
+  Position,
+  MarkerType
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
-import { generateNodePosition, createNode, createEdge } from './utils/nodeGenerator';
+import { 
+  generateNodePosition, 
+  createNode, 
+  createEdge,
+  updateDescendantCounts,
+  type NodeData 
+} from './utils/nodeGenerator';
 import {
   Dialog,
   DialogContent,
@@ -24,58 +32,121 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-export function MarketQATree({ marketId }: { marketId: string }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+const nodeTypes = {
+  qaNode: QANodeComponent
+};
+
+// Handle tree layout updates
+const useTreeLayout = () => {
+  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  // Update layout when nodes or edges change
+  useEffect(() => {
+    const updatedNodes = updateDescendantCounts(nodes, edges);
+    if (JSON.stringify(nodes) !== JSON.stringify(updatedNodes)) {
+      setNodes(updatedNodes);
+    }
+  }, [nodes, edges, setNodes]);
+
+  return {
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    onNodesChange,
+    onEdgesChange
+  };
+};
+
+export function MarketQATree({ marketId }: { marketId: string }) {
+  const {
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    onNodesChange,
+    onEdgesChange
+  } = useTreeLayout();
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [layers, setLayers] = useState(2);
   const [childrenPerLayer, setChildrenPerLayer] = useState(2);
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
+  // Initialize root node if needed
+  useEffect(() => {
+    if (nodes.length === 0) {
+      const rootNode = createNode('root', { x: 0, y: 0 }, {
+        question: 'Root Question',
+        answer: 'Root Answer'
+      });
+      setNodes([rootNode]);
+    }
+  }, [nodes.length, setNodes]);
+
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === nodeId) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              [field]: value,
-              updateNodeData,
-              addChildNode,
-              removeNode
-            },
-          };
-        }
-        return node;
-      })
+    setNodes(nds => 
+      nds.map(node => 
+        node.id === nodeId
+          ? { ...node, data: { ...node.data, [field]: value } }
+          : node
+      )
     );
   }, [setNodes]);
 
+  const addChildNode = useCallback((parentId: string) => {
+    setSelectedParentId(parentId);
+    setIsDialogOpen(true);
+  }, []);
+
+  const removeNode = useCallback((nodeId: string) => {
+    // Find all descendant nodes
+    const getDescendants = (id: string): string[] => {
+      const childEdges = edges.filter(e => e.source === id);
+      return childEdges.reduce(
+        (acc, edge) => [...acc, edge.target, ...getDescendants(edge.target)],
+        [] as string[]
+      );
+    };
+
+    const descendantIds = getDescendants(nodeId);
+    const idsToRemove = [nodeId, ...descendantIds];
+
+    setNodes(nds => nds.filter(node => !idsToRemove.includes(node.id)));
+    setEdges(eds => eds.filter(edge => 
+      !idsToRemove.includes(edge.source) && !idsToRemove.includes(edge.target)
+    ));
+  }, [edges, setNodes, setEdges]);
+
   const streamText = useCallback((
-    nodeId: string, 
-    isQuestion: boolean = true, 
+    nodeId: string,
+    isQuestion: boolean = true,
     currentLayer: number,
     onComplete?: () => void
   ) => {
-    const text = isQuestion 
-      ? `Question for Layer ${currentLayer}, Node ${nodeId}`
-      : `This is a detailed answer for Layer ${currentLayer}, Node ${nodeId}`;
-    
+    const text = isQuestion
+      ? `Question for Layer ${currentLayer}`
+      : `This is a detailed answer for Layer ${currentLayer}`;
+
     let index = 0;
     if (streamIntervals.current[nodeId]) {
       clearInterval(streamIntervals.current[nodeId]);
     }
-    
+
     streamIntervals.current[nodeId] = setInterval(() => {
       if (index <= text.length) {
-        updateNodeData(nodeId, isQuestion ? 'question' : 'answer', text.slice(0, index));
+        updateNodeData(
+          nodeId,
+          isQuestion ? 'question' : 'answer',
+          text.slice(0, index)
+        );
         index++;
       } else {
         clearInterval(streamIntervals.current[nodeId]);
         delete streamIntervals.current[nodeId];
-        
+
         if (isQuestion) {
           setTimeout(() => {
             streamText(nodeId, false, currentLayer, onComplete);
@@ -88,33 +159,34 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [updateNodeData]);
 
   const generateChildNodes = useCallback((
-    parentId: string, 
-    currentLayer: number = 1, 
+    parentId: string,
+    currentLayer: number = 1,
     maxLayers: number,
-    childrenCount: number,
-    parentNode?: Node
+    childrenCount: number
   ) => {
     if (currentLayer > maxLayers) return;
 
-    const parent = parentNode || nodes.find(node => node.id === parentId);
+    const parent = nodes.find(node => node.id === parentId);
     if (!parent) return;
 
-    const newNodes: Node[] = [];
+    const newNodes: Node<NodeData>[] = [];
     const newEdges: Edge[] = [];
     let completedStreams = 0;
-    
+
     for (let i = 0; i < childrenCount; i++) {
       const timestamp = Date.now() + i;
-      const newNodeId = `node-${timestamp}-${currentLayer}`;
+      const newNodeId = `node-${timestamp}`;
       
       const position = generateNodePosition(
         i,
         childrenCount,
-        parent.position.x,
-        parent.position.y,
+        nodes,
+        edges,
+        parentId,
+        parent.position,
         currentLayer
       );
-      
+
       const newNode = createNode(newNodeId, position, {
         question: '',
         answer: '',
@@ -138,8 +210,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                   node.id,
                   currentLayer + 1,
                   maxLayers,
-                  childrenCount,
-                  node
+                  childrenCount
                 );
               }, index * 300);
             });
@@ -150,70 +221,14 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
-    
-  }, [nodes, setNodes, setEdges, streamText]);
-
-  const addChildNode = useCallback((parentId: string) => {
-    setSelectedParentId(parentId);
-    setIsDialogOpen(true);
-  }, []);
-
-  const removeNode = useCallback((nodeId: string) => {
-    const nodesToRemove = new Set<string>();
-    const edgesToRemove = new Set<string>();
-    
-    const findDescendants = (id: string) => {
-      nodesToRemove.add(id);
-      edges.forEach(edge => {
-        if (edge.source === id) {
-          edgesToRemove.add(edge.id);
-          findDescendants(edge.target);
-        }
-      });
-    };
-    
-    findDescendants(nodeId);
-    
-    setNodes((nds) => nds.filter((node) => !nodesToRemove.has(node.id)));
-    setEdges((eds) => eds.filter((edge) => !edgesToRemove.has(edge.id)));
-  }, [edges, setNodes, setEdges]);
+  }, [nodes, edges, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
 
   const onConnect = useCallback(
     (params: Connection) => {
-      const targetHasParent = edges.some(edge => edge.target === params.target);
-      if (!targetHasParent) {
-        setEdges((eds) => addEdge({
-          ...params,
-          type: 'smoothstep',
-          animated: false,
-          style: { stroke: '#666', strokeWidth: 2 }
-        }, eds));
-      }
+      setEdges(eds => addEdge(params, eds));
     },
-    [edges, setEdges]
+    [setEdges]
   );
-
-  useState(() => {
-    if (nodes.length === 0) {
-      const rootNode: Node = {
-        id: 'node-1',
-        type: 'qaNode',
-        position: { x: 0, y: 0 },
-        data: {
-          question: 'Root Question',
-          answer: 'Root Answer',
-          updateNodeData,
-          addChildNode,
-          removeNode
-        }
-      };
-      setNodes([rootNode]);
-    }
-  });
-
-  const nodeTypes = {
-    qaNode: QANodeComponent
-  };
 
   return (
     <>
