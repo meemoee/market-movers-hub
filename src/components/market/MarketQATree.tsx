@@ -1,162 +1,131 @@
-import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { GitBranch, Plus } from "lucide-react";
-import Tree from 'react-d3-tree';
-import '@/styles/qa-tree.css';
+import { ReactFlow, Background, Controls, Node, Edge } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+import { useState } from 'react';
 
 interface QANode {
+  id: string;
   question: string;
   answer: string;
   children?: QANode[];
 }
 
+interface MarketQATreeProps {
+  marketId: string;
+}
+
 const initialData: QANode[] = [
   {
-    question: "What are the key factors influencing this market?",
-    answer: "Several economic and market-specific factors could impact the outcome. This is a longer answer to demonstrate how the component handles varying lengths of content. We want to make sure it wraps properly and the card adjusts its size accordingly.",
+    id: '1',
+    question: 'Will AI replace human jobs?',
+    answer: 'The impact of AI on employment is complex and varies by industry.',
     children: [
       {
-        question: "How do economic indicators affect this market? This is a longer question to test wrapping.",
-        answer: "Economic indicators like GDP and inflation can significantly influence market sentiment. Let's add more detail to test longer content handling.",
+        id: '2',
+        question: 'Which jobs are most at risk?',
+        answer: 'Repetitive and routine tasks are most likely to be automated.',
         children: [
           {
-            question: "Which economic indicator has the strongest correlation with market movements?",
-            answer: "Historical data suggests GDP growth has the strongest correlation with market movements. This conclusion is based on extensive analysis of historical market data and economic indicators over the past decade."
-          },
-          {
-            question: "Short question?",
-            answer: "Brief answer."
+            id: '3',
+            question: 'What about creative jobs?',
+            answer: 'Creative and emotional intelligence-based roles are less likely to be fully automated.'
           }
         ]
       },
       {
-        question: "Testing variable heights",
-        answer: "Small answer"
+        id: '4',
+        question: 'How can workers adapt?',
+        answer: 'Focus on developing skills that complement AI capabilities.',
+        children: [
+          {
+            id: '5',
+            question: 'What skills are important?',
+            answer: 'Critical thinking, creativity, and emotional intelligence are key skills for the future.'
+          }
+        ]
       }
     ]
   }
 ];
 
-interface MarketQATreeProps {
-  marketId: string;
-}
+const transformToNodesAndEdges = (qaNodes: QANode[]) => {
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+  let yOffset = 0;
+
+  const processNode = (node: QANode, xOffset: number) => {
+    nodes.push({
+      id: node.id,
+      position: { x: xOffset, y: yOffset },
+      data: { question: node.question, answer: node.answer },
+      type: 'qaNode',
+      style: { width: 300 }
+    });
+
+    if (node.children) {
+      yOffset += 200;
+      node.children.forEach((child, index) => {
+        const childXOffset = xOffset + (index * 400) - ((node.children?.length || 1) - 1) * 200;
+        edges.push({
+          id: `${node.id}-${child.id}`,
+          source: node.id,
+          target: child.id,
+          type: 'smoothstep'
+        });
+        processNode(child, childXOffset);
+      });
+    }
+  };
+
+  qaNodes.forEach(node => processNode(node, 0));
+  return { nodes, edges };
+};
+
+const QANodeComponent = ({ data }: { data: { question: string; answer: string } }) => (
+  <div className="bg-[#1a1b1e] border border-white/10 rounded-lg p-4 w-full">
+    <div className="flex justify-between items-start gap-2 mb-2">
+      <div className="font-medium text-sm text-white break-words">
+        {data.question}
+      </div>
+      <div className="flex space-x-1 shrink-0">
+        <button className="p-1 hover:bg-white/10 rounded">
+          <Plus size={16} className="text-blue-500" />
+        </button>
+        <button className="p-1 hover:bg-white/10 rounded">
+          <GitBranch size={16} className="text-blue-500" />
+        </button>
+      </div>
+    </div>
+    <div className="border-t border-white/10 my-2" />
+    <div className="text-xs text-gray-300 break-words">
+      {data.answer}
+    </div>
+  </div>
+);
 
 export function MarketQATree({ marketId }: MarketQATreeProps) {
-  const [selectedNode, setSelectedNode] = useState<QANode | null>(null);
-
-  const treeData = {
-    name: initialData[0].question,
-    attributes: {
-      answer: initialData[0].answer
-    },
-    children: initialData[0].children?.map(child => ({
-      name: child.question,
-      attributes: {
-        answer: child.answer
-      },
-      children: child.children?.map(grandChild => ({
-        name: grandChild.question,
-        attributes: {
-          answer: grandChild.answer
-        }
-      }))
-    }))
-  };
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const { nodes, edges } = transformToNodesAndEdges(initialData);
+  const nodeTypes = { qaNode: QANodeComponent };
 
   return (
     <Card className="p-4 mt-4 bg-card">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-medium">Market Analysis Tree</h3>
-        <div className="flex gap-2">
-          <button
-            className="p-1.5 hover:bg-accent rounded-md transition-colors"
-            title="Generate New Branch"
-          >
-            <GitBranch className="w-4 h-4" />
-          </button>
-          <button
-            className="p-1.5 hover:bg-accent rounded-md transition-colors"
-            title="Add Node"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
+      <div className="h-[600px] w-full">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          nodeTypes={nodeTypes}
+          fitView
+          minZoom={0.1}
+          maxZoom={1.5}
+          defaultViewport={{ x: 0, y: 0, zoom: 0.5 }}
+          onNodeClick={(_, node) => setSelectedNode(node.id)}
+        >
+          <Background />
+          <Controls />
+        </ReactFlow>
       </div>
-
-      <div className="relative h-[800px] border border-border rounded-lg overflow-hidden">
-        <svg style={{ width: 0, height: 0, position: 'absolute' }}>
-          <defs>
-            <marker
-              id="arrowhead"
-              viewBox="0 0 10 10"
-              refX="8"
-              refY="5"
-              markerWidth="6"
-              markerHeight="6"
-              orient="auto"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" fill="white" />
-            </marker>
-          </defs>
-        </svg>
-
-        <Tree
-          data={treeData}
-          orientation="vertical"
-          translate={{ x: 400, y: 80 }}
-          nodeSize={{ x: 400, y: 250 }}
-          separation={{ siblings: 2, nonSiblings: 2.5 }}
-          zoomable={true}
-          scaleExtent={{ min: 0.1, max: 2 }}
-          renderCustomNodeElement={({ nodeDatum }) => (
-            <g>
-              <foreignObject width={300} height="auto" x={-150} y={-60}>
-                <div className="qa-tree-node">
-                  <div className="qa-tree-node-content">
-                    <div className="px-4 py-3">
-                      <div className="flex justify-between items-start gap-2 mb-2">
-                        <div className="font-medium text-sm text-white break-words">
-                          {nodeDatum.name}
-                        </div>
-                        <div className="flex space-x-1 shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                            }}
-                            className="p-1 hover:bg-white/10 rounded"
-                          >
-                            <GitBranch className="w-4 h-4 text-gray-400" />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="border-t border-white/10 my-2" />
-                      <div className="text-xs text-gray-300 break-words">
-                        {nodeDatum.attributes?.answer}
-                      </div>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                      }}
-                      className="absolute bottom-2 right-2 w-6 h-6 hover:bg-white/10 rounded-full flex items-center justify-center bg-gray-800/90"
-                    >
-                      <span className="text-white text-lg leading-none">+</span>
-                    </button>
-                  </div>
-                </div>
-              </foreignObject>
-            </g>
-          )}
-          pathClassFunc={() => 'node__link'}
-        />
-      </div>
-
-      {selectedNode && (
-        <div className="mt-4 p-4 rounded-lg bg-accent/50">
-          <h4 className="font-medium mb-2">{selectedNode.question}</h4>
-          <p className="text-sm text-muted-foreground">{selectedNode.answer}</p>
-        </div>
-      )}
     </Card>
   );
 }
