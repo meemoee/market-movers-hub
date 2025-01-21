@@ -91,6 +91,12 @@ export function MarketDetails({
         )}
       </div>
 
+      {/* QA Tree Section */}
+      <div className="mt-6 border-t border-border pt-4">
+        <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
+        <MarketQATree marketId={marketId} />
+      </div>
+
       {/* Market Details Section */}
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -109,9 +115,6 @@ export function MarketDetails({
           <div className="text-sm">{description}</div>
         </div>
       )}
-
-      {/* QA Tree Section */}
-      <MarketQATree marketId={marketId} />
     </div>
   );
 }
