@@ -1,93 +1,18 @@
 import { Node, Edge } from '@xyflow/react';
 
-interface NodeGeneratorOptions {
-  parentId: string;
+interface NodeData {
+  question?: string;
+  answer?: string;
   currentLayer: number;
-  maxLayers: number;
-  childrenCount: number;
-  parentNode?: Node;
-  nodes: Node[];
+  updateNodeData?: (nodeId: string, field: string, value: string) => void;
+  addChildNode?: (parentId: string) => void;
+  removeNode?: () => void;
 }
-
-// Track ancestor paths and their assigned channels
-const ancestorChannels = new Map<string, number>();
-let nextChannelId = 0;
-
-// Reset state
-const resetLayout = () => {
-  ancestorChannels.clear();
-  nextChannelId = 0;
-};
-
-// Get or create channel for an ancestor path
-const getAncestorChannel = (ancestorPath: string): number => {
-  if (!ancestorChannels.has(ancestorPath)) {
-    ancestorChannels.set(ancestorPath, nextChannelId++);
-  }
-  return ancestorChannels.get(ancestorPath)!;
-};
-
-// Calculate node dimensions based on layer
-const getNodeDimensions = (layer: number) => ({
-  width: Math.max(300 - layer * 20, 200),
-  height: 120
-});
-
-// Pre-calculate total width needed for the entire tree
-const calculateTotalTreeWidth = (childrenCount: number, maxLayers: number): number => {
-  // Calculate max number of nodes at the deepest layer
-  const maxNodesAtDeepestLayer = Math.pow(childrenCount, maxLayers - 1);
-  // Base spacing between nodes at the deepest layer
-  const baseNodeSpacing = 300;
-  return maxNodesAtDeepestLayer * baseNodeSpacing;
-};
-
-// Calculate spacing for a specific layer
-const calculateLayerSpacing = (
-  childrenCount: number,
-  currentLayer: number,
-  maxLayers: number,
-  totalWidth: number
-): { horizontalGap: number; verticalGap: number } => {
-  // Calculate how many nodes could be at this layer
-  const nodesAtCurrentLayer = Math.pow(childrenCount, currentLayer - 1);
-  // Distribute total width proportionally
-  const horizontalGap = totalWidth / (nodesAtCurrentLayer + 1);
-  // Fixed vertical gap between layers
-  const verticalGap = 200;
-  
-  return { horizontalGap, verticalGap };
-};
-
-export const generateNodePosition = (
-  index: number,
-  childrenCount: number,
-  parentX: number,
-  parentY: number,
-  currentLayer: number,
-  maxLayers: number
-) => {
-  // Calculate total tree width needed
-  const totalWidth = calculateTotalTreeWidth(childrenCount, maxLayers);
-  const { horizontalGap, verticalGap } = calculateLayerSpacing(
-    childrenCount,
-    currentLayer,
-    maxLayers,
-    totalWidth
-  );
-
-  // Calculate x position based on index and total width
-  const x = (index + 1) * horizontalGap - totalWidth / 2;
-  // Calculate y position based on layer
-  const y = currentLayer * verticalGap;
-
-  return { x, y };
-};
 
 export const createNode = (
   id: string,
   position: { x: number; y: number },
-  data: any
+  data: NodeData
 ): Node => ({
   id,
   type: 'qaNode',
@@ -97,7 +22,7 @@ export const createNode = (
     question: '',
     answer: '',
     style: {
-      width: getNodeDimensions(data.currentLayer || 1).width,
+      width: 300,
       opacity: Math.max(0.7, 1 - (data.currentLayer || 1) * 0.1)
     }
   }
@@ -116,7 +41,6 @@ export const createEdge = (
     stroke: getEdgeColor(currentLayer),
     strokeWidth: Math.max(3 - currentLayer * 0.5, 1),
   },
-  // Animate only first level
   animated: currentLayer === 1
 });
 
@@ -130,7 +54,6 @@ const getEdgeColor = (layer: number): string => {
   return colors[layer - 1] || colors[colors.length - 1];
 };
 
-// Generate entire tree structure upfront
 export const generateTreeStructure = (
   rootId: string,
   maxLayers: number,
@@ -154,7 +77,7 @@ export const generateTreeStructure = (
         const position = generateNodePosition(
           i,
           childrenCount,
-          0, // Will be calculated based on parent later
+          0,
           0,
           currentLayer,
           maxLayers
@@ -172,4 +95,45 @@ export const generateTreeStructure = (
   generateLayer([rootId], 2);
   
   return { nodes, edges };
+};
+
+export const generateNodePosition = (
+  index: number,
+  childrenCount: number,
+  parentX: number,
+  parentY: number,
+  currentLayer: number,
+  maxLayers: number
+) => {
+  const totalWidth = calculateTotalTreeWidth(childrenCount, maxLayers);
+  const { horizontalGap, verticalGap } = calculateLayerSpacing(
+    childrenCount,
+    currentLayer,
+    maxLayers,
+    totalWidth
+  );
+
+  const x = (index + 1) * horizontalGap - totalWidth / 2;
+  const y = currentLayer * verticalGap;
+
+  return { x, y };
+};
+
+const calculateTotalTreeWidth = (childrenCount: number, maxLayers: number): number => {
+  const maxNodesAtDeepestLayer = Math.pow(childrenCount, maxLayers - 1);
+  const baseNodeSpacing = 300;
+  return maxNodesAtDeepestLayer * baseNodeSpacing;
+};
+
+const calculateLayerSpacing = (
+  childrenCount: number,
+  currentLayer: number,
+  maxLayers: number,
+  totalWidth: number
+): { horizontalGap: number; verticalGap: number } => {
+  const nodesAtCurrentLayer = Math.pow(childrenCount, currentLayer - 1);
+  const horizontalGap = totalWidth / (nodesAtCurrentLayer + 1);
+  const verticalGap = 200;
+  
+  return { horizontalGap, verticalGap };
 };
