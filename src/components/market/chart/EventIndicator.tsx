@@ -46,7 +46,7 @@ export const EventIndicator = ({
             width={20}
             height={20}
             rx={4}
-            fill="hsl(var(--background))"
+            fill="#0000001a"
             style={{ pointerEvents: 'none' }}
           />
 
