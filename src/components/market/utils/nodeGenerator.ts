@@ -132,7 +132,12 @@ export function generateNodePosition(
 export function createNode(
   id: string,
   position: { x: number; y: number },
-  data: NodeData
+  data: NodeData,
+  callbacks: {
+    updateNodeData: (id: string, field: string, value: string) => void;
+    addChildNode: (id: string) => void;
+    removeNode: (id: string) => void;
+  }
 ): Node<NodeData> {
   return {
     id,
@@ -140,7 +145,10 @@ export function createNode(
     position,
     data: {
       ...data,
-      descendants: 0
+      descendants: 0,
+      updateNodeData: callbacks.updateNodeData,
+      addChildNode: callbacks.addChildNode,
+      removeNode: callbacks.removeNode
     }
   };
 }
