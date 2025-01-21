@@ -1,19 +1,33 @@
 import { Node, Edge } from '@xyflow/react';
 
-interface NodeGeneratorOptions {
-  parentId: string;
-  currentLayer: number;
-  maxLayers: number;
-  childrenCount: number;
-  parentNode?: Node;
+interface NodeGeneratorResult {
   nodes: Node[];
+  edges: Edge[];
 }
+
+interface NodeSpacingConfig {
+  baseNodeWidth: number;
+  minSpacing: number;
+  depthSpacing: number;
+  verticalSpacing: number;
+  verticalSpacingMultiplier: number;
+}
+
+const DEFAULT_SPACING_CONFIG: NodeSpacingConfig = {
+  baseNodeWidth: 400,
+  minSpacing: 100,
+  depthSpacing: 200,
+  verticalSpacing: 250,
+  verticalSpacingMultiplier: 1.1
+};
 
 // Calculate the total width needed for a subtree
 const calculateSubtreeWidth = (
   nodeId: string,
   nodes: Node[],
+  edges: Edge[],
   depth: number,
+  config: NodeSpacingConfig = DEFAULT_SPACING_CONFIG,
   cache: Map<string, number> = new Map()
 ): number => {
   // Check cache first
@@ -21,68 +35,110 @@ const calculateSubtreeWidth = (
     return cache.get(nodeId)!;
   }
 
-  const children = nodes.filter(
-    node => nodes.some(
-      n => n.id === nodeId && 
-      (n as any).data?.edges?.some((e: Edge) => e.source === nodeId && e.target === node.id)
-    )
-  );
+  // Find all edges where this node is the source
+  const childEdges = edges.filter(edge => edge.source === nodeId);
+  
+  // Find all child nodes using the edges
+  const children = childEdges.map(edge => 
+    nodes.find(node => node.id === edge.target)
+  ).filter((node): node is Node => node !== undefined);
 
   if (children.length === 0) {
-    const width = 400; // Base node width
+    const width = config.baseNodeWidth;
     cache.set(nodeId, width);
     return width;
   }
 
   // Calculate total width needed for children
   const childrenWidth = children.reduce((total, child) => {
-    return total + calculateSubtreeWidth(child.id, nodes, depth + 1, cache);
+    return total + calculateSubtreeWidth(child.id, nodes, edges, depth + 1, config, cache);
   }, 0);
 
-  // Add spacing between children
-  const spacing = depth === 0 ? 200 : 100;
+  // Add spacing between children based on depth
+  const spacing = depth === 0 ? config.depthSpacing : config.minSpacing;
   const totalWidth = Math.max(
-    400, // Minimum width for a single node
+    config.baseNodeWidth,
     childrenWidth + (spacing * (children.length - 1))
   );
 
   cache.set(nodeId, totalWidth);
   return totalWidth;
-}
-
-// Calculate vertical spacing based on tree depth
-const calculateVerticalSpacing = (currentLayer: number): number => {
-  const baseSpacing = 250;
-  const spacingMultiplier = 1.1;
-  return baseSpacing * Math.pow(spacingMultiplier, currentLayer - 1);
 };
 
-export const generateNodePosition = (
+// Calculate position for a node
+const calculateNodePosition = (
   index: number,
   childrenCount: number,
   parentX: number,
   parentY: number,
   currentLayer: number,
-  nodeId: string,
-  nodes: Node[]
+  subtreeWidth: number,
+  totalWidth: number,
+  config: NodeSpacingConfig = DEFAULT_SPACING_CONFIG
 ) => {
-  // Calculate width needed for this node's subtree
-  const subtreeWidth = calculateSubtreeWidth(nodeId, nodes, currentLayer);
-  
-  // Calculate total width needed for all siblings
-  const totalWidth = childrenCount * subtreeWidth;
-  
-  // Calculate x position based on subtree width
+  // Calculate x position
   const startX = parentX - (totalWidth / 2) + (subtreeWidth / 2);
   const xPos = startX + (index * subtreeWidth);
   
-  // Calculate y position with increasing vertical gaps
-  const yPos = parentY + calculateVerticalSpacing(currentLayer);
+  // Calculate y position with exponential spacing increase
+  const yPos = parentY + (config.verticalSpacing * 
+    Math.pow(config.verticalSpacingMultiplier, currentLayer - 1));
 
-  return {
-    x: xPos,
-    y: yPos
-  };
+  return { x: xPos, y: yPos };
+};
+
+export const generateNodes = (
+  parentId: string,
+  childrenCount: number,
+  currentLayer: number,
+  nodes: Node[],
+  edges: Edge[],
+  parentNode?: Node,
+  config: NodeSpacingConfig = DEFAULT_SPACING_CONFIG
+): NodeGeneratorResult => {
+  const newNodes: Node[] = [];
+  const newEdges: Edge[] = [];
+
+  // If no parent node provided, find it in the nodes array
+  const parent = parentNode || nodes.find(node => node.id === parentId);
+  if (!parent) {
+    throw new Error(`Parent node not found: ${parentId}`);
+  }
+
+  for (let i = 0; i < childrenCount; i++) {
+    const nodeId = `node-${Date.now()}-${i}-${currentLayer}`;
+    
+    // Calculate width for this node's future subtree
+    const subtreeWidth = calculateSubtreeWidth(nodeId, [...nodes, ...newNodes], [...edges, ...newEdges], currentLayer, config);
+    const totalWidth = childrenCount * subtreeWidth;
+
+    // Calculate position
+    const position = calculateNodePosition(
+      i, 
+      childrenCount,
+      parent.position.x,
+      parent.position.y,
+      currentLayer,
+      subtreeWidth,
+      totalWidth,
+      config
+    );
+
+    // Create new node
+    const newNode = createNode(nodeId, position, {
+      question: '',
+      answer: '',
+      layer: currentLayer
+    });
+    
+    // Create edge from parent to new node
+    const newEdge = createEdge(parentId, nodeId, currentLayer);
+
+    newNodes.push(newNode);
+    newEdges.push(newEdge);
+  }
+
+  return { nodes: newNodes, edges: newEdges };
 };
 
 export const createNode = (
