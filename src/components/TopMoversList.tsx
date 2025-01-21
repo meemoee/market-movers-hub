@@ -133,7 +133,7 @@ export default function TopMoversList({
         setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
       />
       
-      <ScrollArea className="h-[calc(100vh-144px)] w-full px-4 -mt-2">
+      <ScrollArea className="h-[calc(100vh-144px)] w-full px-4 -mt-4">
         <div className="flex flex-col items-center space-y-3 pt-6">
           <MarketStatsBento />
 
