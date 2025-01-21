@@ -9,22 +9,30 @@ export interface NodeGeneratorOptions {
   nodes: Node[];
 }
 
-const calculateVerticalSpace = (
-  childrenCount: number,
-  currentLayer: number
-): number => {
-  const baseNodeHeight = 100;
-  const minSpacing = 20;
-  const depthFactor = Math.max(0.5, 1 - (currentLayer * 0.1));
-  return (baseNodeHeight + minSpacing) * depthFactor;
+const calculateSubtreeWidth = (childrenCount: number, currentLayer: number): number => {
+  // Base node spacing that accounts for node width and minimum separation
+  const baseNodeWidth = 400;
+  // Calculate how many potential nodes could be at this layer
+  const potentialNodes = Math.pow(childrenCount, currentLayer);
+  return potentialNodes * baseNodeWidth;
 };
 
 const calculateNodeSpacing = (
   childrenCount: number,
   currentLayer: number
 ): { horizontalSpacing: number; verticalSpacing: number } => {
-  const horizontalSpacing = 350;
-  const verticalSpacing = calculateVerticalSpace(childrenCount, currentLayer);
+  // Calculate subtree width for this layer
+  const subtreeWidth = calculateSubtreeWidth(childrenCount, currentLayer);
+  
+  // Add padding between subtrees
+  const paddingBetweenSubtrees = 200;
+  
+  // Calculate horizontal spacing based on subtree width
+  const horizontalSpacing = (subtreeWidth + paddingBetweenSubtrees) / childrenCount;
+  
+  // Keep vertical spacing consistent
+  const verticalSpacing = 200;
+  
   return { horizontalSpacing, verticalSpacing };
 };
 
@@ -37,12 +45,14 @@ export const generateNodePosition = (
 ) => {
   const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer);
   
-  const totalHeight = verticalSpacing * (childrenCount - 1);
-  const startY = parentY - (totalHeight / 2);
-  const y = startY + (index * verticalSpacing);
-  const x = parentX + horizontalSpacing;
+  // Calculate offset from parent's center
+  const totalWidth = horizontalSpacing * (childrenCount - 1);
+  const startX = parentX - (totalWidth / 2);
   
-  return { x, y };
+  return {
+    x: startX + (index * horizontalSpacing),
+    y: parentY + verticalSpacing
+  };
 };
 
 export const createNode = (
@@ -53,12 +63,7 @@ export const createNode = (
   id,
   type: 'qaNode',
   position,
-  data: {
-    ...data,
-    style: {
-      width: Math.max(300 - data.currentLayer * 20, 200),
-    }
-  }
+  data
 });
 
 export const createEdge = (
@@ -69,12 +74,13 @@ export const createEdge = (
   id: `edge-${sourceId}-${targetId}`,
   source: sourceId,
   target: targetId,
-  sourceHandle: 'right',
-  targetHandle: 'left',
+  sourceHandle: 'source',
+  targetHandle: 'target',
   type: 'smoothstep',
   style: { 
     stroke: '#666', 
     strokeWidth: 2,
+    // Add path styling to make parent-child relationships more visible
     strokeDasharray: currentLayer === 1 ? '0' : '5,5'
   },
   animated: currentLayer === 1
