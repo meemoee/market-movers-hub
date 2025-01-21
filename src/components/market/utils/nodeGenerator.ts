@@ -4,10 +4,12 @@ import { Node, Edge } from '@xyflow/react';
 export interface NodeData {
   question: string;
   answer: string;
+  currentLayer?: number;
   descendants?: number;
   updateNodeData?: (id: string, field: string, value: string) => void;
   addChildNode?: (id: string) => void;
   removeNode?: (id: string) => void;
+  [key: string]: any; // Add index signature to satisfy Record<string, unknown>
 }
 
 interface TreeMetrics {
@@ -132,12 +134,7 @@ export function generateNodePosition(
 export function createNode(
   id: string,
   position: { x: number; y: number },
-  data: NodeData,
-  callbacks: {
-    updateNodeData: (id: string, field: string, value: string) => void;
-    addChildNode: (id: string) => void;
-    removeNode: (id: string) => void;
-  }
+  data: NodeData
 ): Node<NodeData> {
   return {
     id,
@@ -145,10 +142,7 @@ export function createNode(
     position,
     data: {
       ...data,
-      descendants: 0,
-      updateNodeData: callbacks.updateNodeData,
-      addChildNode: callbacks.addChildNode,
-      removeNode: callbacks.removeNode
+      descendants: 0
     }
   };
 }
@@ -157,7 +151,7 @@ export function createNode(
 export function createEdge(
   sourceId: string,
   targetId: string,
-  currentLayer: number
+  currentLayer: number = 1
 ): Edge {
   return {
     id: `edge-${sourceId}-${targetId}`,
