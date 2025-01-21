@@ -29,6 +29,11 @@ export function MarketStats({
     return `$${vol.toFixed(0)}`;
   };
 
+  // Calculate the position as a percentage of the full width (0-100)
+  const calculatePosition = (price: number): number => {
+    return price * 100; // Convert decimal to percentage directly
+  };
+
   return (
     <div className="w-full grid grid-cols-[1fr_200px] gap-4 -mt-2">
       <div className="flex-1">
@@ -53,7 +58,7 @@ export function MarketStats({
           <div 
             className="absolute bg-white/50 h-1 top-[-2px]" 
             style={{ 
-              width: `${Math.abs(lastTradedPrice * 100)}%`
+              width: `${calculatePosition(lastTradedPrice)}%`
             }}
           />
           
@@ -64,13 +69,13 @@ export function MarketStats({
                 className="absolute bg-green-900/90 h-1 top-[-2px]" 
                 style={{ 
                   width: `${Math.abs(priceChange * 100)}%`,
-                  right: `${100 - Math.abs(lastTradedPrice * 100)}%`
+                  right: `${100 - calculatePosition(lastTradedPrice)}%`
                 }}
               />
               <div 
                 className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
                 style={{ 
-                  right: `${100 - Math.abs(lastTradedPrice * 100)}%`
+                  right: `${100 - calculatePosition(lastTradedPrice)}%`
                 }}
               />
             </>
@@ -80,13 +85,13 @@ export function MarketStats({
                 className="absolute bg-red-500/50 h-1 top-[-2px]" 
                 style={{ 
                   width: `${Math.abs(priceChange * 100)}%`,
-                  left: `${Math.abs(lastTradedPrice * 100)}%`
+                  left: `${calculatePosition(lastTradedPrice)}%`
                 }}
               />
               <div 
                 className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
                 style={{ 
-                  left: `${Math.abs(lastTradedPrice * 100)}%`
+                  left: `${calculatePosition(lastTradedPrice)}%`
                 }}
               />
             </>
