@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { 
   ReactFlow, 
@@ -14,7 +14,6 @@ import {
 import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
 import { generateNodePosition, createNode, createEdge } from './utils/nodeGenerator';
-import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +23,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useToast } from "@/hooks/use-toast";
 
 export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -33,10 +31,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [layers, setLayers] = useState(2);
   const [childrenPerLayer, setChildrenPerLayer] = useState(2);
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [streamingContent, setStreamingContent] = useState('');
-  const { toast } = useToast();
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
+  const generationQueue = useRef<Promise<void>>(Promise.resolve());
 
   const removeNode = useCallback((nodeId: string) => {
     const nodesToRemove = new Set<string>();
@@ -83,6 +79,123 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes, addChildNode, removeNode]);
 
+  const streamText = useCallback((
+    nodeId: string, 
+    isQuestion: boolean = true, 
+    currentLayer: number,
+    onComplete?: () => void
+  ) => {
+    const text = isQuestion 
+      ? `Question for Layer ${currentLayer}, Node ${nodeId}`
+      : `This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . `;
+    
+    let index = 0;
+    if (streamIntervals.current[nodeId]) {
+      clearInterval(streamIntervals.current[nodeId]);
+    }
+    
+    streamIntervals.current[nodeId] = setInterval(() => {
+      if (index <= text.length) {
+        updateNodeData(nodeId, isQuestion ? 'question' : 'answer', text.slice(0, index));
+        index++;
+      } else {
+        clearInterval(streamIntervals.current[nodeId]);
+        delete streamIntervals.current[nodeId];
+        
+        if (isQuestion) {
+          setTimeout(() => {
+            streamText(nodeId, false, currentLayer, onComplete);
+          }, 500);
+        } else if (onComplete) {
+          onComplete();
+        }
+      }
+    }, 50);
+  }, [updateNodeData]);
+
+  const generateChildNodes = useCallback((
+    parentId: string, 
+    currentLayer: number = 1, 
+    maxLayers: number,
+    childrenCount: number,
+    parentNode?: Node
+  ) => {
+    if (currentLayer > maxLayers) return;
+
+    const parent = parentNode || nodes.find(node => node.id === parentId);
+    if (!parent) return;
+
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
+    
+    // Get the actual DOM node of the parent
+    const parentElement = document.querySelector(`[data-id="${parentId}"]`) as HTMLElement;
+    
+    for (let i = 0; i < childrenCount; i++) {
+      const timestamp = Date.now() + i;
+      const newNodeId = `node-${timestamp}-${currentLayer}`;
+      
+      const hasParent = edges.some(edge => edge.target === newNodeId);
+      if (hasParent) continue;
+
+      const position = generateNodePosition(
+        i,
+        childrenCount,
+        parent.position.x,
+        parent.position.y,
+        currentLayer,
+        maxLayers,
+        parentElement
+      );
+      
+      const newNode = createNode(newNodeId, position, {
+        question: '',
+        answer: '',
+        updateNodeData,
+        addChildNode,
+        removeNode
+      });
+
+      const newEdge = createEdge(parentId, newNodeId, currentLayer);
+
+      newNodes.push(newNode);
+      newEdges.push(newEdge);
+    }
+
+    setNodes(nds => {
+      const existingNodeIds = new Set(nds.map(n => n.id));
+      const uniqueNewNodes = newNodes.filter(n => !existingNodeIds.has(n.id));
+      return [...nds, ...uniqueNewNodes];
+    });
+
+    setEdges(eds => {
+      const existingTargets = new Set(eds.map(e => e.target));
+      const uniqueNewEdges = newEdges.filter(e => !existingTargets.has(e.target));
+      return [...eds, ...uniqueNewEdges];
+    });
+
+    newNodes.forEach((node, index) => {
+      generationQueue.current = generationQueue.current.then(() => 
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            streamText(node.id, true, currentLayer, () => {
+              if (currentLayer < maxLayers) {
+                generateChildNodes(
+                  node.id,
+                  currentLayer + 1,
+                  maxLayers,
+                  childrenCount,
+                  node
+                );
+              }
+              resolve();
+            });
+          }, index * 300);
+        })
+      );
+    });
+  }, [nodes, edges, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
+
   const onConnect = useCallback(
     (params: Connection) => {
       const targetHasParent = edges.some(edge => edge.target === params.target);
@@ -98,129 +211,23 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     [edges, setEdges]
   );
 
-  const handleGenerateAnalysis = async () => {
-    setIsGenerating(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      if (!user) {
-        toast({
-          title: "Authentication required",
-          description: "Please sign in to generate analysis.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-
-      abortControllerRef.current = new AbortController();
-
-      console.log('Generating analysis for market:', marketId, 'user:', user.id);
-      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
-        body: { marketId, userId: user.id }
-      });
-
-      if (error) {
-        console.error('Generate analysis error:', error);
-        throw error;
-      }
-
-      let accumulatedContent = '';
-      
-      const stream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder();
-          const reader = new Response(data.body).body?.getReader();
-          
-          function push() {
-            reader?.read().then(({done, value}) => {
-              if (done) {
-                console.log('Stream complete');
-                controller.close();
-                return;
-              }
-              
-              const chunk = textDecoder.decode(value);
-              const lines = chunk.split('\n').filter(line => line.trim());
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim();
-                  
-                  if (jsonStr === '[DONE]') continue;
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr);
-                    const content = parsed.choices?.[0]?.delta?.content;
-                    if (content) {
-                      accumulatedContent += content;
-                      setStreamingContent(accumulatedContent);
-                      
-                      // Update root node with streaming content
-                      setNodes((nds) =>
-                        nds.map((node) => {
-                          if (node.id === 'node-1') {
-                            return {
-                              ...node,
-                              data: {
-                                ...node.data,
-                                answer: accumulatedContent
-                              },
-                            };
-                          }
-                          return node;
-                        })
-                      );
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e);
-                  }
-                }
-              }
-              
-              push();
-            });
-          }
-          
-          push();
-        }
-      });
-
-      const reader = stream.getReader();
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
-      }
-
-    } catch (error) {
-      console.error('Error generating analysis:', error);
-      toast({
-        title: "Error",
-        description: "Failed to generate analysis. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsGenerating(false);
-      setStreamingContent('');
-      abortControllerRef.current = null;
-    }
-  };
-
-  useEffect(() => {
+  useState(() => {
     if (nodes.length === 0) {
-      const rootNode = createNode('node-1', { x: 0, y: 0 }, {
-        question: 'Root Question',
-        answer: '',
-        updateNodeData,
-        addChildNode,
-        removeNode
-      });
+      const rootNode: Node = {
+        id: 'node-1',
+        type: 'qaNode',
+        position: { x: 0, y: 0 },
+        data: {
+          question: 'Root Question',
+          answer: 'Root Answer',
+          updateNodeData,
+          addChildNode,
+          removeNode
+        }
+      };
       setNodes([rootNode]);
     }
-  }, [nodes.length, setNodes, updateNodeData, addChildNode, removeNode]);
+  });
 
   const nodeTypes = {
     qaNode: QANodeComponent
@@ -229,14 +236,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   return (
     <>
       <Card className="p-4 mt-4 bg-card h-[600px]">
-        <div className="flex justify-end mb-4">
-          <Button 
-            onClick={handleGenerateAnalysis}
-            disabled={isGenerating}
-          >
-            {isGenerating ? 'Generating...' : 'Generate Analysis'}
-          </Button>
-        </div>
         <ReactFlow
           nodes={nodes}
           edges={edges}
