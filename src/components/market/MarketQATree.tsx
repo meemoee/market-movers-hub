@@ -107,6 +107,10 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       const timestamp = Date.now() + i;
       const newNodeId = `node-${timestamp}-${currentLayer}`;
       
+      // Check if this node would have multiple parents
+      const hasParent = edges.some(edge => edge.target === newNodeId);
+      if (hasParent) continue;
+
       const position = generateNodePosition(
         i,
         childrenCount,
@@ -149,10 +153,21 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       }, i * 200);
     }
 
-    setNodes(nds => [...nds, ...newNodes]);
-    setEdges(eds => [...eds, ...newEdges]);
+    // Only add nodes that don't already exist
+    setNodes(nds => {
+      const existingNodeIds = new Set(nds.map(n => n.id));
+      const uniqueNewNodes = newNodes.filter(n => !existingNodeIds.has(n.id));
+      return [...nds, ...uniqueNewNodes];
+    });
+
+    // Only add edges where neither node has a parent
+    setEdges(eds => {
+      const existingTargets = new Set(eds.map(e => e.target));
+      const uniqueNewEdges = newEdges.filter(e => !existingTargets.has(e.target));
+      return [...eds, ...uniqueNewEdges];
+    });
     
-  }, [nodes, setNodes, setEdges, streamText]);
+  }, [nodes, edges, setNodes, setEdges, streamText]);
 
   const addChildNode = useCallback((parentId: string) => {
     setSelectedParentId(parentId);
