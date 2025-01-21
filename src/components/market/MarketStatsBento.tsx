@@ -14,7 +14,7 @@ function BentoCard({ children, className }: { children: React.ReactNode; classNa
 
 export function MarketStatsBento() {
   return (
-    <div className="w-full mb-4 mt-3">
+    <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Left side - tall card */}
         <BentoCard className="md:row-span-2 bg-gradient-to-br from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 transition-colors">

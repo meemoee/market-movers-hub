@@ -57,7 +57,7 @@ export function TopMoversContent({
   return (
     <div className="w-full">
       {topMovers.map((mover) => (
-        <div key={mover.market_id} className="w-full mb-3">
+        <div key={mover.market_id} className="w-full mb-3 first:mt-0">
           <MarketCard
             market={{
               market_id: mover.market_id,
