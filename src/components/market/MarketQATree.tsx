@@ -79,8 +79,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           console.log('Received response from generate-qa-tree:', data);
           
           let accumulatedContent = '';
-          let currentQuestion = '';
-          let currentAnswer = '';
+          let currentField = '';
+          let currentValue = '';
           
           const stream = new ReadableStream({
             start(controller) {
@@ -117,26 +117,37 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                           console.log('New content chunk:', content);
                           accumulatedContent += content;
                           
-                          try {
-                            // Try to parse the accumulated content as JSON
-                            const partialJson = accumulatedContent.replace(/^[^{]*({.*})[^}]*$/, '$1');
-                            const qaContent: Partial<QAResponse> = JSON.parse(partialJson);
-                            console.log('Parsed partial QA content:', qaContent);
-                            
-                            // Update question if it's changed
-                            if (qaContent.question && qaContent.question !== currentQuestion) {
-                              currentQuestion = qaContent.question;
-                              updateNodeData('node-1', 'question', currentQuestion);
+                          // Look for field markers in the accumulated content
+                          if (content.includes('"question":')) {
+                            currentField = 'question';
+                            currentValue = '';
+                          } else if (content.includes('"answer":')) {
+                            currentField = 'answer';
+                            currentValue = '';
+                          }
+                          
+                          // If we're in a field, accumulate its value
+                          if (currentField) {
+                            // Extract content between quotes, handling escaped quotes
+                            const matches = content.match(/"([^"\\]*(\\.[^"\\]*)*)"/);
+                            if (matches) {
+                              currentValue += matches[1];
+                              if (currentField === 'question') {
+                                updateNodeData('node-1', 'question', currentValue);
+                              } else if (currentField === 'answer') {
+                                updateNodeData('node-1', 'answer', currentValue);
+                              }
+                            } else {
+                              // If no quotes found, this might be content within quotes
+                              if (!content.includes('"')) {
+                                currentValue += content.replace(/[{}]/g, '').trim();
+                                if (currentField === 'question') {
+                                  updateNodeData('node-1', 'question', currentValue);
+                                } else if (currentField === 'answer') {
+                                  updateNodeData('node-1', 'answer', currentValue);
+                                }
+                              }
                             }
-                            
-                            // Update answer if it's changed
-                            if (qaContent.answer && qaContent.answer !== currentAnswer) {
-                              currentAnswer = qaContent.answer;
-                              updateNodeData('node-1', 'answer', currentAnswer);
-                            }
-                          } catch (e) {
-                            // If we can't parse as JSON yet, try to identify partial content
-                            console.log('Accumulated content not yet valid JSON:', accumulatedContent);
                           }
                         }
                       } catch (e) {
