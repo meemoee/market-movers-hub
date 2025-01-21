@@ -5,7 +5,7 @@ import { MarketStats } from "./MarketStats";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Loader2 } from "lucide-react";
+import { Loader2, ChartBar } from "lucide-react";
 import { MarketQATree } from "./MarketQATree";
 
 interface Market {
@@ -108,7 +108,10 @@ export function MarketCard({
                     Analyzing...
                   </>
                 ) : (
-                  'Generate Analysis'
+                  <>
+                    <ChartBar className="w-4 h-4 mr-2" />
+                    Generate Analysis
+                  </>
                 )}
               </Button>
             </div>
