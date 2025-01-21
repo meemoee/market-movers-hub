@@ -11,7 +11,7 @@ export interface NodeGeneratorOptions {
 
 const calculateSubtreeWidth = (childrenCount: number, currentLayer: number, maxLayers: number): number => {
   // Base width for a single node
-  const baseNodeWidth = 600;
+  const baseNodeWidth = 800;
   
   if (currentLayer >= maxLayers) {
     return baseNodeWidth;
