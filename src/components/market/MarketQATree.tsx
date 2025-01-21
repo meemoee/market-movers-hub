@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { supabase } from '@/integrations/supabase/client';
 
 export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -79,39 +80,38 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes, addChildNode, removeNode]);
 
-  const streamText = useCallback((
-    nodeId: string, 
-    isQuestion: boolean = true, 
-    currentLayer: number,
-    onComplete?: () => void
-  ) => {
-    const text = isQuestion 
-      ? `Question for Layer ${currentLayer}, Node ${nodeId}`
-      : `This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . `;
+  const handleStreamResponse = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string) => {
+    const decoder = new TextDecoder();
+    let accumulatedResponse = '';
     
-    let index = 0;
-    if (streamIntervals.current[nodeId]) {
-      clearInterval(streamIntervals.current[nodeId]);
-    }
-    
-    streamIntervals.current[nodeId] = setInterval(() => {
-      if (index <= text.length) {
-        updateNodeData(nodeId, isQuestion ? 'question' : 'answer', text.slice(0, index));
-        index++;
-      } else {
-        clearInterval(streamIntervals.current[nodeId]);
-        delete streamIntervals.current[nodeId];
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
         
-        if (isQuestion) {
-          setTimeout(() => {
-            streamText(nodeId, false, currentLayer, onComplete);
-          }, 500);
-        } else if (onComplete) {
-          onComplete();
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6);
+            if (jsonStr === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices[0]?.delta?.content || '';
+              accumulatedResponse += content;
+              updateNodeData(nodeId, 'answer', accumulatedResponse);
+            } catch (e) {
+              console.error('Error parsing JSON:', e);
+            }
+          }
         }
       }
-    }, 50);
-  }, [updateNodeData]);
+    } catch (error) {
+      console.error('Error reading stream:', error);
+    }
+  };
 
   const generateChildNodes = useCallback((
     parentId: string, 
@@ -128,7 +128,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
     
-    // Get the actual DOM node of the parent
     const parentElement = document.querySelector(`[data-id="${parentId}"]`) as HTMLElement;
     
     for (let i = 0; i < childrenCount; i++) {
@@ -178,23 +177,21 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       generationQueue.current = generationQueue.current.then(() => 
         new Promise<void>((resolve) => {
           setTimeout(() => {
-            streamText(node.id, true, currentLayer, () => {
-              if (currentLayer < maxLayers) {
-                generateChildNodes(
-                  node.id,
-                  currentLayer + 1,
-                  maxLayers,
-                  childrenCount,
-                  node
-                );
-              }
-              resolve();
-            });
+            if (currentLayer < maxLayers) {
+              generateChildNodes(
+                node.id,
+                currentLayer + 1,
+                maxLayers,
+                childrenCount,
+                node
+              );
+            }
+            resolve();
           }, index * 300);
         })
       );
     });
-  }, [nodes, edges, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
+  }, [nodes, edges, setNodes, setEdges, updateNodeData, addChildNode, removeNode]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -226,6 +223,28 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         }
       };
       setNodes([rootNode]);
+
+      // Start streaming for the root node
+      const streamResponse = async () => {
+        try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) return;
+
+          const response = await supabase.functions.invoke('generate-qa-tree', {
+            body: { marketId, userId: user.id }
+          });
+
+          if (response.error) throw response.error;
+
+          // Handle the streaming response
+          const reader = response.data.getReader();
+          await handleStreamResponse(reader, 'node-1');
+        } catch (error) {
+          console.error('Error streaming response:', error);
+        }
+      };
+
+      streamResponse();
     }
   });
 
