@@ -16,7 +16,7 @@ export const QANodeComponent = ({ data, id }: QANodeProps) => {
   const { updateNodeData, addChildNode, removeNode } = data;
 
   return (
-    <div className="bg-[#1a1b1e] border border-white/10 rounded-lg p-4 w-[300px] flex flex-col">
+    <div className="bg-[#1a1b1e] border border-white/10 rounded-lg p-4 w-[300px] flex flex-col h-auto">
       <div className="flex justify-between items-start gap-2 mb-2">
         <textarea
           className="font-medium text-sm text-white bg-transparent border-none hover:bg-white/5 focus:bg-white/5 break-words whitespace-pre-wrap w-full resize-none overflow-hidden focus:outline-none min-h-[40px]"
