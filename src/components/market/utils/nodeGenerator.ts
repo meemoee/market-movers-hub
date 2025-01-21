@@ -9,43 +9,31 @@ export interface NodeGeneratorOptions {
   nodes: Node[];
 }
 
-// Calculate total width needed for a subtree at a given depth
-const calculateSubtreeWidth = (
-  childrenCount: number,
-  currentLayer: number,
-  maxLayers: number
-): number => {
+const calculateSubtreeWidth = (childrenCount: number, currentLayer: number): number => {
   // Base node spacing that accounts for node width and minimum separation
   const baseNodeWidth = 400;
-  
-  // If we're at max depth, just return single node width
-  if (currentLayer === maxLayers) {
-    return baseNodeWidth;
-  }
-
-  // Calculate how many layers are below this one
-  const remainingLayers = maxLayers - currentLayer;
-  
-  // Calculate max children at each remaining layer
-  const maxNodesAtBottom = Math.pow(childrenCount, remainingLayers);
-  
-  // Return width needed to accommodate maximum possible nodes at bottom layer
-  return maxNodesAtBottom * baseNodeWidth;
+  // Calculate how many potential nodes could be at this layer
+  const potentialNodes = Math.pow(childrenCount, currentLayer);
+  return potentialNodes * baseNodeWidth;
 };
 
-// Calculate spacing between parent nodes to accommodate their subtrees
-const calculateParentSpacing = (
+const calculateNodeSpacing = (
   childrenCount: number,
-  currentLayer: number,
-  maxLayers: number
-): number => {
-  // Get width needed for each parent's subtree
-  const subtreeWidth = calculateSubtreeWidth(childrenCount, currentLayer, maxLayers);
+  currentLayer: number
+): { horizontalSpacing: number; verticalSpacing: number } => {
+  // Calculate subtree width for this layer
+  const subtreeWidth = calculateSubtreeWidth(childrenCount, currentLayer);
   
-  // Add padding between subtrees to make relationships clear
+  // Add padding between subtrees
   const paddingBetweenSubtrees = 200;
   
-  return subtreeWidth + paddingBetweenSubtrees;
+  // Calculate horizontal spacing based on subtree width
+  const horizontalSpacing = (subtreeWidth + paddingBetweenSubtrees) / childrenCount;
+  
+  // Keep vertical spacing consistent
+  const verticalSpacing = 200;
+  
+  return { horizontalSpacing, verticalSpacing };
 };
 
 export const generateNodePosition = (
@@ -53,22 +41,18 @@ export const generateNodePosition = (
   childrenCount: number,
   parentX: number,
   parentY: number,
-  currentLayer: number,
-  maxLayers: number
+  currentLayer: number
 ) => {
-  // Get spacing needed between parent nodes at this level
-  const parentSpacing = calculateParentSpacing(childrenCount, currentLayer, maxLayers);
+  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer);
   
-  // Calculate x position relative to parent
-  // Center the first child and space others based on parent spacing
-  const centeringOffset = ((childrenCount - 1) * parentSpacing) / 2;
-  const x = parentX - centeringOffset + (index * parentSpacing);
+  // Calculate offset from parent's center
+  const totalWidth = horizontalSpacing * (childrenCount - 1);
+  const startX = parentX - (totalWidth / 2);
   
-  // Consistent vertical spacing
-  const verticalSpacing = 200;
-  const y = parentY + verticalSpacing;
-  
-  return { x, y };
+  return {
+    x: startX + (index * horizontalSpacing),
+    y: parentY + verticalSpacing
+  };
 };
 
 export const createNode = (
@@ -99,29 +83,5 @@ export const createEdge = (
     // Add path styling to make parent-child relationships more visible
     strokeDasharray: currentLayer === 1 ? '0' : '5,5'
   },
-  // Only animate first-level connections
   animated: currentLayer === 1
 });
-
-// Function to determine all nodes in a subtree given a parent ID
-export const getSubtreeNodeIds = (
-  parentId: string,
-  nodes: Node[],
-  edges: Edge[]
-): Set<string> => {
-  const subtreeNodes = new Set<string>();
-  const processNode = (nodeId: string) => {
-    subtreeNodes.add(nodeId);
-    // Find all edges where this node is the source
-    edges
-      .filter(edge => edge.source === nodeId)
-      .forEach(edge => {
-        if (!subtreeNodes.has(edge.target)) {
-          processNode(edge.target);
-        }
-      });
-  };
-  
-  processNode(parentId);
-  return subtreeNodes;
-};
