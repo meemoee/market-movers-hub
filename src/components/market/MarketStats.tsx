@@ -5,7 +5,6 @@ interface MarketStatsProps {
   priceChange: number;
   volume: number;
   isExpanded: boolean;
-  onToggleExpand: () => void;
 }
 
 export function MarketStats({ 
