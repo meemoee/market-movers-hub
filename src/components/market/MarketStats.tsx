@@ -48,24 +48,27 @@ export function MarketStats({
           </span>
         </div>
         
-        <div className="relative h-[3px] w-full mt-2">
+        <div className="relative h-[2px] w-full mt-2">
           {/* Base white line showing current price position */}
           <div 
-            className="absolute bg-white/50 h-1.5 top-[-3px] w-full" 
+            className="absolute bg-white/50 h-1 top-[-2px]" 
+            style={{ 
+              width: `${Math.abs(lastTradedPrice * 100)}%`
+            }}
           />
           
           {/* Price change visualization */}
           {priceChange >= 0 ? (
             <>
               <div 
-                className="absolute bg-green-900/90 h-1.5 top-[-3px]" 
+                className="absolute bg-green-900/90 h-1 top-[-2px]" 
                 style={{ 
                   width: `${Math.abs(priceChange * 100)}%`,
                   right: `${100 - Math.abs(lastTradedPrice * 100)}%`
                 }}
               />
               <div 
-                className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
+                className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
                 style={{ 
                   right: `${100 - Math.abs(lastTradedPrice * 100)}%`
                 }}
@@ -74,14 +77,14 @@ export function MarketStats({
           ) : (
             <>
               <div 
-                className="absolute bg-red-500/50 h-1.5 top-[-3px]" 
+                className="absolute bg-red-500/50 h-1 top-[-2px]" 
                 style={{ 
                   width: `${Math.abs(priceChange * 100)}%`,
                   left: `${Math.abs(lastTradedPrice * 100)}%`
                 }}
               />
               <div 
-                className="absolute h-2.5 w-0.5 bg-gray-400 top-[-5px]"
+                className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
                 style={{ 
                   left: `${Math.abs(lastTradedPrice * 100)}%`
                 }}
