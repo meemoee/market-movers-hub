@@ -35,6 +35,68 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [streamingContent, setStreamingContent] = useState('');
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  const onConnect = useCallback(
+    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    [setEdges]
+  );
+
+  const generateChildNodes = useCallback((
+    parentId: string,
+    currentLayer: number,
+    maxLayers: number,
+    childrenCount: number
+  ) => {
+    const parentNode = nodes.find(node => node.id === parentId);
+    if (!parentNode) return;
+
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
+
+    for (let i = 0; i < childrenCount; i++) {
+      const newNodeId = `${parentId}-${i + 1}`;
+      const position = generateNodePosition(
+        i,
+        childrenCount,
+        parentNode.position.x,
+        parentNode.position.y,
+        currentLayer,
+        maxLayers,
+        document.querySelector(`[data-id="${parentId}"]`) as HTMLElement
+      );
+
+      const newNode = createNode(newNodeId, position, {
+        question: `Question ${currentLayer}.${i + 1}`,
+        answer: `Answer ${currentLayer}.${i + 1}`,
+        updateNodeData,
+        addChildNode,
+        removeNode
+      });
+
+      const newEdge = createEdge(parentId, newNodeId, currentLayer);
+
+      newNodes.push(newNode);
+      newEdges.push(newEdge);
+
+      if (currentLayer < maxLayers) {
+        const childResults = generateChildNodes(
+          newNodeId,
+          currentLayer + 1,
+          maxLayers,
+          childrenCount
+        );
+        if (childResults) {
+          newNodes.push(...childResults.nodes);
+          newEdges.push(...childResults.edges);
+        }
+      }
+    }
+
+    setNodes(nds => [...nds, ...newNodes]);
+    setEdges(eds => [...eds, ...newEdges]);
+
+    return { nodes: newNodes, edges: newEdges };
+  }, [nodes, setNodes, setEdges, updateNodeData, addChildNode, removeNode]);
+
   const removeNode = useCallback((nodeId: string) => {
     const nodesToRemove = new Set<string>();
     const edgesToRemove = new Set<string>();
