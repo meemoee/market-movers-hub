@@ -20,7 +20,8 @@ export const EventIndicator = ({
 }: EventIndicatorProps) => {
   const [showTooltip, setShowTooltip] = React.useState(false);
   const xPosition = timeScale(new Date(event.timestamp).getTime());
-  const iconY = height - iconSize - 4;
+  // Adjust the iconY position to be flush with x-axis by adding iconSize
+  const iconY = height - (iconSize / 2);
   
   // If iconsOnly is true, only render the interactive part
   if (iconsOnly) {
