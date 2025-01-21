@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Loader2 } from "lucide-react";
+import { MarketQATree } from "./MarketQATree";
 
 interface Market {
   market_id: string;
@@ -78,37 +79,42 @@ export function MarketCard({
         outcomes={market.outcomes}
         onToggleExpand={onToggleExpand}
       />
-      <div className="flex items-center justify-between">
-        <MarketStats
-          lastTradedPrice={market.final_last_traded_price}
-          priceChange={market.price_change}
-          volume={market.volume}
-          isExpanded={isExpanded}
-        />
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={handleGenerateAnalysis}
-          disabled={isGenerating}
-          className="ml-2"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Analyzing...
-            </>
-          ) : (
-            'Generate Analysis'
-          )}
-        </Button>
-      </div>
+      <MarketStats
+        lastTradedPrice={market.final_last_traded_price}
+        priceChange={market.price_change}
+        volume={market.volume}
+        isExpanded={isExpanded}
+      />
       {isExpanded && market.description && (
-        <MarketDetails
-          description={market.description}
-          bestBid={market.final_best_bid}
-          bestAsk={market.final_best_ask}
-          marketId={market.market_id}
-        />
+        <>
+          <MarketDetails
+            description={market.description}
+            bestBid={market.final_best_bid}
+            bestAsk={market.final_best_ask}
+            marketId={market.market_id}
+          />
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Market Analysis</h3>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={handleGenerateAnalysis}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  'Generate Analysis'
+                )}
+              </Button>
+            </div>
+            <MarketQATree marketId={market.market_id} />
+          </div>
+        </>
       )}
     </div>
   );
