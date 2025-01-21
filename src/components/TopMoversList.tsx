@@ -134,7 +134,7 @@ export default function TopMoversList({
       />
       
       <ScrollArea className="h-[calc(100vh-144px)] w-full px-4 -mt-20">
-        <div className="flex flex-col items-center space-y-3 pt-14">
+        <div className="flex flex-col items-center space-y-3 pt-20">
           <MarketStatsBento />
 
           <TopMoversContent
