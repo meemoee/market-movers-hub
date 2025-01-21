@@ -43,8 +43,8 @@ const calculateNodeSpacing = (
   // Calculate horizontal spacing based on subtree width
   const horizontalSpacing = (subtreeWidth + paddingBetweenSubtrees) / Math.max(1, childrenCount - 1);
   
-  // Keep vertical spacing consistent
-  const verticalSpacing = 200;
+  // Keep vertical spacing consistent but larger to account for expanded nodes
+  const verticalSpacing = 300; // Increased from 200 to 300 for more vertical space
   
   return { horizontalSpacing, verticalSpacing };
 };
@@ -55,7 +55,8 @@ export const generateNodePosition = (
   parentX: number,
   parentY: number,
   currentLayer: number,
-  maxLayers: number
+  maxLayers: number,
+  parentNode?: HTMLElement
 ) => {
   const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer, maxLayers);
   
@@ -63,9 +64,13 @@ export const generateNodePosition = (
   const totalWidth = horizontalSpacing * (childrenCount - 1);
   const startX = parentX - (totalWidth / 2);
   
+  // Get parent node's actual height if available
+  const parentHeight = parentNode?.offsetHeight || 0;
+  const verticalOffset = Math.max(verticalSpacing, parentHeight + 100); // Ensure minimum spacing
+  
   return {
     x: startX + (index * horizontalSpacing),
-    y: parentY + verticalSpacing
+    y: parentY + verticalOffset
   };
 };
 

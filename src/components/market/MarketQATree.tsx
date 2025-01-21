@@ -128,6 +128,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
     
+    // Get the actual DOM node of the parent
+    const parentElement = document.querySelector(`[data-id="${parentId}"]`) as HTMLElement;
+    
     for (let i = 0; i < childrenCount; i++) {
       const timestamp = Date.now() + i;
       const newNodeId = `node-${timestamp}-${currentLayer}`;
@@ -141,7 +144,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         parent.position.x,
         parent.position.y,
         currentLayer,
-        maxLayers
+        maxLayers,
+        parentElement
       );
       
       const newNode = createNode(newNodeId, position, {
