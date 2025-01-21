@@ -8,7 +8,7 @@ import {
   Edge, 
   Connection, 
   useNodesState, 
-  useEdgesState, 
+  useEdgesState,
   addEdge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -39,6 +39,51 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     (params: Connection) => setEdges((eds) => addEdge(params, eds)),
     [setEdges]
   );
+
+  const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              [field]: value,
+              updateNodeData,
+              addChildNode,
+              removeNode
+            },
+          };
+        }
+        return node;
+      })
+    );
+  }, [setNodes]);
+
+  const removeNode = useCallback((nodeId: string) => {
+    const nodesToRemove = new Set<string>();
+    const edgesToRemove = new Set<string>();
+    
+    const findDescendants = (id: string) => {
+      nodesToRemove.add(id);
+      edges.forEach(edge => {
+        if (edge.source === id) {
+          edgesToRemove.add(edge.id);
+          findDescendants(edge.target);
+        }
+      });
+    };
+    
+    findDescendants(nodeId);
+    
+    setNodes((nds) => nds.filter((node) => !nodesToRemove.has(node.id)));
+    setEdges((eds) => eds.filter((edge) => !edgesToRemove.has(edge.id)));
+  }, [edges, setNodes, setEdges]);
+
+  const addChildNode = useCallback((parentId: string) => {
+    setSelectedParentId(parentId);
+    setIsDialogOpen(true);
+  }, []);
 
   const generateChildNodes = useCallback((
     parentId: string,
@@ -96,51 +141,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
     return { nodes: newNodes, edges: newEdges };
   }, [nodes, setNodes, setEdges, updateNodeData, addChildNode, removeNode]);
-
-  const removeNode = useCallback((nodeId: string) => {
-    const nodesToRemove = new Set<string>();
-    const edgesToRemove = new Set<string>();
-    
-    const findDescendants = (id: string) => {
-      nodesToRemove.add(id);
-      edges.forEach(edge => {
-        if (edge.source === id) {
-          edgesToRemove.add(edge.id);
-          findDescendants(edge.target);
-        }
-      });
-    };
-    
-    findDescendants(nodeId);
-    
-    setNodes((nds) => nds.filter((node) => !nodesToRemove.has(node.id)));
-    setEdges((eds) => eds.filter((edge) => !edgesToRemove.has(edge.id)));
-  }, [edges, setNodes, setEdges]);
-
-  const addChildNode = useCallback((parentId: string) => {
-    setSelectedParentId(parentId);
-    setIsDialogOpen(true);
-  }, []);
-
-  const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
-    setNodes((nds) =>
-      nds.map((node) => {
-        if (node.id === nodeId) {
-          return {
-            ...node,
-            data: {
-              ...node.data,
-              [field]: value,
-              updateNodeData,
-              addChildNode,
-              removeNode
-            },
-          };
-        }
-        return node;
-      })
-    );
-  }, [setNodes, addChildNode, removeNode]);
 
   const handleStreamResponse = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
     const decoder = new TextDecoder();
