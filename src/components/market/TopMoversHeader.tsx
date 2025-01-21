@@ -29,8 +29,8 @@ export function TopMoversHeader({
     <div className="sticky top-14 z-40 w-full px-4">
       <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-supports-backdrop-blur:bg-card/95 backdrop-blur-supports-backdrop-blur:backdrop-blur-sm p-4 w-full relative">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl font-bold">Market Movers</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold">What happened in the last</h2>
             <div className="relative">
               <button
                 onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
