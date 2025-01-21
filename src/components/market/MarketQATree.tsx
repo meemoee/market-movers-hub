@@ -33,32 +33,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
-  // Define addChildNode and removeNode first since they're used in the dependency array
-  const addChildNode = useCallback((parentId: string) => {
-    setSelectedParentId(parentId);
-    setIsDialogOpen(true);
-  }, []);
-
-  const removeNode = useCallback((nodeId: string) => {
-    const nodesToRemove = new Set<string>();
-    const edgesToRemove = new Set<string>();
-    
-    const findDescendants = (id: string) => {
-      nodesToRemove.add(id);
-      edges.forEach(edge => {
-        if (edge.source === id) {
-          edgesToRemove.add(edge.id);
-          findDescendants(edge.target);
-        }
-      });
-    };
-    
-    findDescendants(nodeId);
-    
-    setNodes((nds) => nds.filter((node) => !nodesToRemove.has(node.id)));
-    setEdges((eds) => eds.filter((edge) => !edgesToRemove.has(edge.id)));
-  }, [edges, setNodes, setEdges]);
-
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes((nds) =>
       nds.map((node) => {
@@ -77,7 +51,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         return node;
       })
     );
-  }, [setNodes, addChildNode, removeNode]);
+  }, [setNodes]);
 
   const streamText = useCallback((
     nodeId: string, 
@@ -129,16 +103,16 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     const newEdges: Edge[] = [];
     let completedStreams = 0;
     
-    const processNode = (index: number) => {
-      const timestamp = Date.now() + index;
+    for (let i = 0; i < childrenCount; i++) {
+      const timestamp = Date.now() + i;
       const newNodeId = `node-${timestamp}-${currentLayer}`;
       
       // Check if this node would have multiple parents
       const hasParent = edges.some(edge => edge.target === newNodeId);
-      if (hasParent) return;
+      if (hasParent) continue;
 
       const position = generateNodePosition(
-        index,
+        i,
         childrenCount,
         parent.position.x,
         parent.position.y,
@@ -159,28 +133,24 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      streamText(newNodeId, true, currentLayer, () => {
-        completedStreams++;
-        if (completedStreams === childrenCount) {
-          // Wait for all nodes in current layer to be processed before generating their children
-          setTimeout(() => {
-            newNodes.forEach((node) => {
-              generateChildNodes(
-                node.id,
-                currentLayer + 1,
-                maxLayers,
-                childrenCount,
-                node
-              );
+      setTimeout(() => {
+        streamText(newNodeId, true, currentLayer, () => {
+          completedStreams++;
+          if (completedStreams === childrenCount) {
+            newNodes.forEach((node, index) => {
+              setTimeout(() => {
+                generateChildNodes(
+                  node.id,
+                  currentLayer + 1,
+                  maxLayers,
+                  childrenCount,
+                  node
+                );
+              }, index * 300);
             });
-          }, 500);
-        }
-      });
-    };
-
-    // Process nodes sequentially with a small delay between each
-    for (let i = 0; i < childrenCount; i++) {
-      setTimeout(() => processNode(i), i * 300);
+          }
+        });
+      }, i * 200);
     }
 
     // Only add nodes that don't already exist
@@ -197,7 +167,32 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       return [...eds, ...uniqueNewEdges];
     });
     
-  }, [nodes, edges, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
+  }, [nodes, edges, setNodes, setEdges, streamText]);
+
+  const addChildNode = useCallback((parentId: string) => {
+    setSelectedParentId(parentId);
+    setIsDialogOpen(true);
+  }, []);
+
+  const removeNode = useCallback((nodeId: string) => {
+    const nodesToRemove = new Set<string>();
+    const edgesToRemove = new Set<string>();
+    
+    const findDescendants = (id: string) => {
+      nodesToRemove.add(id);
+      edges.forEach(edge => {
+        if (edge.source === id) {
+          edgesToRemove.add(edge.id);
+          findDescendants(edge.target);
+        }
+      });
+    };
+    
+    findDescendants(nodeId);
+    
+    setNodes((nds) => nds.filter((node) => !nodesToRemove.has(node.id)));
+    setEdges((eds) => eds.filter((edge) => !edgesToRemove.has(edge.id)));
+  }, [edges, setNodes, setEdges]);
 
   const onConnect = useCallback(
     (params: Connection) => {
