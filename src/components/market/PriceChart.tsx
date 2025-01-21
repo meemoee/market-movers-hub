@@ -191,47 +191,51 @@ function Chart({
             />
           </g>
 
-          {/* Upper chart area - mouse tracking */}
-          <rect
-            x={0}
-            y={0}
-            width={innerWidth}
-            height={innerHeight - 40} // Leave space for event markers
-            fill="transparent"
-            onTouchStart={handleTooltip}
-            onTouchMove={handleTooltip}
-            onMouseMove={handleTooltip}
-            onMouseLeave={hideTooltip}
-          />
+          {/* Split into interaction areas */}
+          <g>
+            {/* Main price tracking area */}
+            <rect
+              x={0}
+              y={0}
+              width={innerWidth}
+              height={innerHeight - 50} // Leave space for event markers
+              fill="transparent"
+              onTouchStart={handleTooltip}
+              onTouchMove={handleTooltip}
+              onMouseMove={handleTooltip}
+              onMouseLeave={hideTooltip}
+              style={{ pointerEvents: 'all' }}
+            />
 
-          {/* Event markers area - interactive */}
-          <EventMarkers
-            events={events}
-            timeScale={timeScale}
-            height={innerHeight}
-          />
-
-          {/* Price tooltip indicators */}
-          {tooltipData && (
-            <g>
-              <line
-                x1={tooltipLeft - margin.left}
-                x2={tooltipLeft - margin.left}
-                y1={0}
-                y2={innerHeight}
-                stroke="#4a5568"
-                strokeWidth={1}
-                pointerEvents="none"
-              />
-              <circle
-                cx={tooltipLeft - margin.left}
-                cy={priceScale(tooltipData.price)}
-                r={4}
-                fill="#3b82f6"
-                pointerEvents="none"
+            {/* Event markers area - must be on top */}
+            <g transform={`translate(0, ${innerHeight - 50})`} style={{ pointerEvents: 'all' }}>
+              <EventMarkers
+                events={events}
+                timeScale={timeScale}
+                height={50}
               />
             </g>
-          )}
+
+            {/* Price tooltip indicators - always on top */}
+            {tooltipData && (
+              <g style={{ pointerEvents: 'none' }}>
+                <line
+                  x1={tooltipLeft - margin.left}
+                  x2={tooltipLeft - margin.left}
+                  y1={0}
+                  y2={innerHeight}
+                  stroke="#4a5568"
+                  strokeWidth={1}
+                />
+                <circle
+                  cx={tooltipLeft - margin.left}
+                  cy={priceScale(tooltipData.price)}
+                  r={4}
+                  fill="#3b82f6"
+                />
+              </g>
+            )}
+          </g>
         </g>
       </svg>
 
