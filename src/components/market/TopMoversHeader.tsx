@@ -34,7 +34,7 @@ export function TopMoversHeader({
             <div className="relative">
               <button
                 onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-2xl font-bold"
               >
                 <span>{timeIntervals.find(i => i.value === selectedInterval)?.label}</span>
                 <ChevronDown className="w-4 h-4" />
@@ -45,7 +45,7 @@ export function TopMoversHeader({
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
-                      className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors ${
+                      className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-2xl font-bold ${
                         selectedInterval === interval.value ? 'bg-accent/30' : ''
                       }`}
                       onClick={() => {
