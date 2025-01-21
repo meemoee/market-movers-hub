@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { GitBranch, Plus } from "lucide-react";
 import Tree from 'react-d3-tree';
@@ -44,17 +44,24 @@ interface MarketQATreeProps {
 export function MarketQATree({ marketId }: MarketQATreeProps) {
   const [selectedNode, setSelectedNode] = useState<QANode | null>(null);
 
-  const treeData = useMemo(() => {
-    const transformNode = (node: QANode) => ({
-      name: node.question,
+  const treeData = {
+    name: initialData[0].question,
+    attributes: {
+      answer: initialData[0].answer
+    },
+    children: initialData[0].children?.map(child => ({
+      name: child.question,
       attributes: {
-        answer: node.answer
+        answer: child.answer
       },
-      children: node.children?.map(transformNode)
-    });
-
-    return transformNode(initialData[0]);
-  }, []);
+      children: child.children?.map(grandChild => ({
+        name: grandChild.question,
+        attributes: {
+          answer: grandChild.answer
+        }
+      }))
+    }))
+  };
 
   return (
     <Card className="p-4 mt-4 bg-card">
@@ -108,7 +115,7 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
                   <div className="qa-tree-node-content">
                     <div className="px-4 py-3">
                       <div className="flex justify-between items-start gap-2 mb-2">
-                        <div className="font-medium text-sm break-words">
+                        <div className="font-medium text-sm text-white break-words">
                           {nodeDatum.name}
                         </div>
                         <div className="flex space-x-1 shrink-0">
@@ -123,7 +130,7 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
                         </div>
                       </div>
                       <div className="border-t border-white/10 my-2" />
-                      <div className="text-xs text-gray-400 break-words">
+                      <div className="text-xs text-gray-300 break-words">
                         {nodeDatum.attributes?.answer}
                       </div>
                     </div>
