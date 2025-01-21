@@ -22,6 +22,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+interface NodeData {
+  question?: string;
+  answer?: string;
+  currentLayer: number;
+  updateNodeData: (nodeId: string, field: string, value: string) => void;
+  addChildNode: (parentId: string) => void;
+  removeNode: () => void;
+}
+
 export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -52,7 +61,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     if (!parentNode) return;
 
     const newNodeId = `node-${Date.now()}`;
-    const currentLayer = (parentNode.data.currentLayer as number) + 1;
+    const currentLayer = (parentNode.data as NodeData).currentLayer + 1;
     
     const newNode = createNode(
       newNodeId,
@@ -126,7 +135,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       childrenPerLayer
     );
     
-    // Add the necessary functions to each node's data
     const nodesWithFunctions = newNodes.map(node => ({
       ...node,
       data: {
@@ -144,7 +152,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       if (nodeIndex >= nodesWithFunctions.length) return;
       
       const node = nodesWithFunctions[nodeIndex];
-      const currentLayer = node.data.currentLayer as number;
+      const currentLayer = (node.data as NodeData).currentLayer;
       
       streamText(node.id, true, currentLayer, () => {
         setTimeout(() => {
