@@ -37,21 +37,33 @@ export default function Index() {
     page
   );
 
-  useEffect(() => {
-    if (data?.data && page === 1) {
-      setAllMovers(data.data);
-    } else if (data?.data && page > 1) {
-      setAllMovers(prev => [...prev, ...data.data]);
-    }
-  }, [data?.data, page]);
-
+  // Reset state when interval or openMarketsOnly changes
   useEffect(() => {
     setPage(1);
     setAllMovers([]);
   }, [selectedInterval, openMarketsOnly]);
 
+  // Update allMovers when data changes
+  useEffect(() => {
+    if (data?.data) {
+      if (page === 1) {
+        setAllMovers(data.data);
+      } else {
+        setAllMovers(prev => [...prev, ...data.data]);
+      }
+    }
+  }, [data?.data, page]);
+
+  const handleIntervalChange = (newInterval: string) => {
+    if (newInterval !== selectedInterval) {
+      setSelectedInterval(newInterval);
+    }
+  };
+
   const handleLoadMore = () => {
-    setPage(prev => prev + 1);
+    if (!isFetching) {
+      setPage(prev => prev + 1);
+    }
   };
 
   return (
@@ -60,21 +72,19 @@ export default function Index() {
       
       <main className="container mx-auto pt-14 lg:pr-[420px]">
         <div className="relative flex max-w-[1200px] mx-auto">
-          {/* Left sidebar with AccountIsland */}
           <aside className="w-[260px] relative">
             <div className="sticky top-[72px]">
               <AccountIsland />
             </div>
           </aside>
 
-          {/* Main content area with TopMoversList */}
           <div className="flex-1 min-w-0">
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
-              onIntervalChange={setSelectedInterval}
+              onIntervalChange={handleIntervalChange}
               onLoadMore={handleLoadMore}
               hasMore={data?.hasMore || false}
               openMarketsOnly={openMarketsOnly}

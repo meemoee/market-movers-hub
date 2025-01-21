@@ -47,7 +47,16 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
       })
 
       if (error) throw error
-      return data
-    }
+      
+      // Ensure we return a valid response even if data is null
+      return {
+        data: data?.data || [],
+        hasMore: data?.hasMore || false
+      }
+    },
+    // Prevent refetching while loading more
+    staleTime: 30000,
+    // Keep previous data while fetching new data
+    keepPreviousData: true
   })
 }
