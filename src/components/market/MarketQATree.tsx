@@ -181,6 +181,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
   const onConnect = useCallback(
     (params: Connection) => {
+      // Only allow connection if the target node doesn't already have a parent
       const targetHasParent = edges.some(edge => edge.target === params.target);
       if (!targetHasParent) {
         setEdges((eds) => addEdge({
