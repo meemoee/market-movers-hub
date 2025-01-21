@@ -32,6 +32,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [childrenPerLayer, setChildrenPerLayer] = useState(2);
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
+  const generationQueue = useRef<Promise<void>>(Promise.resolve());
 
   const removeNode = useCallback((nodeId: string) => {
     const nodesToRemove = new Set<string>();
@@ -112,7 +113,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     }, 50);
   }, [updateNodeData]);
 
-  const generateChildNodes = useCallback(async (
+  const generateChildNodes = useCallback((
     parentId: string, 
     currentLayer: number = 1, 
     maxLayers: number,
@@ -126,12 +127,12 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
+    let completedStreams = 0;
     
     for (let i = 0; i < childrenCount; i++) {
       const timestamp = Date.now() + i;
       const newNodeId = `node-${timestamp}-${currentLayer}`;
       
-      // Check if this node would have multiple parents
       const hasParent = edges.some(edge => edge.target === newNodeId);
       if (hasParent) continue;
 
@@ -158,7 +159,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       newEdges.push(newEdge);
     }
 
-    // Add all nodes and edges for this layer at once
+    // Add all nodes and edges at once
     setNodes(nds => {
       const existingNodeIds = new Set(nds.map(n => n.id));
       const uniqueNewNodes = newNodes.filter(n => !existingNodeIds.has(n.id));
@@ -171,28 +172,28 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       return [...eds, ...uniqueNewEdges];
     });
 
-    // Process nodes sequentially with consistent delays
-    for (let i = 0; i < newNodes.length; i++) {
-      const node = newNodes[i];
-      await new Promise<void>((resolve) => {
-        streamText(node.id, true, currentLayer, () => {
-          if (currentLayer < maxLayers) {
-            setTimeout(() => {
-              generateChildNodes(
-                node.id,
-                currentLayer + 1,
-                maxLayers,
-                childrenCount,
-                node
-              );
+    // Process nodes with reliable completion tracking
+    newNodes.forEach((node, index) => {
+      generationQueue.current = generationQueue.current.then(() => 
+        new Promise<void>((resolve) => {
+          setTimeout(() => {
+            streamText(node.id, true, currentLayer, () => {
+              completedStreams++;
+              if (completedStreams === newNodes.length && currentLayer < maxLayers) {
+                generateChildNodes(
+                  node.id,
+                  currentLayer + 1,
+                  maxLayers,
+                  childrenCount,
+                  node
+                );
+              }
               resolve();
-            }, 800); // Increased delay between child generations
-          } else {
-            resolve();
-          }
-        });
-      });
-    }
+            });
+          }, index * 300);
+        })
+      );
+    });
   }, [nodes, edges, setNodes, setEdges, streamText, updateNodeData, addChildNode, removeNode]);
 
   const onConnect = useCallback(
