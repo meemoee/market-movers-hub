@@ -10,11 +10,10 @@ interface EventMarkersProps {
 }
 
 export const EventMarkers = ({ events, timeScale, height }: EventMarkersProps) => {
-  // Don't render if no events
   if (!events?.length) return null;
 
   return (
-    <g data-testid="event-markers">
+    <g style={{ pointerEvents: 'none' }}>
       {events.map((event) => (
         <EventIndicator
           key={event.id}
