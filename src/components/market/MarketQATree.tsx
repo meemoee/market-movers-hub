@@ -35,7 +35,6 @@ interface MarketQATreeProps {
 
 export function MarketQATree({ marketId }: MarketQATreeProps) {
   const [selectedNode, setSelectedNode] = useState<QANode | null>(null);
-  const [translate, setTranslate] = useState({ x: 0, y: 0 });
 
   // Transform QA data to tree-compatible format
   const treeData = useMemo(() => {
@@ -70,7 +69,7 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
         </div>
       </div>
 
-      <div className="relative min-h-[400px] border border-border rounded-lg">
+      <div className="relative h-[600px] border border-border rounded-lg overflow-hidden">
         <svg style={{ width: 0, height: 0, position: 'absolute' }}>
           <defs>
             <marker
@@ -90,15 +89,48 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
         <Tree
           data={treeData}
           orientation="vertical"
-          translate={{ x: 200, y: 50 }}
-          nodeSize={{ x: 400, y: 100 }}
-          separation={{ siblings: 2, nonSiblings: 2.5 }}
+          translate={{ x: 200, y: 100 }}
+          nodeSize={{ x: 400, y: 200 }}
+          separation={{ siblings: 2.5, nonSiblings: 3 }}
+          zoomable={true}
+          scaleExtent={{ min: 0.1, max: 2 }}
           renderCustomNodeElement={({ nodeDatum }) => (
             <g>
-              <foreignObject width={300} height={100} x={-150} y={-50}>
+              <foreignObject width={300} height={150} x={-150} y={-75}>
                 <div className="qa-tree-node-content">
-                  <p className="text-sm font-medium mb-2">{nodeDatum.name}</p>
-                  <p className="text-xs text-muted-foreground">{nodeDatum.attributes?.answer}</p>
+                  <div className="px-6 py-4">
+                    <div className="flex justify-between items-start gap-2 mb-2">
+                      <div 
+                        className="font-medium text-sm"
+                      >
+                        {nodeDatum.name}
+                      </div>
+                      <div className="flex space-x-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
+                          className="p-1 hover:bg-white/10 rounded"
+                        >
+                          <GitBranch className="w-4 h-4 text-gray-400" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="border-t border-white/10 my-2" />
+                    <div 
+                      className="text-xs text-gray-400 whitespace-pre-wrap"
+                    >
+                      {nodeDatum.attributes?.answer}
+                    </div>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    className="absolute bottom-2 right-2 w-6 h-6 hover:bg-white/10 rounded-full flex items-center justify-center bg-gray-800/90"
+                  >
+                    <span className="text-white text-lg leading-none">+</span>
+                  </button>
                 </div>
               </foreignObject>
             </g>
