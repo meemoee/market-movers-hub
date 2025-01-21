@@ -1,6 +1,6 @@
 import { Node, Edge } from '@xyflow/react';
 
-export interface NodeGeneratorOptions {
+interface NodeGeneratorOptions {
   parentId: string;
   currentLayer: number;
   maxLayers: number;
@@ -9,42 +9,42 @@ export interface NodeGeneratorOptions {
   nodes: Node[];
 }
 
-// Calculate lane height for a parent node
-const calculateLaneHeight = (
-  childrenCount: number,
-  currentLayer: number
-): number => {
+// Track vertical zones for each layer to prevent overlap
+const layerZones = new Map<number, { start: number; end: number }[]>();
+
+// Calculate space needed for a node and its children
+const calculateNodeSpace = (childrenCount: number, currentLayer: number): number => {
   const baseNodeHeight = 120;
   const minSpacing = 40;
-  // Add extra padding between lanes based on depth
-  const lanePadding = (3 - currentLayer) * 40;
-  return (childrenCount * (baseNodeHeight + minSpacing)) + lanePadding;
+  // Add exponentially more padding for deeper layers
+  const depthPadding = Math.pow(2, currentLayer) * 20;
+  return (childrenCount * (baseNodeHeight + minSpacing)) + depthPadding;
 };
 
-// Track vertical positions of lanes for each parent
-const parentLanes: { [key: string]: { start: number; end: number } } = {};
-let nextLaneStart = 0;
+// Find a free vertical zone for a node
+const findFreeZone = (spaceNeeded: number, currentLayer: number): { start: number; end: number } => {
+  const currentZones = layerZones.get(currentLayer) || [];
+  let start = 0;
 
-// Reserve a vertical lane for a parent and its children
-const reserveLane = (
-  parentId: string,
-  childrenCount: number,
-  currentLayer: number
-): { start: number; end: number } => {
-  if (currentLayer === 1) {
-    // Root level - reset lane tracking
-    parentLanes.root = { start: 0, end: 0 };
-    nextLaneStart = 0;
+  // Find first free space that can fit the node
+  while (true) {
+    const overlapping = currentZones.find(zone => 
+      (start >= zone.start && start <= zone.end) ||
+      (start + spaceNeeded >= zone.start && start + spaceNeeded <= zone.end)
+    );
+
+    if (!overlapping) {
+      break;
+    }
+    start = overlapping.end + 40; // Add padding between zones
   }
 
-  const laneHeight = calculateLaneHeight(childrenCount, currentLayer);
-  const laneStart = nextLaneStart;
-  const laneEnd = laneStart + laneHeight;
+  const newZone = { start, end: start + spaceNeeded };
   
-  parentLanes[parentId] = { start: laneStart, end: laneEnd };
-  nextLaneStart = laneEnd + 40; // Add padding between lanes
+  // Update zones for this layer
+  layerZones.set(currentLayer, [...currentZones, newZone]);
   
-  return { start: laneStart, end: laneEnd };
+  return newZone;
 };
 
 export const generateNodePosition = (
@@ -55,29 +55,20 @@ export const generateNodePosition = (
   currentLayer: number,
   parentId: string
 ) => {
-  // Fixed horizontal spacing between layers
-  const horizontalSpacing = 400;
+  // Increase horizontal spacing exponentially with depth
+  const horizontalBase = 400;
+  const horizontalSpacing = horizontalBase + (Math.pow(1.5, currentLayer) * 50);
   const x = parentX + horizontalSpacing;
 
-  // If this is a first level node, distribute vertically with large gaps
-  if (currentLayer === 1) {
-    const parentLane = reserveLane(parentId, childrenCount, currentLayer);
-    const availableHeight = parentLane.end - parentLane.start;
-    const ySpacing = availableHeight / (childrenCount + 1);
-    const y = parentLane.start + (ySpacing * (index + 1));
-    return { x, y };
-  }
-
-  // For subsequent layers, position within parent's lane
-  const parentLane = parentLanes[parentId];
-  if (!parentLane) {
-    console.warn('No lane found for parent:', parentId);
-    return { x, y: parentY };
-  }
-
-  const availableHeight = parentLane.end - parentLane.start;
-  const ySpacing = availableHeight / (childrenCount + 1);
-  const y = parentLane.start + (ySpacing * (index + 1));
+  // Calculate space needed for this node's subtree
+  const spaceNeeded = calculateNodeSpace(childrenCount, currentLayer);
+  
+  // Find a free vertical zone
+  const zone = findFreeZone(spaceNeeded, currentLayer);
+  
+  // Calculate y position within the zone
+  const ySpacing = (zone.end - zone.start) / (childrenCount + 1);
+  const y = zone.start + (ySpacing * (index + 1));
 
   return { x, y };
 };
@@ -92,11 +83,10 @@ export const createNode = (
   position,
   data: {
     ...data,
-    parentId: data.parentId, // Track parent ID for lane management
+    parentId: data.parentId,
     style: {
-      // Nodes get slightly smaller at deeper levels
+      // Scale node width based on layer depth
       width: Math.max(300 - data.currentLayer * 20, 200),
-      // Add visual indication of depth
       opacity: Math.max(0.7, 1 - data.currentLayer * 0.1)
     }
   }
@@ -107,21 +97,22 @@ export const createEdge = (
   targetId: string,
   currentLayer: number
 ): Edge => ({
-  id: `edge-${sourceId}-${targetId}`,
+  id: \`edge-\${sourceId}-\${targetId}\`,
   source: sourceId,
   target: targetId,
   sourceHandle: 'right',
   targetHandle: 'left',
   type: 'smoothstep',
+  // Adjust edge styling based on depth
   style: { 
-    stroke: getEdgeColor(currentLayer), // Different colors for different layers
-    strokeWidth: Math.max(3 - currentLayer * 0.5, 1), // Edges get thinner at deeper levels
+    stroke: getEdgeColor(currentLayer),
+    strokeWidth: Math.max(3 - currentLayer * 0.5, 1),
     strokeDasharray: currentLayer === 1 ? '0' : '5,5'
   },
   animated: currentLayer === 1
 });
 
-// Get different colors for different layer depths
+// Different colors for different layer depths
 const getEdgeColor = (layer: number): string => {
   const colors = [
     '#666666', // First level
