@@ -79,6 +79,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           console.log('Received response from generate-qa-tree:', data);
           
           let accumulatedContent = '';
+          let currentQuestion = '';
+          let currentAnswer = '';
           
           const stream = new ReadableStream({
             start(controller) {
@@ -117,17 +119,23 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                           
                           try {
                             // Try to parse the accumulated content as JSON
-                            const qaContent: QAResponse = JSON.parse(accumulatedContent);
-                            console.log('Parsed QA content:', qaContent);
+                            const partialJson = accumulatedContent.replace(/^[^{]*({.*})[^}]*$/, '$1');
+                            const qaContent: Partial<QAResponse> = JSON.parse(partialJson);
+                            console.log('Parsed partial QA content:', qaContent);
                             
-                            if (qaContent.question) {
-                              updateNodeData('node-1', 'question', qaContent.question);
+                            // Update question if it's changed
+                            if (qaContent.question && qaContent.question !== currentQuestion) {
+                              currentQuestion = qaContent.question;
+                              updateNodeData('node-1', 'question', currentQuestion);
                             }
-                            if (qaContent.answer) {
-                              updateNodeData('node-1', 'answer', qaContent.answer);
+                            
+                            // Update answer if it's changed
+                            if (qaContent.answer && qaContent.answer !== currentAnswer) {
+                              currentAnswer = qaContent.answer;
+                              updateNodeData('node-1', 'answer', currentAnswer);
                             }
                           } catch (e) {
-                            // If we can't parse as JSON yet, continue accumulating
+                            // If we can't parse as JSON yet, try to identify partial content
                             console.log('Accumulated content not yet valid JSON:', accumulatedContent);
                           }
                         }
