@@ -4,16 +4,16 @@ import {
   ReactFlow, 
   Background, 
   Controls,
+  Node, 
+  Edge, 
   Connection, 
   useNodesState, 
   useEdgesState, 
-  addEdge,
-  Node,
-  Edge
+  addEdge
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
-import { generateNodePosition, createNode, createEdge, NodeData } from './utils/nodeGenerator';
+import { generateNodePosition, createNode, createEdge } from './utils/nodeGenerator';
 import {
   Dialog,
   DialogContent,
@@ -24,23 +24,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-interface NodeGenerationQueue {
-  parentId: string;
-  currentLayer: number;
-  maxLayers: number;
-  childrenCount: number;
-}
-
 export function MarketQATree({ marketId }: { marketId: string }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [layers, setLayers] = useState(2);
   const [childrenPerLayer, setChildrenPerLayer] = useState(2);
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null);
   const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
-  const generationQueue = useRef<NodeGenerationQueue[]>([]);
-  const isGenerating = useRef(false);
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes((nds) =>
@@ -62,33 +53,60 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes]);
 
-  const processNextInQueue = useCallback(() => {
-    if (isGenerating.current || generationQueue.current.length === 0) return;
+  const streamText = useCallback((
+    nodeId: string, 
+    isQuestion: boolean = true, 
+    currentLayer: number,
+    onComplete?: () => void
+  ) => {
+    const text = isQuestion 
+      ? `Question for Layer ${currentLayer}, Node ${nodeId}`
+      : `This is a detailed answer for Layer ${currentLayer}, Node ${nodeId}`;
     
-    isGenerating.current = true;
-    const { parentId, currentLayer, maxLayers, childrenCount } = generationQueue.current[0];
+    let index = 0;
+    if (streamIntervals.current[nodeId]) {
+      clearInterval(streamIntervals.current[nodeId]);
+    }
     
-    if (currentLayer > maxLayers) {
-      generationQueue.current.shift();
-      isGenerating.current = false;
-      processNextInQueue();
-      return;
-    }
+    streamIntervals.current[nodeId] = setInterval(() => {
+      if (index <= text.length) {
+        updateNodeData(nodeId, isQuestion ? 'question' : 'answer', text.slice(0, index));
+        index++;
+      } else {
+        clearInterval(streamIntervals.current[nodeId]);
+        delete streamIntervals.current[nodeId];
+        
+        if (isQuestion) {
+          setTimeout(() => {
+            streamText(nodeId, false, currentLayer, onComplete);
+          }, 500);
+        } else if (onComplete) {
+          onComplete();
+        }
+      }
+    }, 50);
+  }, [updateNodeData]);
 
-    const parent = nodes.find(node => node.id === parentId);
-    if (!parent) {
-      generationQueue.current.shift();
-      isGenerating.current = false;
-      processNextInQueue();
-      return;
-    }
+  const generateChildNodes = useCallback((
+    parentId: string, 
+    currentLayer: number = 1, 
+    maxLayers: number,
+    childrenCount: number,
+    parentNode?: Node
+  ) => {
+    if (currentLayer > maxLayers) return;
 
-    const newNodes: Node<NodeData>[] = [];
+    const parent = parentNode || nodes.find(node => node.id === parentId);
+    if (!parent) return;
+
+    const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
     let completedStreams = 0;
-
+    
     for (let i = 0; i < childrenCount; i++) {
-      const nodeId = `node-${Date.now()}-${i}-${currentLayer}`;
+      const timestamp = Date.now() + i;
+      const newNodeId = `node-${timestamp}-${currentLayer}`;
+      
       const position = generateNodePosition(
         i,
         childrenCount,
@@ -96,8 +114,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         parent.position.y,
         currentLayer
       );
-
-      const newNode = createNode(nodeId, position, {
+      
+      const newNode = createNode(newNodeId, position, {
         question: '',
         answer: '',
         updateNodeData,
@@ -105,69 +123,35 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         removeNode
       });
 
-      const newEdge = createEdge(parentId, nodeId, currentLayer);
+      const newEdge = createEdge(parentId, newNodeId, currentLayer);
+
       newNodes.push(newNode);
       newEdges.push(newEdge);
+
+      setTimeout(() => {
+        streamText(newNodeId, true, currentLayer, () => {
+          completedStreams++;
+          if (completedStreams === childrenCount) {
+            newNodes.forEach((node, index) => {
+              setTimeout(() => {
+                generateChildNodes(
+                  node.id,
+                  currentLayer + 1,
+                  maxLayers,
+                  childrenCount,
+                  node
+                );
+              }, index * 300);
+            });
+          }
+        });
+      }, i * 200);
     }
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
-
-    // Queue up the next layer for each new node
-    newNodes.forEach(node => {
-      generationQueue.current.push({
-        parentId: node.id,
-        currentLayer: currentLayer + 1,
-        maxLayers,
-        childrenCount
-      });
-    });
-
-    // Start streaming text for each node
-    newNodes.forEach((node, index) => {
-      setTimeout(() => {
-        const text = `Question for Layer ${currentLayer}, Node ${node.id}`;
-        let streamIndex = 0;
-
-        if (streamIntervals.current[node.id]) {
-          clearInterval(streamIntervals.current[node.id]);
-        }
-
-        streamIntervals.current[node.id] = setInterval(() => {
-          if (streamIndex <= text.length) {
-            updateNodeData(node.id, 'question', text.slice(0, streamIndex));
-            streamIndex++;
-          } else {
-            clearInterval(streamIntervals.current[node.id]);
-            delete streamIntervals.current[node.id];
-            
-            // Stream answer after question
-            setTimeout(() => {
-              const answerText = `This is a detailed answer for Layer ${currentLayer}, Node ${node.id}`;
-              let answerIndex = 0;
-
-              streamIntervals.current[node.id] = setInterval(() => {
-                if (answerIndex <= answerText.length) {
-                  updateNodeData(node.id, 'answer', answerText.slice(0, answerIndex));
-                  answerIndex++;
-                } else {
-                  clearInterval(streamIntervals.current[node.id]);
-                  delete streamIntervals.current[node.id];
-                  completedStreams++;
-
-                  if (completedStreams === childrenCount) {
-                    generationQueue.current.shift();
-                    isGenerating.current = false;
-                    setTimeout(processNextInQueue, 500);
-                  }
-                }
-              }, 50);
-            }, 500);
-          }
-        }, 50);
-      }, index * 200);
-    });
-  }, [nodes, setNodes, setEdges, updateNodeData]);
+    
+  }, [nodes, setNodes, setEdges, streamText]);
 
   const addChildNode = useCallback((parentId: string) => {
     setSelectedParentId(parentId);
@@ -211,13 +195,18 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
   useState(() => {
     if (nodes.length === 0) {
-      const rootNode = createNode('node-1', { x: 0, y: 0 }, {
-        question: 'Root Question',
-        answer: 'Root Answer',
-        updateNodeData,
-        addChildNode,
-        removeNode
-      });
+      const rootNode: Node = {
+        id: 'node-1',
+        type: 'qaNode',
+        position: { x: 0, y: 0 },
+        data: {
+          question: 'Root Question',
+          answer: 'Root Answer',
+          updateNodeData,
+          addChildNode,
+          removeNode
+        }
+      };
       setNodes([rootNode]);
     }
   });
@@ -278,13 +267,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           <DialogFooter>
             <Button onClick={() => {
               if (selectedParentId) {
-                generationQueue.current = [{
-                  parentId: selectedParentId,
-                  currentLayer: 1,
-                  maxLayers: layers,
-                  childrenCount: childrenPerLayer
-                }];
-                processNextInQueue();
+                generateChildNodes(selectedParentId, 1, layers, childrenPerLayer);
                 setIsDialogOpen(false);
               }
             }}>Generate</Button>
