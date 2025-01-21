@@ -99,7 +99,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     if (!parent) return;
 
     const newNodes: Node<NodeData>[] = [];
-    const newEdges = [];
+    const newEdges: Edge[] = [];
     let completedStreams = 0;
 
     for (let i = 0; i < childrenCount; i++) {
@@ -135,16 +135,18 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       setTimeout(() => {
         streamText(node.id, true, currentLayer, () => {
           completedStreams++;
-          if (completedStreams === childrenCount && currentLayer < maxLayers) {
-            // Generate next layer for this node
-            setTimeout(() => {
-              generateChildNodes(
-                node.id,
-                currentLayer + 1,
-                maxLayers,
-                childrenCount
-              );
-            }, 500);
+          if (completedStreams === childrenCount) {
+            // Generate next layer for each child node
+            newNodes.forEach(childNode => {
+              setTimeout(() => {
+                generateChildNodes(
+                  childNode.id,
+                  currentLayer + 1,
+                  maxLayers,
+                  childrenCount
+                );
+              }, 500);
+            });
           }
         });
       }, index * 200);
