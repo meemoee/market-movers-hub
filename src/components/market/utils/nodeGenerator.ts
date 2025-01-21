@@ -9,43 +9,29 @@ interface NodeGeneratorOptions {
   nodes: Node[];
 }
 
-// Track vertical zones for each layer to prevent overlap
-const layerZones = new Map<number, { start: number; end: number }[]>();
+// Track ancestor paths and their assigned channels
+const ancestorChannels = new Map<string, number>();
+let nextChannelId = 0;
 
-// Calculate space needed for a node and its children
-const calculateNodeSpace = (childrenCount: number, currentLayer: number): number => {
-  const baseNodeHeight = 120;
-  const minSpacing = 40;
-  // Add exponentially more padding for deeper layers
-  const depthPadding = Math.pow(2, currentLayer) * 20;
-  return (childrenCount * (baseNodeHeight + minSpacing)) + depthPadding;
+// Reset state
+const resetLayout = () => {
+  ancestorChannels.clear();
+  nextChannelId = 0;
 };
 
-// Find a free vertical zone for a node
-const findFreeZone = (spaceNeeded: number, currentLayer: number): { start: number; end: number } => {
-  const currentZones = layerZones.get(currentLayer) || [];
-  let start = 0;
-
-  // Find first free space that can fit the node
-  while (true) {
-    const overlapping = currentZones.find(zone => 
-      (start >= zone.start && start <= zone.end) ||
-      (start + spaceNeeded >= zone.start && start + spaceNeeded <= zone.end)
-    );
-
-    if (!overlapping) {
-      break;
-    }
-    start = overlapping.end + 40; // Add padding between zones
+// Get or create channel for an ancestor path
+const getAncestorChannel = (ancestorPath: string): number => {
+  if (!ancestorChannels.has(ancestorPath)) {
+    ancestorChannels.set(ancestorPath, nextChannelId++);
   }
-
-  const newZone = { start, end: start + spaceNeeded };
-  
-  // Update zones for this layer
-  layerZones.set(currentLayer, [...currentZones, newZone]);
-  
-  return newZone;
+  return ancestorChannels.get(ancestorPath)!;
 };
+
+// Calculate node dimensions based on layer
+const getNodeDimensions = (layer: number) => ({
+  width: Math.max(300 - layer * 20, 200),
+  height: 120
+});
 
 export const generateNodePosition = (
   index: number,
@@ -53,24 +39,47 @@ export const generateNodePosition = (
   parentX: number,
   parentY: number,
   currentLayer: number,
-  parentId: string
+  parentId: string,
+  nodes: Node[] = []
 ) => {
-  // Increase horizontal spacing exponentially with depth
-  const horizontalBase = 400;
-  const horizontalSpacing = horizontalBase + (Math.pow(1.5, currentLayer) * 50);
-  const x = parentX + horizontalSpacing;
+  // Reset layout when starting from root
+  if (currentLayer === 1) {
+    resetLayout();
+  }
 
-  // Calculate space needed for this node's subtree
-  const spaceNeeded = calculateNodeSpace(childrenCount, currentLayer);
+  // Build ancestor path
+  const ancestorPath = buildAncestorPath(parentId, nodes);
+  const channel = getAncestorChannel(ancestorPath);
   
-  // Find a free vertical zone
-  const zone = findFreeZone(spaceNeeded, currentLayer);
+  // Calculate horizontal position
+  const LAYER_HORIZONTAL_GAP = 400;
+  const x = currentLayer * LAYER_HORIZONTAL_GAP;
+
+  // Calculate vertical position based on channel and siblings
+  const CHANNEL_VERTICAL_GAP = 200; // Gap between channels
+  const SIBLING_VERTICAL_GAP = 40;  // Gap between siblings in same channel
+  const channelBaseY = channel * CHANNEL_VERTICAL_GAP;
   
-  // Calculate y position within the zone
-  const ySpacing = (zone.end - zone.start) / (childrenCount + 1);
-  const y = zone.start + (ySpacing * (index + 1));
+  // Position within channel based on sibling index
+  const siblingOffset = (childrenCount - 1) / 2;
+  const relativeY = (index - siblingOffset) * (getNodeDimensions(currentLayer).height + SIBLING_VERTICAL_GAP);
+  
+  const y = channelBaseY + relativeY;
 
   return { x, y };
+};
+
+// Helper to build ancestor path string
+const buildAncestorPath = (nodeId: string, nodes: Node[]): string => {
+  const path: string[] = [nodeId];
+  let current = nodes.find(n => n.id === nodeId);
+  
+  while (current?.data?.parentId) {
+    path.unshift(current.data.parentId);
+    current = nodes.find(n => n.id === current?.data.parentId);
+  }
+  
+  return path.join('-');
 };
 
 export const createNode = (
@@ -85,8 +94,7 @@ export const createNode = (
     ...data,
     parentId: data.parentId,
     style: {
-      // Scale node width based on layer depth
-      width: Math.max(300 - data.currentLayer * 20, 200),
+      width: getNodeDimensions(data.currentLayer).width,
       opacity: Math.max(0.7, 1 - data.currentLayer * 0.1)
     }
   }
@@ -97,22 +105,22 @@ export const createEdge = (
   targetId: string,
   currentLayer: number
 ): Edge => ({
-  id: \`edge-\${sourceId}-\${targetId}\`,
+  id: `edge-${sourceId}-${targetId}`,
   source: sourceId,
   target: targetId,
   sourceHandle: 'right',
   targetHandle: 'left',
   type: 'smoothstep',
-  // Adjust edge styling based on depth
   style: { 
     stroke: getEdgeColor(currentLayer),
     strokeWidth: Math.max(3 - currentLayer * 0.5, 1),
-    strokeDasharray: currentLayer === 1 ? '0' : '5,5'
+    // Make deeper edges more curvey to avoid overlap
+    curvature: currentLayer * 0.2
   },
+  // Animate only first level
   animated: currentLayer === 1
 });
 
-// Different colors for different layer depths
 const getEdgeColor = (layer: number): string => {
   const colors = [
     '#666666', // First level
