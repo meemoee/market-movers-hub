@@ -5,6 +5,14 @@
   marker-end: url(#arrowhead);
 }
 
+.qa-tree-node {
+  width: 300px;
+  overflow: visible;
+  word-wrap: break-word;
+  min-height: 100px;
+  height: auto;
+}
+
 .qa-tree-node-content {
   background: rgba(31, 41, 55, 0.9);
   padding: 16px;
@@ -12,9 +20,10 @@
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.1);
   width: 100%;
-  min-height: 80px;
-  height: auto;
+  height: 100%;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 .qa-tree-node p {
