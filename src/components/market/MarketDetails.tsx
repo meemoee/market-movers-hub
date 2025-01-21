@@ -10,11 +10,6 @@ interface MarketDetailsProps {
   bestAsk: number;
   description?: string;
   marketId: string;
-  outcomes?: string[];
-  yesSubTitle?: string;
-  lastTradedPrice?: number;
-  onBuy?: () => void;
-  onSell?: () => void;
 }
 
 export function MarketDetails({
