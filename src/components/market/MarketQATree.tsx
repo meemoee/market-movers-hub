@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { GitBranch, Plus } from "lucide-react";
+import '@/styles/qa-tree.css';
 
 interface QANode {
   question: string;
@@ -59,7 +60,7 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
           {initialData.map((node, index) => (
             <div key={index} className="flex-1">
               <div 
-                className="p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
+                className="qa-tree-node-content"
                 onClick={() => setSelectedNode(node)}
               >
                 <p className="text-sm font-medium mb-2">{node.question}</p>
@@ -73,7 +74,7 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
                       className="mb-4 last:mb-0"
                     >
                       <div 
-                        className="p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
+                        className="qa-tree-node-content"
                         onClick={() => setSelectedNode(child)}
                       >
                         <p className="text-sm font-medium mb-2">{child.question}</p>
@@ -87,7 +88,7 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
                               className="mb-4 last:mb-0"
                             >
                               <div 
-                                className="p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
+                                className="qa-tree-node-content"
                                 onClick={() => setSelectedNode(grandChild)}
                               >
                                 <p className="text-sm font-medium mb-2">{grandChild.question}</p>
