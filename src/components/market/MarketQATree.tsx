@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { GitBranch, Plus, X } from "lucide-react";
-import { ReactFlow, Background, Controls, Node, Edge, Connection, useNodesState, useEdgesState, addEdge } from '@xyflow/react';
+import { ReactFlow, Background, Controls, Node, Edge, Connection, useNodesState, useEdgesState, addEdge, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Input } from "@/components/ui/input";
 import {
@@ -54,6 +54,8 @@ const QANodeComponent = ({ data, id }: { data: any; id: string }) => {
         onChange={(e) => updateNodeData(id, 'answer', e.target.value)}
         placeholder="Enter answer..."
       />
+      <Handle type="target" position={Position.Top} id="target" />
+      <Handle type="source" position={Position.Bottom} id="source" />
     </div>
   );
 };
@@ -87,15 +89,29 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes]);
 
-  const streamText = useCallback((nodeId: string, text: string) => {
+  const streamText = useCallback((nodeId: string, isQuestion: boolean = true) => {
+    const text = isQuestion 
+      ? `Question for Node ${nodeId}`
+      : `This is a detailed answer for node ${nodeId}. It contains multiple lines of text to demonstrate dynamic height adjustment. Each node can have different amounts of content.`;
+    
     let index = 0;
+    if (streamInterval.current) {
+      clearInterval(streamInterval.current);
+    }
+    
     streamInterval.current = setInterval(() => {
       if (index <= text.length) {
-        updateNodeData(nodeId, 'question', text.slice(0, index));
+        updateNodeData(nodeId, isQuestion ? 'question' : 'answer', text.slice(0, index));
         index++;
       } else {
         if (streamInterval.current) {
           clearInterval(streamInterval.current);
+          // Start streaming answer after question is done
+          if (isQuestion) {
+            setTimeout(() => {
+              streamText(nodeId, false);
+            }, 500);
+          }
         }
       }
     }, 50);
@@ -110,6 +126,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     const baseY = parentNode.position.y + 150;
     const parentX = parentNode.position.x;
     const width = 300 * (childrenPerLayer - 1);
+    
+    const newNodes: Node[] = [];
+    const newEdges: Edge[] = [];
     
     for (let i = 0; i < childrenPerLayer; i++) {
       const newNodeId = `node-${nodes.length + i + 1}-${currentLayer}`;
@@ -135,15 +154,17 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         id: `edge-${parentId}-${newNodeId}`,
         source: parentId,
         target: newNodeId,
+        sourceHandle: 'source',
+        targetHandle: 'target',
         type: 'smoothstep'
       };
 
-      setNodes((nds) => [...nds, newNode]);
-      setEdges((eds) => [...eds, newEdge]);
+      newNodes.push(newNode);
+      newEdges.push(newEdge);
 
       // Start streaming text after a delay
       setTimeout(() => {
-        streamText(newNodeId, `Question for Layer ${currentLayer} Node ${i + 1}`);
+        streamText(newNodeId, true);
       }, i * 500);
 
       // Recursively generate next layer
@@ -151,6 +172,10 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         generateChildNodes(newNodeId, currentLayer + 1);
       }, (i + 1) * 200);
     }
+
+    setNodes((nds) => [...nds, ...newNodes]);
+    setEdges((eds) => [...eds, ...newEdges]);
+    
   }, [nodes, setNodes, setEdges, layers, childrenPerLayer, streamText]);
 
   const addChildNode = useCallback((parentId: string) => {
@@ -166,7 +191,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [selectedParentId, generateChildNodes]);
 
   const removeNode = useCallback((nodeId: string) => {
-    // Remove the node and all its descendants
     const nodesToRemove = new Set<string>();
     const edgesToRemove = new Set<string>();
     
