@@ -29,12 +29,12 @@ export function TopMoversHeader({
     <div className="sticky top-14 z-40 w-full px-4">
       <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-supports-backdrop-blur:bg-card/95 backdrop-blur-supports-backdrop-blur:backdrop-blur-sm p-4 w-full relative">
         <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-0.5">
             <h2 className="text-2xl font-bold">What happened in the last</h2>
             <div className="relative">
               <button
                 onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-2xl font-bold"
+                className="flex items-center gap-1 px-2 py-1.5 ml-1 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-2xl font-bold"
               >
                 <span>{timeIntervals.find(i => i.value === selectedInterval)?.label}</span>
                 <ChevronDown className="w-4 h-4" />
