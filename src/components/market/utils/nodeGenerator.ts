@@ -13,10 +13,16 @@ export const calculateNodeSpacing = (
   childrenCount: number,
   currentLayer: number
 ): { horizontalSpacing: number; verticalSpacing: number } => {
-  // Increase spacing exponentially with layer depth to prevent overlapping
+  // Calculate total possible nodes at this layer
+  const maxNodesAtLayer = Math.pow(childrenCount, currentLayer);
+  
+  // Base horizontal spacing that grows with the layer depth
+  // We multiply by 2 for each layer to ensure enough space for all possible children
   const baseHorizontalSpacing = 400;
-  const horizontalSpacing = baseHorizontalSpacing * Math.pow(1.2, currentLayer - 1);
-  const verticalSpacing = 250; // Consistent vertical spacing
+  const horizontalSpacing = baseHorizontalSpacing * Math.pow(2, currentLayer - 1);
+  
+  // Consistent vertical spacing between layers
+  const verticalSpacing = 250;
   
   return { horizontalSpacing, verticalSpacing };
 };
@@ -29,7 +35,11 @@ export const generateNodePosition = (
   currentLayer: number
 ) => {
   const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer);
+  
+  // Calculate total width needed for all nodes at this layer
   const totalWidth = (childrenCount - 1) * horizontalSpacing;
+  
+  // Center the nodes relative to the parent
   const xOffset = (index - (childrenCount - 1) / 2) * horizontalSpacing;
   
   return {
