@@ -25,8 +25,13 @@ serve(async (req) => {
   }
 
   try {
-    const { marketId, interval = '1d' } = await req.json();
-    console.log('Received request for market:', marketId, 'interval:', interval);
+    // Get URL parameters
+const url = new URL(req.url);
+const marketId = url.searchParams.get('marketId');
+const interval = url.searchParams.get('interval') || '1d';
+    console.log('Request URL:', req.url);
+console.log('Received request for market:', marketId, 'interval:', interval);
+console.log('Search params:', Object.fromEntries(url.searchParams));
 
     if (!marketId) {
       return new Response(
