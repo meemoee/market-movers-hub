@@ -47,7 +47,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
   useState(() => {
     if (nodes.length === 0) {
-      // Create root node
       const rootNode = {
         id: 'node-1',
         type: 'qaNode',
@@ -78,9 +77,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
           console.log('Received response from generate-qa-tree:', data);
           
-          let accumulatedContent = '';
           let currentField = '';
-          let currentValue = '';
+          let questionContent = '';
+          let answerContent = '';
           
           const stream = new ReadableStream({
             start(controller) {
@@ -115,39 +114,27 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                         const content = parsed.choices?.[0]?.delta?.content;
                         if (content) {
                           console.log('New content chunk:', content);
-                          accumulatedContent += content;
                           
-                          // Look for field markers in the accumulated content
-                          if (content.includes('"question":')) {
+                          if (content.includes('"question"')) {
                             currentField = 'question';
-                            currentValue = '';
-                          } else if (content.includes('"answer":')) {
+                          } else if (content.includes('"answer"')) {
                             currentField = 'answer';
-                            currentValue = '';
                           }
                           
-                          // If we're in a field, accumulate its value
-                          if (currentField) {
-                            // Extract content between quotes, handling escaped quotes
-                            const matches = content.match(/"([^"\\]*(\\.[^"\\]*)*)"/);
-                            if (matches) {
-                              currentValue += matches[1];
-                              if (currentField === 'question') {
-                                updateNodeData('node-1', 'question', currentValue);
-                              } else if (currentField === 'answer') {
-                                updateNodeData('node-1', 'answer', currentValue);
-                              }
-                            } else {
-                              // If no quotes found, this might be content within quotes
-                              if (!content.includes('"')) {
-                                currentValue += content.replace(/[{}]/g, '').trim();
-                                if (currentField === 'question') {
-                                  updateNodeData('node-1', 'question', currentValue);
-                                } else if (currentField === 'answer') {
-                                  updateNodeData('node-1', 'answer', currentValue);
-                                }
-                              }
-                            }
+                          // Remove JSON syntax and accumulate content
+                          const cleanContent = content
+                            .replace(/"question"\s*:\s*"/, '')
+                            .replace(/"answer"\s*:\s*"/, '')
+                            .replace(/^\s*{?\s*"/, '')
+                            .replace(/"\s*}?\s*$/, '')
+                            .replace(/\\"/g, '"');
+                          
+                          if (currentField === 'question') {
+                            questionContent += cleanContent;
+                            updateNodeData('node-1', 'question', questionContent);
+                          } else if (currentField === 'answer') {
+                            answerContent += cleanContent;
+                            updateNodeData('node-1', 'answer', answerContent);
                           }
                         }
                       } catch (e) {
