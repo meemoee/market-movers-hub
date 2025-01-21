@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Card } from "@/components/ui/card";
 import { GitBranch, Plus } from "lucide-react";
+import Tree from 'react-d3-tree';
 import '@/styles/qa-tree.css';
 
 interface QANode {
@@ -34,6 +35,20 @@ interface MarketQATreeProps {
 
 export function MarketQATree({ marketId }: MarketQATreeProps) {
   const [selectedNode, setSelectedNode] = useState<QANode | null>(null);
+  const [translate, setTranslate] = useState({ x: 0, y: 0 });
+
+  // Transform QA data to tree-compatible format
+  const treeData = useMemo(() => {
+    const transformNode = (node: QANode) => ({
+      name: node.question,
+      attributes: {
+        answer: node.answer
+      },
+      children: node.children?.map(transformNode)
+    });
+
+    return transformNode(initialData[0]);
+  }, []);
 
   return (
     <Card className="p-4 mt-4 bg-card">
@@ -55,56 +70,41 @@ export function MarketQATree({ marketId }: MarketQATreeProps) {
         </div>
       </div>
 
-      <div className="relative min-h-[300px] border border-border rounded-lg p-4">
-        <div className="flex items-start space-x-4">
-          {initialData.map((node, index) => (
-            <div key={index} className="flex-1">
-              <div 
-                className="qa-tree-node-content"
-                onClick={() => setSelectedNode(node)}
-              >
-                <p className="text-sm font-medium mb-2">{node.question}</p>
-                <p className="text-xs text-muted-foreground">{node.answer}</p>
-              </div>
-              {node.children && (
-                <div className="mt-4 pl-8 border-l border-border">
-                  {node.children.map((child, childIndex) => (
-                    <div 
-                      key={childIndex}
-                      className="mb-4 last:mb-0"
-                    >
-                      <div 
-                        className="qa-tree-node-content"
-                        onClick={() => setSelectedNode(child)}
-                      >
-                        <p className="text-sm font-medium mb-2">{child.question}</p>
-                        <p className="text-xs text-muted-foreground">{child.answer}</p>
-                      </div>
-                      {child.children && (
-                        <div className="mt-4 pl-8 border-l border-border">
-                          {child.children.map((grandChild, grandChildIndex) => (
-                            <div 
-                              key={grandChildIndex}
-                              className="mb-4 last:mb-0"
-                            >
-                              <div 
-                                className="qa-tree-node-content"
-                                onClick={() => setSelectedNode(grandChild)}
-                              >
-                                <p className="text-sm font-medium mb-2">{grandChild.question}</p>
-                                <p className="text-xs text-muted-foreground">{grandChild.answer}</p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+      <div className="relative min-h-[400px] border border-border rounded-lg">
+        <svg style={{ width: 0, height: 0, position: 'absolute' }}>
+          <defs>
+            <marker
+              id="arrowhead"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="white" />
+            </marker>
+          </defs>
+        </svg>
+
+        <Tree
+          data={treeData}
+          orientation="vertical"
+          translate={{ x: 200, y: 50 }}
+          nodeSize={{ x: 400, y: 100 }}
+          separation={{ siblings: 2, nonSiblings: 2.5 }}
+          renderCustomNodeElement={({ nodeDatum }) => (
+            <g>
+              <foreignObject width={300} height={100} x={-150} y={-50}>
+                <div className="qa-tree-node-content">
+                  <p className="text-sm font-medium mb-2">{nodeDatum.name}</p>
+                  <p className="text-xs text-muted-foreground">{nodeDatum.attributes?.answer}</p>
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+              </foreignObject>
+            </g>
+          )}
+          pathClassFunc={() => 'node__link'}
+        />
       </div>
 
       {selectedNode && (

@@ -5,13 +5,6 @@
   marker-end: url(#arrowhead);
 }
 
-.qa-tree-node {
-  width: 400px;
-  overflow: visible;
-  word-wrap: break-word;
-  height: 200px;
-}
-
 .qa-tree-node-content {
   background: rgba(31, 41, 55, 0.9);
   padding: 16px;
@@ -22,40 +15,10 @@
   min-height: 80px;
   height: auto;
   position: relative;
-  padding-bottom: 32px;
 }
 
 .qa-tree-node p {
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
-}
-
-.highlight {
-  background-color: #ffd700;
-  color: #000000;
-  padding: 2px 4px;
-  border-radius: 2px;
-}
-
-.rd3t-label {
-  fill: white;
-  font-size: 12px;
-}
-
-.rd3t-link {
-  stroke: #ffffff !important;
-  marker-end: url('#arrowhead');
-}
-
-.rd3t-link-text {
-  fill: white;
-  font-size: 12px;
-  text-anchor: middle;
-  dominant-baseline: middle;
-  filter: drop-shadow(0px 0px 2px rgba(0, 0, 0, 0.8));
-}
-
-.qa-tree-node-content {
-  position: relative;
 }
