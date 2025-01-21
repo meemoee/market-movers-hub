@@ -147,18 +147,18 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     const parent = parentNode || nodes.find(node => node.id === parentId);
     if (!parent) return;
 
-    const baseY = parent.position.y + 150;
+    const baseY = parent.position.y + 200; // Increased vertical spacing
     const parentX = parent.position.x;
-    const width = 300 * (childrenCount - 1);
+    const totalWidth = (childrenCount - 1) * 400; // Increased horizontal spacing
     
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
     let completedStreams = 0;
     
     for (let i = 0; i < childrenCount; i++) {
-      const timestamp = Date.now();
-      const newNodeId = `node-${timestamp}-${i}-${currentLayer}`;
-      const xOffset = (i - (childrenCount - 1) / 2) * 350;
+      const timestamp = Date.now() + i; // Added i to ensure unique timestamps
+      const newNodeId = `node-${timestamp}-${currentLayer}`;
+      const xOffset = (i - (childrenCount - 1) / 2) * 400; // Increased spacing
       
       const newNode: Node = {
         id: newNodeId,
@@ -182,19 +182,20 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         target: newNodeId,
         sourceHandle: 'source',
         targetHandle: 'target',
-        type: 'smoothstep'
+        type: 'smoothstep',
+        style: { stroke: '#666', strokeWidth: 2 }, // Improved edge styling
+        animated: currentLayer === 1 // Animate only first layer edges
       };
 
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      // Start streaming text with a completion callback
       setTimeout(() => {
         streamText(newNodeId, true, currentLayer, () => {
           completedStreams++;
           if (completedStreams === childrenCount) {
-            // When all nodes in this layer are done, generate their children
-            newNodes.forEach(node => {
+            // Generate next layer for each node with delay
+            newNodes.forEach((node, index) => {
               setTimeout(() => {
                 generateChildNodes(
                   node.id,
@@ -203,7 +204,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                   childrenCount,
                   node
                 );
-              }, 500);
+              }, index * 300); // Stagger child generation
             });
           }
         });
@@ -248,8 +249,19 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [edges, setNodes, setEdges]);
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
-    [setEdges]
+    (params: Connection) => {
+      // Prevent multiple parents by checking if target already has an incoming edge
+      const targetHasParent = edges.some(edge => edge.target === params.target);
+      if (!targetHasParent) {
+        setEdges((eds) => addEdge({
+          ...params,
+          type: 'smoothstep',
+          animated: false,
+          style: { stroke: '#666', strokeWidth: 2 }
+        }, eds));
+      }
+    },
+    [edges, setEdges]
   );
 
   // Initialize with root node if no nodes exist
