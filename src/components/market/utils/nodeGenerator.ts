@@ -9,28 +9,45 @@ export interface NodeGeneratorOptions {
   nodes: Node[];
 }
 
-const calculateSubtreeWidth = (childrenCount: number, currentLayer: number): number => {
-  // Base node spacing that accounts for node width and minimum separation
-  const baseNodeWidth = 400;
-  // Calculate how many potential nodes could be at this layer
-  const potentialNodes = Math.pow(childrenCount, currentLayer);
-  return potentialNodes * baseNodeWidth;
+// Calculate total width needed for a complete subtree at a given depth
+const calculateSubtreeWidth = (
+  childrenCount: number, 
+  layersBelow: number
+): number => {
+  // Base width for a leaf node
+  const baseNodeWidth = 300;
+
+  if (layersBelow === 0) {
+    return baseNodeWidth;
+  }
+
+  // Calculate width needed for bottom layer of this subtree
+  const childrenAtBottom = Math.pow(childrenCount, layersBelow);
+  const bottomLayerWidth = childrenAtBottom * baseNodeWidth;
+
+  // Add padding proportional to the number of layers below
+  const padding = layersBelow * 100;
+
+  return bottomLayerWidth + padding;
 };
 
+// Calculate appropriate spacing for nodes at the current layer
 const calculateNodeSpacing = (
   childrenCount: number,
-  currentLayer: number
+  currentLayer: number,
+  maxLayers: number
 ): { horizontalSpacing: number; verticalSpacing: number } => {
-  // Calculate subtree width for this layer
-  const subtreeWidth = calculateSubtreeWidth(childrenCount, currentLayer);
+  // Calculate how many layers are below this one
+  const layersBelow = maxLayers - currentLayer;
   
-  // Add padding between subtrees
-  const paddingBetweenSubtrees = 200;
+  // Calculate width needed for a complete subtree at this level
+  const subtreeWidth = calculateSubtreeWidth(childrenCount, layersBelow);
   
-  // Calculate horizontal spacing based on subtree width
-  const horizontalSpacing = (subtreeWidth + paddingBetweenSubtrees) / childrenCount;
+  // For first layer, space nodes far apart to accommodate all descendants
+  // For deeper layers, bring nodes closer together
+  const horizontalSpacing = subtreeWidth / childrenCount;
   
-  // Keep vertical spacing consistent
+  // Consistent vertical spacing
   const verticalSpacing = 200;
   
   return { horizontalSpacing, verticalSpacing };
@@ -41,13 +58,14 @@ export const generateNodePosition = (
   childrenCount: number,
   parentX: number,
   parentY: number,
-  currentLayer: number
+  currentLayer: number,
+  maxLayers: number = 3  // Default to 3 if not specified
 ) => {
-  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer);
+  const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer, maxLayers);
   
-  // Calculate offset from parent's center
-  const totalWidth = horizontalSpacing * (childrenCount - 1);
-  const startX = parentX - (totalWidth / 2);
+  // Center the nodes around the parent
+  const totalWidth = (childrenCount - 1) * horizontalSpacing;
+  const startX = parentX - totalWidth / 2;
   
   return {
     x: startX + (index * horizontalSpacing),
@@ -80,7 +98,6 @@ export const createEdge = (
   style: { 
     stroke: '#666', 
     strokeWidth: 2,
-    // Add path styling to make parent-child relationships more visible
     strokeDasharray: currentLayer === 1 ? '0' : '5,5'
   },
   animated: currentLayer === 1
