@@ -1,22 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
-import { Card } from "@/components/ui/card";
-import { 
-  ReactFlow, 
-  Background, 
-  Controls,
-  Connection, 
-  useNodesState, 
-  useEdgesState, 
-  addEdge
-} from '@xyflow/react';
+import { Handle, Position } from '@xyflow/react';
+import { Plus, X } from "lucide-react";
+import { useEffect, useRef, useCallback } from 'react';
+import { ReactFlow, Background, Controls, Connection, useNodesState, useEdgesState, addEdge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Card } from "@/components/ui/card";
 import { QANodeComponent } from './nodes/QANodeComponent';
 import { supabase } from '@/integrations/supabase/client';
-
-interface QAResponse {
-  question: string;
-  answer: string;
-}
 
 export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -46,7 +35,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes]);
 
-  const processStreamChunk = (chunk: string) => {
+  const processStreamChunk = useCallback((chunk: string) => {
     // Append new chunk to buffer
     contentBufferRef.current += chunk;
     
@@ -86,9 +75,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         }
       }
     }
-  };
+  }, [nodes, updateNodeData]);
 
-  useState(() => {
+  useEffect(() => {
     if (nodes.length === 0) {
       const rootNode = {
         id: 'node-1',
@@ -185,7 +174,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
       streamResponse();
     }
-  });
+  }, [nodes.length, marketId, setNodes, processStreamChunk, updateNodeData]);
 
   const nodeTypes = {
     qaNode: QANodeComponent
