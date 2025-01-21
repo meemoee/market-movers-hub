@@ -87,7 +87,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   ) => {
     const text = isQuestion 
       ? `Question for Layer ${currentLayer}, Node ${nodeId}`
-      : `This is a detailed answer for Layer ${currentLayer}, Node ${nodeId}`;
+      : `This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . This is a detailed answer for Layer ${currentLayer}, Node ${nodeId} . `;
     
     let index = 0;
     if (streamIntervals.current[nodeId]) {
