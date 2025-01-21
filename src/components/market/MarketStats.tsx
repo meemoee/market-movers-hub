@@ -35,9 +35,9 @@ export function MarketStats({
   };
 
   return (
-    <div className="w-full grid grid-cols-[1fr_200px] gap-4 -mt-2">
-      <div className="flex-1">
-        <div className="flex flex-col pt-1">
+    <div className="w-full flex flex-col space-y-2">
+      <div className="flex justify-between items-start">
+        <div className="flex flex-col">
           <span className="text-3xl font-bold tracking-tight">
             {formatPrice(lastTradedPrice)}
           </span>
@@ -52,54 +52,7 @@ export function MarketStats({
             {formatPriceChange(priceChange)}
           </span>
         </div>
-        
-        <div className="relative h-[2px] w-full mt-2">
-          {/* Base white line showing current price position */}
-          <div 
-            className="absolute bg-white/50 h-1 top-[-2px]" 
-            style={{ 
-              width: `${calculatePosition(lastTradedPrice)}%`
-            }}
-          />
-          
-          {/* Price change visualization */}
-          {priceChange >= 0 ? (
-            <>
-              <div 
-                className="absolute bg-green-900/90 h-1 top-[-2px]" 
-                style={{ 
-                  width: `${Math.abs(priceChange * 100)}%`,
-                  right: `${100 - calculatePosition(lastTradedPrice)}%`
-                }}
-              />
-              <div 
-                className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
-                style={{ 
-                  right: `${100 - calculatePosition(lastTradedPrice)}%`
-                }}
-              />
-            </>
-          ) : (
-            <>
-              <div 
-                className="absolute bg-red-500/50 h-1 top-[-2px]" 
-                style={{ 
-                  width: `${Math.abs(priceChange * 100)}%`,
-                  left: `${calculatePosition(lastTradedPrice)}%`
-                }}
-              />
-              <div 
-                className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
-                style={{ 
-                  left: `${calculatePosition(lastTradedPrice)}%`
-                }}
-              />
-            </>
-          )}
-        </div>
-      </div>
-      <div className="flex flex-col items-end justify-between">
-        <div className="flex flex-col items-end pt-2">
+        <div className="flex flex-col items-end">
           <span className="text-xl font-semibold">
             {formatVolume(volume)}
           </span>
@@ -107,6 +60,51 @@ export function MarketStats({
             24h Volume
           </span>
         </div>
+      </div>
+      
+      <div className="relative h-[2px] w-full">
+        {/* Base white line showing current price position */}
+        <div 
+          className="absolute bg-white/50 h-1 top-[-2px]" 
+          style={{ 
+            width: `${calculatePosition(lastTradedPrice)}%`
+          }}
+        />
+        
+        {/* Price change visualization */}
+        {priceChange >= 0 ? (
+          <>
+            <div 
+              className="absolute bg-green-900/90 h-1 top-[-2px]" 
+              style={{ 
+                width: `${Math.abs(priceChange * 100)}%`,
+                right: `${100 - calculatePosition(lastTradedPrice)}%`
+              }}
+            />
+            <div 
+              className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
+              style={{ 
+                right: `${100 - calculatePosition(lastTradedPrice)}%`
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <div 
+              className="absolute bg-red-500/50 h-1 top-[-2px]" 
+              style={{ 
+                width: `${Math.abs(priceChange * 100)}%`,
+                left: `${calculatePosition(lastTradedPrice)}%`
+              }}
+            />
+            <div 
+              className="absolute h-2 w-0.5 bg-gray-400 top-[-4px]"
+              style={{ 
+                left: `${calculatePosition(lastTradedPrice)}%`
+              }}
+            />
+          </>
+        )}
       </div>
     </div>
   );
