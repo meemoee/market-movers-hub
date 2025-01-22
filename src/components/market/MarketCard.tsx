@@ -71,9 +71,11 @@ export function MarketCard({ market, isExpanded, onToggleExpand, onBuy, onSell }
         {isExpanded && (
           <div className="mt-4">
             <MarketDetails
-              market={market}
-              onBuy={onBuy}
-              onSell={onSell}
+              bestBid={market.final_best_bid}
+              bestAsk={market.final_best_ask}
+              description={market.description}
+              marketId={market.market_id}
+              question={market.question}
             />
           </div>
         )}
