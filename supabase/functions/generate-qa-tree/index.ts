@@ -14,8 +14,14 @@ serve(async (req) => {
   }
 
   try {
-    const { question } = await req.json()
+    const { question, marketId } = await req.json()
+    
+    if (!question) {
+      throw new Error('Question is required')
+    }
+    
     console.log('Analyzing question:', question)
+    console.log('Market ID:', marketId) // Optional, for future use
 
     // Get analysis and subquestions from Perplexity
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
