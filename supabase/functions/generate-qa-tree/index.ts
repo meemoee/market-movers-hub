@@ -118,7 +118,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a parser that extracts questions and answers from analysis text. Return only a JSON object with 'question' and 'answer' fields."
+            content: "You are a parser that extracts questions and answers from analysis text. Return only a JSON object with 'question' and 'answer' fields. YOU MUST STATE the questions and answers VERBATIM and DO NOT PARAPHRASE."
           },
           {
             role: "user",
