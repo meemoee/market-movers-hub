@@ -101,157 +101,100 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [nodes, edges, maxDepth, setNodes, setEdges, updateNodeData, handleRemoveNode]);
 
   const processStreamChunk = useCallback((chunk: string, nodeId: string) => {
-    contentBufferRef.current += chunk;
+    contentBufferRef.current += chunk
     
-    const lines = contentBufferRef.current.split('\n').filter(line => line.trim());
-    let processedLines = 0;
+    const lines = contentBufferRef.current.split('\n').filter(line => line.trim())
+    let processedLines = 0
     
     for (const line of lines) {
       if (line.startsWith('data: ')) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
+        const jsonStr = line.slice(6).trim()
+        console.log('Processing JSON string:', jsonStr)
+        
+        if (jsonStr === '[DONE]') continue
         
         try {
-          const parsed = JSON.parse(jsonStr);
-          console.log('Parsed streaming chunk:', parsed);
+          const parsed = JSON.parse(jsonStr)
+          console.log('Parsed JSON:', parsed)
           
-          if (parsed.content) {
-            const content = parsed.content;
-            
-            const answerMatch = content.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/i);
-            const questionsMatch = content.match(/QUESTIONS:\s*([\s\S]*?)$/i);
-            
-            if (answerMatch) {
-              const answer = answerMatch[1].trim();
-              console.log('Extracted answer:', answer);
-              updateNodeData(nodeId, 'answer', answer);
-            }
-            
-            if (questionsMatch) {
-              const questionsText = questionsMatch[1];
-              console.log('Questions text:', questionsText);
-              
-              const questions = questionsText
-                .split(/\d+\.\s+/)
-                .filter(q => q.trim())
-                .slice(0, 3);
-              
-              console.log('Extracted questions:', questions);
-              
-              if (questions.length > 0) {
-                const node = nodes.find(n => n.id === nodeId);
-                if (node && node.data.depth < maxDepth) {
-                  questions.forEach((question, index) => {
-                    const newNodeId = `${nodeId}-${index + 1}`;
-                    const position = generateNodePosition(
-                      index,
-                      3,
-                      node.position.x,
-                      node.position.y,
-                      node.data.depth + 1,
-                      maxDepth
-                    );
-
-                    const newNode: Node<QAData> = {
-                      id: newNodeId,
-                      type: 'qaNode',
-                      position,
-                      data: {
-                        question: question.trim(),
-                        answer: 'Analyzing...',
-                        updateNodeData,
-                        addChildNode: handleAddChildNode,
-                        removeNode: handleRemoveNode,
-                        depth: node.data.depth + 1
-                      },
-                    };
-
-                    setNodes((nds) => [...nds, newNode]);
-                    setEdges((eds) => [
-                      ...eds,
-                      {
-                        id: `edge-${nodeId}-${newNodeId}`,
-                        source: nodeId,
-                        target: newNodeId,
-                        type: 'smoothstep',
-                      },
-                    ]);
-
-                    generateAnswer(newNodeId, question.trim());
-                  });
-                }
-              }
-            }
+          const content = parsed.choices?.[0]?.delta?.content
+          if (content) {
+            console.log('New content chunk:', content)
+            updateNodeData(nodeId, 'answer', content)
           }
         } catch (e) {
-          console.error('Error parsing JSON in stream chunk:', e);
+          console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
         }
-        processedLines++;
+        processedLines++
       }
     }
     
-    // Remove processed lines from the buffer
+    // Remove processed lines from buffer
     if (processedLines > 0) {
       const remainingLines = lines.slice(processedLines);
       contentBufferRef.current = remainingLines.join('\n');
     }
-  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
+  }, [updateNodeData]);
 
   const generateAnswer = useCallback(async (nodeId: string, question: string) => {
     try {
       if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
+        abortControllerRef.current.abort()
       }
-      abortControllerRef.current = new AbortController();
+      abortControllerRef.current = new AbortController()
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-      console.log('Generating answer for node:', nodeId, 'Question:', question);
+      console.log('Generating answer for node:', nodeId, 'Question:', question)
       const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
         body: { 
           marketId, 
           userId: user.id,
           question
         }
-      });
+      })
 
-      if (error) throw error;
+      if (error) throw error
+
+      // Reset the node's answer before streaming
+      updateNodeData(nodeId, 'answer', '')
 
       const stream = new ReadableStream({
         start(controller) {
-          const textDecoder = new TextDecoder();
-          const reader = new Response(data.body).body?.getReader();
+          const textDecoder = new TextDecoder()
+          const reader = new Response(data.body).body?.getReader()
           
           function push() {
             reader?.read().then(({done, value}) => {
               if (done) {
-                console.log('Stream complete');
-                controller.close();
-                return;
+                console.log('Stream complete')
+                controller.close()
+                return
               }
               
-              const chunk = textDecoder.decode(value);
-              processStreamChunk(chunk, nodeId);
-              push();
-            });
+              const chunk = textDecoder.decode(value)
+              console.log('Received chunk:', chunk)
+              processStreamChunk(chunk, nodeId)
+              push()
+            })
           }
           
-          push();
+          push()
         }
-      });
+      })
 
-      const reader = stream.getReader();
+      const reader = stream.getReader()
       while (true) {
-        const { done } = await reader.read();
-        if (done) break;
+        const { done } = await reader.read()
+        if (done) break
       }
 
     } catch (error) {
-      console.error('Error generating answer:', error);
-      updateNodeData(nodeId, 'answer', 'Error generating response');
+      console.error('Error generating answer:', error)
+      updateNodeData(nodeId, 'answer', 'Error generating response')
     } finally {
-      abortControllerRef.current = null;
+      abortControllerRef.current = null
     }
   }, [marketId, processStreamChunk, updateNodeData]);
 
