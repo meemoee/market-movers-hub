@@ -13,6 +13,13 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
+// Helper function to determine if colors are light or dark
+function isLightColor(rgb: string): boolean {
+  const [r, g, b] = rgb.split(',').map(Number);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5;
+}
+
 function BentoCard({ children, className, gradientStart, gradientEnd }: { 
   children: React.ReactNode; 
   className?: string;
@@ -23,7 +30,7 @@ function BentoCard({ children, className, gradientStart, gradientEnd }: {
     ? {
         border: 'none',
         background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd})) border-box`,
-        padding: '1px', // This creates space for the gradient border
+        padding: '2px', // Increased padding for thicker border
       }
     : {};
 
@@ -72,6 +79,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const article = articles.find(a => a.position === position);
     if (!article) return null;
 
+    // Determine text color based on gradient colors
+    const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
+    const textColorClass = isLight ? "text-black" : "text-white";
+
     return (
       <div className="relative h-full w-full">
         {article.image_url && (
@@ -82,13 +93,13 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
               className="h-full w-full object-cover"
             />
             {/* Dark overlay for better text readability */}
-            <div className="absolute inset-0 bg-black/40" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
           </div>
         )}
         <div className="relative h-full p-4 flex flex-col justify-end z-10">
-          <h3 className="text-lg font-semibold mb-2 text-white">{article.title}</h3>
+          <h3 className={cn("text-lg font-semibold mb-2", textColorClass)}>{article.title}</h3>
           {article.subtitle && (
-            <p className="text-sm text-white/80">{article.subtitle}</p>
+            <p className={cn("text-sm opacity-90", textColorClass)}>{article.subtitle}</p>
           )}
           {article.link && (
             <a 
