@@ -56,6 +56,82 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }, [setNodes, setEdges]);
 
+  const generateAnswer = useCallback(async (nodeId: string, question: string) => {
+    try {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      console.log('Generating answer for node:', nodeId, 'Question:', question);
+      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
+        body: { 
+          marketId, 
+          userId: user.id,
+          question
+        }
+      });
+
+      if (error) throw error;
+
+      const stream = new ReadableStream({
+        start(controller) {
+          const textDecoder = new TextDecoder();
+          const reader = new Response(data.body).body?.getReader();
+          
+          function push() {
+            reader?.read().then(({done, value}) => {
+              if (done) {
+                console.log('Stream complete');
+                controller.close();
+                return;
+              }
+              
+              const chunk = textDecoder.decode(value);
+              const lines = chunk.split('\n').filter(line => line.trim());
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const jsonStr = line.slice(6).trim();
+                  if (jsonStr === '[DONE]') continue;
+                  
+                  try {
+                    const parsed = JSON.parse(jsonStr);
+                    const content = parsed.choices?.[0]?.delta?.content;
+                    if (content) {
+                      processStreamChunk(content, nodeId);
+                    }
+                  } catch (e) {
+                    console.error('Error parsing SSE data:', e);
+                  }
+                }
+              }
+              
+              push();
+            });
+          }
+          
+          push();
+        }
+      });
+
+      const reader = stream.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+
+    } catch (error) {
+      console.error('Error generating answer:', error);
+      updateNodeData(nodeId, 'answer', 'Error generating response');
+    } finally {
+      abortControllerRef.current = null;
+    }
+  }, [marketId, processStreamChunk, updateNodeData]);
+
   const handleAddChildNode = useCallback((parentId: string) => {
     const parentNode = nodes.find(node => node.id === parentId);
     if (!parentNode || parentNode.data.depth >= maxDepth) return;
@@ -199,83 +275,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     } catch (e) {
       console.error('Error processing stream chunk:', e);
     }
-  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode, generateAnswer]);
-
-  const generateAnswer = useCallback(async (nodeId: string, question: string) => {
-    try {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      console.log('Generating answer for node:', nodeId, 'Question:', question);
-      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
-        body: { 
-          marketId, 
-          userId: user.id,
-          question
-        }
-      });
-
-      if (error) throw error;
-
-      const stream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder();
-          const reader = new Response(data.body).body?.getReader();
-          
-          function push() {
-            reader?.read().then(({done, value}) => {
-              if (done) {
-                console.log('Stream complete');
-                controller.close();
-                return;
-              }
-              
-              const chunk = textDecoder.decode(value);
-              const lines = chunk.split('\n').filter(line => line.trim());
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim();
-                  if (jsonStr === '[DONE]') continue;
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr);
-                    const content = parsed.choices?.[0]?.delta?.content;
-                    if (content) {
-                      processStreamChunk(content, nodeId);
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e);
-                  }
-                }
-              }
-              
-              push();
-            });
-          }
-          
-          push();
-        }
-      });
-
-      const reader = stream.getReader();
-      while (true) {
-        const { done } = await reader.read();
-        if (done) break;
-      }
-
-    } catch (error) {
-      console.error('Error generating answer:', error);
-      updateNodeData(nodeId, 'answer', 'Error generating response');
-    } finally {
-      abortControllerRef.current = null;
-    }
-  }, [marketId, processStreamChunk, updateNodeData]);
+  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
 
   useEffect(() => {
     if (nodes.length === 0) {
