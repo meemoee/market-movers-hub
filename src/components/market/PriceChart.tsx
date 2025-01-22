@@ -118,6 +118,8 @@ function Chart({
     });
   }, []);
 
+  const isLeftHalf = tooltipLeft < width / 2;
+
   return (
     <div className="relative touch-pan-y overscroll-none">
       <svg width={width} height={height} style={{ overflow: 'visible' }}>
@@ -255,7 +257,8 @@ function Chart({
           style={{
             position: 'absolute',
             top: tooltipTop - 25,
-            left: tooltipLeft + 15,
+            left: isLeftHalf ? tooltipLeft + 15 : tooltipLeft - 15,
+            transform: isLeftHalf ? 'none' : 'translateX(-100%)',
             background: 'rgba(17, 24, 39, 0.9)',
             padding: '4px 8px',
             borderRadius: '4px',
@@ -267,7 +270,7 @@ function Chart({
           }}
         >
           <div className="flex flex-col leading-tight">
-            <span>{tooltipDateFormat.format(tooltipData.time)}</span>
+            <span>{tooltipDateFormat(new Date(tooltipData.time))}</span>
             <span>{tooltipData.price.toFixed(2)}%</span>
           </div>
         </div>
