@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 
@@ -18,7 +17,7 @@ serve(async (req) => {
     const { marketId, marketQuestion } = await req.json()
     console.log('Received request:', { marketId, marketQuestion })
 
-    // First call to Perplexity for analysis
+    // First get full analysis from Perplexity
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -32,11 +31,22 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a market analyst. Provide a thorough analysis of the market question, followed by exactly three specific follow-up questions that would help deepen the analysis."
+            content: `You are a market analyst. Your task is to:
+1. Provide a detailed analysis of the given market question with specific citations
+2. Follow that with EXACTLY three key analytical follow-up questions
+3. Format your response EXACTLY as follows:
+
+ANALYSIS:
+[Your detailed analysis with specific citations here]
+
+QUESTIONS:
+1. [First analytical question]
+2. [Second analytical question]
+3. [Third analytical question]`
           },
           {
             role: "user",
-            content: `Analyze this market question and provide follow-up questions: ${marketQuestion}`
+            content: `Analyze this market question in detail with citations, then provide three follow-up analytical questions: ${marketQuestion}`
           }
         ]
       })
@@ -49,7 +59,7 @@ serve(async (req) => {
     const perplexityData = await perplexityResponse.json()
     const perplexityContent = perplexityData.choices[0].message.content
 
-    // Second call to Gemini Flash for JSON parsing with streaming
+    // Now stream JSON parsing from Gemini Flash
     const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -63,7 +73,17 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a parser that extracts analysis and questions from text. Return only a JSON object with 'analysis' and 'questions' fields, where questions is an array of exactly three questions."
+            content: `You are a JSON formatter. Your task is to parse text formatted as:
+ANALYSIS: [analysis]
+QUESTIONS: [questions]
+
+And convert it to a JSON object structured as:
+{
+  "analysis": "the analysis text",
+  "questions": ["question1", "question2", "question3"]
+}
+
+Return ONLY valid JSON.`
           },
           {
             role: "user",
@@ -79,7 +99,7 @@ serve(async (req) => {
       throw new Error(`Gemini API error: ${geminiResponse.status}`)
     }
 
-    // Stream the Gemini response
+    // Return the streaming response
     return new Response(geminiResponse.body, {
       headers: {
         ...corsHeaders,
