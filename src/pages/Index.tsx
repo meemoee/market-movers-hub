@@ -76,7 +76,7 @@ export default function Index() {
       <Header onMenuClick={toggleSidebar} />
       
       <main className="container mx-auto pt-14 xl:pr-[400px] px-4">
-        <div className="relative flex max-w-[1280px] mx-auto justify-center">
+        <div className="relative flex max-w-[1280px] mx-auto justify-center items-start gap-8">
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-40"
@@ -88,7 +88,7 @@ export default function Index() {
             className={`${
               isMobile 
                 ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background transition-transform duration-300 pt-14'
-                : 'w-[280px] relative ml-8'
+                : 'w-[280px] relative'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
@@ -98,7 +98,7 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-8'}`}>
+          <div className="flex-1 min-w-0 min-h-screen">
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
