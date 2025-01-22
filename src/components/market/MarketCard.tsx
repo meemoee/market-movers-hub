@@ -1,6 +1,7 @@
 import { MarketHeader } from "./MarketHeader";
 import { MarketDetails } from "./MarketDetails";
 import { MarketStats } from "./MarketStats";
+import { Separator } from "@/components/ui/separator";
 
 interface Market {
   market_id: string;
@@ -33,7 +34,7 @@ export function MarketCard({
   onSell,
 }: MarketCardProps) {
   return (
-    <div className="w-full rounded-lg bg-card border border-border p-3 space-y-3">
+    <div className="w-full p-3 space-y-3">
       <MarketHeader
         image={market.image}
         question={market.question}
@@ -60,6 +61,7 @@ export function MarketCard({
           question={market.question}
         />
       )}
+      <Separator className="mt-3" />
     </div>
   );
 }
