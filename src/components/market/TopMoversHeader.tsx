@@ -29,7 +29,7 @@ export function TopMoversHeader({
   const isMobile = useIsMobile();
 
   return (
-    <div className="sticky top-14 z-40 w-full px-4">
+    <div className="sticky top-14 z-40 w-full">
       <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-supports-backdrop-blur:bg-card/95 backdrop-blur-supports-backdrop-blur:backdrop-blur-sm p-4 w-full relative">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
           <div className="flex items-center flex-wrap gap-2">
