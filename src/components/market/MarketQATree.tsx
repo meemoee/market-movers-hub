@@ -14,7 +14,7 @@ import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
 import { generateNodePosition, createNode, createEdge } from './utils/nodeGenerator';
 
-interface StreamedData {
+interface NodeData {
   analysis: string;
   questions: string[];
 }
@@ -23,6 +23,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [processingNodes, setProcessingNodes] = useState<Set<string>>(new Set());
+  const maxDepth = 3; // Hardcoded for now
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes((nds) =>
@@ -41,60 +43,22 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     );
   }, [setNodes]);
 
-  const generateChildNodes = useCallback((parentId: string, questions: string[]) => {
-    const parent = nodes.find(node => node.id === parentId);
-    if (!parent) return;
-
-    const parentElement = document.querySelector(`[data-id="${parentId}"]`) as HTMLElement;
+  // Function to analyze a single node
+  const analyzeNode = async (nodeId: string, question: string, depth: number) => {
+    if (depth >= maxDepth) return;
     
-    questions.forEach((question, i) => {
-      const timestamp = Date.now() + i;
-      const newNodeId = `node-${timestamp}`;
-      
-      const position = generateNodePosition(
-        i,
-        questions.length,
-        parent.position.x,
-        parent.position.y,
-        1,
-        3,
-        parentElement
-      );
-      
-      const newNode = createNode(newNodeId, position, {
-        question: question,
-        answer: '',
-        updateNodeData,
-      });
-
-      const newEdge = createEdge(parentId, newNodeId, 1);
-
-      setNodes(nds => [...nds, newNode]);
-      setEdges(eds => [...eds, newEdge]);
-    });
-  }, [nodes, setNodes, setEdges, updateNodeData]);
-
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true);
+    setProcessingNodes(prev => new Set(prev).add(nodeId));
     
-    // Create root node
-    const rootId = 'root-node';
-    setNodes([createNode(rootId, { x: 0, y: 0 }, {
-      question: marketQuestion,
-      answer: '',
-      updateNodeData,
-    })]);
-
     try {
       const { data: { body }, error } = await supabase.functions.invoke('generate-qa-tree', {
-        body: { marketId, marketQuestion }
+        body: { question }
       });
 
       if (error) throw error;
 
-      let accumulatedContent = '';
       const reader = new Response(body).body?.getReader();
       const decoder = new TextDecoder();
+      let accumulatedContent = '';
 
       while (reader) {
         const { done, value } = await reader.read();
@@ -115,15 +79,46 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               if (content) {
                 accumulatedContent += content;
                 try {
-                  // Try to parse as JSON as it streams in
-                  const data: StreamedData = JSON.parse(accumulatedContent);
+                  // Try parsing accumulated JSON
+                  const data: NodeData = JSON.parse(accumulatedContent);
                   
-                  // Update root node with analysis
-                  updateNodeData(rootId, 'answer', data.analysis);
-                  
-                  // If we have exactly 3 questions, generate child nodes
-                  if (data.questions && data.questions.length === 3) {
-                    generateChildNodes(rootId, data.questions);
+                  // Update current node's analysis
+                  updateNodeData(nodeId, 'answer', data.analysis);
+
+                  // If we have complete data with 3 questions, spawn children
+                  if (data.questions?.length === 3 && depth < maxDepth) {
+                    const parent = nodes.find(n => n.id === nodeId);
+                    if (parent) {
+                      const parentElement = document.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
+                      
+                      // Create child nodes
+                      data.questions.forEach(async (childQuestion, i) => {
+                        const childId = `node-${Date.now()}-${i}`;
+                        const position = generateNodePosition(
+                          i,
+                          3,
+                          parent.position.x,
+                          parent.position.y,
+                          depth + 1,
+                          maxDepth,
+                          parentElement
+                        );
+
+                        const newNode = createNode(childId, position, {
+                          question: childQuestion,
+                          answer: '',
+                          updateNodeData,
+                        });
+
+                        const newEdge = createEdge(nodeId, childId, depth + 1);
+
+                        setNodes(nds => [...nds, newNode]);
+                        setEdges(eds => [...eds, newEdge]);
+
+                        // Analyze child node
+                        await analyzeNode(childId, childQuestion, depth + 1);
+                      });
+                    }
                   }
                 } catch (e) {
                   // Not valid JSON yet, keep accumulating
@@ -136,10 +131,33 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         }
       }
     } catch (error) {
-      console.error('Error analyzing market:', error);
+      console.error('Error analyzing node:', error);
     } finally {
-      setIsAnalyzing(false);
+      setProcessingNodes(prev => {
+        const next = new Set(prev);
+        next.delete(nodeId);
+        return next;
+      });
     }
+  };
+
+  const handleAnalyze = async () => {
+    setIsAnalyzing(true);
+    setNodes([]);
+    setEdges([]);
+    
+    // Create root node with market question
+    const rootId = 'root-node';
+    setNodes([createNode(rootId, { x: 0, y: 0 }, {
+      question: marketQuestion,
+      answer: '',
+      updateNodeData,
+    })]);
+
+    // Start analysis from root
+    await analyzeNode(rootId, marketQuestion, 0);
+    
+    setIsAnalyzing(false);
   };
 
   const nodeTypes = {
