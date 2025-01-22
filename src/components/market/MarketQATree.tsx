@@ -103,95 +103,97 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const processStreamChunk = useCallback((chunk: string, nodeId: string) => {
     contentBufferRef.current += chunk;
     
-    try {
-      const lines = contentBufferRef.current.split('\n').filter(line => line.trim());
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
+    const lines = contentBufferRef.current.split('\n').filter(line => line.trim());
+    let processedLines = 0;
+    
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === '[DONE]') continue;
+        
+        try {
+          const parsed = JSON.parse(jsonStr);
+          console.log('Parsed streaming chunk:', parsed);
           
-          try {
-            const parsed = JSON.parse(jsonStr);
-            console.log('Parsed streaming chunk:', parsed);
+          if (parsed.content) {
+            const content = parsed.content;
             
-            if (parsed.content) {
-              const content = parsed.content;
+            const answerMatch = content.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/i);
+            const questionsMatch = content.match(/QUESTIONS:\s*([\s\S]*?)$/i);
+            
+            if (answerMatch) {
+              const answer = answerMatch[1].trim();
+              console.log('Extracted answer:', answer);
+              updateNodeData(nodeId, 'answer', answer);
+            }
+            
+            if (questionsMatch) {
+              const questionsText = questionsMatch[1];
+              console.log('Questions text:', questionsText);
               
-              const answerMatch = content.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/i);
-              const questionsMatch = content.match(/QUESTIONS:\s*([\s\S]*?)$/i);
+              const questions = questionsText
+                .split(/\d+\.\s+/)
+                .filter(q => q.trim())
+                .slice(0, 3);
               
-              if (answerMatch) {
-                const answer = answerMatch[1].trim();
-                console.log('Extracted answer:', answer);
-                updateNodeData(nodeId, 'answer', answer);
-              }
+              console.log('Extracted questions:', questions);
               
-              if (questionsMatch) {
-                const questionsText = questionsMatch[1];
-                console.log('Questions text:', questionsText);
-                
-                const questions = questionsText
-                  .split(/\d+\.\s+/)
-                  .filter(q => q.trim())
-                  .slice(0, 3);
-                
-                console.log('Extracted questions:', questions);
-                
-                if (questions.length > 0) {
-                  const node = nodes.find(n => n.id === nodeId);
-                  if (node && node.data.depth < maxDepth) {
-                    questions.forEach((question, index) => {
-                      const newNodeId = `${nodeId}-${index + 1}`;
-                      const position = generateNodePosition(
-                        index,
-                        3,
-                        node.position.x,
-                        node.position.y,
-                        node.data.depth + 1,
-                        maxDepth
-                      );
+              if (questions.length > 0) {
+                const node = nodes.find(n => n.id === nodeId);
+                if (node && node.data.depth < maxDepth) {
+                  questions.forEach((question, index) => {
+                    const newNodeId = `${nodeId}-${index + 1}`;
+                    const position = generateNodePosition(
+                      index,
+                      3,
+                      node.position.x,
+                      node.position.y,
+                      node.data.depth + 1,
+                      maxDepth
+                    );
 
-                      const newNode: Node<QAData> = {
-                        id: newNodeId,
-                        type: 'qaNode',
-                        position,
-                        data: {
-                          question: question.trim(),
-                          answer: 'Analyzing...',
-                          updateNodeData,
-                          addChildNode: handleAddChildNode,
-                          removeNode: handleRemoveNode,
-                          depth: node.data.depth + 1
-                        },
-                      };
+                    const newNode: Node<QAData> = {
+                      id: newNodeId,
+                      type: 'qaNode',
+                      position,
+                      data: {
+                        question: question.trim(),
+                        answer: 'Analyzing...',
+                        updateNodeData,
+                        addChildNode: handleAddChildNode,
+                        removeNode: handleRemoveNode,
+                        depth: node.data.depth + 1
+                      },
+                    };
 
-                      setNodes((nds) => [...nds, newNode]);
-                      setEdges((eds) => [
-                        ...eds,
-                        {
-                          id: `edge-${nodeId}-${newNodeId}`,
-                          source: nodeId,
-                          target: newNodeId,
-                          type: 'smoothstep',
-                        },
-                      ]);
+                    setNodes((nds) => [...nds, newNode]);
+                    setEdges((eds) => [
+                      ...eds,
+                      {
+                        id: `edge-${nodeId}-${newNodeId}`,
+                        source: nodeId,
+                        target: newNodeId,
+                        type: 'smoothstep',
+                      },
+                    ]);
 
-                      generateAnswer(newNodeId, question.trim());
-                    });
-                  }
+                    generateAnswer(newNodeId, question.trim());
+                  });
                 }
-                
-                contentBufferRef.current = '';
               }
             }
-          } catch (e) {
-            console.error('Error parsing JSON in stream chunk:', e);
           }
+        } catch (e) {
+          console.error('Error parsing JSON in stream chunk:', e);
         }
+        processedLines++;
       }
-    } catch (e) {
-      console.error('Error processing stream chunk:', e);
+    }
+    
+    // Remove processed lines from the buffer
+    if (processedLines > 0) {
+      const remainingLines = lines.slice(processedLines);
+      contentBufferRef.current = remainingLines.join('\n');
     }
   }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
 
