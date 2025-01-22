@@ -85,25 +85,17 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [setNodes, setEdges]);
 
   const processStreamChunk = useCallback((chunk: string) => {
-    // Append new chunk to buffer
     contentBufferRef.current += chunk;
     
-    // Try to extract complete fields from the buffer
-    let questionMatch = contentBufferRef.current.match(/"question"\s*:\s*"([^"]*)/);
     let answerMatch = contentBufferRef.current.match(/"answer"\s*:\s*"([^"]*)/);
-    
-    if (questionMatch) {
-      const question = questionMatch[1].replace(/\\"/g, '"');
-      updateNodeData('node-1', 'question', question);
-    }
     
     if (answerMatch) {
       const answer = answerMatch[1].replace(/\\"/g, '"');
       updateNodeData('node-1', 'answer', answer);
     }
 
-    // Handle content that might be continuation of a field
-    if (!questionMatch && !answerMatch) {
+    // Handle content that might be continuation of the answer
+    if (!answerMatch) {
       const content = chunk
         .replace(/^\s*"/, '')
         .replace(/"\s*$/, '')
@@ -111,39 +103,42 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         .replace(/[{}]/g, '')
         .trim();
 
-      if (content) {
-        // Check if this is part of the current answer
-        if (contentBufferRef.current.includes('"answer"')) {
-          const currentAnswer = nodes.find(n => n.id === 'node-1')?.data?.answer || '';
-          updateNodeData('node-1', 'answer', currentAnswer + content);
-        }
-        // Check if this is part of the current question
-        else if (contentBufferRef.current.includes('"question"')) {
-          const currentQuestion = nodes.find(n => n.id === 'node-1')?.data?.question || '';
-          updateNodeData('node-1', 'question', currentQuestion + content);
-        }
+      if (content && contentBufferRef.current.includes('"answer"')) {
+        const currentAnswer = nodes.find(n => n.id === 'node-1')?.data?.answer || '';
+        updateNodeData('node-1', 'answer', currentAnswer + content);
       }
     }
   }, [nodes, updateNodeData]);
 
   useEffect(() => {
     if (nodes.length === 0) {
-      const rootNode = {
-        id: 'node-1',
-        type: 'qaNode',
-        position: { x: 0, y: 0 },
-        data: {
-          question: 'Loading...',
-          answer: '',
-          updateNodeData,
-          addChildNode,
-          removeNode: handleRemoveNode,
-        }
-      };
-      setNodes([rootNode]);
-
-      const streamResponse = async () => {
+      const initializeTree = async () => {
         try {
+          // Fetch market data to get the title
+          const { data: market, error: marketError } = await supabase
+            .from('markets')
+            .select('question')
+            .eq('id', marketId)
+            .single();
+
+          if (marketError) throw marketError;
+          if (!market) throw new Error('Market not found');
+
+          // Create root node with market question
+          const rootNode = {
+            id: 'node-1',
+            type: 'qaNode',
+            position: { x: 0, y: 0 },
+            data: {
+              question: market.question,
+              answer: 'Analyzing...',
+              updateNodeData,
+              addChildNode,
+              removeNode: handleRemoveNode,
+            }
+          };
+          setNodes([rootNode]);
+
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
 
@@ -154,7 +149,11 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
           console.log('Sending request to generate-qa-tree function...');
           const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
-            body: { marketId, userId: user.id }
+            body: { 
+              marketId, 
+              userId: user.id,
+              question: market.question // Pass the question to the edge function
+            }
           });
 
           if (error) throw error;
@@ -224,7 +223,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         }
       };
 
-      streamResponse();
+      initializeTree();
     }
   }, [nodes.length, marketId, setNodes, processStreamChunk, updateNodeData, addChildNode, handleRemoveNode]);
 
