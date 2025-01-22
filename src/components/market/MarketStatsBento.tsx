@@ -30,7 +30,7 @@ function BentoCard({ children, className, gradientStart, gradientEnd }: {
     ? {
         border: 'none',
         background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd})) border-box`,
-        padding: '2px', // Increased padding for thicker border
+        padding: '4px', // Increased padding for even thicker border
       }
     : {};
 
@@ -92,10 +92,21 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
               alt={article.title}
               className="h-full w-full object-cover"
             />
-            {/* Dark overlay for better text readability */}
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent" />
           </div>
         )}
+        {/* Gradient overlay - now more prominent and always visible */}
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: article.gradient_start_rgb && article.gradient_end_rgb
+              ? `linear-gradient(to top, 
+                  rgb(${article.gradient_start_rgb}) 0%, 
+                  rgba(${article.gradient_start_rgb}, 0.8) 30%, 
+                  rgba(${article.gradient_end_rgb}, 0.4) 60%, 
+                  rgba(${article.gradient_end_rgb}, 0.1) 100%)`
+              : 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0.1) 100%)'
+          }}
+        />
         <div className="relative h-full p-4 flex flex-col justify-end z-10">
           <h3 className={cn("text-lg font-semibold mb-2", textColorClass)}>{article.title}</h3>
           {article.subtitle && (
@@ -119,7 +130,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   return (
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Left side - square card */}
         <BentoCard 
           className="md:row-span-2 aspect-square"
           gradientStart={articles[0]?.gradient_start_rgb || undefined}
@@ -128,7 +138,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           {renderArticle(1)}
         </BentoCard>
 
-        {/* Right side - two cards */}
         <BentoCard
           gradientStart={articles[1]?.gradient_start_rgb || undefined}
           gradientEnd={articles[1]?.gradient_end_rgb || undefined}
