@@ -50,8 +50,12 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setProcessingNodes(prev => new Set(prev).add(nodeId));
     
     try {
+      console.log('Analyzing question:', question); // Debug log
       const { data: { body }, error } = await supabase.functions.invoke('generate-qa-tree', {
-        body: { question }
+        body: { 
+          marketId,  // Include marketId for future use
+          question: question // Explicitly pass the question
+        }
       });
 
       if (error) throw error;
@@ -148,11 +152,14 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     
     // Create root node with market question
     const rootId = 'root-node';
-    setNodes([createNode(rootId, { x: 0, y: 0 }, {
+    const rootNode = createNode(rootId, { x: 0, y: 0 }, {
       question: marketQuestion,
       answer: '',
       updateNodeData,
-    })]);
+    });
+    
+    console.log('Creating root node with question:', marketQuestion); // Debug log
+    setNodes([rootNode]);
 
     // Start analysis from root
     await analyzeNode(rootId, marketQuestion, 0);
