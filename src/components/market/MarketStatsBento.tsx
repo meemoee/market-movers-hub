@@ -30,14 +30,15 @@ function BentoCard({ children, className, gradientStart, gradientEnd }: {
     ? {
         border: 'none',
         background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd})) border-box`,
-        padding: '4px', // Increased padding for even thicker border
+        padding: '8px', // Much thicker border
+        borderRadius: '1rem', // Increased border radius for smoother corners
       }
     : {};
 
   return (
     <div 
       className={cn(
-        "relative h-full w-full overflow-hidden rounded-lg",
+        "relative h-full w-full overflow-hidden",
         className
       )}
       style={borderStyle}
@@ -94,34 +95,23 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           </div>
         )}
-        {/* Gradient overlay - now more prominent and always visible */}
+        {/* Gradient overlay - more prominent */}
         <div 
           className="absolute inset-0"
           style={{
             background: article.gradient_start_rgb && article.gradient_end_rgb
               ? `linear-gradient(to top, 
                   rgb(${article.gradient_start_rgb}) 0%, 
-                  rgba(${article.gradient_start_rgb}, 0.8) 30%, 
-                  rgba(${article.gradient_end_rgb}, 0.4) 60%, 
-                  rgba(${article.gradient_end_rgb}, 0.1) 100%)`
-              : 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0.1) 100%)'
+                  rgba(${article.gradient_start_rgb}, 0.9) 30%, 
+                  rgba(${article.gradient_end_rgb}, 0.6) 60%, 
+                  rgba(${article.gradient_end_rgb}, 0.3) 100%)`
+              : 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.3) 100%)'
           }}
         />
-        <div className="relative h-full p-4 flex flex-col justify-end z-10">
-          <h3 className={cn("text-lg font-semibold mb-2", textColorClass)}>{article.title}</h3>
-          {article.subtitle && (
-            <p className={cn("text-sm opacity-90", textColorClass)}>{article.subtitle}</p>
-          )}
-          {article.link && (
-            <a 
-              href={article.link} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="mt-2 text-sm text-blue-300 hover:text-blue-200"
-            >
-              Read more →
-            </a>
-          )}
+        <div className="relative h-full p-6 flex flex-col justify-end z-10">
+          <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
+            {article.title}
+          </h3>
         </div>
       </div>
     );
