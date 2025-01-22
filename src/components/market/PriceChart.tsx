@@ -109,13 +109,14 @@ function Chart({
   );
 
   const tooltipDateFormat = useMemo(() => {
-    return new Intl.DateTimeFormat('en-US', {
+    const formatter = new Intl.DateTimeFormat('en-US', {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
     });
+    return formatter.format.bind(formatter);
   }, []);
 
   const isLeftHalf = tooltipLeft < width / 2;
