@@ -22,6 +22,7 @@ const intervals = [
 ];
 
 const formatDate = timeFormat("%b %d");
+const tooltipDateFormat = timeFormat("%b %d, %I:%M %p");
 
 interface ChartProps {
   data: PriceData[];
@@ -89,6 +90,21 @@ function Chart({
       price: data[leftIndex].price
     };
   }, [data, timeScale]);
+
+  const handleTooltip = useCallback((event: React.MouseEvent<SVGRectElement>) => {
+    const { x } = localPoint(event) || { x: 0 };
+    const xValue = x - margin.left;
+    
+    if (xValue < 0 || xValue > innerWidth) return;
+    
+    const interpolatedPoint = getInterpolatedPrice(xValue);
+
+    showTooltip({
+      tooltipData: interpolatedPoint,
+      tooltipLeft: x,
+      tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
+    });
+  }, [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]);
 
   const handleTouchStart = useCallback((event: React.TouchEvent<SVGRectElement>) => {
     event.preventDefault(); // Prevent default touch behavior
