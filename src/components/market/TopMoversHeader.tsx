@@ -1,5 +1,6 @@
 import { ChevronDown } from 'lucide-react';
 import { Card } from '../ui/card';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface TimeInterval {
   label: string;
@@ -25,27 +26,29 @@ export function TopMoversHeader({
   isTimeIntervalDropdownOpen,
   setIsTimeIntervalDropdownOpen,
 }: TopMoversHeaderProps) {
+  const isMobile = useIsMobile();
+
   return (
     <div className="sticky top-14 z-40 w-full px-4">
       <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-supports-backdrop-blur:bg-card/95 backdrop-blur-supports-backdrop-blur:backdrop-blur-sm p-4 w-full relative">
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center">
-            <h2 className="text-2xl font-bold">What happened in the last</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
+          <div className="flex items-center flex-wrap gap-2">
+            <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">What happened in the last</h2>
             <div className="relative">
               <button
                 onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-                className="flex items-center gap-1 px-2 py-1.5 ml-0.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-2xl font-bold"
+                className="flex items-center gap-1 px-2 py-1.5 ml-0.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-xl sm:text-2xl font-bold"
               >
                 <span>{timeIntervals.find(i => i.value === selectedInterval)?.label}</span>
                 <ChevronDown className="w-4 h-4" />
               </button>
 
               {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-50">
+                <div className="absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-50 max-h-[300px] overflow-y-auto">
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
-                      className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-2xl font-bold ${
+                      className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-xl sm:text-2xl font-bold ${
                         selectedInterval === interval.value ? 'bg-accent/30' : ''
                       }`}
                       onClick={() => {

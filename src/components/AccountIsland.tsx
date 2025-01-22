@@ -9,12 +9,14 @@ import { useNavigate } from "react-router-dom";
 import { AccountAvatar } from "./account/AccountAvatar";
 import { AccountBalance } from "./account/AccountBalance";
 import { AccountHoldings } from "./account/AccountHoldings";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function AccountIsland() {
   const [session, setSession] = useState<any>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -66,7 +68,7 @@ export default function AccountIsland() {
   };
 
   return (
-    <Card className="w-full p-6 sticky top-[102px]">
+    <Card className={`w-full ${isMobile ? 'rounded-none border-0' : 'p-6 sticky top-[102px]'}`}>
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
@@ -74,25 +76,27 @@ export default function AccountIsland() {
       )}
 
       {!session ? (
-        <Auth
-          supabaseClient={supabase}
-          appearance={{ 
-            theme: ThemeSupa,
-            style: {
-              button: {
-                background: 'hsl(var(--primary))',
-                color: 'hsl(var(--primary-foreground))',
+        <div className={isMobile ? 'p-4' : ''}>
+          <Auth
+            supabaseClient={supabase}
+            appearance={{ 
+              theme: ThemeSupa,
+              style: {
+                button: {
+                  background: 'hsl(var(--primary))',
+                  color: 'hsl(var(--primary-foreground))',
+                },
+                anchor: {
+                  color: 'hsl(var(--primary))',
+                },
               },
-              anchor: {
-                color: 'hsl(var(--primary))',
-              },
-            },
-          }}
-          providers={['google']}
-          theme="dark"
-        />
+            }}
+            providers={['google']}
+            theme="dark"
+          />
+        </div>
       ) : (
-        <div className="space-y-6">
+        <div className={`space-y-6 ${isMobile ? 'p-4' : ''}`}>
           <div className="flex items-start gap-4">
             <AccountAvatar email={session.user.email} />
             <div className="flex-1">

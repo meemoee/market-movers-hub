@@ -4,6 +4,7 @@ import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
 import { useTopMovers } from '@/hooks/useTopMovers';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} minutes`;
@@ -30,6 +31,8 @@ export default function Index() {
   const [openMarketsOnly, setOpenMarketsOnly] = useState(true);
   const [page, setPage] = useState(1);
   const [allMovers, setAllMovers] = useState<any[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const isMobile = useIsMobile();
   
   const { data, isLoading, error, isFetching } = useTopMovers(
     selectedInterval,
@@ -66,19 +69,40 @@ export default function Index() {
     }
   };
 
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
   return (
     <div className="min-h-screen bg-background">
-      <Header />
+      <Header onMenuClick={toggleSidebar} />
       
       <main className="container mx-auto pt-14 lg:pr-[420px]">
         <div className="relative flex max-w-[1200px] mx-auto">
-          <aside className="w-[260px] relative">
-            <div className="sticky top-[72px]">
+          {/* Mobile sidebar overlay */}
+          {isMobile && isSidebarOpen && (
+            <div 
+              className="fixed inset-0 bg-black/50 z-40"
+              onClick={() => setIsSidebarOpen(false)}
+            />
+          )}
+
+          {/* Account Island / Sidebar */}
+          <aside 
+            className={`${
+              isMobile 
+                ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background transition-transform duration-300 pt-14'
+                : 'w-[260px] relative'
+            } ${
+              isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
+            }`}
+          >
+            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-[72px]'}>
               <AccountIsland />
             </div>
           </aside>
 
-          <div className="flex-1 min-w-0 min-h-screen">
+          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-6'}`}>
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
