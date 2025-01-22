@@ -14,12 +14,15 @@ import '@xyflow/react/dist/style.css';
 import { QANodeComponent } from './nodes/QANodeComponent';
 import { generateNodePosition, createNode, createEdge } from './utils/nodeGenerator';
 
+interface StreamedData {
+  analysis: string;
+  questions: string[];
+}
+
 export function MarketQATree({ marketId, marketQuestion }: { marketId: string, marketQuestion: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [currentNode, setCurrentNode] = useState<string | null>(null);
-  const streamIntervals = useRef<{ [key: string]: NodeJS.Timeout }>({});
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes((nds) =>
@@ -71,23 +74,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     });
   }, [nodes, setNodes, setEdges, updateNodeData]);
 
-  const parseStreamContent = (content: string) => {
-    const analysisMatch = content.match(/ANALYSIS:\s*([\s\S]*?)(?=QUESTIONS:)/);
-    const questionsMatch = content.match(/QUESTIONS:\s*([\s\S]*)/);
-    
-    if (analysisMatch && questionsMatch) {
-      const analysis = analysisMatch[1].trim();
-      const questionsText = questionsMatch[1];
-      const questions = questionsText
-        .split(/\d\./)
-        .slice(1)
-        .map(q => q.trim());
-      
-      return { analysis, questions };
-    }
-    return null;
-  };
-
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     
@@ -98,7 +84,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       answer: '',
       updateNodeData,
     })]);
-    setCurrentNode(rootId);
 
     try {
       const { data: { body }, error } = await supabase.functions.invoke('generate-qa-tree', {
@@ -126,19 +111,22 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
             try {
               const parsed = JSON.parse(jsonStr);
               const content = parsed.choices?.[0]?.delta?.content;
+              
               if (content) {
                 accumulatedContent += content;
-                
-                // Try to parse current content
-                const parsed = parseStreamContent(accumulatedContent);
-                if (parsed) {
-                  // Update root node
-                  updateNodeData(rootId, 'answer', parsed.analysis);
+                try {
+                  // Try to parse as JSON as it streams in
+                  const data: StreamedData = JSON.parse(accumulatedContent);
                   
-                  // If we have questions, create child nodes
-                  if (parsed.questions.length === 3) {
-                    generateChildNodes(rootId, parsed.questions);
+                  // Update root node with analysis
+                  updateNodeData(rootId, 'answer', data.analysis);
+                  
+                  // If we have exactly 3 questions, generate child nodes
+                  if (data.questions && data.questions.length === 3) {
+                    generateChildNodes(rootId, data.questions);
                   }
+                } catch (e) {
+                  // Not valid JSON yet, keep accumulating
                 }
               }
             } catch (e) {
@@ -151,7 +139,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       console.error('Error analyzing market:', error);
     } finally {
       setIsAnalyzing(false);
-      setCurrentNode(null);
     }
   };
 
