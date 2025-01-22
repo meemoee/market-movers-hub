@@ -88,17 +88,17 @@ export default function Index() {
             className={`${
               isMobile 
                 ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background transition-transform duration-300 pt-14'
-                : 'w-[280px] relative ml-8'
+                : 'w-[280px] relative'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
           >
-            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-[72px]'}>
+            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-[102px]'}>
               <AccountIsland />
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-8'}`}>
+          <div className={`flex-1 min-w-0 min-h-screen`}>
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
