@@ -6,7 +6,6 @@ import {
   ReactFlow, 
   Background, 
   Controls,
-  Node,
   useNodesState, 
   useEdgesState,
 } from '@xyflow/react';
@@ -24,7 +23,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [processingNodes, setProcessingNodes] = useState<Set<string>>(new Set());
-  const maxDepth = 3; // Hardcoded for now
+  const maxDepth = 3;
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes((nds) =>
@@ -43,28 +42,32 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     );
   }, [setNodes]);
 
-  // Function to analyze a single node
-  const analyzeNode = async (nodeId: string, question: string, depth: number) => {
+  const analyzeNode = async (nodeId: string, nodeQuestion: string, depth: number) => {
+    console.log('analyzeNode called with:', { nodeId, nodeQuestion, depth });
+    
     if (depth >= maxDepth) return;
     
     setProcessingNodes(prev => new Set(prev).add(nodeId));
     
     try {
-      console.log('Analyzing question:', question); // Debug log
-      const { data: { body }, error } = await supabase.functions.invoke('generate-qa-tree', {
-        body: { 
-          marketId,  // Include marketId for future use
-          question: question // Explicitly pass the question
-        }
+      // Pass the question explicitly in the body
+      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
+        body: JSON.stringify({
+          marketId,
+          question: nodeQuestion // Ensure question is passed
+        })
       });
 
       if (error) throw error;
+      if (!data?.body) throw new Error('No response body');
 
-      const reader = new Response(body).body?.getReader();
+      const reader = new Response(data.body).body?.getReader();
+      if (!reader) throw new Error('Failed to create reader');
+
       const decoder = new TextDecoder();
       let accumulatedContent = '';
 
-      while (reader) {
+      while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
@@ -83,20 +86,20 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               if (content) {
                 accumulatedContent += content;
                 try {
-                  // Try parsing accumulated JSON
                   const data: NodeData = JSON.parse(accumulatedContent);
                   
                   // Update current node's analysis
                   updateNodeData(nodeId, 'answer', data.analysis);
 
-                  // If we have complete data with 3 questions, spawn children
+                  // Spawn children if we have questions and not at max depth
                   if (data.questions?.length === 3 && depth < maxDepth) {
                     const parent = nodes.find(n => n.id === nodeId);
                     if (parent) {
                       const parentElement = document.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
                       
-                      // Create child nodes
-                      data.questions.forEach(async (childQuestion, i) => {
+                      // Create and analyze child nodes
+                      for (let i = 0; i < data.questions.length; i++) {
+                        const childQuestion = data.questions[i];
                         const childId = `node-${Date.now()}-${i}`;
                         const position = generateNodePosition(
                           i,
@@ -119,9 +122,9 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                         setNodes(nds => [...nds, newNode]);
                         setEdges(eds => [...eds, newEdge]);
 
-                        // Analyze child node
+                        // Analyze the new child node
                         await analyzeNode(childId, childQuestion, depth + 1);
-                      });
+                      }
                     }
                   }
                 } catch (e) {
@@ -150,21 +153,25 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setNodes([]);
     setEdges([]);
     
-    // Create root node with market question
-    const rootId = 'root-node';
-    const rootNode = createNode(rootId, { x: 0, y: 0 }, {
-      question: marketQuestion,
-      answer: '',
-      updateNodeData,
-    });
-    
-    console.log('Creating root node with question:', marketQuestion); // Debug log
-    setNodes([rootNode]);
+    try {
+      // Create root node
+      const rootId = 'root-node';
+      const rootNode = createNode(rootId, { x: 0, y: 0 }, {
+        question: marketQuestion,
+        answer: '',
+        updateNodeData,
+      });
+      
+      console.log('Creating root node with question:', marketQuestion);
+      setNodes([rootNode]);
 
-    // Start analysis from root
-    await analyzeNode(rootId, marketQuestion, 0);
-    
-    setIsAnalyzing(false);
+      // Start analysis with root node
+      await analyzeNode(rootId, marketQuestion, 0);
+    } catch (error) {
+      console.error('Analysis error:', error);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   const nodeTypes = {
