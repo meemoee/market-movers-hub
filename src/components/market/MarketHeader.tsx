@@ -24,26 +24,28 @@ export function MarketHeader({
   onToggleExpand
 }: MarketHeaderProps) {
   return (
-    <div className="flex items-center gap-4">
-      <img
-        src={image}
-        alt=""
-        className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-      />
-      <div 
-        className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
-        onClick={onToggleExpand}
-      >
-        <h3 className="font-medium text-base leading-tight">
-          {question}
-        </h3>
-        {yesSubTitle && (
-          <p className="text-sm text-muted-foreground mt-1">
-            {yesSubTitle}
-          </p>
-        )}
+    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+      <div className="flex items-start gap-4 flex-1">
+        <img
+          src={image}
+          alt=""
+          className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+        />
+        <div 
+          className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={onToggleExpand}
+        >
+          <h3 className="font-medium text-base leading-tight">
+            {question}
+          </h3>
+          {yesSubTitle && (
+            <p className="text-sm text-muted-foreground mt-1">
+              {yesSubTitle}
+            </p>
+          )}
+        </div>
       </div>
-      <div className="flex-shrink-0 flex gap-2 h-12">
+      <div className="flex gap-2 h-12 sm:flex-shrink-0 justify-end sm:justify-start">
         <HoverButton
           variant="buy"
           onClick={onBuy}
