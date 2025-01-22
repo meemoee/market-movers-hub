@@ -1,4 +1,4 @@
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, Node } from '@xyflow/react';
 import { Plus, X } from "lucide-react";
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { ReactFlow, Background, Controls, Connection, useNodesState, useEdgesState, addEdge } from '@xyflow/react';
@@ -8,7 +8,7 @@ import { QANodeComponent } from './nodes/QANodeComponent';
 import { supabase } from '@/integrations/supabase/client';
 import { generateNodePosition } from './utils/nodeGenerator';
 
-interface NodeData {
+interface QAData {
   question: string;
   answer: string;
   updateNodeData: (id: string, field: string, value: string) => void;
@@ -17,8 +17,10 @@ interface NodeData {
   depth: number;
 }
 
+type QANode = Node<QAData>;
+
 export function MarketQATree({ marketId }: { marketId: string }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<QAData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [maxDepth] = useState(2); // Maximum depth of 2 for the tree
   const abortControllerRef = useRef<AbortController | null>(null);
