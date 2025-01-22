@@ -6,6 +6,7 @@ import '@xyflow/react/dist/style.css';
 import { Card } from "@/components/ui/card";
 import { QANodeComponent } from './nodes/QANodeComponent';
 import { supabase } from '@/integrations/supabase/client';
+import { generateNodePosition } from './utils/nodeGenerator';
 
 export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
@@ -38,6 +39,50 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       })
     );
   }, [setNodes]);
+
+  const addChildNode = useCallback((parentId: string) => {
+    const parentNode = nodes.find(node => node.id === parentId);
+    if (!parentNode) return;
+
+    const newNodeId = `node-${nodes.length + 1}`;
+    const position = generateNodePosition(
+      nodes.length,
+      1,
+      parentNode.position.x,
+      parentNode.position.y,
+      1,
+      3
+    );
+
+    const newNode = {
+      id: newNodeId,
+      type: 'qaNode',
+      position,
+      data: {
+        question: '',
+        answer: '',
+        updateNodeData,
+        addChildNode,
+        removeNode: handleRemoveNode,
+      },
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: `edge-${parentId}-${newNodeId}`,
+        source: parentId,
+        target: newNodeId,
+        type: 'smoothstep',
+      },
+    ]);
+  }, [nodes, setNodes, setEdges]);
+
+  const handleRemoveNode = useCallback((nodeId: string) => {
+    setNodes((nds) => nds.filter((node) => node.id !== nodeId));
+    setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+  }, [setNodes, setEdges]);
 
   const processStreamChunk = useCallback((chunk: string) => {
     // Append new chunk to buffer
@@ -90,6 +135,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         data: {
           question: 'Loading...',
           answer: '',
+          updateNodeData,
+          addChildNode,
+          removeNode: handleRemoveNode,
         }
       };
       setNodes([rootNode]);
@@ -178,7 +226,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
       streamResponse();
     }
-  }, [nodes.length, marketId, setNodes, processStreamChunk, updateNodeData]);
+  }, [nodes.length, marketId, setNodes, processStreamChunk, updateNodeData, addChildNode, handleRemoveNode]);
 
   const nodeTypes = {
     qaNode: QANodeComponent
