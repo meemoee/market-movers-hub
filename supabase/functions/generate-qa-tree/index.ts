@@ -3,8 +3,6 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,7 +18,7 @@ serve(async (req) => {
     const { marketId, marketQuestion } = await req.json()
     console.log('Received request:', { marketId, marketQuestion })
 
-    // Single perplexity call with streaming
+    // First call to Perplexity for analysis
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -34,14 +32,13 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an analyst that provides one detailed analysis with citations of a market question, followed by exactly 3 key follow-up questions. Always format your response as: ANALYSIS: <your analysis> QUESTIONS: 1. <question1> 2. <question2> 3. <question3>"
+            content: "You are a market analyst. Provide a thorough analysis of the market question, followed by exactly three specific follow-up questions that would help deepen the analysis."
           },
           {
             role: "user",
             content: `Analyze this market question and provide follow-up questions: ${marketQuestion}`
           }
-        ],
-        stream: true
+        ]
       })
     })
 
@@ -49,8 +46,41 @@ serve(async (req) => {
       throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
     }
 
-    // Return the stream directly
-    return new Response(perplexityResponse.body, {
+    const perplexityData = await perplexityResponse.json()
+    const perplexityContent = perplexityData.choices[0].message.content
+
+    // Second call to Gemini Flash for JSON parsing with streaming
+    const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Analysis App',
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5-8b",
+        messages: [
+          {
+            role: "system",
+            content: "You are a parser that extracts analysis and questions from text. Return only a JSON object with 'analysis' and 'questions' fields, where questions is an array of exactly three questions."
+          },
+          {
+            role: "user",
+            content: perplexityContent
+          }
+        ],
+        response_format: { type: "json_object" },
+        stream: true
+      })
+    })
+
+    if (!geminiResponse.ok) {
+      throw new Error(`Gemini API error: ${geminiResponse.status}`)
+    }
+
+    // Stream the Gemini response
+    return new Response(geminiResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
