@@ -75,7 +75,7 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <Header onMenuClick={toggleSidebar} />
       
-      <main className="container mx-auto pt-14 xl:pr-[400px] px-0 sm:px-4">
+      <main className="container mx-auto pt-14 xl:pr-[400px] px-4">
         <div className="relative flex max-w-[1280px] mx-auto">
           {isMobile && isSidebarOpen && (
             <div 
@@ -98,7 +98,7 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-6'}`}>
+          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-8'}`}>
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
