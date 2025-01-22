@@ -24,15 +24,12 @@ serve(async (req) => {
       throw new Error('Market ID, user ID, and question are required')
     }
 
-    // Initialize Supabase client
     const supabase = createClient(
       SUPABASE_URL!,
       SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { persistSession: false } }
     )
 
-    // Fetch market data
-    console.log('Fetching market data for:', marketId)
     const { data: market, error: marketError } = await supabase
       .from('markets')
       .select(`
@@ -57,7 +54,6 @@ serve(async (req) => {
 
     console.log('Market data fetched:', market)
 
-    // Construct market context
     const marketContext = `
       Market Question: ${market.question}
       Description: ${market.description || 'No description available'}
@@ -70,7 +66,7 @@ serve(async (req) => {
 
     console.log('Sending context to Perplexity:', marketContext)
 
-    // Call Perplexity to generate answer
+    // Call Perplexity to generate answer and sub-questions
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -84,11 +80,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
+            content: "You are a helpful assistant that analyzes market predictions. For each question, provide a detailed answer and generate 3 relevant follow-up questions that would help deepen the analysis. Format your response as: ANSWER: [your answer] QUESTIONS: 1. [question1] 2. [question2] 3. [question3]"
           },
           {
             role: "user",
-            content: `Based on this market information, provide a detailed answer to this question: "${question}"\n\nContext:\n${marketContext}`
+            content: `Based on this market information, provide an answer and 3 follow-up questions for: "${question}"\n\nContext:\n${marketContext}`
           }
         ]
       })
@@ -98,13 +94,10 @@ serve(async (req) => {
       throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
     }
 
-    const perplexityData = await perplexityResponse.json()
-    const perplexityContent = perplexityData.choices[0].message.content
-
+    const perplexityContent = await perplexityResponse.text()
     console.log('Perplexity response:', perplexityContent)
-    console.log('Sending to Gemini Flash for parsing...')
 
-    // Second call to Gemini Flash for parsing into Q&A format
+    // Second call to Gemini Flash for parsing into structured format
     const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -118,7 +111,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a parser that extracts answers from analysis text. Return only a JSON object with an 'answer' field."
+            content: "You are a parser that extracts answers and questions from analysis text. Return a JSON object with 'answer' and 'questions' fields, where questions is an array of 3 strings."
           },
           {
             role: "user",

@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import { Plus, X } from "lucide-react";
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { ReactFlow, Background, Controls, Connection, useNodesState, useEdgesState, addEdge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card } from "@/components/ui/card";
@@ -8,9 +8,19 @@ import { QANodeComponent } from './nodes/QANodeComponent';
 import { supabase } from '@/integrations/supabase/client';
 import { generateNodePosition } from './utils/nodeGenerator';
 
+interface NodeData {
+  question: string;
+  answer: string;
+  updateNodeData: (id: string, field: string, value: string) => void;
+  addChildNode: (id: string) => void;
+  removeNode: (id: string) => void;
+  depth: number;
+}
+
 export function MarketQATree({ marketId }: { marketId: string }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [maxDepth] = useState(2); // Maximum depth of 2 for the tree
   const abortControllerRef = useRef<AbortController | null>(null);
   const contentBufferRef = useRef('');
 
@@ -40,81 +50,151 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     );
   }, [setNodes]);
 
-  const addChildNode = useCallback((parentId: string) => {
-    const parentNode = nodes.find(node => node.id === parentId);
-    if (!parentNode) return;
-
-    const newNodeId = `node-${nodes.length + 1}`;
-    const position = generateNodePosition(
-      nodes.length,
-      1,
-      parentNode.position.x,
-      parentNode.position.y,
-      1,
-      3
-    );
-
-    const newNode = {
-      id: newNodeId,
-      type: 'qaNode',
-      position,
-      data: {
-        question: '',
-        answer: '',
-        updateNodeData,
-        addChildNode,
-        removeNode: handleRemoveNode,
-      },
-    };
-
-    setNodes((nds) => [...nds, newNode]);
-    setEdges((eds) => [
-      ...eds,
-      {
-        id: `edge-${parentId}-${newNodeId}`,
-        source: parentId,
-        target: newNodeId,
-        type: 'smoothstep',
-      },
-    ]);
-  }, [nodes, setNodes, setEdges]);
-
   const handleRemoveNode = useCallback((nodeId: string) => {
     setNodes((nds) => nds.filter((node) => node.id !== nodeId));
     setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }, [setNodes, setEdges]);
 
-  const processStreamChunk = useCallback((chunk: string) => {
+  const processStreamChunk = useCallback((chunk: string, nodeId: string) => {
     contentBufferRef.current += chunk;
     
-    let answerMatch = contentBufferRef.current.match(/"answer"\s*:\s*"([^"]*)/);
-    
-    if (answerMatch) {
-      const answer = answerMatch[1].replace(/\\"/g, '"');
-      updateNodeData('node-1', 'answer', answer);
-    }
+    try {
+      const jsonMatch = contentBufferRef.current.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        if (parsed.answer) {
+          updateNodeData(nodeId, 'answer', parsed.answer);
+        }
+        
+        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length === 3) {
+          const node = nodes.find(n => n.id === nodeId);
+          if (node && node.data.depth < maxDepth) {
+            parsed.questions.forEach((question: string, index: number) => {
+              const newNodeId = `${nodeId}-${index + 1}`;
+              const position = generateNodePosition(
+                index,
+                3,
+                node.position.x,
+                node.position.y,
+                node.data.depth + 1,
+                maxDepth
+              );
 
-    // Handle content that might be continuation of the answer
-    if (!answerMatch) {
-      const content = chunk
-        .replace(/^\s*"/, '')
-        .replace(/"\s*$/, '')
-        .replace(/\\"/g, '"')
-        .replace(/[{}]/g, '')
-        .trim();
+              setNodes((nds) => [...nds, {
+                id: newNodeId,
+                type: 'qaNode',
+                position,
+                data: {
+                  question,
+                  answer: 'Analyzing...',
+                  updateNodeData,
+                  addChildNode: () => {}, // Disabled for leaf nodes
+                  removeNode: handleRemoveNode,
+                  depth: node.data.depth + 1
+                },
+              }]);
 
-      if (content && contentBufferRef.current.includes('"answer"')) {
-        const currentAnswer = nodes.find(n => n.id === 'node-1')?.data?.answer || '';
-        updateNodeData('node-1', 'answer', currentAnswer + content);
+              setEdges((eds) => [...eds, {
+                id: `edge-${nodeId}-${newNodeId}`,
+                source: nodeId,
+                target: newNodeId,
+                type: 'smoothstep',
+              }]);
+
+              // Generate answer for the new node if not at max depth
+              if (node.data.depth + 1 < maxDepth) {
+                generateAnswer(newNodeId, question);
+              }
+            });
+          }
+        }
       }
+    } catch (e) {
+      console.error('Error parsing stream chunk:', e);
     }
-  }, [nodes, updateNodeData]);
+  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth]);
+
+  const generateAnswer = useCallback(async (nodeId: string, question: string) => {
+    try {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      console.log('Generating answer for node:', nodeId, 'Question:', question);
+      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
+        body: { 
+          marketId, 
+          userId: user.id,
+          question
+        }
+      });
+
+      if (error) throw error;
+
+      const stream = new ReadableStream({
+        start(controller) {
+          const textDecoder = new TextDecoder();
+          const reader = new Response(data.body).body?.getReader();
+          
+          function push() {
+            reader?.read().then(({done, value}) => {
+              if (done) {
+                console.log('Stream complete');
+                controller.close();
+                return;
+              }
+              
+              const chunk = textDecoder.decode(value);
+              const lines = chunk.split('\n').filter(line => line.trim());
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const jsonStr = line.slice(6).trim();
+                  if (jsonStr === '[DONE]') continue;
+                  
+                  try {
+                    const parsed = JSON.parse(jsonStr);
+                    const content = parsed.choices?.[0]?.delta?.content;
+                    if (content) {
+                      processStreamChunk(content, nodeId);
+                    }
+                  } catch (e) {
+                    console.error('Error parsing SSE data:', e);
+                  }
+                }
+              }
+              
+              push();
+            });
+          }
+          
+          push();
+        }
+      });
+
+      const reader = stream.getReader();
+      while (true) {
+        const { done } = await reader.read();
+        if (done) break;
+      }
+
+    } catch (error) {
+      console.error('Error generating answer:', error);
+      updateNodeData(nodeId, 'answer', 'Error generating response');
+    } finally {
+      abortControllerRef.current = null;
+    }
+  }, [marketId, processStreamChunk, updateNodeData]);
 
   useEffect(() => {
     if (nodes.length === 0) {
       const initializeTree = async () => {
         try {
-          // Fetch market data to get the title
           const { data: market, error: marketError } = await supabase
             .from('markets')
             .select('question')
@@ -124,7 +204,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           if (marketError) throw marketError;
           if (!market) throw new Error('Market not found');
 
-          // Create root node with market question
           const rootNode = {
             id: 'node-1',
             type: 'qaNode',
@@ -133,99 +212,23 @@ export function MarketQATree({ marketId }: { marketId: string }) {
               question: market.question,
               answer: 'Analyzing...',
               updateNodeData,
-              addChildNode,
+              addChildNode: () => {}, // Root node doesn't need this
               removeNode: handleRemoveNode,
+              depth: 0
             }
           };
           setNodes([rootNode]);
-
-          const { data: { user } } = await supabase.auth.getUser();
-          if (!user) return;
-
-          if (abortControllerRef.current) {
-            abortControllerRef.current.abort();
-          }
-          abortControllerRef.current = new AbortController();
-
-          console.log('Sending request to generate-qa-tree function...');
-          const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
-            body: { 
-              marketId, 
-              userId: user.id,
-              question: market.question // Pass the question to the edge function
-            }
-          });
-
-          if (error) throw error;
-
-          console.log('Received response from generate-qa-tree:', data);
           
-          const stream = new ReadableStream({
-            start(controller) {
-              const textDecoder = new TextDecoder();
-              const reader = new Response(data.body).body?.getReader();
-              
-              function push() {
-                reader?.read().then(({done, value}) => {
-                  if (done) {
-                    console.log('Stream complete');
-                    controller.close();
-                    return;
-                  }
-                  
-                  const chunk = textDecoder.decode(value);
-                  console.log('Received chunk:', chunk);
-                  
-                  const lines = chunk.split('\n').filter(line => line.trim());
-                  console.log('Processing lines:', lines);
-                  
-                  for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                      const jsonStr = line.slice(6).trim();
-                      console.log('Processing JSON string:', jsonStr);
-                      
-                      if (jsonStr === '[DONE]') continue;
-                      
-                      try {
-                        const parsed = JSON.parse(jsonStr);
-                        console.log('Parsed JSON:', parsed);
-                        
-                        const content = parsed.choices?.[0]?.delta?.content;
-                        if (content) {
-                          console.log('New content chunk:', content);
-                          processStreamChunk(content);
-                        }
-                      } catch (e) {
-                        console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr);
-                      }
-                    }
-                  }
-                  
-                  push();
-                });
-              }
-              
-              push();
-            }
-          });
-
-          const reader = stream.getReader();
-          while (true) {
-            const { done } = await reader.read();
-            if (done) break;
-          }
-
+          // Generate answer for root node
+          generateAnswer('node-1', market.question);
         } catch (error) {
-          console.error('Error streaming response:', error);
-          updateNodeData('node-1', 'answer', 'Error generating response');
-        } finally {
-          abortControllerRef.current = null;
+          console.error('Error initializing tree:', error);
         }
       };
 
       initializeTree();
     }
-  }, [nodes.length, marketId, setNodes, processStreamChunk, updateNodeData, addChildNode, handleRemoveNode]);
+  }, [nodes.length, marketId, setNodes, updateNodeData, handleRemoveNode, generateAnswer]);
 
   const nodeTypes = {
     qaNode: QANodeComponent
