@@ -30,8 +30,15 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [processingNodes, setProcessingNodes] = useState<Set<string>>(new Set());
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
   const [hasCreatedNodes, setHasCreatedNodes] = useState<Set<string>>(new Set());
+  
+  // Keep a ref of current nodes for immediate access
+  const nodesRef = useRef(nodes);
+  
+  // Update ref when nodes change
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
 
-  // Store function references in refs to avoid circular dependencies
   const analyzeNodeRef = useRef<any>(null);
   const createChildNodesRef = useRef<any>(null);
 
@@ -54,7 +61,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     );
   }, [setNodes]);
 
-  // Define createChildNodes first but store in ref
   createChildNodesRef.current = (
     parentId: string,
     parentPosition: { x: number, y: number },
@@ -88,7 +94,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      // Use ref to call analyzeNode
       if (analyzeNodeRef.current) {
         analyzeNodeRef.current(childId, questions[i], depth + 1);
       }
@@ -98,7 +103,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setEdges(eds => [...eds, ...newEdges]);
   };
 
-  // Define analyzeNode and store in ref
   analyzeNodeRef.current = async (nodeId: string, nodeQuestion: string, depth: number) => {
     console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
     if (depth >= MAX_DEPTH) {
@@ -122,7 +126,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       const reader = new Response(data.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
-      let accumulatedContent = '';
       let accumulatedJSON = '';
       const decoder = new TextDecoder();
       
@@ -169,7 +172,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                         nodeId
                       });
                       
-                      const parentNode = nodes.find(n => n.id === nodeId);
+                      // Use nodesRef instead of nodes state
+                      const parentNode = nodesRef.current.find(n => n.id === nodeId);
                       console.log('Parent node lookup result:', parentNode);
                       
                       if (parentNode && createChildNodesRef.current) {
@@ -200,7 +204,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                   }
                 } catch (e) {
                   console.log('Parsing in progress:', e);
-                  // Continue accumulating if we don't have valid JSON yet
                 }
               }
             } catch (e) {
@@ -243,7 +246,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setHasCreatedNodes(new Set());
     
     try {
-      // Create root node with market title
       const rootId = 'root-node';
       console.log('Creating root node:', rootId);
       const rootNode = createNode(rootId, { x: 0, y: 0 }, {
@@ -253,9 +255,10 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       });
       
       setNodes([rootNode]);
+      // Update ref immediately
+      nodesRef.current = [rootNode];
+      
       console.log('Root node created, starting analysis');
-  
-      // Start analysis with root node
       await analyzeNodeRef.current(rootId, marketQuestion, 0);
     } catch (error) {
       console.error('Analysis error:', error);
