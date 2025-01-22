@@ -30,6 +30,7 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     )
 
+    // Fetch market context
     const { data: market, error: marketError } = await supabase
       .from('markets')
       .select(`
@@ -48,12 +49,6 @@ serve(async (req) => {
       throw marketError
     }
 
-    if (!market) {
-      throw new Error('Market not found')
-    }
-
-    console.log('Market data fetched:', market)
-
     const marketContext = `
       Market Question: ${market.question}
       Description: ${market.description || 'No description available'}
@@ -64,9 +59,7 @@ serve(async (req) => {
       Closed: ${market.closed}
     `.trim()
 
-    console.log('Sending context to Perplexity:', marketContext)
-
-    // Call Perplexity to generate answer and sub-questions
+    // First call to Perplexity to generate answer and questions
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -86,18 +79,37 @@ serve(async (req) => {
             role: "user",
             content: `Based on this market information, provide an answer and 3 follow-up questions for: "${question}"\n\nContext:\n${marketContext}`
           }
-        ]
+        ],
+        stream: true
       })
     })
 
-    if (!perplexityResponse.ok) {
-      throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
-    }
+    // Create a TransformStream to parse the Perplexity response
+    const transformStream = new TransformStream({
+      async transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk)
+        const lines = text.split('\n').filter(line => line.trim())
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
+            
+            try {
+              const parsed = JSON.parse(jsonStr)
+              const content = parsed.choices?.[0]?.delta?.content
+              if (content) {
+                controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`)
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e)
+            }
+          }
+        }
+      }
+    })
 
-    const perplexityContent = await perplexityResponse.text()
-    console.log('Perplexity response:', perplexityContent)
-
-    // Second call to Gemini Flash for parsing into structured format
+    // Second call to Gemini Flash for structured parsing
     const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -115,7 +127,7 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: perplexityContent
+            content: await perplexityResponse.text()
           }
         ],
         response_format: { type: "json_object" },
@@ -123,8 +135,7 @@ serve(async (req) => {
       })
     })
 
-    // Return the Gemini Flash stream directly to the client
-    return new Response(geminiResponse.body, {
+    return new Response(geminiResponse.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

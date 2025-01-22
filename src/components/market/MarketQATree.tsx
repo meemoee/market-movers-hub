@@ -105,64 +105,89 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     contentBufferRef.current += chunk;
     
     try {
-      const jsonMatch = contentBufferRef.current.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        
-        if (parsed.answer) {
-          updateNodeData(nodeId, 'answer', parsed.answer);
-        }
-        
-        if (parsed.questions && Array.isArray(parsed.questions) && parsed.questions.length === 3) {
-          const node = nodes.find(n => n.id === nodeId);
-          if (node && node.data.depth < maxDepth) {
-            parsed.questions.forEach((question: string, index: number) => {
-              const newNodeId = `${nodeId}-${index + 1}`;
-              const position = generateNodePosition(
-                index,
-                3,
-                node.position.x,
-                node.position.y,
-                node.data.depth + 1,
-                maxDepth
-              );
+      // Look for complete JSON objects in the buffer
+      const matches = contentBufferRef.current.match(/\{[\s\S]*?\}/g);
+      if (matches) {
+        matches.forEach(jsonStr => {
+          try {
+            const parsed = JSON.parse(jsonStr);
+            
+            if (parsed.content) {
+              // Accumulate content until we have a complete response
+              contentBufferRef.current += parsed.content;
+              
+              // Try to extract answer and questions
+              const answerMatch = contentBufferRef.current.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/);
+              const questionsMatch = contentBufferRef.current.match(/QUESTIONS:\s*([\s\S]*?)$/);
+              
+              if (answerMatch) {
+                const answer = answerMatch[1].trim();
+                updateNodeData(nodeId, 'answer', answer);
+              }
+              
+              if (questionsMatch) {
+                const questionsText = questionsMatch[1];
+                const questions = questionsText
+                  .split(/\d+\.\s+/)
+                  .filter(q => q.trim())
+                  .slice(0, 3);
+                
+                if (questions.length === 3) {
+                  const node = nodes.find(n => n.id === nodeId);
+                  if (node && node.data.depth < maxDepth) {
+                    questions.forEach((question, index) => {
+                      const newNodeId = `${nodeId}-${index + 1}`;
+                      const position = generateNodePosition(
+                        index,
+                        3,
+                        node.position.x,
+                        node.position.y,
+                        node.data.depth + 1,
+                        maxDepth
+                      );
 
-              const newNode: Node<QAData> = {
-                id: newNodeId,
-                type: 'qaNode',
-                position,
-                data: {
-                  question,
-                  answer: 'Analyzing...',
-                  updateNodeData,
-                  addChildNode: handleAddChildNode,
-                  removeNode: handleRemoveNode,
-                  depth: node.data.depth + 1
-                },
-              };
+                      const newNode: Node<QAData> = {
+                        id: newNodeId,
+                        type: 'qaNode',
+                        position,
+                        data: {
+                          question: question.trim(),
+                          answer: 'Analyzing...',
+                          updateNodeData,
+                          addChildNode: handleAddChildNode,
+                          removeNode: handleRemoveNode,
+                          depth: node.data.depth + 1
+                        },
+                      };
 
-              setNodes((nds) => [...nds, newNode]);
-              setEdges((eds) => [
-                ...eds,
-                {
-                  id: `edge-${nodeId}-${newNodeId}`,
-                  source: nodeId,
-                  target: newNodeId,
-                  type: 'smoothstep',
-                },
-              ]);
+                      setNodes((nds) => [...nds, newNode]);
+                      setEdges((eds) => [
+                        ...eds,
+                        {
+                          id: `edge-${nodeId}-${newNodeId}`,
+                          source: nodeId,
+                          target: newNodeId,
+                          type: 'smoothstep',
+                        },
+                      ]);
 
-              // Generate answer for the new node
-              generateAnswer(newNodeId, question);
-            });
+                      // Generate answer for the new node
+                      generateAnswer(newNodeId, question.trim());
+                    });
+                  }
+                }
+                
+                // Clear the buffer after processing a complete response
+                contentBufferRef.current = '';
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing JSON in stream chunk:', e);
           }
-        }
-        
-        // Clear the buffer after processing
-        contentBufferRef.current = '';
+        });
       }
     } catch (e) {
-      console.error('Error parsing stream chunk:', e);
+      console.error('Error processing stream chunk:', e);
     }
   }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
 
