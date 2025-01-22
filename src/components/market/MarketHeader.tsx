@@ -45,11 +45,11 @@ export function MarketHeader({
           )}
         </div>
       </div>
-      <div className="flex gap-2 h-12 sm:flex-shrink-0 justify-end sm:justify-start">
+      <div className="flex w-full sm:w-auto gap-2 h-12">
         <HoverButton
           variant="buy"
           onClick={onBuy}
-          className="flex flex-col items-center justify-center"
+          className="flex-1 sm:flex-initial flex flex-col items-center justify-center"
         >
           <span className="text-xs truncate max-w-full">{outcomes[0]}</span>
           {bestAsk !== undefined && (
@@ -61,7 +61,7 @@ export function MarketHeader({
         <HoverButton
           variant="sell"
           onClick={onSell}
-          className="flex flex-col items-center justify-center"
+          className="flex-1 sm:flex-initial flex flex-col items-center justify-center"
         >
           <span className="text-xs truncate max-w-full">{outcomes[1]}</span>
           {bestBid !== undefined && (
