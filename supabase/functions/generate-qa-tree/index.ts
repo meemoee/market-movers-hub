@@ -17,11 +17,11 @@ serve(async (req) => {
   }
 
   try {
-    const { marketId, userId } = await req.json()
-    console.log('Received request:', { marketId, userId })
+    const { marketId, userId, question } = await req.json()
+    console.log('Received request:', { marketId, userId, question })
 
-    if (!marketId || !userId) {
-      throw new Error('Market ID and user ID are required')
+    if (!marketId || !userId || !question) {
+      throw new Error('Market ID, user ID, and question are required')
     }
 
     // Initialize Supabase client
@@ -70,7 +70,7 @@ serve(async (req) => {
 
     console.log('Sending context to Perplexity:', marketContext)
 
-    // First call to Perplexity for analysis
+    // Call Perplexity to generate answer
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -84,11 +84,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates insightful questions and detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
+            content: "You are a helpful assistant that generates detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
           },
           {
             role: "user",
-            content: `Based on this market information, generate a root question and detailed answer:\n\n${marketContext}`
+            content: `Based on this market information, provide a detailed answer to this question: "${question}"\n\nContext:\n${marketContext}`
           }
         ]
       })
@@ -118,7 +118,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a parser that extracts questions and answers from analysis text. Return only a JSON object with 'question' and 'answer' fields."
+            content: "You are a parser that extracts answers from analysis text. Return only a JSON object with an 'answer' field."
           },
           {
             role: "user",
