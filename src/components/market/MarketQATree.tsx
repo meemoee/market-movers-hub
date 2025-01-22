@@ -113,8 +113,13 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                   // Create child nodes if we have questions and not at max depth
                   if (data.questions?.length === CHILDREN_PER_NODE && depth < MAX_DEPTH) {
                     console.log('Creating child nodes for:', nodeId);
-                    const parent = nodes.find(n => n.id === nodeId);
-                    if (parent) {
+                    // Use setNodes callback to ensure we have current state
+                    setNodes(currentNodes => {
+                      const parent = currentNodes.find(n => n.id === nodeId);
+                      if (!parent) {
+                        console.log('Parent node not found in current nodes:', nodeId);
+                        return currentNodes;
+                      }
                       const parentElement = document.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
                       console.log('Found parent element:', !!parentElement);
                       
@@ -156,9 +161,33 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                         console.log('Starting analysis for child node:', childId);
                         await analyzeNode(childId, childQuestion, depth + 1);
                       }
-                    } else {
-                      console.log('Parent node not found:', nodeId);
-                    }
+                      
+                      const newNodes = [...currentNodes];
+                      data.questions.forEach((childQuestion, i) => {
+                        const childId = `node-${Date.now()}-${i}`;
+                        const position = generateNodePosition(
+                          i,
+                          CHILDREN_PER_NODE,
+                          parent.position.x,
+                          parent.position.y,
+                          depth + 1,
+                          MAX_DEPTH,
+                          document.querySelector(`[data-id="${nodeId}"]`) as HTMLElement
+                        );
+                        
+                        const newNode = createNode(childId, position, {
+                          question: childQuestion,
+                          answer: '',
+                          updateNodeData,
+                        });
+                        
+                        newNodes.push(newNode);
+                        
+                        setEdges(eds => [...eds, createEdge(nodeId, childId, depth + 1)]);
+                      });
+                      
+                      return newNodes;
+                    });
                   }
                 } catch (e) {
                   // Not valid JSON yet, keep accumulating
