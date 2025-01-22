@@ -56,6 +56,50 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }, [setNodes, setEdges]);
 
+  const handleAddChildNode = useCallback((parentId: string) => {
+    const parentNode = nodes.find(node => node.id === parentId);
+    if (!parentNode || parentNode.data.depth >= maxDepth) return;
+
+    const childCount = edges.filter(edge => edge.source === parentId).length;
+    const newNodeId = `${parentId}-${childCount + 1}`;
+
+    const position = generateNodePosition(
+      childCount,
+      3,
+      parentNode.position.x,
+      parentNode.position.y,
+      parentNode.data.depth + 1,
+      maxDepth
+    );
+
+    const newNode: Node<QAData> = {
+      id: newNodeId,
+      type: 'qaNode',
+      position,
+      data: {
+        question: 'New question...',
+        answer: 'Analyzing...',
+        updateNodeData,
+        addChildNode: handleAddChildNode,
+        removeNode: handleRemoveNode,
+        depth: parentNode.data.depth + 1
+      },
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: `edge-${parentId}-${newNodeId}`,
+        source: parentId,
+        target: newNodeId,
+        type: 'smoothstep',
+      },
+    ]);
+
+    generateAnswer(newNodeId, 'New question...');
+  }, [nodes, edges, maxDepth, setNodes, setEdges, updateNodeData, handleRemoveNode]);
+
   const processStreamChunk = useCallback((chunk: string, nodeId: string) => {
     contentBufferRef.current += chunk;
     
@@ -186,25 +230,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
               }
               
               const chunk = textDecoder.decode(value);
-              const lines = chunk.split('\n').filter(line => line.trim());
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim();
-                  if (jsonStr === '[DONE]') continue;
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr);
-                    const content = parsed.choices?.[0]?.delta?.content;
-                    if (content) {
-                      processStreamChunk(content, nodeId);
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e);
-                  }
-                }
-              }
-              
+              processStreamChunk(chunk, nodeId);
               push();
             });
           }
@@ -226,50 +252,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       abortControllerRef.current = null;
     }
   }, [marketId, processStreamChunk, updateNodeData]);
-
-  const handleAddChildNode = useCallback((parentId: string) => {
-    const parentNode = nodes.find(node => node.id === parentId);
-    if (!parentNode || parentNode.data.depth >= maxDepth) return;
-
-    const childCount = edges.filter(edge => edge.source === parentId).length;
-    const newNodeId = `${parentId}-${childCount + 1}`;
-
-    const position = generateNodePosition(
-      childCount,
-      3,
-      parentNode.position.x,
-      parentNode.position.y,
-      parentNode.data.depth + 1,
-      maxDepth
-    );
-
-    const newNode: Node<QAData> = {
-      id: newNodeId,
-      type: 'qaNode',
-      position,
-      data: {
-        question: 'New question...',
-        answer: 'Analyzing...',
-        updateNodeData,
-        addChildNode: handleAddChildNode,
-        removeNode: handleRemoveNode,
-        depth: parentNode.data.depth + 1
-      },
-    };
-
-    setNodes((nds) => [...nds, newNode]);
-    setEdges((eds) => [
-      ...eds,
-      {
-        id: `edge-${parentId}-${newNodeId}`,
-        source: parentId,
-        target: newNodeId,
-        type: 'smoothstep',
-      },
-    ]);
-
-    generateAnswer(newNodeId, 'New question...');
-  }, [nodes, edges, maxDepth, setNodes, setEdges, generateAnswer]);
 
   useEffect(() => {
     if (nodes.length === 0) {
