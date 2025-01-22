@@ -89,7 +89,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, analyzeNode]);
 
   const analyzeNode = async (nodeId: string, nodeQuestion: string, depth: number) => {
     console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
@@ -156,17 +156,40 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                     
                     // Only create child nodes if we haven't already for this node
                     if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
+                      console.log('Node creation check passed:', {
+                        hasQuestions: data.questions?.length > 0,
+                        notCreated: !hasCreatedNodes.has(nodeId),
+                        withinDepth: depth < MAX_DEPTH,
+                        nodeId
+                      });
+                      
                       const parentNode = nodes.find(n => n.id === nodeId);
+                      console.log('Parent node lookup result:', parentNode);
+                      
                       if (parentNode) {
-                        console.log('Creating child nodes for:', nodeId);
+                        console.log('Creating child nodes for:', nodeId, 'with questions:', data.questions);
                         createChildNodes(
                           nodeId,
                           parentNode.position,
                           data.questions,
                           depth
                         );
-                        setHasCreatedNodes(prev => new Set(prev).add(nodeId));
+                        setHasCreatedNodes(prev => {
+                          const next = new Set(prev);
+                          next.add(nodeId);
+                          console.log('Updated hasCreatedNodes:', next);
+                          return next;
+                        });
+                      } else {
+                        console.warn('Parent node not found in nodes state:', nodeId);
                       }
+                    } else {
+                      console.log('Node creation check failed:', {
+                        hasQuestions: data.questions?.length > 0,
+                        notCreated: !hasCreatedNodes.has(nodeId),
+                        withinDepth: depth < MAX_DEPTH,
+                        nodeId
+                      });
                     }
                   }
                 } catch (e) {
