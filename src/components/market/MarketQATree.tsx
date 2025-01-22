@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import { Plus, X } from "lucide-react";
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { ReactFlow, Background, Controls, Connection, useNodesState, useEdgesState, addEdge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card } from "@/components/ui/card";
@@ -12,7 +12,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const contentBufferRef = useRef('');
+  const [streamingContent, setStreamingContent] = useState('');
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -23,7 +23,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     [setEdges]
   );
 
-  const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
+  const updateNodeData = useCallback((nodeId: string, field: string, value: string | string[]) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
@@ -61,6 +61,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       data: {
         question: '',
         answer: '',
+        subQuestions: [],
         updateNodeData,
         addChildNode,
         removeNode: handleRemoveNode,
@@ -85,30 +86,27 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [setNodes, setEdges]);
 
   const processStreamChunk = useCallback((chunk: string) => {
-    contentBufferRef.current += chunk;
-    
-    let answerMatch = contentBufferRef.current.match(/"answer"\s*:\s*"([^"]*)/);
-    
-    if (answerMatch) {
-      const answer = answerMatch[1].replace(/\\"/g, '"');
-      updateNodeData('node-1', 'answer', answer);
-    }
-
-    // Handle content that might be continuation of the answer
-    if (!answerMatch) {
-      const content = chunk
-        .replace(/^\s*"/, '')
-        .replace(/"\s*$/, '')
-        .replace(/\\"/g, '"')
-        .replace(/[{}]/g, '')
-        .trim();
-
-      if (content && contentBufferRef.current.includes('"answer"')) {
-        const currentAnswer = nodes.find(n => n.id === 'node-1')?.data?.answer || '';
-        updateNodeData('node-1', 'answer', currentAnswer + content);
+    try {
+      // Accumulate streaming content
+      setStreamingContent(prev => prev + chunk);
+      
+      // Try to parse the accumulated content as JSON
+      try {
+        const parsedData = JSON.parse(streamingContent);
+        if (parsedData.answer) {
+          updateNodeData('node-1', 'answer', parsedData.answer);
+        }
+        if (parsedData.subQuestions && Array.isArray(parsedData.subQuestions)) {
+          updateNodeData('node-1', 'subQuestions', parsedData.subQuestions);
+        }
+      } catch (e) {
+        // If parsing fails, it means we're still receiving partial content
+        console.log('Partial content received:', chunk);
       }
+    } catch (error) {
+      console.error('Error processing stream chunk:', error);
     }
-  }, [nodes, updateNodeData]);
+  }, [streamingContent, updateNodeData]);
 
   useEffect(() => {
     if (nodes.length === 0) {
@@ -132,6 +130,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
             data: {
               question: market.question,
               answer: 'Analyzing...',
+              subQuestions: [],
               updateNodeData,
               addChildNode,
               removeNode: handleRemoveNode,
@@ -152,13 +151,16 @@ export function MarketQATree({ marketId }: { marketId: string }) {
             body: { 
               marketId, 
               userId: user.id,
-              question: market.question // Pass the question to the edge function
+              question: market.question
             }
           });
 
           if (error) throw error;
 
           console.log('Received response from generate-qa-tree:', data);
+          
+          // Reset streaming content
+          setStreamingContent('');
           
           const stream = new ReadableStream({
             start(controller) {

@@ -84,54 +84,20 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates LONG detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
+            content: "You are a helpful assistant that analyzes market predictions. For each question, provide a detailed answer and 3 relevant follow-up questions. Format your response as a JSON object with 'answer' and 'subQuestions' fields. The subQuestions should be an array of 3 strings."
           },
           {
             role: "user",
-            content: `Based on this market information, provide a LONG detailed answer to this question: "${question}"\n\nContext:\n${marketContext}`
-          }
-        ]
-      })
-    })
-
-    if (!perplexityResponse.ok) {
-      throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
-    }
-
-    const perplexityData = await perplexityResponse.json()
-    const perplexityContent = perplexityData.choices[0].message.content
-
-    console.log('Perplexity response:', perplexityContent)
-    console.log('Sending to Gemini Flash for parsing...')
-
-    // Second call to Gemini Flash for parsing into Q&A format
-    const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5-8b",
-        messages: [
-          {
-            role: "system",
-            content: "You are a parser that extracts answers from analysis text. Return only a JSON object with an 'answer' field. EXTRACT THE TEXT VERBATIM AND DO NOT PARAPHRASE."
-          },
-          {
-            role: "user",
-            content: perplexityContent
+            content: `Based on this market information, provide a detailed answer to this question: "${question}"\n\nContext:\n${marketContext}`
           }
         ],
-        response_format: { type: "json_object" },
-        stream: true
+        stream: true,
+        response_format: { type: "json_object" }
       })
     })
 
-    // Return the Gemini Flash stream directly to the client
-    return new Response(geminiResponse.body, {
+    // Return the stream directly to the client
+    return new Response(perplexityResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
