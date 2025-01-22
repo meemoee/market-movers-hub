@@ -1,14 +1,13 @@
-import { Handle, Position, Node } from '@xyflow/react';
-import { Plus, X } from "lucide-react";
+import { Handle, Position } from '@xyflow/react';
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { ReactFlow, Background, Controls, Connection, useNodesState, useEdgesState, addEdge } from '@xyflow/react';
+import { ReactFlow, Background, Controls, Connection, useNodesState, useEdgesState, addEdge, Node } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card } from "@/components/ui/card";
 import { QANodeComponent } from './nodes/QANodeComponent';
 import { supabase } from '@/integrations/supabase/client';
 import { generateNodePosition } from './utils/nodeGenerator';
 
-interface QAData {
+interface QAData extends Record<string, unknown> {
   question: string;
   answer: string;
   updateNodeData: (id: string, field: string, value: string) => void;
@@ -20,7 +19,7 @@ interface QAData {
 type QANode = Node<QAData>;
 
 export function MarketQATree({ marketId }: { marketId: string }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<QANode>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<QAData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [maxDepth] = useState(2); // Maximum depth of 2 for the tree
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -83,7 +82,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                 maxDepth
               );
 
-              const newNode: QANode = {
+              const newNode: Node<QAData> = {
                 id: newNodeId,
                 type: 'qaNode',
                 position,
@@ -208,7 +207,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           if (marketError) throw marketError;
           if (!market) throw new Error('Market not found');
 
-          const rootNode: QANode = {
+          const rootNode: Node<QAData> = {
             id: 'node-1',
             type: 'qaNode',
             position: { x: 0, y: 0 },
