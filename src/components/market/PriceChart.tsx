@@ -22,7 +22,6 @@ const intervals = [
 ];
 
 const formatDate = timeFormat("%b %d");
-const tooltipDateFormat = timeFormat("%b %d, %I:%M %p");
 
 interface ChartProps {
   data: PriceData[];
@@ -91,57 +90,36 @@ function Chart({
     };
   }, [data, timeScale]);
 
-  const handleTooltip = useCallback((event: React.MouseEvent<SVGRectElement>) => {
-    const { x } = localPoint(event) || { x: 0 };
-    const xValue = x - margin.left;
-    
-    if (xValue < 0 || xValue > innerWidth) return;
-    
-    const interpolatedPoint = getInterpolatedPrice(xValue);
+  const handleTooltip = useCallback(
+    (event: React.TouchEvent<SVGRectElement> | React.MouseEvent<SVGRectElement>) => {
+      const { x } = localPoint(event) || { x: 0 };
+      const xValue = x - margin.left;
+      
+      if (xValue < 0 || xValue > innerWidth) return;
+      
+      const interpolatedPoint = getInterpolatedPrice(xValue);
 
-    showTooltip({
-      tooltipData: interpolatedPoint,
-      tooltipLeft: x,
-      tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
+      showTooltip({
+        tooltipData: interpolatedPoint,
+        tooltipLeft: x,
+        tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
+      });
+    },
+    [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]
+  );
+
+  const tooltipDateFormat = useMemo(() => {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
     });
-  }, [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]);
-
-  const handleTouchStart = useCallback((event: React.TouchEvent<SVGRectElement>) => {
-    event.preventDefault(); // Prevent default touch behavior
-    const touch = event.touches[0];
-    const { x } = localPoint(event) || { x: 0 };
-    const xValue = x - margin.left;
-    
-    if (xValue < 0 || xValue > innerWidth) return;
-    
-    const interpolatedPoint = getInterpolatedPrice(xValue);
-
-    showTooltip({
-      tooltipData: interpolatedPoint,
-      tooltipLeft: x,
-      tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
-    });
-  }, [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]);
-
-  const handleTouchMove = useCallback((event: React.TouchEvent<SVGRectElement>) => {
-    event.preventDefault(); // Prevent default touch behavior
-    const touch = event.touches[0];
-    const { x } = localPoint(event) || { x: 0 };
-    const xValue = x - margin.left;
-    
-    if (xValue < 0 || xValue > innerWidth) return;
-    
-    const interpolatedPoint = getInterpolatedPrice(xValue);
-
-    showTooltip({
-      tooltipData: interpolatedPoint,
-      tooltipLeft: x,
-      tooltipTop: priceScale(interpolatedPoint.price) + margin.top,
-    });
-  }, [timeScale, priceScale, data, margin, showTooltip, innerWidth, getInterpolatedPrice]);
+  }, []);
 
   return (
-    <div className="relative touch-pan-y">
+    <div className="relative">
       <svg width={width} height={height} style={{ overflow: 'visible' }}>
         <defs>
           <LinearGradient id="above-gradient" from="rgba(21, 128, 61, 0.05)" to="rgba(21, 128, 61, 0.05)" />
@@ -231,11 +209,11 @@ function Chart({
               width={innerWidth}
               height={innerHeight}
               fill="transparent"
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
+              onTouchStart={handleTooltip}
+              onTouchMove={handleTooltip}
               onMouseMove={handleTooltip}
               onMouseLeave={hideTooltip}
-              style={{ pointerEvents: 'all', touchAction: 'pan-y' }}
+              style={{ pointerEvents: 'all' }}
             />
 
             {/* Interactive event markers icons - must be on top */}
@@ -289,7 +267,7 @@ function Chart({
           }}
         >
           <div className="flex flex-col leading-tight">
-            <span>{tooltipDateFormat(new Date(tooltipData.time))}</span>
+            <span>{tooltipDateFormat.format(tooltipData.time)}</span>
             <span>{tooltipData.price.toFixed(2)}%</span>
           </div>
         </div>
@@ -319,8 +297,8 @@ export default function PriceChart({
   , [data]);
 
   return (
-    <div className="touch-pan-y">      
-      <div className="h-[300px] w-full touch-pan-y">
+    <div>      
+      <div className="h-[300px] w-full">
         <ParentSize>
           {({ width, height }) => (
             <Chart
