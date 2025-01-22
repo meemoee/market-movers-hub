@@ -14,7 +14,11 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const contentBufferRef = useRef('');
 
   const onConnect = useCallback(
-    (params: Connection) => setEdges((eds) => addEdge(params, eds)),
+    (params: Connection) => {
+      if (params.source && params.target) {
+        setEdges((eds) => addEdge(params, eds));
+      }
+    },
     [setEdges]
   );
 
