@@ -88,7 +88,7 @@ export default function Index() {
             className={`${
               isMobile 
                 ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background transition-transform duration-300 pt-14'
-                : 'w-[260px] relative'
+                : 'w-[280px] relative ml-8'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
@@ -98,7 +98,7 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-28'}`}>
+          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-8'}`}>
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
