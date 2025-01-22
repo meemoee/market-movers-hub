@@ -258,6 +258,8 @@ export type Database = {
       news_articles: {
         Row: {
           created_at: string | null
+          gradient_end_rgb: string | null
+          gradient_start_rgb: string | null
           id: string
           image_url: string | null
           link: string | null
@@ -269,6 +271,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          gradient_end_rgb?: string | null
+          gradient_start_rgb?: string | null
           id?: string
           image_url?: string | null
           link?: string | null
@@ -280,6 +284,8 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          gradient_end_rgb?: string | null
+          gradient_start_rgb?: string | null
           id?: string
           image_url?: string | null
           link?: string | null

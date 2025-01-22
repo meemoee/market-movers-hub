@@ -9,15 +9,35 @@ interface NewsArticle {
   link: string | null;
   image_url: string | null;
   position: number;
+  gradient_start_rgb: string | null;
+  gradient_end_rgb: string | null;
 }
 
-function BentoCard({ children, className }: { children: React.ReactNode; className?: string }) {
+function BentoCard({ children, className, gradientStart, gradientEnd }: { 
+  children: React.ReactNode; 
+  className?: string;
+  gradientStart?: string;
+  gradientEnd?: string;
+}) {
+  const borderStyle = gradientStart && gradientEnd
+    ? {
+        border: 'none',
+        background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd})) border-box`,
+        padding: '1px', // This creates space for the gradient border
+      }
+    : {};
+
   return (
-    <div className={cn(
-      "relative h-full w-full overflow-hidden rounded-lg border border-border/50",
-      className
-    )}>
-      {children}
+    <div 
+      className={cn(
+        "relative h-full w-full overflow-hidden rounded-lg",
+        className
+      )}
+      style={borderStyle}
+    >
+      <div className="h-full w-full bg-background rounded-lg overflow-hidden">
+        {children}
+      </div>
     </div>
   );
 }
@@ -89,16 +109,26 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Left side - square card */}
-        <BentoCard className="md:row-span-2 aspect-square">
+        <BentoCard 
+          className="md:row-span-2 aspect-square"
+          gradientStart={articles[0]?.gradient_start_rgb || undefined}
+          gradientEnd={articles[0]?.gradient_end_rgb || undefined}
+        >
           {renderArticle(1)}
         </BentoCard>
 
         {/* Right side - two cards */}
-        <BentoCard>
+        <BentoCard
+          gradientStart={articles[1]?.gradient_start_rgb || undefined}
+          gradientEnd={articles[1]?.gradient_end_rgb || undefined}
+        >
           {renderArticle(2)}
         </BentoCard>
 
-        <BentoCard>
+        <BentoCard
+          gradientStart={articles[2]?.gradient_start_rgb || undefined}
+          gradientEnd={articles[2]?.gradient_end_rgb || undefined}
+        >
           {renderArticle(3)}
         </BentoCard>
       </div>
