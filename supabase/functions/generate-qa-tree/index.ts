@@ -17,60 +17,10 @@ serve(async (req) => {
   }
 
   try {
-    const { marketId, userId } = await req.json()
-    console.log('Received request:', { marketId, userId })
+    const { marketId, marketQuestion } = await req.json()
+    console.log('Received request:', { marketId, marketQuestion })
 
-    if (!marketId || !userId) {
-      throw new Error('Market ID and user ID are required')
-    }
-
-    // Initialize Supabase client
-    const supabase = createClient(
-      SUPABASE_URL!,
-      SUPABASE_SERVICE_ROLE_KEY!,
-      { auth: { persistSession: false } }
-    )
-
-    // Fetch market data
-    console.log('Fetching market data for:', marketId)
-    const { data: market, error: marketError } = await supabase
-      .from('markets')
-      .select(`
-        *,
-        event:events(
-          title,
-          category,
-          sub_title
-        )
-      `)
-      .eq('id', marketId)
-      .single()
-
-    if (marketError) {
-      console.error('Error fetching market:', marketError)
-      throw marketError
-    }
-
-    if (!market) {
-      throw new Error('Market not found')
-    }
-
-    console.log('Market data fetched:', market)
-
-    // Construct market context
-    const marketContext = `
-      Market Question: ${market.question}
-      Description: ${market.description || 'No description available'}
-      Event: ${market.event?.title || 'No event title'}
-      Category: ${market.event?.category || 'No category'}
-      Status: ${market.status}
-      Active: ${market.active}
-      Closed: ${market.closed}
-    `.trim()
-
-    console.log('Sending context to Perplexity:', marketContext)
-
-    // First call to Perplexity for analysis
+    // Single perplexity call with streaming
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -84,13 +34,14 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates insightful questions and LONG, detailed UP-TO-DATE quotes with citations giving information surrounding the question Focus on quotes analyzing the market context provided and generate thoughtful analysis."
+            content: "You are an analyst that provides one detailed analysis with citations of a market question, followed by exactly 3 key follow-up questions. Always format your response as: ANALYSIS: <your analysis> QUESTIONS: 1. <question1> 2. <question2> 3. <question3>"
           },
           {
             role: "user",
-            content: `Based on this market information, generate a root question and relevant cited quotes as an answer:\n\n${marketContext}`
+            content: `Analyze this market question and provide follow-up questions: ${marketQuestion}`
           }
-        ]
+        ],
+        stream: true
       })
     })
 
@@ -98,40 +49,8 @@ serve(async (req) => {
       throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
     }
 
-    const perplexityData = await perplexityResponse.json()
-    const perplexityContent = perplexityData.choices[0].message.content
-
-    console.log('Perplexity response:', perplexityContent)
-    console.log('Sending to Gemini Flash for parsing...')
-
-    // Second call to Gemini Flash for parsing into Q&A format
-    const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5-8b",
-        messages: [
-          {
-            role: "system",
-            content: "You are a parser that extracts questions and quotes as an answers from analysis text. Return only a JSON object with 'question' and 'answer' fields. YOU MUST STATE the questions and answers VERBATIM and DO NOT PARAPHRASE."
-          },
-          {
-            role: "user",
-            content: perplexityContent
-          }
-        ],
-        response_format: { type: "json_object" },
-        stream: true
-      })
-    })
-
-    // Return the Gemini Flash stream directly to the client
-    return new Response(geminiResponse.body, {
+    // Return the stream directly
+    return new Response(perplexityResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
@@ -145,11 +64,11 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
-        status: 500, 
+        status: 500,
         headers: { 
           ...corsHeaders,
           'Content-Type': 'application/json'
-        } 
+        }
       }
     )
   }
