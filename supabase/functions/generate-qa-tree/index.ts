@@ -17,20 +17,22 @@ serve(async (req) => {
   }
 
   try {
-    const { marketId, userId, question } = await req.json()
-    console.log('Received request:', { marketId, userId, question })
+    const { marketId, userId } = await req.json()
+    console.log('Received request:', { marketId, userId })
 
-    if (!marketId || !userId || !question) {
-      throw new Error('Market ID, user ID, and question are required')
+    if (!marketId || !userId) {
+      throw new Error('Market ID and user ID are required')
     }
 
+    // Initialize Supabase client
     const supabase = createClient(
       SUPABASE_URL!,
       SUPABASE_SERVICE_ROLE_KEY!,
       { auth: { persistSession: false } }
     )
 
-    // Fetch market context
+    // Fetch market data
+    console.log('Fetching market data for:', marketId)
     const { data: market, error: marketError } = await supabase
       .from('markets')
       .select(`
@@ -49,6 +51,13 @@ serve(async (req) => {
       throw marketError
     }
 
+    if (!market) {
+      throw new Error('Market not found')
+    }
+
+    console.log('Market data fetched:', market)
+
+    // Construct market context
     const marketContext = `
       Market Question: ${market.question}
       Description: ${market.description || 'No description available'}
@@ -59,7 +68,9 @@ serve(async (req) => {
       Closed: ${market.closed}
     `.trim()
 
-    // First call to Perplexity to generate answer and questions
+    console.log('Sending context to Perplexity:', marketContext)
+
+    // First call to Perplexity for analysis
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -73,43 +84,27 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that analyzes market predictions. For each question, provide a detailed answer and generate 3 relevant follow-up questions that would help deepen the analysis. Format your response as: ANSWER: [your answer] QUESTIONS: 1. [question1] 2. [question2] 3. [question3]"
+            content: "You are a helpful assistant that generates insightful questions and detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
           },
           {
             role: "user",
-            content: `Based on this market information, provide an answer and 3 follow-up questions for: "${question}"\n\nContext:\n${marketContext}`
+            content: `Based on this market information, generate a root question and detailed answer:\n\n${marketContext}`
           }
-        ],
-        stream: true
+        ]
       })
     })
 
-    // Create a TransformStream to parse the Perplexity response
-    const transformStream = new TransformStream({
-      async transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        const lines = text.split('\n').filter(line => line.trim())
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim()
-            if (jsonStr === '[DONE]') continue
-            
-            try {
-              const parsed = JSON.parse(jsonStr)
-              const content = parsed.choices?.[0]?.delta?.content
-              if (content) {
-                controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`)
-              }
-            } catch (e) {
-              console.error('Error parsing SSE data:', e)
-            }
-          }
-        }
-      }
-    })
+    if (!perplexityResponse.ok) {
+      throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
+    }
 
-    // Second call to Gemini Flash for structured parsing
+    const perplexityData = await perplexityResponse.json()
+    const perplexityContent = perplexityData.choices[0].message.content
+
+    console.log('Perplexity response:', perplexityContent)
+    console.log('Sending to Gemini Flash for parsing...')
+
+    // Second call to Gemini Flash for parsing into Q&A format
     const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -123,11 +118,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a parser that extracts answers and questions from analysis text. Return a JSON object with 'answer' and 'questions' fields, where questions is an array of 3 strings."
+            content: "You are a parser that extracts questions and answers from analysis text. Return only a JSON object with 'question' and 'answer' fields."
           },
           {
             role: "user",
-            content: await perplexityResponse.text()
+            content: perplexityContent
           }
         ],
         response_format: { type: "json_object" },
@@ -135,7 +130,8 @@ serve(async (req) => {
       })
     })
 
-    return new Response(geminiResponse.body?.pipeThrough(transformStream), {
+    // Return the Gemini Flash stream directly to the client
+    return new Response(geminiResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
