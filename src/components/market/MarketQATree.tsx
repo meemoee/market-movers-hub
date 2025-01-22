@@ -30,9 +30,11 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [processingNodes, setProcessingNodes] = useState<Set<string>>(new Set());
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
+    console.log('Updating node data:', { nodeId, field, value: value.substring(0, 50) + '...' });
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
+          console.log('Found node to update:', nodeId);
           return {
             ...node,
             data: {
@@ -47,11 +49,16 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   }, [setNodes]);
 
   const analyzeNode = async (nodeId: string, nodeQuestion: string, depth: number) => {
-    if (depth >= MAX_DEPTH) return;
+    console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
+    if (depth >= MAX_DEPTH) {
+      console.log('Max depth reached, stopping analysis');
+      return;
+    }
     
     setProcessingNodes(prev => new Set(prev).add(nodeId));
     
     try {
+      console.log('Invoking edge function for node:', nodeId);
       const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({
           marketId,
@@ -67,11 +74,17 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       let accumulatedContent = '';
       const decoder = new TextDecoder();
 
+      console.log('Starting to read stream for node:', nodeId);
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('Stream complete for node:', nodeId);
+          break;
+        }
 
         const chunk = decoder.decode(value);
+        console.log('Received chunk for node:', nodeId, chunk.substring(0, 50) + '...');
+        
         const lines = chunk.split('\n').filter(line => line.trim());
 
         for (const line of lines) {
@@ -85,23 +98,31 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               
               if (content) {
                 accumulatedContent += content;
+                console.log('Accumulated content for node:', nodeId, accumulatedContent.length, 'chars');
                 try {
                   // Try to parse as JSON
                   const data: NodeData = JSON.parse(accumulatedContent);
+                  console.log('Successfully parsed JSON for node:', nodeId, {
+                    analysisLength: data.analysis.length,
+                    questionsCount: data.questions.length
+                  });
                   
                   // Update current node's analysis
                   updateNodeData(nodeId, 'answer', data.analysis);
 
                   // Create child nodes if we have questions and not at max depth
                   if (data.questions?.length === CHILDREN_PER_NODE && depth < MAX_DEPTH) {
+                    console.log('Creating child nodes for:', nodeId);
                     const parent = nodes.find(n => n.id === nodeId);
                     if (parent) {
                       const parentElement = document.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
+                      console.log('Found parent element:', !!parentElement);
                       
                       // Create child nodes and analyze them
                       for (let i = 0; i < data.questions.length; i++) {
                         const childQuestion = data.questions[i];
                         const childId = `node-${Date.now()}-${i}`;
+                        console.log('Generating position for child:', childId);
                         const position = generateNodePosition(
                           i,
                           CHILDREN_PER_NODE,
@@ -111,6 +132,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                           MAX_DEPTH,
                           parentElement
                         );
+                        console.log('Generated position:', position);
 
                         const newNode = createNode(childId, position, {
                           question: childQuestion,
@@ -120,16 +142,27 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
 
                         const newEdge = createEdge(nodeId, childId, depth + 1);
 
-                        setNodes(nds => [...nds, newNode]);
-                        setEdges(eds => [...eds, newEdge]);
+                        console.log('Adding new node and edge:', { nodeId: childId, parentId: nodeId });
+                        setNodes(nds => {
+                          console.log('Current nodes:', nds.length, 'Adding new node:', childId);
+                          return [...nds, newNode];
+                        });
+                        setEdges(eds => {
+                          console.log('Current edges:', eds.length, 'Adding new edge:', newEdge.id);
+                          return [...eds, newEdge];
+                        });
 
                         // Analyze the new child node
+                        console.log('Starting analysis for child node:', childId);
                         await analyzeNode(childId, childQuestion, depth + 1);
                       }
+                    } else {
+                      console.log('Parent node not found:', nodeId);
                     }
                   }
                 } catch (e) {
                   // Not valid JSON yet, keep accumulating
+                  console.log('Invalid JSON, continuing to accumulate:', e.message);
                 }
               }
             } catch (e) {
@@ -155,6 +188,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   };
 
   const handleAnalyze = async () => {
+    console.log('Starting analysis with market question:', marketQuestion);
     if (!marketQuestion?.trim()) {
       toast({
         variant: "destructive",
@@ -171,6 +205,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     try {
       // Create root node with market title
       const rootId = 'root-node';
+      console.log('Creating root node:', rootId);
       const rootNode = createNode(rootId, { x: 0, y: 0 }, {
         question: marketQuestion,
         answer: '',
@@ -178,6 +213,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       });
       
       setNodes([rootNode]);
+      console.log('Root node created, starting analysis');
   
       // Start analysis with root node
       await analyzeNode(rootId, marketQuestion, 0);
