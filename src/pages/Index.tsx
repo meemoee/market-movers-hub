@@ -75,8 +75,8 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <Header onMenuClick={toggleSidebar} />
       
-      <main className="container mx-auto pt-14 lg:pr-[420px] px-0 sm:px-4">
-        <div className="relative flex max-w-[1200px] mx-auto">
+      <main className="container mx-auto pt-14 xl:pr-[400px] px-0 sm:px-4">
+        <div className="relative flex max-w-[1280px] mx-auto">
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-40"
