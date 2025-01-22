@@ -1,6 +1,6 @@
 import { Handle, Position } from '@xyflow/react';
 import { Plus, X } from "lucide-react";
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { ReactFlow, Background, Controls, Connection, useNodesState, useEdgesState, addEdge } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { Card } from "@/components/ui/card";
@@ -12,7 +12,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const [streamingContent, setStreamingContent] = useState('');
+  const contentBufferRef = useRef('');
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -23,7 +23,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     [setEdges]
   );
 
-  const updateNodeData = useCallback((nodeId: string, field: string, value: string | string[]) => {
+  const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
@@ -61,7 +61,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       data: {
         question: '',
         answer: '',
-        subQuestions: [],
         updateNodeData,
         addChildNode,
         removeNode: handleRemoveNode,
@@ -86,58 +85,65 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [setNodes, setEdges]);
 
   const processStreamChunk = useCallback((chunk: string) => {
-    try {
-      // Accumulate streaming content
-      setStreamingContent(prev => prev + chunk);
-      
-      // Try to parse the accumulated content as JSON
-      try {
-        const parsedData = JSON.parse(streamingContent);
-        if (parsedData.answer) {
-          updateNodeData('node-1', 'answer', parsedData.answer);
-        }
-        if (parsedData.subQuestions && Array.isArray(parsedData.subQuestions)) {
-          updateNodeData('node-1', 'subQuestions', parsedData.subQuestions);
-        }
-      } catch (e) {
-        // If parsing fails, it means we're still receiving partial content
-        console.log('Partial content received:', chunk);
-      }
-    } catch (error) {
-      console.error('Error processing stream chunk:', error);
+    // Append new chunk to buffer
+    contentBufferRef.current += chunk;
+    
+    // Try to extract complete fields from the buffer
+    let questionMatch = contentBufferRef.current.match(/"question"\s*:\s*"([^"]*)/);
+    let answerMatch = contentBufferRef.current.match(/"answer"\s*:\s*"([^"]*)/);
+    
+    if (questionMatch) {
+      const question = questionMatch[1].replace(/\\"/g, '"');
+      updateNodeData('node-1', 'question', question);
     }
-  }, [streamingContent, updateNodeData]);
+    
+    if (answerMatch) {
+      const answer = answerMatch[1].replace(/\\"/g, '"');
+      updateNodeData('node-1', 'answer', answer);
+    }
+
+    // Handle content that might be continuation of a field
+    if (!questionMatch && !answerMatch) {
+      const content = chunk
+        .replace(/^\s*"/, '')
+        .replace(/"\s*$/, '')
+        .replace(/\\"/g, '"')
+        .replace(/[{}]/g, '')
+        .trim();
+
+      if (content) {
+        // Check if this is part of the current answer
+        if (contentBufferRef.current.includes('"answer"')) {
+          const currentAnswer = nodes.find(n => n.id === 'node-1')?.data?.answer || '';
+          updateNodeData('node-1', 'answer', currentAnswer + content);
+        }
+        // Check if this is part of the current question
+        else if (contentBufferRef.current.includes('"question"')) {
+          const currentQuestion = nodes.find(n => n.id === 'node-1')?.data?.question || '';
+          updateNodeData('node-1', 'question', currentQuestion + content);
+        }
+      }
+    }
+  }, [nodes, updateNodeData]);
 
   useEffect(() => {
     if (nodes.length === 0) {
-      const initializeTree = async () => {
+      const rootNode = {
+        id: 'node-1',
+        type: 'qaNode',
+        position: { x: 0, y: 0 },
+        data: {
+          question: 'Loading...',
+          answer: '',
+          updateNodeData,
+          addChildNode,
+          removeNode: handleRemoveNode,
+        }
+      };
+      setNodes([rootNode]);
+
+      const streamResponse = async () => {
         try {
-          // Fetch market data to get the title
-          const { data: market, error: marketError } = await supabase
-            .from('markets')
-            .select('question')
-            .eq('id', marketId)
-            .single();
-
-          if (marketError) throw marketError;
-          if (!market) throw new Error('Market not found');
-
-          // Create root node with market question
-          const rootNode = {
-            id: 'node-1',
-            type: 'qaNode',
-            position: { x: 0, y: 0 },
-            data: {
-              question: market.question,
-              answer: 'Analyzing...',
-              subQuestions: [],
-              updateNodeData,
-              addChildNode,
-              removeNode: handleRemoveNode,
-            }
-          };
-          setNodes([rootNode]);
-
           const { data: { user } } = await supabase.auth.getUser();
           if (!user) return;
 
@@ -148,19 +154,12 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
           console.log('Sending request to generate-qa-tree function...');
           const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
-            body: { 
-              marketId, 
-              userId: user.id,
-              question: market.question
-            }
+            body: { marketId, userId: user.id }
           });
 
           if (error) throw error;
 
           console.log('Received response from generate-qa-tree:', data);
-          
-          // Reset streaming content
-          setStreamingContent('');
           
           const stream = new ReadableStream({
             start(controller) {
@@ -225,7 +224,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         }
       };
 
-      initializeTree();
+      streamResponse();
     }
   }, [nodes.length, marketId, setNodes, processStreamChunk, updateNodeData, addChildNode, handleRemoveNode]);
 
