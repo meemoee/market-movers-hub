@@ -40,13 +40,11 @@ export default function Index() {
     page
   );
 
-  // Reset state when interval or openMarketsOnly changes
   useEffect(() => {
     setPage(1);
     setAllMovers([]);
   }, [selectedInterval, openMarketsOnly]);
 
-  // Update allMovers when data changes
   useEffect(() => {
     if (data?.data) {
       if (page === 1) {
@@ -77,9 +75,8 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <Header onMenuClick={toggleSidebar} />
       
-      <main className="container mx-auto pt-14 lg:pr-[420px]">
+      <main className="container mx-auto pt-14 lg:pr-[420px] px-0 sm:px-4">
         <div className="relative flex max-w-[1200px] mx-auto">
-          {/* Mobile sidebar overlay */}
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-40"
@@ -87,7 +84,6 @@ export default function Index() {
             />
           )}
 
-          {/* Account Island / Sidebar */}
           <aside 
             className={`${
               isMobile 
