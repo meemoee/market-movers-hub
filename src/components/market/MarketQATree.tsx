@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button"; 
 import { useToast } from '@/hooks/use-toast';
@@ -31,16 +31,13 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
   const [hasCreatedNodes, setHasCreatedNodes] = useState<Set<string>>(new Set());
   
-  // Keep a ref of current nodes for immediate access
-  const nodesRef = useRef(nodes);
+  // Track current nodes via ref
+  const currentNodesRef = useRef(nodes);
   
-  // Update ref when nodes change
+  // Update ref whenever nodes change
   useEffect(() => {
-    nodesRef.current = nodes;
+    currentNodesRef.current = nodes;
   }, [nodes]);
-
-  const analyzeNodeRef = useRef<any>(null);
-  const createChildNodesRef = useRef<any>(null);
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     console.log('Updating node data:', { nodeId, field, value: value.substring(0, 50) + '...' });
@@ -61,7 +58,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     );
   }, [setNodes]);
 
-  createChildNodesRef.current = (
+  const createChildNodes = useCallback((
     parentId: string,
     parentPosition: { x: number, y: number },
     questions: string[],
@@ -94,16 +91,15 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      if (analyzeNodeRef.current) {
-        analyzeNodeRef.current(childId, questions[i], depth + 1);
-      }
+      // Queue analysis for the new node after a short delay
+      setTimeout(() => analyzeNode(childId, questions[i], depth + 1), 100 * i);
     }
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
-  };
+  }, [setNodes, setEdges]);
 
-  analyzeNodeRef.current = async (nodeId: string, nodeQuestion: string, depth: number) => {
+  const analyzeNode = useCallback(async (nodeId: string, nodeQuestion: string, depth: number) => {
     console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
     if (depth >= MAX_DEPTH) {
       console.log('Max depth reached, stopping analysis');
@@ -172,13 +168,12 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                         nodeId
                       });
                       
-                      // Use nodesRef instead of nodes state
-                      const parentNode = nodesRef.current.find(n => n.id === nodeId);
+                      const parentNode = currentNodesRef.current.find(n => n.id === nodeId);
                       console.log('Parent node lookup result:', parentNode);
                       
-                      if (parentNode && createChildNodesRef.current) {
+                      if (parentNode) {
                         console.log('Creating child nodes for:', nodeId, 'with questions:', data.questions);
-                        createChildNodesRef.current(
+                        createChildNodes(
                           nodeId,
                           parentNode.position,
                           data.questions,
@@ -226,7 +221,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         return next;
       });
     }
-  };
+  }, [createChildNodes, hasCreatedNodes, updateNodeData]);
 
   const handleAnalyze = async () => {
     console.log('Starting analysis with market question:', marketQuestion);
@@ -255,11 +250,10 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       });
       
       setNodes([rootNode]);
-      // Update ref immediately
-      nodesRef.current = [rootNode];
+      currentNodesRef.current = [rootNode];
       
       console.log('Root node created, starting analysis');
-      await analyzeNodeRef.current(rootId, marketQuestion, 0);
+      await analyzeNode(rootId, marketQuestion, 0);
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
