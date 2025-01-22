@@ -10,6 +10,7 @@ interface MarketDetailsProps {
   bestAsk: number;
   description?: string;
   marketId: string;
+  question: string;
 }
 
 export function MarketDetails({
@@ -17,6 +18,7 @@ export function MarketDetails({
   bestAsk,
   description,
   marketId,
+  question
 }: MarketDetailsProps) {
   const [selectedInterval, setSelectedInterval] = useState('1d');
 
@@ -94,18 +96,25 @@ export function MarketDetails({
       {/* QA Tree Section */}
       <div className="mt-6 border-t border-border pt-4">
         <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
-        <MarketQATree marketId={marketId} />
+        <MarketQATree 
+          marketId={marketId} 
+          marketQuestion={question}
+        />
       </div>
 
       {/* Market Details Section */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <div className="text-sm text-muted-foreground">Best Bid</div>
-          <div className="text-lg font-semibold">{(bestBid * 100).toFixed(2)}¢</div>
+          <div className="text-lg font-medium text-green-500">
+            {(bestBid * 100).toFixed(2)}¢
+          </div>
         </div>
         <div>
           <div className="text-sm text-muted-foreground">Best Ask</div>
-          <div className="text-lg font-semibold">{(bestAsk * 100).toFixed(2)}¢</div>
+          <div className="text-lg font-medium text-red-500">
+            {(bestAsk * 100).toFixed(2)}¢
+          </div>
         </div>
       </div>
 
