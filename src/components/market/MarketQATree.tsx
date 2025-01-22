@@ -1,6 +1,7 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button"; 
+import { useToast } from '@/hooks/use-toast';
 import { supabase } from "@/integrations/supabase/client";
 import { 
   ReactFlow, 
@@ -19,6 +20,7 @@ interface NodeData {
 }
 
 export function MarketQATree({ marketId, marketQuestion }: { marketId: string, marketQuestion: string }) {
+  const { toast } = useToast();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -43,18 +45,15 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   }, [setNodes]);
 
   const analyzeNode = async (nodeId: string, nodeQuestion: string, depth: number) => {
-    console.log('analyzeNode called with:', { nodeId, nodeQuestion, depth });
-    
     if (depth >= maxDepth) return;
     
     setProcessingNodes(prev => new Set(prev).add(nodeId));
     
     try {
-      // Pass the question explicitly in the body
       const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({
           marketId,
-          question: nodeQuestion // Ensure question is passed
+          question: nodeQuestion
         })
       });
 
@@ -139,6 +138,11 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       }
     } catch (error) {
       console.error('Error analyzing node:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: "Failed to analyze the question. Please try again.",
+      });
     } finally {
       setProcessingNodes(prev => {
         const next = new Set(prev);
@@ -149,6 +153,15 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   };
 
   const handleAnalyze = async () => {
+    if (!marketQuestion?.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: "Market question is required to perform analysis",
+      });
+      return;
+    }
+
     setIsAnalyzing(true);
     setNodes([]);
     setEdges([]);
@@ -157,22 +170,22 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       // Create root node
       const rootId = 'root-node';
       const rootNode = createNode(rootId, { x: 0, y: 0 }, {
-        question: marketQuestion, // Ensure this is not undefined
+        question: marketQuestion,
         answer: '',
         updateNodeData,
       });
       
-      console.log('Creating root node with question:', marketQuestion);
       setNodes([rootNode]);
-  
-      if (!marketQuestion) {
-        throw new Error('No market question provided');
-      }
   
       // Start analysis with root node
       await analyzeNode(rootId, marketQuestion, 0);
     } catch (error) {
       console.error('Analysis error:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: "Something went wrong during analysis. Please try again.",
+      });
     } finally {
       setIsAnalyzing(false);
     }
