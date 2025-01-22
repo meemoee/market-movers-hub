@@ -56,6 +56,101 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }, [setNodes, setEdges]);
 
+  const processStreamChunk = useCallback((chunk: string, nodeId: string) => {
+    contentBufferRef.current += chunk;
+    
+    try {
+      const lines = contentBufferRef.current.split('\n').filter(line => line.trim());
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') continue;
+          
+          try {
+            const parsed = JSON.parse(jsonStr);
+            console.log('Parsed streaming chunk:', parsed);
+            
+            if (parsed.content) {
+              const content = parsed.content;
+              
+              const answerMatch = content.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/i);
+              const questionsMatch = content.match(/QUESTIONS:\s*([\s\S]*?)$/i);
+              
+              if (answerMatch) {
+                const answer = answerMatch[1].trim();
+                console.log('Extracted answer:', answer);
+                updateNodeData(nodeId, 'answer', answer);
+              }
+              
+              if (questionsMatch) {
+                const questionsText = questionsMatch[1];
+                console.log('Questions text:', questionsText);
+                
+                const questions = questionsText
+                  .split(/\d+\.\s+/)
+                  .filter(q => q.trim())
+                  .slice(0, 3);
+                
+                console.log('Extracted questions:', questions);
+                
+                if (questions.length > 0) {
+                  const node = nodes.find(n => n.id === nodeId);
+                  if (node && node.data.depth < maxDepth) {
+                    questions.forEach((question, index) => {
+                      const newNodeId = `${nodeId}-${index + 1}`;
+                      const position = generateNodePosition(
+                        index,
+                        3,
+                        node.position.x,
+                        node.position.y,
+                        node.data.depth + 1,
+                        maxDepth
+                      );
+
+                      const newNode: Node<QAData> = {
+                        id: newNodeId,
+                        type: 'qaNode',
+                        position,
+                        data: {
+                          question: question.trim(),
+                          answer: 'Analyzing...',
+                          updateNodeData,
+                          addChildNode: handleAddChildNode,
+                          removeNode: handleRemoveNode,
+                          depth: node.data.depth + 1
+                        },
+                      };
+
+                      setNodes((nds) => [...nds, newNode]);
+                      setEdges((eds) => [
+                        ...eds,
+                        {
+                          id: `edge-${nodeId}-${newNodeId}`,
+                          source: nodeId,
+                          target: newNodeId,
+                          type: 'smoothstep',
+                        },
+                      ]);
+
+                      generateAnswer(newNodeId, question.trim());
+                    });
+                  }
+                }
+                
+                contentBufferRef.current = '';
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing JSON in stream chunk:', e);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error processing stream chunk:', e);
+    }
+  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
+
   const generateAnswer = useCallback(async (nodeId: string, question: string) => {
     try {
       if (abortControllerRef.current) {
@@ -173,109 +268,8 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       },
     ]);
 
-    // Generate answer for the new node
     generateAnswer(newNodeId, 'New question...');
-  }, [nodes, edges, maxDepth, setNodes, setEdges]);
-
-  const processStreamChunk = useCallback((chunk: string, nodeId: string) => {
-    contentBufferRef.current += chunk;
-    
-    try {
-      // Look for complete JSON objects in the buffer
-      const lines = contentBufferRef.current.split('\n').filter(line => line.trim());
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
-          
-          try {
-            const parsed = JSON.parse(jsonStr);
-            console.log('Parsed streaming chunk:', parsed);
-            
-            if (parsed.content) {
-              const content = parsed.content;
-              
-              // Try to extract answer and questions
-              const answerMatch = content.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/i);
-              const questionsMatch = content.match(/QUESTIONS:\s*([\s\S]*?)$/i);
-              
-              if (answerMatch) {
-                const answer = answerMatch[1].trim();
-                console.log('Extracted answer:', answer);
-                updateNodeData(nodeId, 'answer', answer);
-              }
-              
-              if (questionsMatch) {
-                const questionsText = questionsMatch[1];
-                console.log('Questions text:', questionsText);
-                
-                // Extract numbered questions (1. 2. 3.)
-                const questions = questionsText
-                  .split(/\d+\.\s+/)
-                  .filter(q => q.trim())
-                  .slice(0, 3);
-                
-                console.log('Extracted questions:', questions);
-                
-                if (questions.length > 0) {
-                  const node = nodes.find(n => n.id === nodeId);
-                  if (node && node.data.depth < maxDepth) {
-                    questions.forEach((question, index) => {
-                      const newNodeId = `${nodeId}-${index + 1}`;
-                      const position = generateNodePosition(
-                        index,
-                        3,
-                        node.position.x,
-                        node.position.y,
-                        node.data.depth + 1,
-                        maxDepth
-                      );
-
-                      const newNode: Node<QAData> = {
-                        id: newNodeId,
-                        type: 'qaNode',
-                        position,
-                        data: {
-                          question: question.trim(),
-                          answer: 'Analyzing...',
-                          updateNodeData,
-                          addChildNode: handleAddChildNode,
-                          removeNode: handleRemoveNode,
-                          depth: node.data.depth + 1
-                        },
-                      };
-
-                      setNodes((nds) => [...nds, newNode]);
-                      setEdges((eds) => [
-                        ...eds,
-                        {
-                          id: `edge-${nodeId}-${newNodeId}`,
-                          source: nodeId,
-                          target: newNodeId,
-                          type: 'smoothstep',
-                        },
-                      ]);
-
-                      // Generate answer for the new node
-                      generateAnswer(newNodeId, question.trim());
-                    });
-                  }
-                }
-                
-                // Clear the buffer after processing a complete response
-                contentBufferRef.current = '';
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing JSON in stream chunk:', e);
-          }
-        }
-      }
-    } catch (e) {
-      console.error('Error processing stream chunk:', e);
-    }
-  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
+  }, [nodes, edges, maxDepth, setNodes, setEdges, generateAnswer]);
 
   useEffect(() => {
     if (nodes.length === 0) {
@@ -305,7 +299,6 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           };
           setNodes([rootNode]);
           
-          // Generate answer for root node
           generateAnswer('node-1', market.question);
         } catch (error) {
           console.error('Error initializing tree:', error);
