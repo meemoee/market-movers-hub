@@ -119,7 +119,7 @@ function Chart({
   }, []);
 
   return (
-    <div className="relative">
+    <div className="relative touch-pan-y overscroll-none">
       <svg width={width} height={height} style={{ overflow: 'visible' }}>
         <defs>
           <LinearGradient id="above-gradient" from="rgba(21, 128, 61, 0.05)" to="rgba(21, 128, 61, 0.05)" />
