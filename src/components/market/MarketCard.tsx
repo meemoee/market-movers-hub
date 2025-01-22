@@ -1,7 +1,6 @@
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { MarketHeader } from "./MarketHeader";
 import { MarketDetails } from "./MarketDetails";
+import { MarketStats } from "./MarketStats";
 
 interface Market {
   market_id: string;
@@ -26,61 +25,41 @@ interface MarketCardProps {
   onSell: () => void;
 }
 
-export function MarketCard({ market, isExpanded, onToggleExpand, onBuy, onSell }: MarketCardProps) {
-  const isPositive = market.price_change >= 0;
-  const changePercentage = market.price_change * 100;
-
+export function MarketCard({
+  market,
+  isExpanded,
+  onToggleExpand,
+  onBuy,
+  onSell,
+}: MarketCardProps) {
   return (
-    <div className="w-full">
-      <div className="py-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 space-y-1">
-            <h3 className="font-medium text-base">{market.question}</h3>
-            <div className="flex items-center gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">Price: </span>
-                <span className="font-medium">{(market.price * 100).toFixed(1)}¢</span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Change: </span>
-                <span className={`font-medium ${isPositive ? "text-green-500" : "text-red-500"}`}>
-                  {isPositive ? "+" : ""}{changePercentage.toFixed(1)} pp
-                </span>
-              </div>
-              <div>
-                <span className="text-muted-foreground">Volume: </span>
-                <span className="font-medium">${market.volume.toFixed(0)}</span>
-              </div>
-            </div>
-          </div>
-
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onToggleExpand}
-            className="shrink-0"
-          >
-            {isExpanded ? (
-              <ChevronUp className="h-4 w-4" />
-            ) : (
-              <ChevronDown className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-
-        {isExpanded && (
-          <div className="mt-4">
-            <MarketDetails
-              bestBid={market.final_best_bid}
-              bestAsk={market.final_best_ask}
-              description={market.description}
-              marketId={market.market_id}
-              question={market.question}
-            />
-          </div>
-        )}
-      </div>
-      <Separator />
+    <div className="w-full rounded-lg bg-card border border-border p-3 space-y-3">
+      <MarketHeader
+        image={market.image}
+        question={market.question}
+        yesSubTitle={market.yes_sub_title}
+        bestBid={market.final_best_bid}
+        bestAsk={market.final_best_ask}
+        onBuy={onBuy}
+        onSell={onSell}
+        outcomes={market.outcomes}
+        onToggleExpand={onToggleExpand}
+      />
+      <MarketStats
+        lastTradedPrice={market.final_last_traded_price}
+        priceChange={market.price_change}
+        volume={market.volume}
+        isExpanded={isExpanded}
+      />
+      {isExpanded && (
+        <MarketDetails
+          description={market.description}
+          bestBid={market.final_best_bid}
+          bestAsk={market.final_best_ask}
+          marketId={market.market_id}
+          question={market.question}
+        />
+      )}
     </div>
   );
 }
