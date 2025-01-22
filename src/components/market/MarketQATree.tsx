@@ -106,33 +106,43 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     
     try {
       // Look for complete JSON objects in the buffer
-      const matches = contentBufferRef.current.match(/\{[\s\S]*?\}/g);
-      if (matches) {
-        matches.forEach(jsonStr => {
+      const lines = contentBufferRef.current.split('\n').filter(line => line.trim());
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') continue;
+          
           try {
             const parsed = JSON.parse(jsonStr);
+            console.log('Parsed streaming chunk:', parsed);
             
             if (parsed.content) {
-              // Accumulate content until we have a complete response
-              contentBufferRef.current += parsed.content;
+              const content = parsed.content;
               
               // Try to extract answer and questions
-              const answerMatch = contentBufferRef.current.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/);
-              const questionsMatch = contentBufferRef.current.match(/QUESTIONS:\s*([\s\S]*?)$/);
+              const answerMatch = content.match(/ANSWER:\s*([\s\S]*?)(?=QUESTIONS:|$)/i);
+              const questionsMatch = content.match(/QUESTIONS:\s*([\s\S]*?)$/i);
               
               if (answerMatch) {
                 const answer = answerMatch[1].trim();
+                console.log('Extracted answer:', answer);
                 updateNodeData(nodeId, 'answer', answer);
               }
               
               if (questionsMatch) {
                 const questionsText = questionsMatch[1];
+                console.log('Questions text:', questionsText);
+                
+                // Extract numbered questions (1. 2. 3.)
                 const questions = questionsText
                   .split(/\d+\.\s+/)
                   .filter(q => q.trim())
                   .slice(0, 3);
                 
-                if (questions.length === 3) {
+                console.log('Extracted questions:', questions);
+                
+                if (questions.length > 0) {
                   const node = nodes.find(n => n.id === nodeId);
                   if (node && node.data.depth < maxDepth) {
                     questions.forEach((question, index) => {
@@ -184,12 +194,12 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           } catch (e) {
             console.error('Error parsing JSON in stream chunk:', e);
           }
-        });
+        }
       }
     } catch (e) {
       console.error('Error processing stream chunk:', e);
     }
-  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
+  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode, generateAnswer]);
 
   const generateAnswer = useCallback(async (nodeId: string, question: string) => {
     try {
