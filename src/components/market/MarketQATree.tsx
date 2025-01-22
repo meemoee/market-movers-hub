@@ -29,6 +29,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [processingNodes, setProcessingNodes] = useState<Set<string>>(new Set());
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
+  const [hasCreatedNodes, setHasCreatedNodes] = useState<Set<string>>(new Set());
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     console.log('Updating node data:', { nodeId, field, value: value.substring(0, 50) + '...' });
@@ -55,6 +56,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     questions: string[],
     depth: number
   ) => {
+    console.log('Creating child nodes:', { parentId, questions, depth });
     const newNodes = [];
     const newEdges = [];
 
@@ -137,32 +139,39 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               
               if (content) {
                 accumulatedJSON += content;
+                console.log('Accumulated JSON progress:', accumulatedJSON);
                 
-                // Try to extract analysis text as it streams in
                 try {
-                  // Extract anything between "analysis": " and ", "questions"
+                  // Extract analysis text as it streams in
                   const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
                   if (analysisMatch && analysisMatch[1]) {
                     // Update node with just the analysis text
                     updateNodeData(nodeId, 'answer', analysisMatch[1]);
                   }
       
-                  // Once we have complete JSON, handle the questions
-                  const data = JSON.parse(accumulatedJSON);
-                  if (data.questions?.length > 0 && !nodesCreated && depth < MAX_DEPTH) {
-                    const parentNode = nodes.find(n => n.id === nodeId);
-                    if (parentNode) {
-                      createChildNodes(
-                        nodeId,
-                        parentNode.position,
-                        data.questions,
-                        depth
-                      );
-                      nodesCreated = true; // Prevent creating nodes multiple times
+                  // Try to parse complete JSON when we have both analysis and questions
+                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"')) {
+                    const data = JSON.parse(accumulatedJSON);
+                    console.log('Parsed complete JSON:', data);
+                    
+                    // Only create child nodes if we haven't already for this node
+                    if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
+                      const parentNode = nodes.find(n => n.id === nodeId);
+                      if (parentNode) {
+                        console.log('Creating child nodes for:', nodeId);
+                        createChildNodes(
+                          nodeId,
+                          parentNode.position,
+                          data.questions,
+                          depth
+                        );
+                        setHasCreatedNodes(prev => new Set(prev).add(nodeId));
+                      }
                     }
                   }
                 } catch (e) {
-                  // Not valid JSON yet or no analysis match, continue accumulating
+                  console.log('Parsing in progress:', e);
+                  // Continue accumulating if we don't have valid JSON yet
                 }
               }
             } catch (e) {
@@ -202,6 +211,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setNodes([]);
     setEdges([]);
     setStreamingContent({});
+    setHasCreatedNodes(new Set());
     
     try {
       // Create root node with market title
