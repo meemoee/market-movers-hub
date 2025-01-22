@@ -115,41 +115,41 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       let accumulatedContent = '';
       let accumulatedJSON = '';
       const decoder = new TextDecoder();
-
+      
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
           console.log('Stream complete for node:', nodeId);
           break;
         }
-
+      
         const chunk = decoder.decode(value);
         const lines = chunk.split('\n').filter(line => line.trim());
-
+      
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
-
+      
             try {
               const parsed = JSON.parse(jsonStr);
               const content = parsed.choices?.[0]?.delta?.content;
               
               if (content) {
-                accumulatedContent += content;
-                setStreamingContent(prev => ({
-                  ...prev,
-                  [nodeId]: accumulatedContent
-                }));
-                updateNodeData(nodeId, 'answer', accumulatedContent);
-
-                // Try to accumulate JSON
                 accumulatedJSON += content;
+                
+                // Try to extract analysis text as it streams in
                 try {
-                  const data: NodeData = JSON.parse(accumulatedJSON);
-                  
-                  // If we successfully parsed JSON, create child nodes
-                  if (data.questions?.length === CHILDREN_PER_NODE && depth < MAX_DEPTH) {
+                  // Extract anything between "analysis": " and ", "questions"
+                  const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
+                  if (analysisMatch && analysisMatch[1]) {
+                    // Update node with just the analysis text
+                    updateNodeData(nodeId, 'answer', analysisMatch[1]);
+                  }
+      
+                  // Once we have complete JSON, handle the questions
+                  const data = JSON.parse(accumulatedJSON);
+                  if (data.questions?.length > 0 && !nodesCreated && depth < MAX_DEPTH) {
                     const parentNode = nodes.find(n => n.id === nodeId);
                     if (parentNode) {
                       createChildNodes(
@@ -158,10 +158,11 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                         data.questions,
                         depth
                       );
+                      nodesCreated = true; // Prevent creating nodes multiple times
                     }
                   }
                 } catch (e) {
-                  // Not valid JSON yet, continue accumulating
+                  // Not valid JSON yet or no analysis match, continue accumulating
                 }
               }
             } catch (e) {
