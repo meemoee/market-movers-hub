@@ -255,6 +255,42 @@ export type Database = {
           },
         ]
       }
+      news_articles: {
+        Row: {
+          created_at: string | null
+          id: string
+          image_url: string | null
+          link: string | null
+          position: number
+          subtitle: string | null
+          time_interval: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          image_url?: string | null
+          link?: string | null
+          position: number
+          subtitle?: string | null
+          time_interval: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          image_url?: string | null
+          link?: string | null
+          position?: number
+          subtitle?: string | null
+          time_interval?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       orderbook_data: {
         Row: {
           asks: Json | null

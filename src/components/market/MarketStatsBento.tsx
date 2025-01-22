@@ -1,10 +1,20 @@
-import { DollarSign, TrendingUp, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+
+interface NewsArticle {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  link: string | null;
+  image_url: string | null;
+  position: number;
+}
 
 function BentoCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn(
-      "relative h-full w-full overflow-hidden rounded-lg border border-border/50 bg-card/50 backdrop-blur-sm p-4",
+      "relative h-full w-full overflow-hidden rounded-lg border border-border/50 bg-card/50 backdrop-blur-sm",
       className
     )}>
       {children}
@@ -12,62 +22,82 @@ function BentoCard({ children, className }: { children: React.ReactNode; classNa
   );
 }
 
-export function MarketStatsBento() {
+interface MarketStatsBentoProps {
+  selectedInterval: string;
+}
+
+export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
+  const [articles, setArticles] = useState<NewsArticle[]>([]);
+
+  useEffect(() => {
+    const fetchArticles = async () => {
+      const { data, error } = await supabase
+        .from('news_articles')
+        .select('*')
+        .eq('time_interval', selectedInterval)
+        .order('position');
+
+      if (error) {
+        console.error('Error fetching news articles:', error);
+        return;
+      }
+
+      setArticles(data);
+    };
+
+    fetchArticles();
+  }, [selectedInterval]);
+
+  const renderArticle = (position: number) => {
+    const article = articles.find(a => a.position === position);
+    if (!article) return null;
+
+    return (
+      <div className="flex flex-col h-full">
+        {article.image_url && (
+          <div className="relative w-full h-32">
+            <img 
+              src={article.image_url} 
+              alt={article.title}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          </div>
+        )}
+        <div className="p-4 flex flex-col flex-grow">
+          <h3 className="text-lg font-semibold mb-2">{article.title}</h3>
+          {article.subtitle && (
+            <p className="text-sm text-muted-foreground">{article.subtitle}</p>
+          )}
+          {article.link && (
+            <a 
+              href={article.link} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="mt-auto text-sm text-blue-500 hover:text-blue-400"
+            >
+              Read more →
+            </a>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* Left side - tall card */}
-        <BentoCard className="md:row-span-2 bg-gradient-to-br from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 transition-colors">
-          <div className="flex flex-col h-full">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <DollarSign className="h-4 w-4" />
-              <span className="text-sm font-medium">Total Volume</span>
-            </div>
-            <div className="text-4xl font-bold mt-auto">$1.2M</div>
-            <div className="text-sm text-muted-foreground mt-2">
-              <span className="text-emerald-500">↑ 12%</span> from last week
-            </div>
-            <div className="mt-4 pt-4 border-t border-border/50">
-              <div className="text-sm text-muted-foreground">Monthly trend</div>
-              <div className="flex items-end justify-between mt-2 h-24">
-                {[30, 45, 25, 60, 75, 45, 65].map((height, i) => (
-                  <div key={i} className="w-[8%] bg-primary/20 rounded-t">
-                    <div 
-                      className="bg-primary rounded-t transition-all duration-500"
-                      style={{ height: `${height}%` }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+        <BentoCard className="md:row-span-2">
+          {renderArticle(1)}
         </BentoCard>
 
         {/* Right side - two cards */}
-        <BentoCard className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 hover:from-blue-500/20 hover:to-cyan-500/20 transition-colors">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <TrendingUp className="h-4 w-4" />
-              <span className="text-sm font-medium">Active Markets</span>
-            </div>
-            <div className="text-2xl font-bold">245</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              <span className="text-emerald-500">+5</span> new today
-            </div>
-          </div>
+        <BentoCard>
+          {renderArticle(2)}
         </BentoCard>
 
-        <BentoCard className="bg-gradient-to-br from-emerald-500/10 to-teal-500/10 hover:from-emerald-500/20 hover:to-teal-500/20 transition-colors">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Users className="h-4 w-4" />
-              <span className="text-sm font-medium">Active Traders</span>
-            </div>
-            <div className="text-2xl font-bold">1,893</div>
-            <div className="text-xs text-muted-foreground mt-1">
-              <span className="text-emerald-500">+23%</span> this month
-            </div>
-          </div>
+        <BentoCard>
+          {renderArticle(3)}
         </BentoCard>
       </div>
     </div>
