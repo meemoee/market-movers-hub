@@ -56,6 +56,51 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
   }, [setNodes, setEdges]);
 
+  const handleAddChildNode = useCallback((parentId: string) => {
+    const parentNode = nodes.find(node => node.id === parentId);
+    if (!parentNode || parentNode.data.depth >= maxDepth) return;
+
+    const childCount = edges.filter(edge => edge.source === parentId).length;
+    const newNodeId = `${parentId}-${childCount + 1}`;
+
+    const position = generateNodePosition(
+      childCount,
+      3,
+      parentNode.position.x,
+      parentNode.position.y,
+      parentNode.data.depth + 1,
+      maxDepth
+    );
+
+    const newNode: Node<QAData> = {
+      id: newNodeId,
+      type: 'qaNode',
+      position,
+      data: {
+        question: 'New question...',
+        answer: 'Analyzing...',
+        updateNodeData,
+        addChildNode: handleAddChildNode,
+        removeNode: handleRemoveNode,
+        depth: parentNode.data.depth + 1
+      },
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    setEdges((eds) => [
+      ...eds,
+      {
+        id: `edge-${parentId}-${newNodeId}`,
+        source: parentId,
+        target: newNodeId,
+        type: 'smoothstep',
+      },
+    ]);
+
+    // Generate answer for the new node
+    generateAnswer(newNodeId, 'New question...');
+  }, [nodes, edges, maxDepth, setNodes, setEdges]);
+
   const processStreamChunk = useCallback((chunk: string, nodeId: string) => {
     contentBufferRef.current += chunk;
     
@@ -90,33 +135,36 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                   question,
                   answer: 'Analyzing...',
                   updateNodeData,
-                  addChildNode: () => {}, // Disabled for leaf nodes
+                  addChildNode: handleAddChildNode,
                   removeNode: handleRemoveNode,
                   depth: node.data.depth + 1
                 },
               };
 
               setNodes((nds) => [...nds, newNode]);
+              setEdges((eds) => [
+                ...eds,
+                {
+                  id: `edge-${nodeId}-${newNodeId}`,
+                  source: nodeId,
+                  target: newNodeId,
+                  type: 'smoothstep',
+                },
+              ]);
 
-              setEdges((eds) => [...eds, {
-                id: `edge-${nodeId}-${newNodeId}`,
-                source: nodeId,
-                target: newNodeId,
-                type: 'smoothstep',
-              }]);
-
-              // Generate answer for the new node if not at max depth
-              if (node.data.depth + 1 < maxDepth) {
-                generateAnswer(newNodeId, question);
-              }
+              // Generate answer for the new node
+              generateAnswer(newNodeId, question);
             });
           }
         }
+        
+        // Clear the buffer after processing
+        contentBufferRef.current = '';
       }
     } catch (e) {
       console.error('Error parsing stream chunk:', e);
     }
-  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth]);
+  }, [nodes, setNodes, setEdges, updateNodeData, handleRemoveNode, maxDepth, handleAddChildNode]);
 
   const generateAnswer = useCallback(async (nodeId: string, question: string) => {
     try {
@@ -215,7 +263,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
               question: market.question,
               answer: 'Analyzing...',
               updateNodeData,
-              addChildNode: () => {}, // Root node doesn't need this
+              addChildNode: handleAddChildNode,
               removeNode: handleRemoveNode,
               depth: 0
             }
@@ -231,7 +279,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
 
       initializeTree();
     }
-  }, [nodes.length, marketId, setNodes, updateNodeData, handleRemoveNode, generateAnswer]);
+  }, [nodes.length, marketId, setNodes, updateNodeData, handleRemoveNode, handleAddChildNode, generateAnswer]);
 
   const nodeTypes = {
     qaNode: QANodeComponent
