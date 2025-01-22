@@ -14,10 +14,10 @@ serve(async (req) => {
   }
 
   try {
-    const { marketId, marketQuestion } = await req.json()
-    console.log('Received request:', { marketId, marketQuestion })
+    const { question } = await req.json()
+    console.log('Analyzing question:', question)
 
-    // First get full analysis from Perplexity
+    // Get analysis and subquestions from Perplexity
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -31,22 +31,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are a market analyst. Your task is to:
-1. Provide a detailed analysis of the given market question with specific citations
-2. Follow that with EXACTLY three key analytical follow-up questions
-3. Format your response EXACTLY as follows:
-
-ANALYSIS:
-[Your detailed analysis with specific citations here]
-
-QUESTIONS:
-1. [First analytical question]
-2. [Second analytical question]
-3. [Third analytical question]`
+            content: "Analyze the given question and provide:\n1. A detailed analysis with specific citations\n2. Exactly three analytical follow-up questions\n\nYour response must include specific citations and analysis."
           },
           {
             role: "user",
-            content: `Analyze this market question in detail with citations, then provide three follow-up analytical questions: ${marketQuestion}`
+            content: question
           }
         ]
       })
@@ -59,7 +48,7 @@ QUESTIONS:
     const perplexityData = await perplexityResponse.json()
     const perplexityContent = perplexityData.choices[0].message.content
 
-    // Now stream JSON parsing from Gemini Flash
+    // Stream JSON formatting from Gemini Flash
     const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -73,17 +62,7 @@ QUESTIONS:
         messages: [
           {
             role: "system",
-            content: `You are a JSON formatter. Your task is to parse text formatted as:
-ANALYSIS: [analysis]
-QUESTIONS: [questions]
-
-And convert it to a JSON object structured as:
-{
-  "analysis": "the analysis text",
-  "questions": ["question1", "question2", "question3"]
-}
-
-Return ONLY valid JSON.`
+            content: "Extract analysis and questions from the text to create a JSON object EXACTLY in this format:\n{\n  \"analysis\": \"full analysis text\",\n  \"questions\": [\"question1\", \"question2\", \"question3\"]\n}\n\nReturn ONLY the JSON object."
           },
           {
             role: "user",
@@ -99,7 +78,7 @@ Return ONLY valid JSON.`
       throw new Error(`Gemini API error: ${geminiResponse.status}`)
     }
 
-    // Return the streaming response
+    // Stream the JSON response
     return new Response(geminiResponse.body, {
       headers: {
         ...corsHeaders,
