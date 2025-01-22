@@ -20,7 +20,7 @@ interface QAData {
 type QANode = Node<QAData>;
 
 export function MarketQATree({ marketId }: { marketId: string }) {
-  const [nodes, setNodes, onNodesChange] = useNodesState<QAData>([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<QANode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [maxDepth] = useState(2); // Maximum depth of 2 for the tree
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -83,7 +83,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                 maxDepth
               );
 
-              setNodes((nds) => [...nds, {
+              const newNode: QANode = {
                 id: newNodeId,
                 type: 'qaNode',
                 position,
@@ -95,7 +95,9 @@ export function MarketQATree({ marketId }: { marketId: string }) {
                   removeNode: handleRemoveNode,
                   depth: node.data.depth + 1
                 },
-              }]);
+              };
+
+              setNodes((nds) => [...nds, newNode]);
 
               setEdges((eds) => [...eds, {
                 id: `edge-${nodeId}-${newNodeId}`,
@@ -206,7 +208,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
           if (marketError) throw marketError;
           if (!market) throw new Error('Market not found');
 
-          const rootNode = {
+          const rootNode: QANode = {
             id: 'node-1',
             type: 'qaNode',
             position: { x: 0, y: 0 },
