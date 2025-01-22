@@ -98,7 +98,7 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-18'}`}>
+          <div className={`flex-1 min-w-0 min-h-screen ${isMobile ? 'w-full' : 'ml-20'}`}>
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
