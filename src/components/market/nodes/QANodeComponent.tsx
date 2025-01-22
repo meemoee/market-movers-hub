@@ -6,7 +6,8 @@ interface QANodeProps {
   data: {
     question: string;
     answer: string;
-    updateNodeData: (id: string, field: string, value: string) => void;
+    subQuestions?: string[];
+    updateNodeData: (id: string, field: string, value: string | string[]) => void;
     addChildNode: (id: string) => void;
     removeNode: (id: string) => void;
   };
@@ -78,6 +79,19 @@ export const QANodeComponent = ({ data, id }: QANodeProps) => {
         placeholder="Enter answer..."
         rows={1}
       />
+      {data.subQuestions && data.subQuestions.length > 0 && (
+        <>
+          <div className="border-t border-white/10 my-2" />
+          <div className="text-xs text-gray-400">
+            <div className="mb-1 font-medium">Sub-questions:</div>
+            <ul className="list-disc list-inside space-y-1">
+              {data.subQuestions.map((question, index) => (
+                <li key={index} className="text-gray-300">{question}</li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
       <Handle type="target" position={Position.Top} id="target" />
       <Handle type="source" position={Position.Bottom} id="source" />
     </div>

@@ -23,7 +23,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
     [setEdges]
   );
 
-  const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
+  const updateNodeData = useCallback((nodeId: string, field: string, value: string | string[]) => {
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
@@ -61,6 +61,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
       data: {
         question: '',
         answer: '',
+        subQuestions: [],
         updateNodeData,
         addChildNode,
         removeNode: handleRemoveNode,
@@ -85,46 +86,33 @@ export function MarketQATree({ marketId }: { marketId: string }) {
   }, [setNodes, setEdges]);
 
   const processStreamChunk = useCallback((chunk: string) => {
-    // Append new chunk to buffer
     contentBufferRef.current += chunk;
     
-    // Try to extract complete fields from the buffer
-    let questionMatch = contentBufferRef.current.match(/"question"\s*:\s*"([^"]*)/);
-    let answerMatch = contentBufferRef.current.match(/"answer"\s*:\s*"([^"]*)/);
-    
-    if (questionMatch) {
-      const question = questionMatch[1].replace(/\\"/g, '"');
-      updateNodeData('node-1', 'question', question);
-    }
-    
-    if (answerMatch) {
-      const answer = answerMatch[1].replace(/\\"/g, '"');
-      updateNodeData('node-1', 'answer', answer);
-    }
-
-    // Handle content that might be continuation of a field
-    if (!questionMatch && !answerMatch) {
-      const content = chunk
-        .replace(/^\s*"/, '')
-        .replace(/"\s*$/, '')
-        .replace(/\\"/g, '"')
-        .replace(/[{}]/g, '')
-        .trim();
-
-      if (content) {
-        // Check if this is part of the current answer
-        if (contentBufferRef.current.includes('"answer"')) {
-          const currentAnswer = nodes.find(n => n.id === 'node-1')?.data?.answer || '';
-          updateNodeData('node-1', 'answer', currentAnswer + content);
+    try {
+      // Try to parse complete JSON objects from the buffer
+      const jsonMatch = contentBufferRef.current.match(/\{.*\}/);
+      if (jsonMatch) {
+        const jsonStr = jsonMatch[0];
+        const parsed = JSON.parse(jsonStr);
+        
+        if (parsed.question) {
+          updateNodeData('node-1', 'question', parsed.question);
         }
-        // Check if this is part of the current question
-        else if (contentBufferRef.current.includes('"question"')) {
-          const currentQuestion = nodes.find(n => n.id === 'node-1')?.data?.question || '';
-          updateNodeData('node-1', 'question', currentQuestion + content);
+        if (parsed.answer) {
+          updateNodeData('node-1', 'answer', parsed.answer);
         }
+        if (parsed.subQuestions && Array.isArray(parsed.subQuestions)) {
+          updateNodeData('node-1', 'subQuestions', parsed.subQuestions);
+        }
+        
+        // Clear the processed JSON from the buffer
+        contentBufferRef.current = contentBufferRef.current.slice(jsonMatch.index! + jsonStr.length);
       }
+    } catch (e) {
+      // If JSON parsing fails, it might be an incomplete chunk
+      console.log('Incomplete JSON chunk, waiting for more data');
     }
-  }, [nodes, updateNodeData]);
+  }, [updateNodeData]);
 
   useEffect(() => {
     if (nodes.length === 0) {
@@ -135,6 +123,7 @@ export function MarketQATree({ marketId }: { marketId: string }) {
         data: {
           question: 'Loading...',
           answer: '',
+          subQuestions: [],
           updateNodeData,
           addChildNode,
           removeNode: handleRemoveNode,
