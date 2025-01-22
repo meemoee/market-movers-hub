@@ -19,13 +19,15 @@ interface NodeData {
   questions: string[];
 }
 
+const MAX_DEPTH = 3;
+const CHILDREN_PER_NODE = 3;
+
 export function MarketQATree({ marketId, marketQuestion }: { marketId: string, marketQuestion: string }) {
   const { toast } = useToast();
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [processingNodes, setProcessingNodes] = useState<Set<string>>(new Set());
-  const maxDepth = 3;
 
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     setNodes((nds) =>
@@ -45,7 +47,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   }, [setNodes]);
 
   const analyzeNode = async (nodeId: string, nodeQuestion: string, depth: number) => {
-    if (depth >= maxDepth) return;
+    if (depth >= MAX_DEPTH) return;
     
     setProcessingNodes(prev => new Set(prev).add(nodeId));
     
@@ -58,13 +60,12 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       });
 
       if (error) throw error;
-      if (!data?.body) throw new Error('No response body');
-
+      
       const reader = new Response(data.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
-      const decoder = new TextDecoder();
       let accumulatedContent = '';
+      const decoder = new TextDecoder();
 
       while (true) {
         const { done, value } = await reader.read();
@@ -85,28 +86,29 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               if (content) {
                 accumulatedContent += content;
                 try {
+                  // Try to parse as JSON
                   const data: NodeData = JSON.parse(accumulatedContent);
                   
                   // Update current node's analysis
                   updateNodeData(nodeId, 'answer', data.analysis);
 
-                  // Spawn children if we have questions and not at max depth
-                  if (data.questions?.length === 3 && depth < maxDepth) {
+                  // Create child nodes if we have questions and not at max depth
+                  if (data.questions?.length === CHILDREN_PER_NODE && depth < MAX_DEPTH) {
                     const parent = nodes.find(n => n.id === nodeId);
                     if (parent) {
                       const parentElement = document.querySelector(`[data-id="${nodeId}"]`) as HTMLElement;
                       
-                      // Create and analyze child nodes
+                      // Create child nodes and analyze them
                       for (let i = 0; i < data.questions.length; i++) {
                         const childQuestion = data.questions[i];
                         const childId = `node-${Date.now()}-${i}`;
                         const position = generateNodePosition(
                           i,
-                          3,
+                          CHILDREN_PER_NODE,
                           parent.position.x,
                           parent.position.y,
                           depth + 1,
-                          maxDepth,
+                          MAX_DEPTH,
                           parentElement
                         );
 
@@ -157,7 +159,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       toast({
         variant: "destructive",
         title: "Analysis Error",
-        description: "Market question is required to perform analysis",
+        description: "Market question is required for analysis",
       });
       return;
     }
@@ -167,7 +169,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setEdges([]);
     
     try {
-      // Create root node
+      // Create root node with market title
       const rootId = 'root-node';
       const rootNode = createNode(rootId, { x: 0, y: 0 }, {
         question: marketQuestion,
