@@ -157,14 +157,18 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       // Create root node
       const rootId = 'root-node';
       const rootNode = createNode(rootId, { x: 0, y: 0 }, {
-        question: marketQuestion,
+        question: marketQuestion, // Ensure this is not undefined
         answer: '',
         updateNodeData,
       });
       
       console.log('Creating root node with question:', marketQuestion);
       setNodes([rootNode]);
-
+  
+      if (!marketQuestion) {
+        throw new Error('No market question provided');
+      }
+  
       // Start analysis with root node
       await analyzeNode(rootId, marketQuestion, 0);
     } catch (error) {
