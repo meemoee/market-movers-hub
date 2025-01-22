@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button"; 
 import { useToast } from '@/hooks/use-toast';
@@ -31,6 +31,10 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
   const [hasCreatedNodes, setHasCreatedNodes] = useState<Set<string>>(new Set());
 
+  // Store function references in refs to avoid circular dependencies
+  const analyzeNodeRef = useRef<any>(null);
+  const createChildNodesRef = useRef<any>(null);
+
   const updateNodeData = useCallback((nodeId: string, field: string, value: string) => {
     console.log('Updating node data:', { nodeId, field, value: value.substring(0, 50) + '...' });
     setNodes((nds) =>
@@ -50,7 +54,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     );
   }, [setNodes]);
 
-  const createChildNodes = useCallback((
+  // Define createChildNodes first but store in ref
+  createChildNodesRef.current = (
     parentId: string,
     parentPosition: { x: number, y: number },
     questions: string[],
@@ -83,15 +88,18 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      // Analyze the new child node
-      analyzeNode(childId, questions[i], depth + 1);
+      // Use ref to call analyzeNode
+      if (analyzeNodeRef.current) {
+        analyzeNodeRef.current(childId, questions[i], depth + 1);
+      }
     }
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
-  }, [setNodes, setEdges, analyzeNode]);
+  };
 
-  const analyzeNode = async (nodeId: string, nodeQuestion: string, depth: number) => {
+  // Define analyzeNode and store in ref
+  analyzeNodeRef.current = async (nodeId: string, nodeQuestion: string, depth: number) => {
     console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
     if (depth >= MAX_DEPTH) {
       console.log('Max depth reached, stopping analysis');
@@ -145,7 +153,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                   // Extract analysis text as it streams in
                   const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
                   if (analysisMatch && analysisMatch[1]) {
-                    // Update node with just the analysis text
                     updateNodeData(nodeId, 'answer', analysisMatch[1]);
                   }
       
@@ -154,7 +161,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                     const data = JSON.parse(accumulatedJSON);
                     console.log('Parsed complete JSON:', data);
                     
-                    // Only create child nodes if we haven't already for this node
                     if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
                       console.log('Node creation check passed:', {
                         hasQuestions: data.questions?.length > 0,
@@ -166,9 +172,9 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                       const parentNode = nodes.find(n => n.id === nodeId);
                       console.log('Parent node lookup result:', parentNode);
                       
-                      if (parentNode) {
+                      if (parentNode && createChildNodesRef.current) {
                         console.log('Creating child nodes for:', nodeId, 'with questions:', data.questions);
-                        createChildNodes(
+                        createChildNodesRef.current(
                           nodeId,
                           parentNode.position,
                           data.questions,
@@ -250,7 +256,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       console.log('Root node created, starting analysis');
   
       // Start analysis with root node
-      await analyzeNode(rootId, marketQuestion, 0);
+      await analyzeNodeRef.current(rootId, marketQuestion, 0);
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
