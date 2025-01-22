@@ -14,7 +14,7 @@ interface NewsArticle {
 function BentoCard({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     <div className={cn(
-      "relative h-full w-full overflow-hidden rounded-lg border border-border/50 bg-card/50 backdrop-blur-sm",
+      "relative h-full w-full overflow-hidden rounded-lg border border-border/50",
       className
     )}>
       {children}
@@ -53,27 +53,29 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     if (!article) return null;
 
     return (
-      <div className="flex flex-col h-full">
+      <div className="relative h-full w-full">
         {article.image_url && (
-          <div className="relative w-full h-32">
+          <div className="absolute inset-0">
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="h-full w-full object-cover"
             />
+            {/* Dark overlay for better text readability */}
+            <div className="absolute inset-0 bg-black/40" />
           </div>
         )}
-        <div className="p-4 flex flex-col flex-grow">
-          <h3 className="text-lg font-semibold mb-2">{article.title}</h3>
+        <div className="relative h-full p-4 flex flex-col justify-end z-10">
+          <h3 className="text-lg font-semibold mb-2 text-white">{article.title}</h3>
           {article.subtitle && (
-            <p className="text-sm text-muted-foreground">{article.subtitle}</p>
+            <p className="text-sm text-white/80">{article.subtitle}</p>
           )}
           {article.link && (
             <a 
               href={article.link} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="mt-auto text-sm text-blue-500 hover:text-blue-400"
+              className="mt-2 text-sm text-blue-300 hover:text-blue-200"
             >
               Read more →
             </a>
@@ -86,8 +88,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   return (
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* Left side - tall card */}
-        <BentoCard className="md:row-span-2">
+        {/* Left side - square card */}
+        <BentoCard className="md:row-span-2 aspect-square">
           {renderArticle(1)}
         </BentoCard>
 
