@@ -84,7 +84,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates insightful questions and detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
+            content: "You are a helpful assistant that generates insightful questions and LONG, detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
           },
           {
             role: "user",
