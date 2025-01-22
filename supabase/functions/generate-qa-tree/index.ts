@@ -84,11 +84,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
+            content: "You are a helpful assistant that generates LONG detailed answers about market predictions. Focus on analyzing the market context provided and generate thoughtful analysis."
           },
           {
             role: "user",
-            content: `Based on this market information, provide a detailed answer to this question: "${question}"\n\nContext:\n${marketContext}`
+            content: `Based on this market information, provide a LONG detailed answer to this question: "${question}"\n\nContext:\n${marketContext}`
           }
         ]
       })
@@ -118,7 +118,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a parser that extracts answers from analysis text. Return only a JSON object with an 'answer' field."
+            content: "You are a parser that extracts answers from analysis text. Return only a JSON object with an 'answer' field. EXTRACT THE TEXT VERBATIM AND DO NOT PARAPHRASE."
           },
           {
             role: "user",
