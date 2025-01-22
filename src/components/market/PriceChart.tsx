@@ -289,7 +289,7 @@ function Chart({
           }}
         >
           <div className="flex flex-col leading-tight">
-            <span>{tooltipDateFormat.format(tooltipData.time)}</span>
+            <span>{tooltipDateFormat(new Date(tooltipData.time))}</span>
             <span>{tooltipData.price.toFixed(2)}%</span>
           </div>
         </div>
