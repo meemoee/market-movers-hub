@@ -107,11 +107,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               
               if (content) {
                 accumulatedContent += content;
-                // Update streaming content immediately
-                setStreamingContent(prev => ({
-                  ...prev,
-                  [nodeId]: accumulatedContent
-                }));
+                
+                // Only update streaming content if the chunk doesn't start with '{'
+                if (!content.trimStart().startsWith('{')) {
+                  setStreamingContent(prev => ({
+                    ...prev,
+                    [nodeId]: accumulatedContent
+                  }));
+                }
                 
                 try {
                   // Try to parse accumulated content as JSON
