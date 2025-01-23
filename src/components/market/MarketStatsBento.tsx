@@ -82,15 +82,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
 
-    const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
+          const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
       ? `linear-gradient(to top, 
           rgba(${article.gradient_start_rgb}, 0.95) 0%, 
-          rgba(${article.gradient_start_rgb}, 0.9) 20%,
-          rgba(${article.gradient_end_rgb}, 0.8) 40%,
-          rgba(${article.gradient_end_rgb}, 0.7) 60%,
-          rgba(${article.gradient_end_rgb}, 0.6) 80%,
-          rgba(${article.gradient_end_rgb}, 0.4) 100%)`
-      : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.85) 40%, rgba(0,0,0,0.6) 100%)';
+          rgba(${article.gradient_start_rgb}, 0.85) 20%,
+          rgba(${article.gradient_end_rgb}, 0.6) 35%,
+          rgba(${article.gradient_end_rgb}, 0.2) 50%,
+          rgba(${article.gradient_end_rgb}, 0) 70%)`
+      : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.4) 35%, rgba(0,0,0,0.1) 50%, rgba(0,0,0,0) 70%)';
 
     return (
       <div className="relative h-full w-full">
