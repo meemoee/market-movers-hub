@@ -100,7 +100,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setCurrentLayer(newLayerNodes);
     setLayerComplete(false);
 
-    // Start processing the first node in the layer
     if (newLayerNodes.length > 0) {
       const firstNode = newNodes.find(n => n.id === newLayerNodes[0]);
       if (firstNode) {
@@ -114,17 +113,15 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     const nodeIndex = currentLayer.indexOf(currentNodeId);
     
     if (nodeIndex < currentLayer.length - 1) {
-      // Process next node in current layer
       const nextNodeId = currentLayer[nodeIndex + 1];
       const nextNode = currentNodesRef.current.find(n => n.id === nextNodeId);
       if (nextNode) {
         console.log('Processing next node:', nextNodeId);
         setTimeout(() => {
           analyzeNode(nextNode.id, nextNode.data.question, depth, 0);
-        }, 1000); // Add delay between nodes
+        }, 1000);
       }
     } else {
-      // Layer is complete
       console.log('Layer complete:', depth);
       setLayerComplete(true);
       setCurrentLayer([]);
@@ -150,6 +147,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       const reader = new Response(data.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
+      let accumulatedContent = '';
       let accumulatedJSON = '';
       const decoder = new TextDecoder();
       let hasAnalysis = false;
@@ -174,30 +172,34 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               const content = parsed.choices?.[0]?.delta?.content;
               
               if (content) {
+                accumulatedContent += content;
                 accumulatedJSON += content;
                 
                 try {
-                  const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
+                  const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*?)(?:"\s*,|\s*})/);
                   if (analysisMatch && analysisMatch[1] && !hasAnalysis) {
-                    updateNodeData(nodeId, 'answer', analysisMatch[1]);
+                    const decodedAnalysis = analysisMatch[1].replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
+                    updateNodeData(nodeId, 'answer', decodedAnalysis);
                     hasAnalysis = true;
                   }
       
-                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"') && hasAnalysis) {
-                    const data = JSON.parse(accumulatedJSON);
-                    
-                    if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH - 1) {
-                      const parentNode = currentNodesRef.current.find(n => n.id === nodeId);
-                      
-                      if (parentNode) {
-                        createChildNodes(
-                          nodeId,
-                          parentNode.position,
-                          data.questions,
-                          depth
-                        );
-                        setHasCreatedNodes(prev => new Set(prev).add(nodeId));
+                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"')) {
+                    try {
+                      const fullJSON = JSON.parse(accumulatedJSON);
+                      if (fullJSON.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH - 1) {
+                        const parentNode = currentNodesRef.current.find(n => n.id === nodeId);
+                        if (parentNode) {
+                          createChildNodes(
+                            nodeId,
+                            parentNode.position,
+                            fullJSON.questions,
+                            depth
+                          );
+                          setHasCreatedNodes(prev => new Set(prev).add(nodeId));
+                        }
                       }
+                    } catch (e) {
+                      console.log('Parsing in progress:', e);
                     }
                   }
                 } catch (e) {
@@ -211,7 +213,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         }
       }
 
-      // Only process next node after current node is fully complete
       processNextInLayer(nodeId, depth);
 
     } catch (error) {
