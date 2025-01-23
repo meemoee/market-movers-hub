@@ -93,20 +93,26 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     return (
       <div className="relative h-full w-full">
+        {/* Container for image and gradient */}
         <div className="absolute inset-0 rounded-lg overflow-hidden">
-          {article.image_url && (
-            <img 
-              src={article.image_url} 
-              alt={article.title}
-              className="h-full w-full object-cover"
-            />
-          )}
+          {/* Image container */}
+          <div className="absolute inset-0">
+            {article.image_url && (
+              <img 
+                src={article.image_url} 
+                alt={article.title}
+                className="h-full w-full object-cover"
+              />
+            )}
+          </div>
           
-          {/* Gradient overlay with extra large bounds */}
-          <div 
-            className="absolute -inset-[50px] rounded-lg scale-110 transform"
-            style={{ background: gradientStyle }} 
-          />
+          {/* Gradient overlay container */}
+          <div className="absolute inset-0">
+            <div 
+              className="absolute inset-0 w-full h-full"
+              style={{ background: gradientStyle }} 
+            />
+          </div>
         </div>
 
         {/* Content */}
