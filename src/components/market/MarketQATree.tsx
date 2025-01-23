@@ -97,15 +97,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
-    setCurrentLayer(newLayerNodes);
+    setCurrentLayer(prev => [...prev, ...newLayerNodes]);
     setLayerComplete(false);
-
-    if (newLayerNodes.length > 0) {
-      const firstNode = newNodes.find(n => n.id === newLayerNodes[0]);
-      if (firstNode) {
-        analyzeNode(firstNode.id, firstNode.data.question, depth + 1, 0);
-      }
-    }
   }, [setNodes, setEdges]);
 
   const processNextInLayer = useCallback((currentNodeId: string, depth: number) => {
@@ -151,6 +144,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       let accumulatedJSON = '';
       const decoder = new TextDecoder();
       let hasAnalysis = false;
+      let hasCreatedChildNodes = false;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -183,7 +177,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                     hasAnalysis = true;
                   }
       
-                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"')) {
+                  if (!hasCreatedChildNodes && accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"')) {
                     try {
                       const fullJSON = JSON.parse(accumulatedJSON);
                       if (fullJSON.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH - 1) {
@@ -196,6 +190,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                             depth
                           );
                           setHasCreatedNodes(prev => new Set(prev).add(nodeId));
+                          hasCreatedChildNodes = true;
                         }
                       }
                     } catch (e) {
