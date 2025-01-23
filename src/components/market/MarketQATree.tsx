@@ -66,8 +66,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   ) => {
     const newNodes = [];
     const newEdges = [];
-    const analysisPromises = [];
   
+    // Create all nodes and edges first
     for (let i = 0; i < questions.length; i++) {
       const childId = `node-${Date.now()}-${i}`;
       const position = generateNodePosition(/*...*/);
@@ -77,16 +77,17 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   
       newNodes.push(newNode);
       newEdges.push(newEdge);
-      
-      // Queue analysis promise instead of setTimeout
-      analysisPromises.push(analyzeNode(childId, questions[i], depth + 1));
     }
   
+    // Add all nodes and edges to state
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
   
-    // Wait for all analyses to complete
-    await Promise.all(analysisPromises);
+    // Process analyses one at a time
+    for (let i = 0; i < questions.length; i++) {
+      const node = newNodes[i];
+      await analyzeNode(node.id, questions[i], depth + 1);
+    }
   }, [setNodes, setEdges]);
 
   const analyzeNode = useCallback(async (nodeId: string, nodeQuestion: string, depth: number) => {
