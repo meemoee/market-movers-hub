@@ -223,7 +223,7 @@ const renderQANode = (node: QANode, depth: number = 0, parentPath: number[] = []
           {/* Horizontal connector */}
           {depth > 0 && (
             <div 
-              className="absolute left-0 top-4 h-[2px] w-9 bg-border"
+              className="absolute left-0 top-4 h-[2px] w-6 bg-border"
             />
           )}
 
