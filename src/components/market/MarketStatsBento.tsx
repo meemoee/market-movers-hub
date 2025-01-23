@@ -93,16 +93,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     return (
       <div className="relative h-full w-full">
-        {/* Base gradient layer */}
+        {/* Image layer */}
         <div className="absolute inset-0 rounded-lg overflow-hidden">
-          <div 
-            className="absolute -inset-[100px] blur-[2px]"
-            style={{ background: gradientStyle }} 
-          />
-        </div>
-        
-        {/* Image layer with blend mode */}
-        <div className="absolute inset-0 rounded-lg overflow-hidden mix-blend-overlay">
           {article.image_url && (
             <img 
               src={article.image_url} 
@@ -110,6 +102,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
               className="h-full w-full object-cover"
             />
           )}
+        </div>
+        
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 rounded-lg overflow-hidden">
+          <div 
+            className="absolute inset-0"
+            style={{ background: gradientStyle }}
+          />
         </div>
 
         {/* Content layer */}
