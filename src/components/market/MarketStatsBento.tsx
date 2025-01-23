@@ -101,7 +101,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           </div>
         )}
         <div 
-          className="absolute inset-0 bg-gradient-to-t"
+          className="absolute -inset-1 bg-gradient-to-t"
           style={{
             background: article.gradient_start_rgb && article.gradient_end_rgb
               ? `linear-gradient(to top, 
