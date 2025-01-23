@@ -68,7 +68,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   const renderArticle = (position: number) => {
     const article = articles.find(a => a.position === position);
-    if (!article) return null;
+    
+    if (!article) {
+      return (
+        <div className="relative h-full w-full">
+          <div className="absolute inset-0 bg-background" />
+        </div>
+      );
+    }
 
     // Determine text color based on gradient colors
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
@@ -90,10 +97,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           className="absolute inset-0"
           style={{
             background: article.gradient_start_rgb && article.gradient_end_rgb
-              ? `linear-gradient(to top, 
+              ? `linear-gradient(135deg, 
                   rgb(${article.gradient_start_rgb}) 0%, 
-                  rgba(${article.gradient_start_rgb}, 0.9) 30%, 
-                  rgba(${article.gradient_end_rgb}, 0.6) 60%, 
+                  rgba(${article.gradient_start_rgb}, 0.9) 20%, 
+                  rgba(${article.gradient_end_rgb}, 0.6) 80%, 
                   rgba(${article.gradient_end_rgb}, 0.3) 100%)`
               : 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.3) 100%)'
           }}
