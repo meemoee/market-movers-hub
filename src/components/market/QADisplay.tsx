@@ -4,7 +4,15 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from "@/integrations/supabase/client";
-import { QATree } from './qa/QATree';
+import ReactMarkdown from 'react-markdown';
+import { ChevronDown, ChevronUp } from "lucide-react";
+
+interface QANode {
+  id: string;
+  question: string;
+  analysis: string;
+  children: QANode[];
+}
 
 interface QADisplayProps {
   marketId: string;
@@ -14,13 +22,16 @@ interface QADisplayProps {
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [qaData, setQaData] = useState<any[]>([]);
+  const [qaData, setQaData] = useState<QANode[]>([]);
+  const [streamingContent, setStreamingContent] = useState<{[key: string]: string}>({});
+  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
     
     const nodeId = `node-${Date.now()}-${depth}`;
+    setCurrentNodeId(nodeId);
     
     console.log('Analyzing question:', { nodeId, question, depth });
     
@@ -60,7 +71,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   const parsedContent = JSON.parse(accumulatedContent);
                   if (parsedContent.analysis && parsedContent.questions) {
                     setQaData(prev => {
-                      const newNode = {
+                      const newNode: QANode = {
                         id: nodeId,
                         question,
                         analysis: parsedContent.analysis,
@@ -71,7 +82,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                         return [newNode];
                       }
 
-                      const updateChildren = (nodes: any[]): any[] => {
+                      const updateChildren = (nodes: QANode[]): QANode[] => {
                         return nodes.map(node => {
                           if (node.id === parentId) {
                             return {
@@ -92,21 +103,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return updateChildren(prev);
                     });
 
-                    // Automatically expand parent nodes when new children are added
-                    if (parentId) {
-                      setExpandedNodes(prev => {
-                        const newSet = new Set(prev);
-                        newSet.add(parentId);
-                        return newSet;
-                      });
-                    }
-
                     for (const childQuestion of parsedContent.questions) {
                       await analyzeQuestion(childQuestion, nodeId, depth + 1);
                     }
                   }
                 } catch (e) {
-                  // Ignore JSON parse errors for incomplete chunks
+                  setStreamingContent(prev => ({
+                    ...prev,
+                    [nodeId]: accumulatedContent
+                  }));
                 }
               }
             } catch (e) {
@@ -128,12 +133,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     setQaData([]);
+    setStreamingContent({});
     setExpandedNodes(new Set());
     
     try {
       await analyzeQuestion(marketQuestion);
     } finally {
       setIsAnalyzing(false);
+      setCurrentNodeId(null);
     }
   };
 
@@ -149,6 +156,72 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     });
   };
 
+  const renderQANode = (node: QANode, depth: number = 0) => {
+    const isStreaming = currentNodeId === node.id;
+    const streamContent = streamingContent[node.id];
+    const isExpanded = expandedNodes.has(node.id);
+    
+    const analysisContent = isStreaming ? streamContent : node.analysis;
+    const firstLine = analysisContent?.split('\n')[0] || '';
+    
+    return (
+      <div key={node.id} className="relative">
+        {depth > 0 && (
+          <div 
+            className="absolute left-[-20px] top-0 w-[20px] h-full"
+            style={{
+              background: `
+                linear-gradient(90deg, 
+                  transparent calc(50% - 1px), 
+                  hsl(var(--muted-foreground)) calc(50% - 1px), 
+                  hsl(var(--muted-foreground)) calc(50% + 1px), 
+                  transparent calc(50% + 1px)
+                ),
+                linear-gradient(180deg, 
+                  hsl(var(--muted-foreground)) calc(24px), 
+                  hsl(var(--muted-foreground)) 100%
+                )
+              `,
+              opacity: 0.2,
+              backgroundRepeat: 'no-repeat',
+              backgroundSize: '100% 100%, 2px 100%',
+              backgroundPosition: '0 0, 50% 0'
+            }}
+          />
+        )}
+        <div className="mb-3 pl-[20px]">
+          <div className="hover:bg-accent/5 transition-colors rounded-lg p-4">
+            <div className="space-y-2">
+              <h3 className="font-medium text-sm">{node.question}</h3>
+              <div 
+                className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
+                onClick={() => toggleNode(node.id)}
+              >
+                <button className="mt-1">
+                  {isExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+                <div className="flex-1">
+                  {isExpanded ? (
+                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                  ) : (
+                    <div className="line-clamp-1">{firstLine}</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-1">
+            {node.children.map(child => renderQANode(child, depth + 1))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <Button
@@ -160,11 +233,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       </Button>
       
       <ScrollArea className="h-[500px] mt-8 pr-4">
-        <QATree
-          data={qaData}
-          expandedNodes={expandedNodes}
-          onToggleNode={toggleNode}
-        />
+        {qaData.map(node => renderQANode(node))}
       </ScrollArea>
     </Card>
   );
