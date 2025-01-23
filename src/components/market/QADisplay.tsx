@@ -46,6 +46,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (error) throw error;
 
       let accumulatedContent = '';
+      let hasStartedNonJsonContent = false;
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
@@ -108,8 +109,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               if (content) {
                 accumulatedContent += content;
                 
-                // Only update streaming content if the chunk doesn't start with '{'
-                if (!content.trimStart().startsWith('{')) {
+                // Only update streaming content if we've received non-JSON content
+                // or if this chunk isn't the start of JSON
+                const trimmedContent = content.trimStart();
+                if (!trimmedContent.startsWith('{')) {
+                  hasStartedNonJsonContent = true;
+                }
+                
+                if (hasStartedNonJsonContent) {
                   setStreamingContent(prev => ({
                     ...prev,
                     [nodeId]: accumulatedContent
