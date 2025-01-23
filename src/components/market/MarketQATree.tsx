@@ -121,7 +121,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         console.log('Processing next node:', nextNodeId);
         setTimeout(() => {
           analyzeNode(nextNode.id, nextNode.data.question, depth, 0);
-        }, 500); // Add small delay between nodes
+        }, 1000); // Add delay between nodes
       }
     } else {
       // Layer is complete
@@ -211,15 +211,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         }
       }
 
-      if (!hasAnalysis && retryCount < MAX_RETRIES) {
-        console.log(`Retrying node ${nodeId}, attempt ${retryCount + 1}`);
-        setTimeout(() => {
-          analyzeNode(nodeId, nodeQuestion, depth, retryCount + 1);
-        }, RETRY_DELAY * Math.pow(2, retryCount));
-        return;
-      }
-
-      // Process next node in layer
+      // Only process next node after current node is fully complete
       processNextInLayer(nodeId, depth);
 
     } catch (error) {
