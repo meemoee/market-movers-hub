@@ -165,32 +165,48 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const firstLine = analysisContent?.split('\n')[0] || '';
     
     return (
-      <div key={node.id} className="mb-3" style={{ marginLeft: `${depth * 20}px` }}>
-        <Card className="p-4 bg-card hover:bg-accent/5 transition-colors">
-          <div className="space-y-2">
-            <h3 className="font-medium text-sm">{node.question}</h3>
-            <div 
-              className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
-              onClick={() => toggleNode(node.id)}
-            >
-              <button className="mt-1">
-                {isExpanded ? (
-                  <ChevronUp className="h-4 w-4" />
-                ) : (
-                  <ChevronDown className="h-4 w-4" />
-                )}
-              </button>
-              <div className="flex-1">
-                {isExpanded ? (
-                  <ReactMarkdown>{analysisContent}</ReactMarkdown>
-                ) : (
-                  <div className="line-clamp-1">{firstLine}</div>
-                )}
+      <div key={node.id} className="relative">
+        {depth > 0 && (
+          <div 
+            className="absolute left-[-20px] top-0 w-[20px] h-full"
+            style={{
+              background: `
+                linear-gradient(90deg, transparent calc(50% - 1px), hsl(var(--muted-foreground)) calc(50% - 1px), hsl(var(--muted-foreground)) calc(50% + 1px), transparent calc(50% + 1px))
+                ${depth === 1 ? '' : ',linear-gradient(0deg, transparent 50%, hsl(var(--muted-foreground)) 50%)'}
+              `,
+              opacity: 0.2
+            }}
+          />
+        )}
+        <div className="mb-3 pl-[20px]">
+          <div className="hover:bg-accent/5 transition-colors rounded-lg p-4">
+            <div className="space-y-2">
+              <h3 className="font-medium text-sm">{node.question}</h3>
+              <div 
+                className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
+                onClick={() => toggleNode(node.id)}
+              >
+                <button className="mt-1">
+                  {isExpanded ? (
+                    <ChevronUp className="h-4 w-4" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" />
+                  )}
+                </button>
+                <div className="flex-1">
+                  {isExpanded ? (
+                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                  ) : (
+                    <div className="line-clamp-1">{firstLine}</div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </Card>
-        {node.children.map(child => renderQANode(child, depth + 1))}
+          <div className="space-y-1">
+            {node.children.map(child => renderQANode(child, depth + 1))}
+          </div>
+        </div>
       </div>
     );
   };
