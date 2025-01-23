@@ -86,10 +86,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       ? `linear-gradient(to top, 
           rgb(${article.gradient_start_rgb}) 0%, 
           rgba(${article.gradient_end_rgb}, 0.98) 20%,
-          rgba(${article.gradient_end_rgb}, 0.95) 40%,
-          rgba(${article.gradient_end_rgb}, 0.9) 60%,
-          rgba(${article.gradient_end_rgb}, 0.8) 80%)`
-      : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.95) 20%, rgba(0,0,0,0.9) 40%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.8) 80%)';
+          rgba(${article.gradient_end_rgb}, 0.85) 40%,
+          rgba(${article.gradient_end_rgb}, 0.7) 60%,
+          rgba(${article.gradient_end_rgb}, 0.5) 80%)`
+      : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.0) 80%)';
 
     return (
       <div className="relative h-full w-full">
