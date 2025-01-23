@@ -98,7 +98,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="h-full w-full object-cover blur-sm scale-105 transform"
+              className="h-full w-full object-cover"
             />
           )}
           
