@@ -89,6 +89,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
+      // The key change: we analyze nodes at MAX_DEPTH now
       setTimeout(() => analyzeNode(childId, questions[i], depth + 1), 100 * i);
     }
 
@@ -98,8 +99,10 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
 
   const analyzeNode = useCallback(async (nodeId: string, nodeQuestion: string, depth: number) => {
     console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
-    if (depth >= MAX_DEPTH) {
-      console.log('Max depth reached, stopping analysis');
+    
+    // Only stop analysis if we're beyond MAX_DEPTH (not at MAX_DEPTH)
+    if (depth > MAX_DEPTH) {
+      console.log('Beyond max depth, stopping analysis');
       return;
     }
     
@@ -179,7 +182,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                     }
                   }
                 } catch (e) {
-                  // Ignore question parsing errors as the JSON might be incomplete
                   console.log('Questions parsing in progress...');
                 }
               }
@@ -188,10 +190,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
             }
           }
         }
-      }
-
-      if (analysis === '') {
-        throw new Error('Failed to generate analysis');
       }
 
     } catch (error) {
@@ -208,7 +206,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         return next;
       });
     }
-  }, [createChildNodes, hasCreatedNodes, updateNodeData]);
+  }, [createChildNodes, hasCreatedNodes, marketId, toast, updateNodeData]);
 
   const handleAnalyze = async () => {
     console.log('Starting analysis with market question:', marketQuestion);
