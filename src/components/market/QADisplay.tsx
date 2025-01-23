@@ -194,74 +194,74 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     });
   };
 
-  const renderQANode = (node: QANode, depth: number = 0) => {
-    const isStreaming = currentNodeId === node.id;
-    const streamContent = streamingContent[node.id];
-    const isExpanded = expandedNodes.has(node.id);
-    const analysisContent = isStreaming ? streamContent : node.analysis;
-    const firstLine = analysisContent?.split('\n')[0] || '';
-  
-    return (
-      <div key={node.id} className="relative flex flex-col">
+const renderQANode = (node: QANode, depth: number = 0) => {
+  const isStreaming = currentNodeId === node.id;
+  const streamContent = streamingContent[node.id];
+  const isExpanded = expandedNodes.has(node.id);
+  const analysisContent = isStreaming ? streamContent : node.analysis;
+  const firstLine = analysisContent?.split('\n')[0] || '';
+
+  return (
+    <div key={node.id} className="relative flex flex-col">
+      {depth > 0 && (
+        <div 
+          className="absolute left-9 w-[2px] bg-border"  {/* Removed /60 opacity */}
+          style={{
+            top: '-6px', // Reduced overlap
+            height: 'calc(100% + 6px)',
+          }}
+        />
+      )}
+
+      <div className="relative pl-[72px] pb-6">
         {depth > 0 && (
           <div 
-            className="absolute left-9 w-[2px] bg-border/60"
-            style={{
-              top: '-12px',
-              height: 'calc(100% + 12px)',
-            }}
+            className="absolute left-9 top-4 h-[2px] w-9 bg-border" {/* Removed /60 opacity */}
           />
         )}
-  
-        <div className="relative pl-[72px] pb-6">
-          {depth > 0 && (
-            <div 
-              className="absolute left-9 top-4 h-[2px] w-9 bg-border/60"
-            />
-          )}
-  
-          <div className="absolute left-0 top-0">
-            <Avatar className="h-9 w-9 border-2 border-background">
-              <AvatarFallback className="bg-primary/10">
-                <MessageSquare className="h-4 w-4 text-primary" />
-              </AvatarFallback>
-            </Avatar>
-          </div>
-  
-          <div className="space-y-2">
-            <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
-            <div 
-              className="text-sm text-muted-foreground cursor-pointer"
-              onClick={() => toggleNode(node.id)}
-            >
-              <div className="flex items-start gap-2">
-                <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </button>
-                <div className="flex-1">
-                  {isExpanded ? (
-                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
-                  ) : (
-                    <div className="line-clamp-1">{firstLine}</div>
-                  )}
-                </div>
+
+        <div className="absolute left-0 top-0">
+          <Avatar className="h-9 w-9 border-2 border-background">
+            <AvatarFallback className="bg-primary/10">
+              <MessageSquare className="h-4 w-4 text-primary" />
+            </AvatarFallback>
+          </Avatar>
+        </div>
+
+        <div className="space-y-2">
+          <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
+          <div 
+            className="text-sm text-muted-foreground cursor-pointer"
+            onClick={() => toggleNode(node.id)}
+          >
+            <div className="flex items-start gap-2">
+              <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
+              <div className="flex-1">
+                {isExpanded ? (
+                  <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                ) : (
+                  <div className="line-clamp-1">{firstLine}</div>
+                )}
               </div>
             </div>
           </div>
-  
-          {node.children.length > 0 && (
-            <div className="space-y-0 mt-6">
-              {node.children.map(child => renderQANode(child, depth + 1))}
-            </div>
-          )}
         </div>
+
+        {node.children.length > 0 && (
+          <div className="space-y-0 mt-6">
+            {node.children.map(child => renderQANode(child, depth + 1))}
+          </div>
+        )}
       </div>
-    );
-  };
+    </div>
+  );
+};
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
