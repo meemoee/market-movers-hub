@@ -92,30 +92,20 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0) 80%)';
 
     return (
-      <div className="relative h-full w-full">
-        <div className="absolute inset-0 rounded-lg overflow-hidden">
-          {/* Background image with clip-path */}
-          <div className="absolute inset-0 rounded-lg" style={{ clipPath: 'inset(0 round 0.5rem)' }}>
-            {article.image_url && (
-              <img 
-                src={article.image_url} 
-                alt={article.title}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-            )}
-            
-            {/* Gradient overlay with same clip-path */}
-            <div 
-              className="absolute inset-0"
-              style={{ 
-                background: gradientStyle,
-                clipPath: 'inset(0 round 0.5rem)'
-              }} 
-            />
-          </div>
-        </div>
+      <div className="relative h-full w-full overflow-hidden rounded-lg">
+        {article.image_url && (
+          <img 
+            src={article.image_url} 
+            alt={article.title}
+            className="absolute inset-0 h-full w-full object-cover rounded-lg"
+          />
+        )}
+        
+        <div 
+          className="absolute inset-0 rounded-lg"
+          style={{ background: gradientStyle }}
+        />
 
-        {/* Content */}
         <div className="relative h-full p-6 flex flex-col justify-end z-10">
           <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
             {article.title}
