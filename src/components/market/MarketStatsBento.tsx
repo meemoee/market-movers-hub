@@ -93,26 +93,26 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     return (
       <div className="relative h-full w-full">
-        {/* Main container with rounded corners */}
         <div className="absolute inset-0 rounded-lg overflow-hidden">
-          {/* Background image */}
-          {article.image_url && (
-            <img 
-              src={article.image_url} 
-              alt={article.title}
-              className="absolute inset-0 h-full w-full object-cover"
+          {/* Background image with clip-path */}
+          <div className="absolute inset-0 rounded-lg" style={{ clipPath: 'inset(0 round 0.5rem)' }}>
+            {article.image_url && (
+              <img 
+                src={article.image_url} 
+                alt={article.title}
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            )}
+            
+            {/* Gradient overlay with same clip-path */}
+            <div 
+              className="absolute inset-0"
+              style={{ 
+                background: gradientStyle,
+                clipPath: 'inset(0 round 0.5rem)'
+              }} 
             />
-          )}
-          
-          {/* Gradient overlay that matches parent's rounded corners */}
-          <div 
-            className="absolute inset-0 rounded-lg"
-            style={{ 
-              background: gradientStyle,
-              maskImage: 'radial-gradient(white, black)',
-              WebkitMaskImage: 'radial-gradient(white, black)'
-            }} 
-          />
+          </div>
         </div>
 
         {/* Content */}
