@@ -200,30 +200,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const isExpanded = expandedNodes.has(node.id);
     const analysisContent = isStreaming ? streamContent : node.analysis;
     const firstLine = analysisContent?.split('\n')[0] || '';
-    
+
     return (
       <div key={node.id} className="relative">
         {depth > 0 && (
           <div 
-            className="absolute left-8 top-0 w-px bg-border"
+            className="absolute top-0 bottom-0 w-[2px] bg-border/60"
             style={{
               left: '2.25rem',
-              height: 'calc(100% - 1.5rem)',
-              width: '2px',
-              backgroundColor: 'hsl(var(--border) / 0.6)'
             }}
           />
         )}
-        <div className="mb-6 pl-[72px] relative">
+        <div className="relative mb-6 pl-[72px]">
           {depth > 0 && (
             <div 
-              className="absolute left-8 top-8 h-px bg-border"
-              style={{
-                left: '2.25rem',
-                width: '2.25rem',
-                height: '2px',
-                backgroundColor: 'hsl(var(--border) / 0.6)'
-              }}
+              className="absolute left-9 top-8 h-[2px] w-9 bg-border/60"
             />
           )}
           <div className="absolute left-0 top-0">
