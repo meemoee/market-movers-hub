@@ -82,11 +82,18 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
 
+    const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
+      ? `linear-gradient(to top, 
+          rgba(${article.gradient_start_rgb}, 0.95) 0%, 
+          rgba(${article.gradient_start_rgb}, 0.85) 15%,
+          rgba(${article.gradient_end_rgb}, 0.5) 30%,
+          rgba(${article.gradient_end_rgb}, 0.1) 50%,
+          rgba(${article.gradient_end_rgb}, 0) 70%)`
+      : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0) 70%)';
+
     return (
       <div className="relative h-full w-full">
-        {/* Content wrapper with overflow hidden */}
         <div className="absolute inset-0 rounded-lg overflow-hidden">
-          {/* Image container */}
           {article.image_url && (
             <img 
               src={article.image_url} 
@@ -95,22 +102,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           )}
           
-          {/* Gradient overlay - using pseudo-element technique */}
-          <div 
-            className="absolute inset-0 before:content-[''] before:absolute before:inset-[-20px] before:rounded-lg"
-            style={{
-              '&::before': {
-                background: article.gradient_start_rgb && article.gradient_end_rgb
-                  ? `linear-gradient(to top, 
-                      rgba(${article.gradient_start_rgb}, 0.95) 0%, 
-                      rgba(${article.gradient_start_rgb}, 0.85) 15%,
-                      rgba(${article.gradient_end_rgb}, 0.5) 30%,
-                      rgba(${article.gradient_end_rgb}, 0.1) 50%,
-                      rgba(${article.gradient_end_rgb}, 0) 70%)`
-                  : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0) 70%)'
-              }
-            }}
-          />
+          {/* Gradient overlay with extended bounds */}
+          <div className="absolute -inset-[20px] rounded-lg" style={{ background: gradientStyle }} />
         </div>
 
         {/* Content */}
