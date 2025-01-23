@@ -149,10 +149,10 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               if (content) {
                 accumulatedJSON += content;
                 
-                // Try to extract current analysis state
-                const analysisMatch = accumulatedJSON.match(/"analysis"\s*:\s*"([^"]*)"/)
+                // Try to extract current analysis state - using a more robust regex
+                const analysisMatch = accumulatedJSON.match(/"analysis"\s*:\s*"((?:[^"\\]|\\"|\\\\)*)"/)
                 if (analysisMatch) {
-                  const currentAnalysis = analysisMatch[1];
+                  const currentAnalysis = analysisMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
                   if (currentAnalysis.length > lastAnalysisLength) {
                     lastAnalysisLength = currentAnalysis.length;
                     analysis = currentAnalysis; // Update analysis variable
@@ -192,9 +192,18 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         }
       }
 
-      // Restored analysis validation
-      if (analysis === '') {
-        throw new Error('Failed to generate analysis');
+      // Validate complete response
+      if (!accumulatedJSON.includes('"analysis"') || analysis === '') {
+        console.error('Incomplete or invalid response:', accumulatedJSON);
+        throw new Error('Failed to generate complete analysis');
+      }
+      
+      // Ensure we've processed all content
+      try {
+        JSON.parse('{' + accumulatedJSON + '}');
+      } catch (e) {
+        console.error('Invalid JSON structure:', e);
+        throw new Error('Received malformed response');
       }
 
     } catch (error: any) {
