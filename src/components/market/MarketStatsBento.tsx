@@ -13,18 +13,15 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
-// Helper function to determine if colors are light or dark
 function isLightColor(rgb: string): boolean {
   const [r, g, b] = rgb.split(',').map(Number);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return luminance > 0.5;
 }
 
-function BentoCard({ children, className, gradientStart, gradientEnd }: { 
+function BentoCard({ children, className }: { 
   children: React.ReactNode; 
   className?: string;
-  gradientStart?: string;
-  gradientEnd?: string;
 }) {
   return (
     <div 
@@ -70,7 +67,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const article = articles.find(a => a.position === position);
     if (!article) return null;
 
-    // Determine text color based on gradient colors
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
 
@@ -85,17 +81,18 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           </div>
         )}
-        {/* Gradient overlay - more prominent */}
+        {/* Enhanced gradient overlay with more pronounced color transition */}
         <div 
           className="absolute inset-0"
           style={{
             background: article.gradient_start_rgb && article.gradient_end_rgb
-              ? `linear-gradient(to top, 
-                  rgb(${article.gradient_start_rgb}) 0%, 
-                  rgba(${article.gradient_start_rgb}, 0.9) 30%, 
-                  rgba(${article.gradient_end_rgb}, 0.6) 60%, 
-                  rgba(${article.gradient_end_rgb}, 0.3) 100%)`
-              : 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.6) 60%, rgba(0,0,0,0.3) 100%)'
+              ? `linear-gradient(135deg, 
+                  rgba(${article.gradient_start_rgb}, 0.95) 0%, 
+                  rgba(${article.gradient_start_rgb}, 0.85) 25%,
+                  rgba(${article.gradient_end_rgb}, 0.75) 50%,
+                  rgba(${article.gradient_end_rgb}, 0.85) 75%,
+                  rgba(${article.gradient_end_rgb}, 0.95) 100%)`
+              : 'linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 100%)'
           }}
         />
         <div className="relative h-full p-6 flex flex-col justify-end z-10">
@@ -110,25 +107,15 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   return (
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <BentoCard 
-          className="md:row-span-2 aspect-square"
-          gradientStart={articles[0]?.gradient_start_rgb || undefined}
-          gradientEnd={articles[0]?.gradient_end_rgb || undefined}
-        >
+        <BentoCard className="md:row-span-2 aspect-square">
           {renderArticle(1)}
         </BentoCard>
 
-        <BentoCard
-          gradientStart={articles[1]?.gradient_start_rgb || undefined}
-          gradientEnd={articles[1]?.gradient_end_rgb || undefined}
-        >
+        <BentoCard>
           {renderArticle(2)}
         </BentoCard>
 
-        <BentoCard
-          gradientStart={articles[2]?.gradient_start_rgb || undefined}
-          gradientEnd={articles[2]?.gradient_end_rgb || undefined}
-        >
+        <BentoCard>
           {renderArticle(3)}
         </BentoCard>
       </div>
