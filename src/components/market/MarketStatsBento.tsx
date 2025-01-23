@@ -82,14 +82,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
 
-          const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
+    const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
       ? `linear-gradient(to top, 
           rgb(${article.gradient_start_rgb}) 0%, 
-          rgba(${article.gradient_end_rgb}, 0.8) 20%,
-          rgba(${article.gradient_end_rgb}, 0.4) 35%,
-          rgba(${article.gradient_end_rgb}, 0.1) 45%,
-          rgba(${article.gradient_end_rgb}, 0) 50%)`
-      : 'linear-gradient(to top, rgb(0,0,0) 0%, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.4) 35%, rgba(0,0,0,0.1) 45%, rgba(0,0,0,0) 50%)';
+          rgba(${article.gradient_end_rgb}, 0.95) 20%,
+          rgba(${article.gradient_end_rgb}, 0.8) 40%,
+          rgba(${article.gradient_end_rgb}, 0.4) 60%,
+          rgba(${article.gradient_end_rgb}, 0) 80%)`
+      : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0) 80%)';
 
     return (
       <div className="relative h-full w-full">
@@ -102,7 +102,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           )}
           
-          {/* Gradient overlay with extra large bounds and scale */}
+          {/* Gradient overlay with extra large bounds */}
           <div 
             className="absolute -inset-[50px] rounded-lg scale-110 transform"
             style={{ background: gradientStyle }} 
