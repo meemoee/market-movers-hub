@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
-import { MarketQATree } from './MarketQATree';
-import type { MarketEvent } from './chart/types';
+import { QADisplay } from './QADisplay';
 
 interface MarketDetailsProps {
   bestBid: number;
@@ -96,7 +95,7 @@ export function MarketDetails({
       {/* QA Tree Section */}
       <div className="mt-6 border-t border-border pt-4">
         <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
-        <MarketQATree 
+        <QADisplay 
           marketId={marketId} 
           marketQuestion={question}
         />
