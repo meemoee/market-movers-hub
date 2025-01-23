@@ -39,7 +39,7 @@ function BentoCard({ children, className, gradientStart, gradientEnd }: {
           className="absolute inset-0"
           style={{
             background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd}))`,
-            padding: '1px',
+            padding: '3px', // Increased from 1px to 3px
             maskImage: 'linear-gradient(black, black)',
             WebkitMaskImage: 'linear-gradient(black, black)'
           }}
@@ -47,7 +47,7 @@ function BentoCard({ children, className, gradientStart, gradientEnd }: {
       )}
       <div className={cn(
         "relative h-full w-full rounded-xl bg-background",
-        hasGradient ? "m-[1px]" : "border border-border"
+        hasGradient ? "m-[3px]" : "border border-border"
       )}>
         {children}
       </div>
