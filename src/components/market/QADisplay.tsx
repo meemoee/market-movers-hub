@@ -44,7 +44,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
 
-      let accumulatedContent = '';
+      let accumulatedJson = '';
+      let currentContent = '';
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
@@ -88,6 +89,31 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateChildren(prev);
       });
 
+      const processJsonChunk = (chunk: string) => {
+        try {
+          const parsedJson = JSON.parse(chunk);
+          if (parsedJson?.analysis && !currentContent) {
+            // We've received a complete JSON object - use it to initialize our streaming
+            currentContent = parsedJson.analysis;
+            setStreamingContent(prev => ({
+              ...prev,
+              [nodeId]: currentContent
+            }));
+
+            // Process child questions
+            if (parsedJson.questions) {
+              for (const childQuestion of parsedJson.questions) {
+                analyzeQuestion(childQuestion, nodeId, depth + 1);
+              }
+            }
+            return true;
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      };
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -105,56 +131,44 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               const content = parsed.choices?.[0]?.delta?.content;
               
               if (content) {
-                accumulatedContent += content;
+                accumulatedJson += content;
                 
-                // Try to parse the accumulated content as JSON
-                try {
-                  const parsedJson = JSON.parse(accumulatedContent);
-                  
-                  // Only update display if we have a valid analysis JSON structure
-                  if (parsedJson && typeof parsedJson === 'object' && parsedJson.analysis) {
-                    setParsedContent(prev => ({
-                      ...prev,
-                      [nodeId]: parsedJson
-                    }));
-                    
+                // First check if we have a complete JSON object
+                if (!currentContent) {
+                  processJsonChunk(accumulatedJson);
+                } else {
+                  // We're already streaming content, update with new content
+                  currentContent += content;
+                  if (!content.startsWith('{') && !content.endsWith('}')) {
                     setStreamingContent(prev => ({
                       ...prev,
-                      [nodeId]: parsedJson.analysis
+                      [nodeId]: currentContent
                     }));
-                    
-                    // Update QA tree with complete analysis
-                    setQaData(prev => {
-                      const updateNode = (nodes: QANode[]): QANode[] => {
-                        return nodes.map(node => {
-                          if (node.id === nodeId) {
-                            return {
-                              ...node,
-                              analysis: parsedJson.analysis
-                            };
-                          }
-                          if (node.children.length > 0) {
-                            return {
-                              ...node,
-                              children: updateNode(node.children)
-                            };
-                          }
-                          return node;
-                        });
-                      };
-                      return updateNode(prev);
-                    });
-
-                    // Process child questions after valid JSON
-                    if (parsedJson.questions) {
-                      for (const childQuestion of parsedJson.questions) {
-                        await analyzeQuestion(childQuestion, nodeId, depth + 1);
-                      }
-                    }
                   }
-                } catch (parseError) {
-                  // Not valid JSON yet, continue accumulating
-                  continue;
+                }
+
+                // Update QA tree data if we have valid content
+                if (currentContent) {
+                  setQaData(prev => {
+                    const updateNode = (nodes: QANode[]): QANode[] => {
+                      return nodes.map(node => {
+                        if (node.id === nodeId) {
+                          return {
+                            ...node,
+                            analysis: currentContent
+                          };
+                        }
+                        if (node.children.length > 0) {
+                          return {
+                            ...node,
+                            children: updateNode(node.children)
+                          };
+                        }
+                        return node;
+                      });
+                    };
+                    return updateNode(prev);
+                  });
                 }
               }
             } catch (e) {
