@@ -25,19 +25,6 @@ function isLightColor(rgb: string): boolean {
   return luminance > 0.5;
 }
 
-function BentoCard({ children, className }: { 
-  children: React.ReactNode; 
-  className?: string;
-}) {
-  return (
-    <div className={cn("relative h-full w-full overflow-hidden rounded-lg", className)}>
-      <div className="h-full w-full bg-background rounded-lg overflow-hidden">
-        {children}
-      </div>
-    </div>
-  );
-}
-
 interface MarketStatsBentoProps {
   selectedInterval: string;
 }
@@ -61,7 +48,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         return;
       }
 
-      setArticles(data);
+      setArticles(data || []);
     };
 
     fetchArticles();
@@ -84,31 +71,31 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
-
-    const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
-      ? `linear-gradient(to top, 
-          rgb(${article.gradient_start_rgb}) 0%, 
-          rgba(${article.gradient_end_rgb}, 0.98) 20%,
-          rgba(${article.gradient_end_rgb}, 0.85) 40%,
-          rgba(${article.gradient_end_rgb}, 0.7) 60%,
-          rgba(${article.gradient_end_rgb}, 0.5) 80%)`
-      : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.0) 80%)';
-
-    return (
-      <div className="relative h-full w-full">
+    
+    const content = (
+      <div className="relative h-full w-full group">
         <div className="absolute inset-0 rounded-lg overflow-hidden">
           {article.image_url && (
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
             />
           )}
           
-          {/* Gradient overlay with extra large bounds */}
+          {/* Gradient overlay */}
           <div 
             className="absolute -inset-[50px] rounded-lg scale-110 transform"
-            style={{ background: gradientStyle }} 
+            style={{ 
+              background: article.gradient_start_rgb && article.gradient_end_rgb
+                ? `linear-gradient(to top, 
+                    rgb(${article.gradient_start_rgb}) 0%, 
+                    rgba(${article.gradient_end_rgb}, 0.98) 20%,
+                    rgba(${article.gradient_end_rgb}, 0.85) 40%,
+                    rgba(${article.gradient_end_rgb}, 0.7) 60%,
+                    rgba(${article.gradient_end_rgb}, 0.5) 80%)`
+                : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.0) 80%)'
+            }} 
           />
         </div>
 
@@ -120,22 +107,40 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </div>
       </div>
     );
+
+    // If no link, return content without anchor wrapper
+    if (!article.link) {
+      return content;
+    }
+
+    // Wrap in anchor tag if link exists
+    return (
+      <a 
+        href={article.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
+      >
+        {content}
+      </a>
+    );
   };
 
   return (
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <BentoCard className="md:row-span-2 aspect-square">
+        {/* First column - large box */}
+        <div className="md:row-span-2 aspect-square">
           {renderArticle(1)}
-        </BentoCard>
+        </div>
 
-        <BentoCard>
+        {/* Second column - two smaller boxes */}
+        <div>
           {renderArticle(2)}
-        </BentoCard>
-
-        <BentoCard>
+        </div>
+        <div>
           {renderArticle(3)}
-        </BentoCard>
+        </div>
       </div>
     </div>
   );
