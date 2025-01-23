@@ -100,19 +100,23 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           </div>
         )}
-        <div 
-          className="absolute -inset-1 bg-gradient-to-t"
-          style={{
-            background: article.gradient_start_rgb && article.gradient_end_rgb
-              ? `linear-gradient(to top, 
-                  rgba(${article.gradient_start_rgb}, 0.95) 0%, 
-                  rgba(${article.gradient_start_rgb}, 0.85) 15%,
-                  rgba(${article.gradient_end_rgb}, 0.5) 30%,
-                  rgba(${article.gradient_end_rgb}, 0.1) 50%,
-                  rgba(${article.gradient_end_rgb}, 0) 70%)`
-              : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0) 70%)'
-          }}
-        />
+        {/* Gradient overlay container */}
+        <div className="absolute inset-0 rounded-lg overflow-hidden">
+          {/* Inner gradient that extends beyond bounds to ensure corner coverage */}
+          <div 
+            className="absolute -inset-2"
+            style={{
+              background: article.gradient_start_rgb && article.gradient_end_rgb
+                ? `linear-gradient(to top, 
+                    rgba(${article.gradient_start_rgb}, 0.95) 0%, 
+                    rgba(${article.gradient_start_rgb}, 0.85) 15%,
+                    rgba(${article.gradient_end_rgb}, 0.5) 30%,
+                    rgba(${article.gradient_end_rgb}, 0.1) 50%,
+                    rgba(${article.gradient_end_rgb}, 0) 70%)`
+                : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0) 70%)'
+            }}
+          />
+        </div>
         <div className="relative h-full p-6 flex flex-col justify-end z-10">
           <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
             {article.title}
