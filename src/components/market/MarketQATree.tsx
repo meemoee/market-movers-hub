@@ -89,7 +89,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      // The key change: we analyze nodes at MAX_DEPTH now
       setTimeout(() => analyzeNode(childId, questions[i], depth + 1), 100 * i);
     }
 
@@ -100,7 +99,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const analyzeNode = useCallback(async (nodeId: string, nodeQuestion: string, depth: number) => {
     console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
     
-    // Only stop analysis if we're beyond MAX_DEPTH (not at MAX_DEPTH)
+    // Modified depth check to allow analysis at MAX_DEPTH
     if (depth > MAX_DEPTH) {
       console.log('Beyond max depth, stopping analysis');
       return;
@@ -108,6 +107,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     
     setProcessingNodes(prev => new Set(prev).add(nodeId));
     setStreamingContent(prev => ({ ...prev, [nodeId]: '' }));
+    
+    let analysis = ''; // Restored analysis variable
     
     try {
       const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
@@ -153,8 +154,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                 if (analysisMatch) {
                   const currentAnalysis = analysisMatch[1];
                   if (currentAnalysis.length > lastAnalysisLength) {
-                    // Only update if we have new analysis content
                     lastAnalysisLength = currentAnalysis.length;
+                    analysis = currentAnalysis; // Update analysis variable
                     updateNodeData(nodeId, 'answer', currentAnalysis);
                   }
                 }
@@ -164,7 +165,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                   if (accumulatedJSON.includes('"questions":[') && accumulatedJSON.includes(']')) {
                     const questionsMatch = accumulatedJSON.match(/"questions"\s*:\s*\[(.*?)\]/s);
                     if (questionsMatch) {
-                      // Extract all quoted strings from the questions array
                       const questionStrings = questionsMatch[1].match(/"([^"]*)"/g);
                       if (questionStrings && questionStrings.length === 3 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
                         const questions = questionStrings.map(q => q.replace(/"/g, ''));
@@ -192,17 +192,27 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         }
       }
 
-    } catch (error) {
+      // Restored analysis validation
+      if (analysis === '') {
+        throw new Error('Failed to generate analysis');
+      }
+
+    } catch (error: any) {
       console.error('Error analyzing node:', error);
       toast({
         variant: "destructive",
         title: "Analysis Error",
-        description: "Failed to analyze the question. Please try again.",
+        description: error.message || "Failed to analyze the question. Please try again.",
       });
     } finally {
       setProcessingNodes(prev => {
         const next = new Set(prev);
         next.delete(nodeId);
+        return next;
+      });
+      setStreamingContent(prev => {
+        const next = { ...prev };
+        delete next[nodeId];
         return next;
       });
     }
@@ -239,12 +249,12 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       
       console.log('Root node created, starting analysis');
       await analyzeNode(rootId, marketQuestion, 0);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Analysis error:', error);
       toast({
         variant: "destructive",
         title: "Analysis Error",
-        description: "Something went wrong during analysis. Please try again.",
+        description: error.message || "Something went wrong during analysis. Please try again.",
       });
     } finally {
       setIsAnalyzing(false);
