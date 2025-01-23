@@ -13,6 +13,13 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
+// Placeholder colors for empty bento boxes
+const PLACEHOLDER_GRADIENTS = [
+  'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
+  'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
+  'linear-gradient(to right, #ee9ca7, #ffdde1)'
+];
+
 function isLightColor(rgb: string): boolean {
   const [r, g, b] = rgb.split(',').map(Number);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
@@ -65,7 +72,19 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   const renderArticle = (position: number) => {
     const article = articles.find(a => a.position === position);
-    if (!article) return null;
+    
+    // If no article exists, return a placeholder gradient
+    if (!article) {
+      const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
+      return (
+        <div className="relative h-full w-full">
+          <div 
+            className="absolute inset-0"
+            style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
+          />
+        </div>
+      );
+    }
 
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
@@ -81,7 +100,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           </div>
         )}
-        {/* Enhanced gradient overlay with more pronounced color transition */}
         <div 
           className="absolute inset-0"
           style={{
