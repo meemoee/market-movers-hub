@@ -49,6 +49,46 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
+      // Initialize streaming content for this node
+      setStreamingContent(prev => ({
+        ...prev,
+        [nodeId]: ''
+      }));
+
+      // Add initial node to QA tree
+      setQaData(prev => {
+        const newNode: QANode = {
+          id: nodeId,
+          question,
+          analysis: '',
+          children: []
+        };
+
+        if (!parentId) {
+          return [newNode];
+        }
+
+        const updateChildren = (nodes: QANode[]): QANode[] => {
+          return nodes.map(node => {
+            if (node.id === parentId) {
+              return {
+                ...node,
+                children: [...node.children, newNode]
+              };
+            }
+            if (node.children.length > 0) {
+              return {
+                ...node,
+                children: updateChildren(node.children)
+              };
+            }
+            return node;
+          });
+        };
+
+        return updateChildren(prev);
+      });
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -67,59 +107,45 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               
               if (content) {
                 accumulatedContent += content;
+                // Update streaming content immediately
                 setStreamingContent(prev => ({
                   ...prev,
                   [nodeId]: accumulatedContent
                 }));
                 
                 try {
-                  // Try to parse the accumulated content as JSON
+                  // Try to parse accumulated content as JSON
                   const parsedContent = JSON.parse(accumulatedContent);
                   if (parsedContent.analysis && parsedContent.questions) {
-                    // Only update the QA tree once we have valid JSON
+                    // Update node with complete analysis
                     setQaData(prev => {
-                      const newNode: QANode = {
-                        id: nodeId,
-                        question,
-                        analysis: parsedContent.analysis,
-                        children: []
-                      };
-
-                      if (!parentId) {
-                        return [newNode];
-                      }
-
-                      const updateChildren = (nodes: QANode[]): QANode[] => {
+                      const updateNode = (nodes: QANode[]): QANode[] => {
                         return nodes.map(node => {
-                          if (node.id === parentId) {
+                          if (node.id === nodeId) {
                             return {
                               ...node,
-                              children: [...node.children, newNode]
+                              analysis: parsedContent.analysis
                             };
                           }
                           if (node.children.length > 0) {
                             return {
                               ...node,
-                              children: updateChildren(node.children)
+                              children: updateNode(node.children)
                             };
                           }
                           return node;
                         });
                       };
-
-                      return updateChildren(prev);
+                      return updateNode(prev);
                     });
 
-                    // Process child questions after we have valid JSON
+                    // Process child questions after valid JSON
                     for (const childQuestion of parsedContent.questions) {
                       await analyzeQuestion(childQuestion, nodeId, depth + 1);
                     }
                   }
                 } catch (e) {
-                  setStreamingContent(prev => ({
-                    ...prev,
-                    [nodeId]: accumulatedContent
-                  }));
+                  // Not valid JSON yet, continue streaming
                 }
               }
             } catch (e) {
@@ -169,6 +195,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
     
+    // Show streaming content if available, otherwise use final analysis
     const analysisContent = isStreaming ? streamContent : node.analysis;
     const firstLine = analysisContent?.split('\n')[0] || '';
     
