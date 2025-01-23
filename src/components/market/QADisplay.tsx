@@ -200,23 +200,26 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const isExpanded = expandedNodes.has(node.id);
     const analysisContent = isStreaming ? streamContent : node.analysis;
     const firstLine = analysisContent?.split('\n')[0] || '';
-
+  
     return (
-      <div key={node.id} className="relative">
+      <div key={node.id} className="relative flex flex-col">
         {depth > 0 && (
           <div 
-            className="absolute top-0 bottom-0 w-[2px] bg-border/60"
+            className="absolute left-9 w-[2px] bg-border/60"
             style={{
-              left: '2.25rem',
+              top: '-12px',
+              height: 'calc(100% + 12px)',
             }}
           />
         )}
-        <div className="relative mb-6 pl-[72px]">
+  
+        <div className="relative pl-[72px] pb-6">
           {depth > 0 && (
             <div 
-              className="absolute left-9 top-8 h-[2px] w-9 bg-border/60"
+              className="absolute left-9 top-4 h-[2px] w-9 bg-border/60"
             />
           )}
+  
           <div className="absolute left-0 top-0">
             <Avatar className="h-9 w-9 border-2 border-background">
               <AvatarFallback className="bg-primary/10">
@@ -224,6 +227,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </AvatarFallback>
             </Avatar>
           </div>
+  
           <div className="space-y-2">
             <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
             <div 
@@ -248,9 +252,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </div>
             </div>
           </div>
-          <div className="space-y-6 mt-6">
-            {node.children.map(child => renderQANode(child, depth + 1))}
-          </div>
+  
+          {node.children.length > 0 && (
+            <div className="space-y-0 mt-6">
+              {node.children.map(child => renderQANode(child, depth + 1))}
+            </div>
+          )}
         </div>
       </div>
     );
