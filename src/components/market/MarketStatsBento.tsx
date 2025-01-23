@@ -102,8 +102,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           )}
           
-          {/* Gradient overlay with extended bounds */}
-          <div className="absolute -inset-[20px] rounded-lg" style={{ background: gradientStyle }} />
+          {/* Gradient overlay with extra large bounds and scale */}
+          <div 
+            className="absolute -inset-[50px] rounded-lg scale-110 transform"
+            style={{ background: gradientStyle }} 
+          />
         </div>
 
         {/* Content */}
