@@ -249,30 +249,30 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           />
         )}
         <div className="mb-3 pl-[20px]">
-          <div className="hover:bg-accent/5 transition-colors rounded-lg p-4">
-            <div className="space-y-2">
-              <h3 className="font-medium text-sm">{node.question}</h3>
-              <div 
-                className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
-                onClick={() => toggleNode(node.id)}
-              >
-                <button className="mt-1">
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </button>
-                <div className="flex-1">
-                  {isExpanded ? (
-                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
-                  ) : (
-                    <div className="line-clamp-1">{firstLine}</div>
-                  )}
+            <div className="hover:bg-accent/5 transition-colors rounded-lg p-4">
+              <div className="space-y-2">
+                <h3 className="font-medium text-sm">{node.question}</h3>
+                <div 
+                  className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
+                  onClick={() => toggleNode(node.id)}
+                >
+                  <button className="mt-1">
+                    {isExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                  <div className="flex-1">
+                    {isStreaming || isExpanded ? (
+                      <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                    ) : (
+                      <div className="line-clamp-1">{firstLine}</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
           <div className="space-y-1">
             {node.children.map(child => renderQANode(child, depth + 1))}
           </div>
