@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { MessageSquare, ChevronDown, ChevronUp, ThumbsUp } from "lucide-react";
 
 interface QANode {
   id: string;
@@ -218,45 +218,46 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
-    
-    // Show streaming content if available, otherwise use final analysis
     const analysisContent = isStreaming ? streamContent : node.analysis;
     const firstLine = analysisContent?.split('\n')[0] || '';
     
     return (
-      <div key={node.id} className="relative">
+      <div key={node.id} className="relative group">
         {depth > 0 && (
           <div 
-            className="absolute left-[-20px] top-0 w-[20px] h-full"
-            style={{
-              background: `
-                linear-gradient(90deg, 
-                  transparent calc(50% - 1px), 
-                  hsl(var(--muted-foreground)) calc(50% - 1px), 
-                  hsl(var(--muted-foreground)) calc(50% + 1px), 
-                  transparent calc(50% + 1px)
-                ),
-                linear-gradient(180deg, 
-                  hsl(var(--muted-foreground)) calc(24px), 
-                  hsl(var(--muted-foreground)) 100%
-                )
-              `,
-              opacity: 0.2,
-              backgroundRepeat: 'no-repeat',
-              backgroundSize: '100% 100%, 2px 100%',
-              backgroundPosition: '0 0, 50% 0'
-            }}
+            className="absolute left-6 top-0 w-[2px] h-full bg-accent/20"
+            aria-hidden="true"
           />
         )}
-        <div className="mb-3 pl-[20px]">
-          <div className="hover:bg-accent/5 transition-colors rounded-lg p-4">
-            <div className="space-y-2">
-              <h3 className="font-medium text-sm">{node.question}</h3>
-              <div 
-                className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
-                onClick={() => toggleNode(node.id)}
-              >
-                <button className="mt-1">
+        
+        <div className={`pl-12 mb-6 relative ${depth > 0 ? 'mt-6' : ''}`}>
+          <div className="absolute left-0 top-1">
+            <div className="w-8 h-8 rounded-full bg-accent/10 flex items-center justify-center">
+              <MessageSquare className="w-4 h-4 text-accent-foreground/70" />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-start justify-between">
+              <h3 className="font-medium text-sm text-foreground/90">{node.question}</h3>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <ThumbsUp className="w-4 h-4 mr-1" />
+                  <span className="text-xs">0</span>
+                </Button>
+              </div>
+            </div>
+
+            <div 
+              className="text-sm text-muted-foreground space-y-2"
+              onClick={() => toggleNode(node.id)}
+            >
+              <div className="flex items-start gap-2 cursor-pointer group">
+                <button className="mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {isExpanded ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
@@ -265,34 +266,51 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                 </button>
                 <div className="flex-1">
                   {isExpanded ? (
-                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                    <ReactMarkdown 
+                      className="prose prose-sm dark:prose-invert max-w-none"
+                    >
+                      {analysisContent}
+                    </ReactMarkdown>
                   ) : (
-                    <div className="line-clamp-1">{firstLine}</div>
+                    <div className="line-clamp-2 group-hover:text-foreground/70 transition-colors">
+                      {firstLine}
+                    </div>
                   )}
                 </div>
               </div>
             </div>
+
+            <div className="flex items-center gap-4 text-xs text-muted-foreground/60">
+              <button className="hover:text-foreground transition-colors">Reply</button>
+              <span>•</span>
+              <span>Just now</span>
+            </div>
           </div>
-          <div className="space-y-1">
-            {node.children.map(child => renderQANode(child, depth + 1))}
-          </div>
+
+          {node.children.length > 0 && (
+            <div className="space-y-1">
+              {node.children.map(child => renderQANode(child, depth + 1))}
+            </div>
+          )}
         </div>
       </div>
     );
   };
 
   return (
-    <Card className="p-4 mt-4 bg-card relative">
+    <Card className="p-6 mt-4 bg-card relative">
       <Button
         onClick={handleAnalyze}
         disabled={isAnalyzing}
-        className="absolute top-2 right-2 z-10"
+        className="absolute top-4 right-4 z-10"
       >
         {isAnalyzing ? 'Analyzing...' : 'Analyze'}
       </Button>
       
-      <ScrollArea className="h-[500px] mt-8 pr-4">
-        {qaData.map(node => renderQANode(node))}
+      <ScrollArea className="h-[600px] mt-8 pr-4">
+        <div className="space-y-6">
+          {qaData.map(node => renderQANode(node))}
+        </div>
       </ScrollArea>
     </Card>
   );
