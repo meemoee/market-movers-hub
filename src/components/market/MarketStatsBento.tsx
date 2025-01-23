@@ -13,6 +13,12 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
+const PLACEHOLDER_GRADIENTS = [
+  'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
+  'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
+  'linear-gradient(to right, #ee9ca7, #ffdde1)'
+];
+
 function isLightColor(rgb: string): boolean {
   const [r, g, b] = rgb.split(',').map(Number);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
@@ -45,6 +51,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
+        // Get distinct on position, ordered by created_at desc within each position
         .or(`position.eq.1,position.eq.2,position.eq.3`)
         .order('position', { ascending: true })
         .order('created_at', { ascending: false });
@@ -64,7 +71,15 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const article = articles.find(a => a.position === position);
     
     if (!article) {
-      return null;
+      const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
+      return (
+        <div className="relative h-full w-full">
+          <div 
+            className="absolute inset-0"
+            style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
+          />
+        </div>
+      );
     }
 
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
@@ -90,18 +105,19 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           )}
           
+          {/* Gradient overlay with extra large bounds */}
           <div 
             className="absolute -inset-[50px] rounded-lg scale-110 transform"
             style={{ background: gradientStyle }} 
           />
         </div>
 
+        {/* Content */}
         <div className="relative h-full px-6 pb-8 pt-6 flex flex-col justify-end z-10">
           <h3 className={cn("text-lg font-bold leading-tight", textColorClass)}>
             {article.title}
           </h3>
         </div>
-      </div>
     );
   };
 
