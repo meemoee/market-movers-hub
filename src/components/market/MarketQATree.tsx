@@ -58,45 +58,35 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     );
   }, [setNodes]);
 
-  const createChildNodes = useCallback((
+  const createChildNodes = useCallback(async (
     parentId: string,
     parentPosition: { x: number, y: number },
     questions: string[],
     depth: number
   ) => {
-    console.log('Creating child nodes:', { parentId, questions, depth });
     const newNodes = [];
     const newEdges = [];
-
+    const analysisPromises = [];
+  
     for (let i = 0; i < questions.length; i++) {
       const childId = `node-${Date.now()}-${i}`;
-      const position = generateNodePosition(
-        i,
-        CHILDREN_PER_NODE,
-        parentPosition.x,
-        parentPosition.y,
-        depth + 1,
-        MAX_DEPTH,
-        document.querySelector(`[data-id="${parentId}"]`) as HTMLElement
-      );
-
-      const newNode = createNode(childId, position, {
-        question: questions[i],
-        answer: '',
-        updateNodeData,
-      });
-
+      const position = generateNodePosition(/*...*/);
+  
+      const newNode = createNode(childId, position, {/*...*/});
       const newEdge = createEdge(parentId, childId, depth + 1);
-
+  
       newNodes.push(newNode);
       newEdges.push(newEdge);
-
-      // Queue analysis for the new node after a short delay
-      setTimeout(() => analyzeNode(childId, questions[i], depth + 1), 100 * i);
+      
+      // Queue analysis promise instead of setTimeout
+      analysisPromises.push(analyzeNode(childId, questions[i], depth + 1));
     }
-
+  
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
+  
+    // Wait for all analyses to complete
+    await Promise.all(analysisPromises);
   }, [setNodes, setEdges]);
 
   const analyzeNode = useCallback(async (nodeId: string, nodeQuestion: string, depth: number) => {
