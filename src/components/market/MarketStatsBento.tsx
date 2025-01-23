@@ -101,16 +101,16 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           </div>
         )}
         <div 
-          className="absolute inset-0"
+          className="absolute inset-0 bg-gradient-to-t"
           style={{
             background: article.gradient_start_rgb && article.gradient_end_rgb
-              ? `linear-gradient(135deg, 
+              ? `linear-gradient(to top, 
                   rgba(${article.gradient_start_rgb}, 0.95) 0%, 
-                  rgba(${article.gradient_start_rgb}, 0.85) 25%,
-                  rgba(${article.gradient_end_rgb}, 0.75) 50%,
-                  rgba(${article.gradient_end_rgb}, 0.85) 75%,
-                  rgba(${article.gradient_end_rgb}, 0.95) 100%)`
-              : 'linear-gradient(135deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 100%)'
+                  rgba(${article.gradient_start_rgb}, 0.85) 15%,
+                  rgba(${article.gradient_end_rgb}, 0.5) 30%,
+                  rgba(${article.gradient_end_rgb}, 0.1) 50%,
+                  rgba(${article.gradient_end_rgb}, 0) 70%)`
+              : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0) 70%)'
           }}
         />
         <div className="relative h-full p-6 flex flex-col justify-end z-10">
