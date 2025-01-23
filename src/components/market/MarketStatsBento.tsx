@@ -13,7 +13,6 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
-// Helper function to determine if colors are light or dark
 function isLightColor(rgb: string): boolean {
   const [r, g, b] = rgb.split(',').map(Number);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
@@ -26,24 +25,30 @@ function BentoCard({ children, className, gradientStart, gradientEnd }: {
   gradientStart?: string;
   gradientEnd?: string;
 }) {
-  const borderStyle = gradientStart && gradientEnd
-    ? {
-        border: 'none',
-        background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd})) border-box`,
-        padding: '8px', // Much thicker border
-        borderRadius: '1rem', // Increased border radius for smoother corners
-      }
-    : {};
-
+  const hasGradient = gradientStart && gradientEnd;
+  
   return (
     <div 
       className={cn(
-        "relative h-full w-full overflow-hidden",
+        "relative h-full w-full overflow-hidden rounded-xl",
         className
       )}
-      style={borderStyle}
     >
-      <div className="h-full w-full bg-background rounded-lg overflow-hidden">
+      {hasGradient && (
+        <div 
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd}))`,
+            padding: '1px',
+            maskImage: 'linear-gradient(black, black)',
+            WebkitMaskImage: 'linear-gradient(black, black)'
+          }}
+        />
+      )}
+      <div className={cn(
+        "relative h-full w-full rounded-xl bg-background",
+        hasGradient ? "m-[1px]" : "border border-border"
+      )}>
         {children}
       </div>
     </div>
@@ -80,7 +85,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const article = articles.find(a => a.position === position);
     if (!article) return null;
 
-    // Determine text color based on gradient colors
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
 
@@ -95,7 +99,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           </div>
         )}
-        {/* Gradient overlay - more prominent */}
         <div 
           className="absolute inset-0"
           style={{
