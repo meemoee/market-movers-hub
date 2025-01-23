@@ -157,6 +157,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       let accumulatedJSON = '';
       const decoder = new TextDecoder();
       let hasAnalysis = false;
+      let analysisComplete = false;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -182,12 +183,13 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                 
                 try {
                   const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
-                  if (analysisMatch && analysisMatch[1]) {
+                  if (analysisMatch && analysisMatch[1] && !analysisComplete) {
                     updateNodeData(nodeId, 'answer', analysisMatch[1]);
                     hasAnalysis = true;
+                    analysisComplete = true;
                   }
       
-                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"')) {
+                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"') && analysisComplete) {
                     const data = JSON.parse(accumulatedJSON);
                     
                     if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
