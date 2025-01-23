@@ -171,10 +171,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             className="absolute left-[-20px] top-0 w-[20px] h-full"
             style={{
               background: `
-                linear-gradient(90deg, transparent calc(50% - 1px), hsl(var(--muted-foreground)) calc(50% - 1px), hsl(var(--muted-foreground)) calc(50% + 1px), transparent calc(50% + 1px))
-                ${depth === 1 ? '' : ',linear-gradient(0deg, transparent 50%, hsl(var(--muted-foreground)) 50%)'}
+                linear-gradient(90deg, 
+                  transparent calc(50% - 1px), 
+                  hsl(var(--muted-foreground)) calc(50% - 1px), 
+                  hsl(var(--muted-foreground)) calc(50% + 1px), 
+                  transparent calc(50% + 1px)
+                ),
+                linear-gradient(180deg, 
+                  hsl(var(--muted-foreground)) calc(24px), 
+                  hsl(var(--muted-foreground)) 100%
+                )
               `,
-              opacity: 0.2
+              opacity: 0.2,
+              backgroundRepeat: 'no-repeat',
+              backgroundSize: '100% 100%, 2px 100%',
+              backgroundPosition: '0 0, 50% 0'
             }}
           />
         )}
