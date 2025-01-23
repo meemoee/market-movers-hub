@@ -85,11 +85,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
       ? `linear-gradient(to top, 
           rgb(${article.gradient_start_rgb}) 0%, 
-          rgba(${article.gradient_end_rgb}, 0.95) 20%,
-          rgba(${article.gradient_end_rgb}, 0.8) 40%,
-          rgba(${article.gradient_end_rgb}, 0.4) 60%,
-          rgba(${article.gradient_end_rgb}, 0) 80%)`
-      : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0) 80%)';
+          rgba(${article.gradient_end_rgb}, 0.98) 20%,
+          rgba(${article.gradient_end_rgb}, 0.95) 40%,
+          rgba(${article.gradient_end_rgb}, 0.9) 60%,
+          rgba(${article.gradient_end_rgb}, 0.8) 80%)`
+      : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.95) 20%, rgba(0,0,0,0.9) 40%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.8) 80%)';
 
     return (
       <div className="relative h-full w-full">
@@ -98,7 +98,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="h-full w-full object-cover"
+              className="h-full w-full object-cover blur-sm scale-105 transform"
             />
           )}
           
