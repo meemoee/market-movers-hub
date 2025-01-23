@@ -67,9 +67,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               
               if (content) {
                 accumulatedContent += content;
+                setStreamingContent(prev => ({
+                  ...prev,
+                  [nodeId]: accumulatedContent
+                }));
+                
                 try {
+                  // Try to parse the accumulated content as JSON
                   const parsedContent = JSON.parse(accumulatedContent);
                   if (parsedContent.analysis && parsedContent.questions) {
+                    // Only update the QA tree once we have valid JSON
                     setQaData(prev => {
                       const newNode: QANode = {
                         id: nodeId,
@@ -103,6 +110,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return updateChildren(prev);
                     });
 
+                    // Process child questions after we have valid JSON
                     for (const childQuestion of parsedContent.questions) {
                       await analyzeQuestion(childQuestion, nodeId, depth + 1);
                     }
