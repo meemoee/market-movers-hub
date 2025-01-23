@@ -113,12 +113,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </div>
 
         {/* Content */}
-        <div className="relative h-full p-6 flex flex-col justify-end z-10">
-          <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
+        <div className="relative h-full px-6 pb-8 pt-6 flex flex-col justify-end z-10">
+          <h3 className={cn("text-lg font-bold leading-tight", textColorClass)}>
             {article.title}
           </h3>
         </div>
-      </div>
     );
   };
 
