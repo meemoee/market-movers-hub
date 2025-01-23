@@ -13,7 +13,6 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
-// Placeholder colors for empty bento boxes
 const PLACEHOLDER_GRADIENTS = [
   'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
   'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
@@ -31,12 +30,7 @@ function BentoCard({ children, className }: {
   className?: string;
 }) {
   return (
-    <div 
-      className={cn(
-        "relative h-full w-full overflow-hidden rounded-lg",
-        className
-      )}
-    >
+    <div className={cn("relative h-full w-full overflow-hidden rounded-lg", className)}>
       <div className="h-full w-full bg-background rounded-lg overflow-hidden">
         {children}
       </div>
@@ -73,7 +67,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   const renderArticle = (position: number) => {
     const article = articles.find(a => a.position === position);
     
-    // If no article exists, return a placeholder gradient
     if (!article) {
       const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
@@ -91,32 +84,36 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     return (
       <div className="relative h-full w-full">
-        {article.image_url && (
-          <div className="absolute inset-0">
+        {/* Content wrapper with overflow hidden */}
+        <div className="absolute inset-0 rounded-lg overflow-hidden">
+          {/* Image container */}
+          {article.image_url && (
             <img 
               src={article.image_url} 
               alt={article.title}
               className="h-full w-full object-cover"
             />
-          </div>
-        )}
-        {/* Gradient overlay container */}
-        <div className="absolute inset-0 rounded-lg overflow-hidden">
-          {/* Inner gradient that extends beyond bounds to ensure corner coverage */}
+          )}
+          
+          {/* Gradient overlay - using pseudo-element technique */}
           <div 
-            className="absolute -inset-2"
+            className="absolute inset-0 before:content-[''] before:absolute before:inset-[-20px] before:rounded-lg"
             style={{
-              background: article.gradient_start_rgb && article.gradient_end_rgb
-                ? `linear-gradient(to top, 
-                    rgba(${article.gradient_start_rgb}, 0.95) 0%, 
-                    rgba(${article.gradient_start_rgb}, 0.85) 15%,
-                    rgba(${article.gradient_end_rgb}, 0.5) 30%,
-                    rgba(${article.gradient_end_rgb}, 0.1) 50%,
-                    rgba(${article.gradient_end_rgb}, 0) 70%)`
-                : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0) 70%)'
+              '&::before': {
+                background: article.gradient_start_rgb && article.gradient_end_rgb
+                  ? `linear-gradient(to top, 
+                      rgba(${article.gradient_start_rgb}, 0.95) 0%, 
+                      rgba(${article.gradient_start_rgb}, 0.85) 15%,
+                      rgba(${article.gradient_end_rgb}, 0.5) 30%,
+                      rgba(${article.gradient_end_rgb}, 0.1) 50%,
+                      rgba(${article.gradient_end_rgb}, 0) 70%)`
+                  : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.7) 30%, rgba(0,0,0,0) 70%)'
+              }
             }}
           />
         </div>
+
+        {/* Content */}
         <div className="relative h-full p-6 flex flex-col justify-end z-10">
           <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
             {article.title}
