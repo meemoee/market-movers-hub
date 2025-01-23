@@ -51,8 +51,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
-        .order('created_at', { ascending: false }) // Get newest first
-        .limit(1); // Get only one record per position number
+        // Get distinct on position, ordered by created_at desc within each position
+        .or(`position.eq.1,position.eq.2,position.eq.3`)
+        .order('position', { ascending: true })
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching news articles:', error);
