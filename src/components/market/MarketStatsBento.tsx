@@ -82,18 +82,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
 
-    // Add a semi-transparent dark overlay for light gradients
     const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
       ? `linear-gradient(to top, 
-          rgba(0,0,0,0.4),
-          rgba(0,0,0,0.3)),
-          linear-gradient(to top, 
           rgb(${article.gradient_start_rgb}) 0%, 
           rgba(${article.gradient_end_rgb}, 0.98) 20%,
-          rgba(${article.gradient_end_rgb}, 0.95) 40%,
-          rgba(${article.gradient_end_rgb}, 0.9) 60%,
-          rgba(${article.gradient_end_rgb}, 0.8) 80%)`
-      : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.95) 20%, rgba(0,0,0,0.9) 40%, rgba(0,0,0,0.85) 60%, rgba(0,0,0,0.8) 80%)';
+          rgba(${article.gradient_end_rgb}, 0.85) 40%,
+          rgba(${article.gradient_end_rgb}, 0.7) 60%,
+          rgba(${article.gradient_end_rgb}, 0.5) 80%)`
+      : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.0) 80%)';
 
     return (
       <div className="relative h-full w-full">
@@ -102,7 +98,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="h-full w-full object-cover blur-sm scale-105 transform"
+              className="h-full w-full object-cover"
             />
           )}
           
@@ -115,7 +111,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
         {/* Content */}
         <div className="relative h-full p-6 flex flex-col justify-end z-10">
-          <h3 className={cn("text-2xl font-black leading-tight text-white", textColorClass)}>
+          <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
             {article.title}
           </h3>
         </div>
