@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface QANode {
   id: string;
@@ -25,9 +25,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
   const [streamingContent, setStreamingContent] = useState<{[key: string]: string}>({});
-  const [parsedContent, setParsedContent] = useState<{[key: string]: any}>({});
-  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
@@ -45,15 +44,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
 
-      let accumulatedContent = '';
-      const reader = new Response(streamData.body).body?.getReader();
-      if (!reader) throw new Error('Failed to create reader');
-
+      // Initialize streaming content for this node
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
       }));
 
+      // Create new node in the tree
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
@@ -87,6 +84,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateChildren(prev);
       });
 
+      let accumulatedContent = '';
+      const reader = new Response(streamData.body).body?.getReader();
+      if (!reader) throw new Error('Failed to create reader');
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -110,16 +111,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   const parsedJson = JSON.parse(accumulatedContent);
                   
                   if (parsedJson && typeof parsedJson === 'object' && parsedJson.analysis) {
-                    setParsedContent(prev => ({
-                      ...prev,
-                      [nodeId]: parsedJson
-                    }));
-                    
+                    // Update streaming content immediately
                     setStreamingContent(prev => ({
                       ...prev,
                       [nodeId]: parsedJson.analysis
                     }));
                     
+                    // Update node in tree with current analysis
                     setQaData(prev => {
                       const updateNode = (nodes: QANode[]): QANode[] => {
                         return nodes.map(node => {
@@ -141,6 +139,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return updateNode(prev);
                     });
 
+                    // Process follow-up questions after analysis is complete
                     if (parsedJson.questions) {
                       for (const childQuestion of parsedJson.questions) {
                         await analyzeQuestion(childQuestion, nodeId, depth + 1);
@@ -148,6 +147,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     }
                   }
                 } catch (parseError) {
+                  // Continue accumulating if not valid JSON yet
                   continue;
                 }
               }
@@ -171,7 +171,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setIsAnalyzing(true);
     setQaData([]);
     setStreamingContent({});
-    setParsedContent({});
     setExpandedNodes(new Set());
     
     try {
@@ -194,87 +193,71 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     });
   };
 
-const renderQANode = (node: QANode, depth: number = 0, parentPath: number[] = []) => {
-  const isStreaming = currentNodeId === node.id;
-  const streamContent = streamingContent[node.id];
-  const isExpanded = expandedNodes.has(node.id);
-  const analysisContent = isStreaming ? streamContent : node.analysis;
-  const firstLine = analysisContent?.split('\n')[0] || '';
+  const renderQANode = (node: QANode, depth: number = 0) => {
+    const isStreaming = currentNodeId === node.id;
+    const streamContent = streamingContent[node.id];
+    const isExpanded = expandedNodes.has(node.id);
+    const analysisContent = isStreaming ? streamContent : node.analysis;
+    const firstLine = analysisContent?.split('\n')[0] || '';
 
-  // Current node's path includes parent's path plus current depth
-  const currentPath = [...parentPath, depth];
-
-  return (
-    <div key={node.id} className="relative flex flex-col">
-      <div className="flex items-stretch">
-        {/* Level lines container */}
-        {depth > 0 && (
-          <div 
-            className="relative w-9 flex-shrink-0"
-          >
-            <div 
-              className="absolute top-0 bottom-0 left-9 w-[2px] bg-border"
-            />
-          </div>
-        )}
-
-        {/* Content section */}
-        <div className="flex-grow min-w-0 pl-[72px] pb-6 relative">
-          {/* Horizontal connector */}
+    return (
+      <div key={node.id} className="relative flex flex-col">
+        <div className="flex items-stretch">
           {depth > 0 && (
-            <div 
-              className="absolute left-0 top-4 h-[2px] w-6 bg-border"
-            />
+            <div className="relative w-9 flex-shrink-0">
+              <div className="absolute top-0 bottom-0 left-9 w-[2px] bg-border" />
+            </div>
           )}
 
-          {/* Avatar */}
-          <div className="absolute left-[24px] top-0">
-            <Avatar className="h-9 w-9 border-2 border-background">
-              <AvatarFallback className="bg-primary/10">
-                <MessageSquare className="h-4 w-4 text-primary" />
-              </AvatarFallback>
-            </Avatar>
-          </div>
+          <div className="flex-grow min-w-0 pl-[72px] pb-6 relative">
+            {depth > 0 && (
+              <div className="absolute left-0 top-4 h-[2px] w-6 bg-border" />
+            )}
 
-          {/* Content */}
-          <div className="space-y-2">
-            <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
-            <div 
-              className="text-sm text-muted-foreground cursor-pointer"
-              onClick={() => toggleNode(node.id)}
-            >
-              <div className="flex items-start gap-2">
-                <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
-                  {isExpanded ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </button>
-                <div className="flex-1">
-                  {isExpanded ? (
-                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
-                  ) : (
-                    <div className="line-clamp-1">{firstLine}</div>
-                  )}
+            <div className="absolute left-[24px] top-0">
+              <Avatar className="h-9 w-9 border-2 border-background">
+                <AvatarFallback className="bg-primary/10">
+                  <MessageSquare className="h-4 w-4 text-primary" />
+                </AvatarFallback>
+              </Avatar>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
+              <div 
+                className="text-sm text-muted-foreground cursor-pointer"
+                onClick={() => toggleNode(node.id)}
+              >
+                <div className="flex items-start gap-2">
+                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
+                    {isExpanded ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </button>
+                  <div className="flex-1">
+                    {isExpanded ? (
+                      <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                    ) : (
+                      <div className="line-clamp-1">{firstLine}</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* Children */}
-          {node.children.length > 0 && (
-            <div className="mt-6">
-              {node.children.map((child, index) => 
-                renderQANode(child, depth + 1, currentPath)
-              )}
-            </div>
-          )}
+            {node.children.length > 0 && (
+              <div className="mt-6">
+                {node.children.map((child) => renderQANode(child, depth + 1))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
+
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <Button
