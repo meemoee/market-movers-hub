@@ -92,6 +92,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return updateChildren(prev);
                     });
 
+                    // Automatically expand parent nodes when new children are added
+                    if (parentId) {
+                      setExpandedNodes(prev => {
+                        const newSet = new Set(prev);
+                        newSet.add(parentId);
+                        return newSet;
+                      });
+                    }
+
                     for (const childQuestion of parsedContent.questions) {
                       await analyzeQuestion(childQuestion, nodeId, depth + 1);
                     }

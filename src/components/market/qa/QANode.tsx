@@ -25,32 +25,36 @@ export function QANode({
   return (
     <div className="relative">
       {depth > 0 && (
-        <div className="absolute left-0 -translate-x-[20px] top-0 h-full w-[20px]">
+        <div 
+          className="absolute left-0 -translate-x-[20px] top-0 h-full w-[20px]"
+          style={{ pointerEvents: 'none' }}
+        >
           <svg
             className="absolute left-0 top-0 w-full h-full"
             style={{ 
-              opacity: 0.15,
               overflow: 'visible'
             }}
           >
-            {/* Horizontal connecting line with curve */}
+            {/* Curved connecting line from parent to child */}
             <path
-              d={`M0,24 C10,24 15,24 20,24`}
+              d={`M0,0 C10,0 15,24 20,24`}
               stroke="currentColor"
               fill="none"
               strokeWidth="2"
               className="text-muted-foreground"
+              style={{ opacity: 0.5 }}
             />
             {/* Vertical line that extends down if there are siblings */}
             {!isLast && (
               <line
                 x1="0"
-                y1="24"
+                y1="0"
                 x2="0"
                 y2="100%"
                 stroke="currentColor"
                 strokeWidth="2"
                 className="text-muted-foreground"
+                style={{ opacity: 0.5 }}
               />
             )}
           </svg>

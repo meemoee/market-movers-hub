@@ -1,5 +1,3 @@
-import { QANode } from './QANode';
-
 interface QATreeNode {
   id: string;
   question: string;
@@ -33,13 +31,15 @@ export function QATree({
             hasChildren={node.children.length > 0}
             isLast={index === data.length - 1}
           />
-          {node.children.length > 0 && expandedNodes.has(node.id) && (
-            <QATree
-              data={node.children}
-              expandedNodes={expandedNodes}
-              onToggleNode={onToggleNode}
-              depth={depth + 1}
-            />
+          {node.children.length > 0 && (
+            <div className="ml-[20px]">
+              <QATree
+                data={node.children}
+                expandedNodes={expandedNodes}
+                onToggleNode={onToggleNode}
+                depth={depth + 1}
+              />
+            </div>
           )}
         </div>
       ))}
