@@ -104,9 +104,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     if (newLayerNodes.length > 0) {
       const firstNode = newNodes.find(n => n.id === newLayerNodes[0]);
       if (firstNode) {
-        setTimeout(() => {
-          analyzeNode(firstNode.id, firstNode.data.question, depth + 1, 0);
-        }, 500);
+        analyzeNode(firstNode.id, firstNode.data.question, depth + 1, 0);
       }
     }
   }, [setNodes, setEdges]);
@@ -122,8 +120,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       if (nextNode) {
         console.log('Processing next node:', nextNodeId);
         setTimeout(() => {
-          analyzeNode(nextNodeId, nextNode.data.question, depth, 0);
-        }, 1000); // Add delay between nodes
+          analyzeNode(nextNode.id, nextNode.data.question, depth, 0);
+        }, 500); // Add small delay between nodes
       }
     } else {
       // Layer is complete
@@ -159,6 +157,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       let accumulatedJSON = '';
       const decoder = new TextDecoder();
       let hasAnalysis = false;
+      let analysisComplete = false;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -184,12 +183,13 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
                 
                 try {
                   const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
-                  if (analysisMatch && analysisMatch[1] && !hasAnalysis) {
+                  if (analysisMatch && analysisMatch[1] && !analysisComplete) {
                     updateNodeData(nodeId, 'answer', analysisMatch[1]);
                     hasAnalysis = true;
+                    analysisComplete = true;
                   }
       
-                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"') && hasAnalysis) {
+                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"') && analysisComplete) {
                     const data = JSON.parse(accumulatedJSON);
                     
                     if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
