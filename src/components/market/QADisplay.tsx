@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from 'react-markdown';
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 interface QANode {
   id: string;
@@ -23,9 +25,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [qaData, setQaData] = useState<QANode[]>([]);
   const [streamingContent, setStreamingContent] = useState<{[key: string]: string}>({});
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
-    if (depth >= 3) return; // Max depth of 3
+    if (depth >= 3) return;
     
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
@@ -65,10 +68,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               if (content) {
                 accumulatedContent += content;
                 try {
-                  // Try to parse accumulated content as JSON
                   const parsedContent = JSON.parse(accumulatedContent);
                   if (parsedContent.analysis && parsedContent.questions) {
-                    // We have a complete response
                     setQaData(prev => {
                       const newNode: QANode = {
                         id: nodeId,
@@ -102,13 +103,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return updateChildren(prev);
                     });
 
-                    // Analyze child questions
                     for (const childQuestion of parsedContent.questions) {
                       await analyzeQuestion(childQuestion, nodeId, depth + 1);
                     }
                   }
                 } catch (e) {
-                  // Not valid JSON yet, keep accumulating
                   setStreamingContent(prev => ({
                     ...prev,
                     [nodeId]: accumulatedContent
@@ -135,6 +134,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setIsAnalyzing(true);
     setQaData([]);
     setStreamingContent({});
+    setExpandedNodes(new Set());
     
     try {
       await analyzeQuestion(marketQuestion);
@@ -144,24 +144,52 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   };
 
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      return newSet;
+    });
+  };
+
   const renderQANode = (node: QANode, depth: number = 0) => {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
+    const isExpanded = expandedNodes.has(node.id);
+    
+    const analysisContent = isStreaming ? streamContent : node.analysis;
+    const firstLine = analysisContent?.split('\n')[0] || '';
     
     return (
-      <div key={node.id} className="mb-4" style={{ marginLeft: `${depth * 20}px` }}>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h3 className="font-medium mb-2">{node.question}</h3>
-          {isStreaming && streamContent ? (
-            <div className="text-sm text-muted-foreground">
-              <ReactMarkdown>{streamContent}</ReactMarkdown>
+      <div key={node.id} className="mb-3" style={{ marginLeft: `${depth * 20}px` }}>
+        <Card className="p-4 bg-card hover:bg-accent/5 transition-colors">
+          <div className="space-y-2">
+            <h3 className="font-medium text-sm">{node.question}</h3>
+            <div 
+              className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
+              onClick={() => toggleNode(node.id)}
+            >
+              <button className="mt-1">
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </button>
+              <div className="flex-1">
+                {isExpanded ? (
+                  <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                ) : (
+                  <div className="line-clamp-1">{firstLine}</div>
+                )}
+              </div>
             </div>
-          ) : node.analysis && (
-            <div className="text-sm text-muted-foreground">
-              <ReactMarkdown>{node.analysis}</ReactMarkdown>
-            </div>
-          )}
-        </div>
+          </div>
+        </Card>
         {node.children.map(child => renderQANode(child, depth + 1))}
       </div>
     );
@@ -177,9 +205,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         {isAnalyzing ? 'Analyzing...' : 'Analyze'}
       </Button>
       
-      <div className="mt-8">
+      <ScrollArea className="h-[500px] mt-8 pr-4">
         {qaData.map(node => renderQANode(node))}
-      </div>
+      </ScrollArea>
     </Card>
   );
 }
