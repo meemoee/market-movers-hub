@@ -194,30 +194,29 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     });
   };
 
-const renderQANode = (node: QANode, depth: number = 0) => {
+const renderQANode = (node: QANode, depth: number = 0, parentPath: number[] = []) => {
   const isStreaming = currentNodeId === node.id;
   const streamContent = streamingContent[node.id];
   const isExpanded = expandedNodes.has(node.id);
   const analysisContent = isStreaming ? streamContent : node.analysis;
   const firstLine = analysisContent?.split('\n')[0] || '';
 
+  // Current node's path includes parent's path plus current depth
+  const currentPath = [...parentPath, depth];
+
   return (
     <div key={node.id} className="relative flex flex-col">
       <div className="flex items-stretch">
         {/* Level lines container */}
-        <div className="relative flex">
-          {/* Generate depth guide lines */}
-          {Array.from({ length: depth }).map((_, i) => (
-            <div
-              key={i}
-              className="w-9 flex-shrink-0 relative"
-            >
-              <div 
-                className="absolute top-0 bottom-0 left-9 w-[2px] bg-border"
-              />
-            </div>
-          ))}
-        </div>
+        {depth > 0 && (
+          <div 
+            className="relative w-9 flex-shrink-0"
+          >
+            <div 
+              className="absolute top-0 bottom-0 left-9 w-[2px] bg-border"
+            />
+          </div>
+        )}
 
         {/* Content section */}
         <div className="flex-grow min-w-0 pl-[72px] pb-6 relative">
@@ -266,7 +265,9 @@ const renderQANode = (node: QANode, depth: number = 0) => {
           {/* Children */}
           {node.children.length > 0 && (
             <div className="mt-6">
-              {node.children.map(child => renderQANode(child, depth + 1))}
+              {node.children.map((child, index) => 
+                renderQANode(child, depth + 1, currentPath)
+              )}
             </div>
           )}
         </div>
