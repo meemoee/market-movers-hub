@@ -60,17 +60,25 @@ export const generateNodePosition = (
 ) => {
   const { horizontalSpacing, verticalSpacing } = calculateNodeSpacing(childrenCount, currentLayer, maxLayers);
   
-  // Calculate offset from parent's center
+  // Ensure valid starting coordinates
+  const validParentX = isNaN(parentX) ? 0 : parentX;
+  const validParentY = isNaN(parentY) ? 0 : parentY;
+  
+  // Calculate offset with validation
   const totalWidth = horizontalSpacing * (childrenCount - 1);
-  const startX = parentX - (totalWidth / 2);
+  const startX = validParentX - (totalWidth / 2);
   
-  // Get parent node's actual height if available
-  const parentHeight = parentNode?.offsetHeight || 0;
-  const verticalOffset = Math.max(verticalSpacing, parentHeight + 100); // Ensure minimum spacing
-  
+  // Get parent height or use default
+  const parentHeight = parentNode?.offsetHeight || 100;
+  const verticalOffset = Math.max(verticalSpacing, parentHeight + 100);
+
+  // Return validated coordinates
+  const x = startX + (index * horizontalSpacing);
+  const y = validParentY + verticalOffset;
+
   return {
-    x: startX + (index * horizontalSpacing),
-    y: parentY + verticalOffset
+    x: isNaN(x) ? index * 200 : x, // Fallback for x
+    y: isNaN(y) ? currentLayer * 200 : y // Fallback for y
   };
 };
 
