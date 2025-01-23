@@ -1,3 +1,5 @@
+import { QANode } from './QANode';
+
 interface QATreeNode {
   id: string;
   question: string;
