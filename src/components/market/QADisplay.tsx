@@ -205,18 +205,24 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       <div key={node.id} className="relative">
         {depth > 0 && (
           <div 
-            className="absolute left-8 top-0 w-px h-full bg-border"
+            className="absolute left-8 top-0 w-px bg-border"
             style={{
               left: '2.25rem',
+              height: 'calc(100% - 1.5rem)',
+              width: '2px',
+              backgroundColor: 'hsl(var(--border) / 0.6)'
             }}
           />
         )}
         <div className="mb-6 pl-[72px] relative">
           {depth > 0 && (
             <div 
-              className="absolute left-8 top-8 w-[2.25rem] h-px bg-border"
+              className="absolute left-8 top-8 h-px bg-border"
               style={{
                 left: '2.25rem',
+                width: '2.25rem',
+                height: '2px',
+                backgroundColor: 'hsl(var(--border) / 0.6)'
               }}
             />
           )}
