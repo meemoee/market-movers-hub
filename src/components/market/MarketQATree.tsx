@@ -22,7 +22,7 @@ interface NodeData {
 const MAX_DEPTH = 3;
 const CHILDREN_PER_NODE = 3;
 const MAX_RETRIES = 3;
-const RETRY_DELAY = 1000; // Start with 1 second delay
+const RETRY_DELAY = 1000;
 
 export function MarketQATree({ marketId, marketQuestion }: { marketId: string, marketQuestion: string }) {
   const { toast } = useToast();
@@ -35,7 +35,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [currentLayer, setCurrentLayer] = useState<string[]>([]);
   const [layerComplete, setLayerComplete] = useState(true);
   
-  // Track current nodes via ref
   const currentNodesRef = useRef(nodes);
   
   useEffect(() => {
@@ -111,16 +110,22 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   }, [setNodes, setEdges]);
 
   const processNextInLayer = useCallback((currentNodeId: string, depth: number) => {
+    console.log('Processing next in layer:', { currentNodeId, depth, currentLayer });
     const nodeIndex = currentLayer.indexOf(currentNodeId);
+    
     if (nodeIndex < currentLayer.length - 1) {
       // Process next node in current layer
       const nextNodeId = currentLayer[nodeIndex + 1];
       const nextNode = currentNodesRef.current.find(n => n.id === nextNodeId);
       if (nextNode) {
-        analyzeNode(nextNode.id, nextNode.data.question, depth, 0);
+        console.log('Processing next node:', nextNodeId);
+        setTimeout(() => {
+          analyzeNode(nextNode.id, nextNode.data.question, depth, 0);
+        }, 500); // Add small delay between nodes
       }
     } else {
       // Layer is complete
+      console.log('Layer complete:', depth);
       setLayerComplete(true);
       setCurrentLayer([]);
     }
@@ -210,7 +215,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         }
       }
 
-      // Verify we got an analysis before proceeding
       if (!hasAnalysis && retryCount < MAX_RETRIES) {
         console.log(`Retrying node ${nodeId}, attempt ${retryCount + 1}`);
         setTimeout(() => {
