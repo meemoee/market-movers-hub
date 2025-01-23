@@ -176,18 +176,23 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   hsl(var(--muted-foreground)) calc(50% - 1px), 
                   hsl(var(--muted-foreground)) calc(50% + 1px), 
                   transparent calc(50% + 1px)
-                ),
-                linear-gradient(180deg, 
-                  hsl(var(--muted-foreground)) calc(24px), 
-                  hsl(var(--muted-foreground)) 100%
                 )
               `,
               opacity: 0.2,
               backgroundRepeat: 'no-repeat',
-              backgroundSize: '100% 100%, 2px 100%',
-              backgroundPosition: '0 0, 50% 0'
+              backgroundPosition: '0 24px',
+              backgroundSize: '100% 2px'
             }}
-          />
+          >
+            <div
+              className="absolute left-[50%] top-0 w-[2px] h-full -translate-x-[1px]"
+              style={{
+                background: 'hsl(var(--muted-foreground))',
+                opacity: 0.2,
+                clipPath: 'polygon(0 24px, 100% 24px, 100% 100%, 0 100%)'
+              }}
+            />
+          </div>
         )}
         <div className="mb-3 pl-[20px]">
           <div className="hover:bg-accent/5 transition-colors rounded-lg p-4">
