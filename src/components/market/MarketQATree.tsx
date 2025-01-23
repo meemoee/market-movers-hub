@@ -31,10 +31,8 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
   const [hasCreatedNodes, setHasCreatedNodes] = useState<Set<string>>(new Set());
   
-  // Track current nodes via ref
   const currentNodesRef = useRef(nodes);
   
-  // Update ref whenever nodes change
   useEffect(() => {
     currentNodesRef.current = nodes;
   }, [nodes]);
@@ -91,7 +89,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       newNodes.push(newNode);
       newEdges.push(newEdge);
 
-      // Queue analysis for the new node after a short delay
       setTimeout(() => analyzeNode(childId, questions[i], depth + 1), 100 * i);
     }
 
@@ -123,6 +120,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       if (!reader) throw new Error('Failed to create reader');
 
       let accumulatedJSON = '';
+      let lastAnalysisLength = 0;
       const decoder = new TextDecoder();
       
       while (true) {
@@ -146,67 +144,56 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               
               if (content) {
                 accumulatedJSON += content;
-                console.log('Accumulated JSON progress:', accumulatedJSON);
                 
-                try {
-                  // Extract analysis text as it streams in
-                  const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
-                  if (analysisMatch && analysisMatch[1]) {
-                    updateNodeData(nodeId, 'answer', analysisMatch[1]);
+                // Try to extract current analysis state
+                const analysisMatch = accumulatedJSON.match(/"analysis"\s*:\s*"([^"]*)"/)
+                if (analysisMatch) {
+                  const currentAnalysis = analysisMatch[1];
+                  if (currentAnalysis.length > lastAnalysisLength) {
+                    // Only update if we have new analysis content
+                    lastAnalysisLength = currentAnalysis.length;
+                    updateNodeData(nodeId, 'answer', currentAnalysis);
                   }
-      
-                  // Try to parse complete JSON when we have both analysis and questions
-                  if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"')) {
-                    const data = JSON.parse(accumulatedJSON);
-                    console.log('Parsed complete JSON:', data);
-                    
-                    if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
-                      console.log('Node creation check passed:', {
-                        hasQuestions: data.questions?.length > 0,
-                        notCreated: !hasCreatedNodes.has(nodeId),
-                        withinDepth: depth < MAX_DEPTH,
-                        nodeId
-                      });
-                      
-                      const parentNode = currentNodesRef.current.find(n => n.id === nodeId);
-                      console.log('Parent node lookup result:', parentNode);
-                      
-                      if (parentNode) {
-                        console.log('Creating child nodes for:', nodeId, 'with questions:', data.questions);
-                        createChildNodes(
-                          nodeId,
-                          parentNode.position,
-                          data.questions,
-                          depth
-                        );
-                        setHasCreatedNodes(prev => {
-                          const next = new Set(prev);
-                          next.add(nodeId);
-                          console.log('Updated hasCreatedNodes:', next);
-                          return next;
-                        });
-                      } else {
-                        console.warn('Parent node not found in nodes state:', nodeId);
+                }
+
+                // Try to extract complete questions array if present
+                try {
+                  if (accumulatedJSON.includes('"questions":[') && accumulatedJSON.includes(']')) {
+                    const questionsMatch = accumulatedJSON.match(/"questions"\s*:\s*\[(.*?)\]/s);
+                    if (questionsMatch) {
+                      // Extract all quoted strings from the questions array
+                      const questionStrings = questionsMatch[1].match(/"([^"]*)"/g);
+                      if (questionStrings && questionStrings.length === 3 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
+                        const questions = questionStrings.map(q => q.replace(/"/g, ''));
+                        const parentNode = currentNodesRef.current.find(n => n.id === nodeId);
+                        if (parentNode) {
+                          console.log('Creating child nodes with questions:', questions);
+                          createChildNodes(nodeId, parentNode.position, questions, depth);
+                          setHasCreatedNodes(prev => {
+                            const next = new Set(prev);
+                            next.add(nodeId);
+                            return next;
+                          });
+                        }
                       }
-                    } else {
-                      console.log('Node creation check failed:', {
-                        hasQuestions: data.questions?.length > 0,
-                        notCreated: !hasCreatedNodes.has(nodeId),
-                        withinDepth: depth < MAX_DEPTH,
-                        nodeId
-                      });
                     }
                   }
                 } catch (e) {
-                  console.log('Parsing in progress:', e);
+                  // Ignore question parsing errors as the JSON might be incomplete
+                  console.log('Questions parsing in progress...');
                 }
               }
             } catch (e) {
-              console.error('Error parsing SSE data:', e);
+              console.log('Parsing in progress:', e);
             }
           }
         }
       }
+
+      if (analysis === '') {
+        throw new Error('Failed to generate analysis');
+      }
+
     } catch (error) {
       console.error('Error analyzing node:', error);
       toast({
