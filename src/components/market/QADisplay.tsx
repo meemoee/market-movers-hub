@@ -5,7 +5,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface QANode {
   id: string;
@@ -48,13 +49,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
-      // Initialize content for this node
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
       }));
 
-      // Add initial node to QA tree
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
@@ -107,11 +106,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               if (content) {
                 accumulatedContent += content;
                 
-                // Try to parse the accumulated content as JSON
                 try {
                   const parsedJson = JSON.parse(accumulatedContent);
                   
-                  // Only update display if we have a valid analysis JSON structure
                   if (parsedJson && typeof parsedJson === 'object' && parsedJson.analysis) {
                     setParsedContent(prev => ({
                       ...prev,
@@ -123,7 +120,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       [nodeId]: parsedJson.analysis
                     }));
                     
-                    // Update QA tree with complete analysis
                     setQaData(prev => {
                       const updateNode = (nodes: QANode[]): QANode[] => {
                         return nodes.map(node => {
@@ -145,7 +141,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return updateNode(prev);
                     });
 
-                    // Process child questions after valid JSON
                     if (parsedJson.questions) {
                       for (const childQuestion of parsedJson.questions) {
                         await analyzeQuestion(childQuestion, nodeId, depth + 1);
@@ -153,7 +148,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     }
                   }
                 } catch (parseError) {
-                  // Not valid JSON yet, continue accumulating
                   continue;
                 }
               }
@@ -204,8 +198,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
-    
-    // Show streaming content if available, otherwise use final analysis
     const analysisContent = isStreaming ? streamContent : node.analysis;
     const firstLine = analysisContent?.split('\n')[0] || '';
     
@@ -213,36 +205,36 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       <div key={node.id} className="relative">
         {depth > 0 && (
           <div 
-            className="absolute left-[-20px] top-0 w-[20px] h-full"
+            className="absolute left-8 top-0 w-px h-full bg-border"
             style={{
-              background: `
-                linear-gradient(90deg, 
-                  transparent calc(50% - 1px), 
-                  hsl(var(--muted-foreground)) calc(50% - 1px), 
-                  hsl(var(--muted-foreground)) calc(50% + 1px), 
-                  transparent calc(50% + 1px)
-                ),
-                linear-gradient(180deg, 
-                  hsl(var(--muted-foreground)) calc(24px), 
-                  hsl(var(--muted-foreground)) 100%
-                )
-              `,
-              opacity: 0.2,
-              backgroundRepeat: 'no-repeat',
-              backgroundSize: '100% 100%, 2px 100%',
-              backgroundPosition: '0 0, 50% 0'
+              left: '2.25rem',
             }}
           />
         )}
-        <div className="mb-3 pl-[20px]">
-          <div className="hover:bg-accent/5 transition-colors rounded-lg p-4">
-            <div className="space-y-2">
-              <h3 className="font-medium text-sm">{node.question}</h3>
-              <div 
-                className="text-sm text-muted-foreground cursor-pointer flex items-start gap-2"
-                onClick={() => toggleNode(node.id)}
-              >
-                <button className="mt-1">
+        <div className="mb-6 pl-[72px] relative">
+          {depth > 0 && (
+            <div 
+              className="absolute left-8 top-8 w-[2.25rem] h-px bg-border"
+              style={{
+                left: '2.25rem',
+              }}
+            />
+          )}
+          <div className="absolute left-0 top-0">
+            <Avatar className="h-9 w-9 border-2 border-background">
+              <AvatarFallback className="bg-primary/10">
+                <MessageSquare className="h-4 w-4 text-primary" />
+              </AvatarFallback>
+            </Avatar>
+          </div>
+          <div className="space-y-2">
+            <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
+            <div 
+              className="text-sm text-muted-foreground cursor-pointer"
+              onClick={() => toggleNode(node.id)}
+            >
+              <div className="flex items-start gap-2">
+                <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
                   {isExpanded ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
@@ -259,7 +251,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </div>
             </div>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-6 mt-6">
             {node.children.map(child => renderQANode(child, depth + 1))}
           </div>
         </div>
