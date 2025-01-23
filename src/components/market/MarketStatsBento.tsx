@@ -26,22 +26,12 @@ function BentoCard({ children, className, gradientStart, gradientEnd }: {
   gradientStart?: string;
   gradientEnd?: string;
 }) {
-  const borderStyle = gradientStart && gradientEnd
-    ? {
-        border: 'none',
-        background: `linear-gradient(to right, rgb(${gradientStart}), rgb(${gradientEnd})) border-box`,
-        padding: '8px', // Much thicker border
-        borderRadius: '1rem', // Increased border radius for smoother corners
-      }
-    : {};
-
   return (
     <div 
       className={cn(
-        "relative h-full w-full overflow-hidden",
+        "relative h-full w-full overflow-hidden rounded-lg",
         className
       )}
-      style={borderStyle}
     >
       <div className="h-full w-full bg-background rounded-lg overflow-hidden">
         {children}
