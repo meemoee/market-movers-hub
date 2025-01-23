@@ -205,51 +205,49 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       <div key={node.id} className="relative">
         {depth > 0 && (
           <div 
-            className="absolute left-0 top-0 w-px bg-border"
+            className="absolute left-8 top-0 w-px bg-border"
             style={{
               left: '2.25rem',
-              height: 'calc(100% - 0.75rem)',
+              height: 'calc(100% - 1.5rem)',
               width: '2px',
-              backgroundColor: 'hsl(var(--border) / 0.4)',
-              zIndex: 0
+              backgroundColor: 'hsl(var(--border) / 0.6)'
             }}
           />
         )}
-        <div className="mb-4 pl-[72px] relative">
+        <div className="mb-6 pl-[72px] relative">
           {depth > 0 && (
             <div 
-              className="absolute left-0 top-4 h-px bg-border"
+              className="absolute left-8 top-8 h-px bg-border"
               style={{
                 left: '2.25rem',
                 width: '2.25rem',
                 height: '2px',
-                backgroundColor: 'hsl(var(--border) / 0.4)',
-                zIndex: 0
+                backgroundColor: 'hsl(var(--border) / 0.6)'
               }}
             />
           )}
-          <div className="absolute left-0 top-0 z-10">
-            <Avatar className="h-9 w-9 border-2 border-background bg-primary/5">
-              <AvatarFallback>
-                <MessageSquare className="h-5 w-5 text-primary" />
+          <div className="absolute left-0 top-0">
+            <Avatar className="h-9 w-9 border-2 border-background">
+              <AvatarFallback className="bg-primary/10">
+                <MessageSquare className="h-4 w-4 text-primary" />
               </AvatarFallback>
             </Avatar>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
             <div 
-              className="text-sm text-muted-foreground cursor-pointer group"
+              className="text-sm text-muted-foreground cursor-pointer"
               onClick={() => toggleNode(node.id)}
             >
               <div className="flex items-start gap-2">
-                <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5 transition-colors">
+                <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
                   {isExpanded ? (
                     <ChevronUp className="h-4 w-4" />
                   ) : (
                     <ChevronDown className="h-4 w-4" />
                   )}
                 </button>
-                <div className="flex-1 group-hover:text-foreground transition-colors">
+                <div className="flex-1">
                   {isExpanded ? (
                     <ReactMarkdown>{analysisContent}</ReactMarkdown>
                   ) : (
@@ -259,7 +257,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </div>
             </div>
           </div>
-          <div className="space-y-4 mt-4">
+          <div className="space-y-6 mt-6">
             {node.children.map(child => renderQANode(child, depth + 1))}
           </div>
         </div>
