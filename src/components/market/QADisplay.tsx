@@ -228,7 +228,7 @@ const renderQANode = (node: QANode, depth: number = 0, parentPath: number[] = []
           )}
 
           {/* Avatar */}
-          <div className="absolute left-[36px] top-0">
+          <div className="absolute left-[28px] top-0">
             <Avatar className="h-9 w-9 border-2 border-background">
               <AvatarFallback className="bg-primary/10">
                 <MessageSquare className="h-4 w-4 text-primary" />
