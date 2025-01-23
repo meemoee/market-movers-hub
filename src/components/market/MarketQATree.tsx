@@ -21,6 +21,8 @@ interface NodeData {
 
 const MAX_DEPTH = 3;
 const CHILDREN_PER_NODE = 3;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // Start with 1 second delay
 
 export function MarketQATree({ marketId, marketQuestion }: { marketId: string, marketQuestion: string }) {
   const { toast } = useToast();
@@ -30,11 +32,12 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
   const [processingNodes, setProcessingNodes] = useState<Set<string>>(new Set());
   const [streamingContent, setStreamingContent] = useState<Record<string, string>>({});
   const [hasCreatedNodes, setHasCreatedNodes] = useState<Set<string>>(new Set());
+  const [currentLayer, setCurrentLayer] = useState<string[]>([]);
+  const [layerComplete, setLayerComplete] = useState(true);
   
   // Track current nodes via ref
   const currentNodesRef = useRef(nodes);
   
-  // Update ref whenever nodes change
   useEffect(() => {
     currentNodesRef.current = nodes;
   }, [nodes]);
@@ -44,7 +47,6 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
-          console.log('Found node to update:', nodeId);
           return {
             ...node,
             data: {
@@ -67,6 +69,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     console.log('Creating child nodes:', { parentId, questions, depth });
     const newNodes = [];
     const newEdges = [];
+    const newLayerNodes = [];
 
     for (let i = 0; i < questions.length; i++) {
       const childId = `node-${Date.now()}-${i}`;
@@ -90,17 +93,41 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
 
       newNodes.push(newNode);
       newEdges.push(newEdge);
-
-      // Queue analysis for the new node after a short delay
-      setTimeout(() => analyzeNode(childId, questions[i], depth + 1), 100 * i);
+      newLayerNodes.push(childId);
     }
 
     setNodes(nds => [...nds, ...newNodes]);
     setEdges(eds => [...eds, ...newEdges]);
+    setCurrentLayer(newLayerNodes);
+    setLayerComplete(false);
+
+    // Start processing the first node in the layer
+    if (newLayerNodes.length > 0) {
+      const firstNode = newNodes.find(n => n.id === newLayerNodes[0]);
+      if (firstNode) {
+        analyzeNode(firstNode.id, firstNode.data.question, depth + 1, 0);
+      }
+    }
   }, [setNodes, setEdges]);
 
-  const analyzeNode = useCallback(async (nodeId: string, nodeQuestion: string, depth: number) => {
-    console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion });
+  const processNextInLayer = useCallback((currentNodeId: string, depth: number) => {
+    const nodeIndex = currentLayer.indexOf(currentNodeId);
+    if (nodeIndex < currentLayer.length - 1) {
+      // Process next node in current layer
+      const nextNodeId = currentLayer[nodeIndex + 1];
+      const nextNode = currentNodesRef.current.find(n => n.id === nextNodeId);
+      if (nextNode) {
+        analyzeNode(nextNode.id, nextNode.data.question, depth, 0);
+      }
+    } else {
+      // Layer is complete
+      setLayerComplete(true);
+      setCurrentLayer([]);
+    }
+  }, [currentLayer]);
+
+  const analyzeNode = useCallback(async (nodeId: string, nodeQuestion: string, depth: number, retryCount: number = 0) => {
+    console.log('Starting analysis for node:', { nodeId, depth, question: nodeQuestion, retryCount });
     if (depth >= MAX_DEPTH) {
       console.log('Max depth reached, stopping analysis');
       return;
@@ -124,6 +151,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
 
       let accumulatedJSON = '';
       const decoder = new TextDecoder();
+      let hasAnalysis = false;
       
       while (true) {
         const { done, value } = await reader.read();
@@ -146,55 +174,29 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
               
               if (content) {
                 accumulatedJSON += content;
-                console.log('Accumulated JSON progress:', accumulatedJSON);
                 
                 try {
-                  // Extract analysis text as it streams in
                   const analysisMatch = accumulatedJSON.match(/"analysis":\s*"([^"]*)"(?:\s*,\s*"questions"|$)/);
                   if (analysisMatch && analysisMatch[1]) {
                     updateNodeData(nodeId, 'answer', analysisMatch[1]);
+                    hasAnalysis = true;
                   }
       
-                  // Try to parse complete JSON when we have both analysis and questions
                   if (accumulatedJSON.includes('"analysis"') && accumulatedJSON.includes('"questions"')) {
                     const data = JSON.parse(accumulatedJSON);
-                    console.log('Parsed complete JSON:', data);
                     
                     if (data.questions?.length > 0 && !hasCreatedNodes.has(nodeId) && depth < MAX_DEPTH) {
-                      console.log('Node creation check passed:', {
-                        hasQuestions: data.questions?.length > 0,
-                        notCreated: !hasCreatedNodes.has(nodeId),
-                        withinDepth: depth < MAX_DEPTH,
-                        nodeId
-                      });
-                      
                       const parentNode = currentNodesRef.current.find(n => n.id === nodeId);
-                      console.log('Parent node lookup result:', parentNode);
                       
                       if (parentNode) {
-                        console.log('Creating child nodes for:', nodeId, 'with questions:', data.questions);
                         createChildNodes(
                           nodeId,
                           parentNode.position,
                           data.questions,
                           depth
                         );
-                        setHasCreatedNodes(prev => {
-                          const next = new Set(prev);
-                          next.add(nodeId);
-                          console.log('Updated hasCreatedNodes:', next);
-                          return next;
-                        });
-                      } else {
-                        console.warn('Parent node not found in nodes state:', nodeId);
+                        setHasCreatedNodes(prev => new Set(prev).add(nodeId));
                       }
-                    } else {
-                      console.log('Node creation check failed:', {
-                        hasQuestions: data.questions?.length > 0,
-                        notCreated: !hasCreatedNodes.has(nodeId),
-                        withinDepth: depth < MAX_DEPTH,
-                        nodeId
-                      });
                     }
                   }
                 } catch (e) {
@@ -207,13 +209,34 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
           }
         }
       }
+
+      // Verify we got an analysis before proceeding
+      if (!hasAnalysis && retryCount < MAX_RETRIES) {
+        console.log(`Retrying node ${nodeId}, attempt ${retryCount + 1}`);
+        setTimeout(() => {
+          analyzeNode(nodeId, nodeQuestion, depth, retryCount + 1);
+        }, RETRY_DELAY * Math.pow(2, retryCount));
+        return;
+      }
+
+      // Process next node in layer
+      processNextInLayer(nodeId, depth);
+
     } catch (error) {
       console.error('Error analyzing node:', error);
-      toast({
-        variant: "destructive",
-        title: "Analysis Error",
-        description: "Failed to analyze the question. Please try again.",
-      });
+      if (retryCount < MAX_RETRIES) {
+        console.log(`Retrying node ${nodeId}, attempt ${retryCount + 1}`);
+        setTimeout(() => {
+          analyzeNode(nodeId, nodeQuestion, depth, retryCount + 1);
+        }, RETRY_DELAY * Math.pow(2, retryCount));
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Analysis Error",
+          description: "Failed to analyze the question after multiple attempts.",
+        });
+        processNextInLayer(nodeId, depth);
+      }
     } finally {
       setProcessingNodes(prev => {
         const next = new Set(prev);
@@ -221,7 +244,7 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
         return next;
       });
     }
-  }, [createChildNodes, hasCreatedNodes, updateNodeData]);
+  }, [createChildNodes, hasCreatedNodes, updateNodeData, processNextInLayer, marketId]);
 
   const handleAnalyze = async () => {
     console.log('Starting analysis with market question:', marketQuestion);
@@ -239,10 +262,11 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
     setEdges([]);
     setStreamingContent({});
     setHasCreatedNodes(new Set());
+    setCurrentLayer([]);
+    setLayerComplete(true);
     
     try {
       const rootId = 'root-node';
-      console.log('Creating root node:', rootId);
       const rootNode = createNode(rootId, { x: 0, y: 0 }, {
         question: marketQuestion,
         answer: '',
@@ -251,8 +275,9 @@ export function MarketQATree({ marketId, marketQuestion }: { marketId: string, m
       
       setNodes([rootNode]);
       currentNodesRef.current = [rootNode];
+      setCurrentLayer([rootId]);
+      setLayerComplete(false);
       
-      console.log('Root node created, starting analysis');
       await analyzeNode(rootId, marketQuestion, 0);
     } catch (error) {
       console.error('Analysis error:', error);
