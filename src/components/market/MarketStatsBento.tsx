@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
-import { AspectRatio } from "@/components/ui/aspect-ratio";
 
 interface NewsArticle {
   id: string;
@@ -31,8 +30,8 @@ function BentoCard({ children, className }: {
   className?: string;
 }) {
   return (
-    <div className={cn("relative w-full overflow-hidden rounded-lg", className)}>
-      <div className="w-full bg-background rounded-lg overflow-hidden">
+    <div className={cn("relative h-full w-full overflow-hidden rounded-lg", className)}>
+      <div className="h-full w-full bg-background rounded-lg overflow-hidden">
         {children}
       </div>
     </div>
@@ -71,9 +70,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     if (!article) {
       const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
-        <div className="absolute inset-0">
+        <div className="relative h-full w-full">
           <div 
-            className="w-full h-full"
+            className="absolute inset-0"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
           />
         </div>
@@ -93,24 +92,25 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       : 'linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.8) 20%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.2) 60%, rgba(0,0,0,0) 80%)';
 
     return (
-      <div className="absolute inset-0">
-        {article.image_url && (
-          <div className="absolute inset-0">
+      <div className="relative h-full w-full">
+        <div className="absolute inset-0 rounded-lg overflow-hidden">
+          {article.image_url && (
             <img 
               src={article.image_url} 
               alt={article.title}
               className="h-full w-full object-cover"
             />
-          </div>
-        )}
-        
-        <div 
-          className="absolute inset-0"
-          style={{ background: gradientStyle }} 
-        />
+          )}
+          
+          {/* Gradient overlay with extra large bounds */}
+          <div 
+            className="absolute -inset-[50px] rounded-lg scale-110 transform"
+            style={{ background: gradientStyle }} 
+          />
+        </div>
 
         {/* Content */}
-        <div className="relative h-full p-6 flex flex-col justify-end">
+        <div className="relative h-full p-6 flex flex-col justify-end z-10">
           <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
             {article.title}
           </h3>
@@ -122,24 +122,16 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   return (
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="md:row-span-2">
-          <AspectRatio ratio={1} className="overflow-hidden">
-            <BentoCard>
-              {renderArticle(1)}
-            </BentoCard>
-          </AspectRatio>
-        </div>
-
-        <BentoCard>
-          <AspectRatio ratio={2}>
-            {renderArticle(2)}
-          </AspectRatio>
+        <BentoCard className="md:row-span-2 aspect-square">
+          {renderArticle(1)}
         </BentoCard>
 
         <BentoCard>
-          <AspectRatio ratio={2}>
-            {renderArticle(3)}
-          </AspectRatio>
+          {renderArticle(2)}
+        </BentoCard>
+
+        <BentoCard>
+          {renderArticle(3)}
         </BentoCard>
       </div>
     </div>
