@@ -24,6 +24,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
   const [streamingContent, setStreamingContent] = useState<{[key: string]: string}>({});
+  const [parsedContent, setParsedContent] = useState<{[key: string]: any}>({});
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
@@ -32,8 +33,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
-    
-    console.log('Analyzing question:', { nodeId, question, depth });
     
     try {
       const { data: streamData, error } = await supabase.functions.invoke('generate-qa-tree', {
@@ -46,11 +45,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (error) throw error;
 
       let accumulatedContent = '';
-      let hasStartedNonJsonContent = false;
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
-      // Initialize streaming content for this node
+      // Initialize content for this node
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
@@ -109,32 +107,30 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               if (content) {
                 accumulatedContent += content;
                 
-                // Only update streaming content if we've received non-JSON content
-                // or if this chunk isn't the start of JSON
-                const trimmedContent = content.trimStart();
-                if (!trimmedContent.startsWith('{')) {
-                  hasStartedNonJsonContent = true;
-                }
-                
-                if (hasStartedNonJsonContent) {
-                  setStreamingContent(prev => ({
-                    ...prev,
-                    [nodeId]: accumulatedContent
-                  }));
-                }
-                
+                // Try to parse the accumulated content as JSON
                 try {
-                  // Try to parse accumulated content as JSON
-                  const parsedContent = JSON.parse(accumulatedContent);
-                  if (parsedContent.analysis && parsedContent.questions) {
-                    // Update node with complete analysis
+                  const parsedJson = JSON.parse(accumulatedContent);
+                  
+                  // Only update display if we have a valid analysis JSON structure
+                  if (parsedJson && typeof parsedJson === 'object' && parsedJson.analysis) {
+                    setParsedContent(prev => ({
+                      ...prev,
+                      [nodeId]: parsedJson
+                    }));
+                    
+                    setStreamingContent(prev => ({
+                      ...prev,
+                      [nodeId]: parsedJson.analysis
+                    }));
+                    
+                    // Update QA tree with complete analysis
                     setQaData(prev => {
                       const updateNode = (nodes: QANode[]): QANode[] => {
                         return nodes.map(node => {
                           if (node.id === nodeId) {
                             return {
                               ...node,
-                              analysis: parsedContent.analysis
+                              analysis: parsedJson.analysis
                             };
                           }
                           if (node.children.length > 0) {
@@ -150,12 +146,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     });
 
                     // Process child questions after valid JSON
-                    for (const childQuestion of parsedContent.questions) {
-                      await analyzeQuestion(childQuestion, nodeId, depth + 1);
+                    if (parsedJson.questions) {
+                      for (const childQuestion of parsedJson.questions) {
+                        await analyzeQuestion(childQuestion, nodeId, depth + 1);
+                      }
                     }
                   }
-                } catch (e) {
-                  // Not valid JSON yet, continue streaming
+                } catch (parseError) {
+                  // Not valid JSON yet, continue accumulating
+                  continue;
                 }
               }
             } catch (e) {
@@ -178,6 +177,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setIsAnalyzing(true);
     setQaData([]);
     setStreamingContent({});
+    setParsedContent({});
     setExpandedNodes(new Set());
     
     try {
