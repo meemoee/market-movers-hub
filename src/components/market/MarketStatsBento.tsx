@@ -65,6 +65,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const profile = PLACEHOLDER_PROFILES[position - 1];
     if (!profile) return null;
 
+    const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
+
     return (
       <div className="flex items-center gap-2 mt-2">
         <Avatar className="h-6 w-6">
@@ -72,19 +74,16 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             <UserCircle className="h-4 w-4" />
           </AvatarFallback>
         </Avatar>
-        <span className="text-sm font-medium">{profile.name}</span>
-        <div className="ml-auto flex items-center gap-1">
-          <span className="text-sm font-semibold">${profile.price.toFixed(2)}</span>
-          <div className={cn(
-            "flex items-center gap-0.5",
-            profile.change > 0 ? "text-green-500" : "text-red-500"
-          )}>
-            {profile.change > 0 ? (
-              <ArrowUp className="h-3 w-3" />
-            ) : (
-              <ArrowDown className="h-3 w-3" />
-            )}
-            <span className="text-xs font-medium">
+        <div className="flex items-center gap-1">
+          <span className="text-sm font-medium">{profile.name}</span>
+          <div className={cn("text-xs flex items-center gap-0.5", priceColor)}>
+            <span>${profile.price.toFixed(2)}</span>
+            <span className="inline-flex items-center">
+              {profile.change > 0 ? (
+                <ArrowUp className="h-3 w-3" />
+              ) : (
+                <ArrowDown className="h-3 w-3" />
+              )}
               {Math.abs(profile.change * 100).toFixed(1)}%
             </span>
           </div>
