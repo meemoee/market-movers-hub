@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import * as React from "react";
 
 // Custom textarea component without minimum height constraint
-const TextareaAutosize = React.forwardRef
+const TextareaAutosize = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
 >(({ className, ...props }, ref) => {
@@ -50,7 +50,7 @@ export function InsightPostBox() {
           </AvatarFallback>
         </Avatar>
         
-        <div className="flex-1 space-y-4">
+        <div className="flex-1 space-y-2">
           <TextareaAutosize
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -62,12 +62,12 @@ export function InsightPostBox() {
           
           <Separator className="bg-border/50" />
           
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between py-0.5">
             <div className="flex gap-1">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                 <ImageIcon className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                 <LinkIcon className="h-4 w-4" />
               </Button>
             </div>
@@ -77,7 +77,7 @@ export function InsightPostBox() {
                 value={visibility}
                 onValueChange={setVisibility}
               >
-                <SelectTrigger className="h-8 text-xs px-2.5 bg-transparent border-muted/20 hover:bg-accent rounded-full w-[100px]">
+                <SelectTrigger className="h-7 text-xs px-2.5 bg-transparent border-muted/20 hover:bg-accent rounded-full w-[100px]">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
                 <SelectContent>
@@ -92,7 +92,7 @@ export function InsightPostBox() {
               <Button 
                 onClick={handlePost}
                 disabled={!content.trim()}
-                className="h-8 px-3 text-xs font-medium rounded-full"
+                className="h-7 px-3 text-xs font-medium rounded-full"
                 size="sm"
               >
                 Post
