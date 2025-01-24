@@ -51,14 +51,16 @@ export function InsightPostBox() {
         </Avatar>
         
         <div className="flex-1 space-y-2">
-          <TextareaAutosize
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Share your market insight..."
-            className="text-lg placeholder:text-lg resize-none border-none leading-relaxed overflow-hidden"
-            rows={1}
-            style={{ height: content ? 'auto' : '32px' }}
-          />
+          <div className="flex items-center min-h-[40px]">
+            <TextareaAutosize
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Share your market insight..."
+              className="text-lg placeholder:text-lg resize-none border-none leading-relaxed overflow-hidden"
+              rows={1}
+              style={{ height: content ? 'auto' : '32px' }}
+            />
+          </div>
           
           <Separator className="bg-border/50" />
           
@@ -77,7 +79,7 @@ export function InsightPostBox() {
                 value={visibility}
                 onValueChange={setVisibility}
               >
-                <SelectTrigger className="h-7 text-xs px-2.5 bg-transparent border-muted/20 hover:bg-accent rounded-full w-[100px]">
+                <SelectTrigger className="h-7 text-xs px-3 bg-[#E5DEFF] hover:bg-[#D6BCFA] border-0 rounded-full w-[100px] gap-1 text-[#403E43]">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
                 <SelectContent>
