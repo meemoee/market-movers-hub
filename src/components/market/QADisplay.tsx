@@ -209,7 +209,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             </div>
           )}
 
-          <div className="flex-grow min-w-0 pl-6 sm:pl-[72px] pb-6 relative">
+          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
             {depth > 0 && (
               <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
             )}
