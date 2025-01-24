@@ -35,7 +35,7 @@ export function InsightPostBox() {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Share your market insight..."
-            className="min-h-[80px] bg-background resize-none border-none focus-visible:ring-1 text-sm"
+            className="min-h-[80px] bg-transparent resize-none border-none focus-visible:ring-1 text-sm"
           />
           
           <div className="flex items-center justify-between py-0.5">
