@@ -36,15 +36,21 @@ export function InsightPostBox() {
   const [visibility, setVisibility] = useState("everyone");
   const [isOpen, setIsOpen] = useState(false);
 
+  // Handle scroll events
   useEffect(() => {
-    const handleScroll = () => {
-      if (isOpen) {
-        setIsOpen(false);
-      }
+    if (!isOpen) return;
+
+    const handleScroll = (e: Event) => {
+      setIsOpen(false);
     };
 
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    return () => window.removeEventListener('scroll', handleScroll);
+    // Add event listener to the closest scrollable parent
+    const scrollableParent = document.querySelector('main') || window;
+    scrollableParent.addEventListener('scroll', handleScroll, { passive: true });
+    
+    return () => {
+      scrollableParent.removeEventListener('scroll', handleScroll);
+    };
   }, [isOpen]);
 
   const handlePost = () => {
@@ -89,14 +95,20 @@ export function InsightPostBox() {
             <div className="flex items-center gap-2">
               <Select
                 value={visibility}
-                onValueChange={setVisibility}
+                onValueChange={(value) => {
+                  setVisibility(value);
+                  setIsOpen(false);
+                }}
                 open={isOpen}
                 onOpenChange={setIsOpen}
               >
                 <SelectTrigger className="h-7 text-xs px-3 bg-[#E5DEFF] hover:bg-[#D6BCFA] border-0 rounded-full w-[100px] gap-1 text-[#403E43]">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
-                <SelectContent className="w-[100px] min-w-[100px]">
+                <SelectContent 
+                  className="w-[100px] min-w-[100px]"
+                  onCloseAutoFocus={(e) => e.preventDefault()}
+                >
                   <SelectItem value="everyone">Everyone</SelectItem>
                   <SelectItem value="followers">Followers</SelectItem>
                   <SelectItem value="tier1">Tier 1</SelectItem>
