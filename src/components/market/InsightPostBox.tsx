@@ -13,7 +13,6 @@ import { UserCircle, Image as ImageIcon, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as React from "react";
 
-// Custom textarea component without minimum height constraint
 const TextareaAutosize = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
@@ -82,7 +81,7 @@ export function InsightPostBox() {
                 <SelectTrigger className="h-7 text-xs px-3 bg-[#E5DEFF] hover:bg-[#D6BCFA] border-0 rounded-full w-[100px] gap-1 text-[#403E43]">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="w-[100px] min-w-[100px]">
                   <SelectItem value="everyone">Everyone</SelectItem>
                   <SelectItem value="followers">Followers</SelectItem>
                   <SelectItem value="tier1">Tier 1</SelectItem>
