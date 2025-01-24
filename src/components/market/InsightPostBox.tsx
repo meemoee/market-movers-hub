@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,6 +10,26 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { UserCircle, Image as ImageIcon, Link as LinkIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import * as React from "react";
+
+// Custom textarea component without minimum height constraint
+const TextareaAutosize = React.forwardRef
+  HTMLTextAreaElement,
+  React.TextareaHTMLAttributes<HTMLTextAreaElement>
+>(({ className, ...props }, ref) => {
+  return (
+    <textarea
+      ref={ref}
+      className={cn(
+        "w-full rounded-md bg-transparent px-0 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  );
+});
+TextareaAutosize.displayName = "TextareaAutosize";
 
 export function InsightPostBox() {
   const [content, setContent] = useState("");
@@ -32,11 +51,13 @@ export function InsightPostBox() {
         </Avatar>
         
         <div className="flex-1 space-y-4">
-          <Textarea
+          <TextareaAutosize
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Share your market insight..."
-            className="h-7 py-0.5 px-0 bg-transparent resize-none border-none focus-visible:ring-1 text-lg placeholder:text-lg transition-all duration-200"
+            className="text-lg placeholder:text-lg resize-none border-none leading-relaxed overflow-hidden"
+            rows={1}
+            style={{ height: content ? 'auto' : '32px' }}
           />
           
           <Separator className="bg-border/50" />
