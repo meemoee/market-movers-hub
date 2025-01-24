@@ -1,17 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { UserCircle, Image as ImageIcon, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as React from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { VisibilityDropdown } from "./VisibilityDropdown";
 
 // Custom textarea component that automatically adjusts height
 const TextareaAutosize = React.forwardRef<
@@ -34,21 +28,6 @@ TextareaAutosize.displayName = "TextareaAutosize";
 export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState("everyone");
-  const [isSelectOpen, setIsSelectOpen] = useState(false);
-
-  useEffect(() => {
-    if (isSelectOpen) {
-      const handleScroll = () => {
-        setIsSelectOpen(false);
-      };
-
-      window.addEventListener('scroll', handleScroll, { passive: true });
-      
-      return () => {
-        window.removeEventListener('scroll', handleScroll);
-      };
-    }
-  }, [isSelectOpen]);
 
   const handlePost = () => {
     console.log("Posting insight:", { content, visibility });
@@ -97,27 +76,10 @@ export function InsightPostBox() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Select 
-                value={visibility} 
-                onValueChange={setVisibility}
-                open={isSelectOpen}
-                onOpenChange={setIsSelectOpen}
-              >
-                <SelectTrigger className="h-7 text-xs px-3 bg-[#E5DEFF] hover:bg-[#D6BCFA] border-0 rounded-full w-[100px] text-[#403E43]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent 
-                  position="popper"
-                  className="w-[100px] min-w-[100px]"
-                  align="end"
-                >
-                  <SelectItem value="everyone">Everyone</SelectItem>
-                  <SelectItem value="followers">Followers</SelectItem>
-                  <SelectItem value="tier1">Tier 1</SelectItem>
-                  <SelectItem value="tier2">Tier 2</SelectItem>
-                  <SelectItem value="tier3">Tier 3</SelectItem>
-                </SelectContent>
-              </Select>
+              <VisibilityDropdown 
+                value={visibility}
+                onChange={setVisibility}
+              />
               
               <Button 
                 onClick={handlePost}
