@@ -87,9 +87,9 @@ export function InsightPostBox() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent 
+                  position="popper"
                   className="w-[100px] min-w-[100px]"
-                  onCloseAutoFocus={(e) => e.preventDefault()}
-                  onPointerDownOutside={(e) => e.preventDefault()}
+                  align="end"
                 >
                   <SelectItem value="everyone">Everyone</SelectItem>
                   <SelectItem value="followers">Followers</SelectItem>
