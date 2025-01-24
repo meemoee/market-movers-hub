@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Separator } from "@/components/ui/separator";
 import { UserCircle, Image as ImageIcon, Link as LinkIcon } from "lucide-react";
 
 export function InsightPostBox() {
@@ -23,27 +24,29 @@ export function InsightPostBox() {
 
   return (
     <div className="w-full mb-4">
-      <div className="flex gap-2">
-        <Avatar className="h-8 w-8">
+      <div className="flex gap-4">
+        <Avatar className="h-12 w-12">
           <AvatarFallback className="bg-primary/10">
-            <UserCircle className="h-5 w-5" />
+            <UserCircle className="h-7 w-7" />
           </AvatarFallback>
         </Avatar>
         
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 space-y-4">
           <Textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Share your market insight..."
-            className="min-h-[80px] bg-transparent resize-none border-none focus-visible:ring-1 text-sm"
+            className="min-h-[80px] bg-transparent resize-none border-none focus-visible:ring-1 text-lg placeholder:text-lg"
           />
           
-          <div className="flex items-center justify-between py-0.5">
+          <Separator className="bg-border/50" />
+          
+          <div className="flex items-center justify-between">
             <div className="flex gap-1">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
                 <ImageIcon className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
                 <LinkIcon className="h-4 w-4" />
               </Button>
             </div>
@@ -53,7 +56,7 @@ export function InsightPostBox() {
                 value={visibility}
                 onValueChange={setVisibility}
               >
-                <SelectTrigger className="h-7 text-xs px-2.5 bg-transparent border-muted/20 hover:bg-accent rounded-full w-[100px]">
+                <SelectTrigger className="h-8 text-xs px-2.5 bg-transparent border-muted/20 hover:bg-accent rounded-full w-[100px]">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
                 <SelectContent>
@@ -68,7 +71,7 @@ export function InsightPostBox() {
               <Button 
                 onClick={handlePost}
                 disabled={!content.trim()}
-                className="h-7 px-3 text-xs font-medium rounded-full"
+                className="h-8 px-3 text-xs font-medium rounded-full"
                 size="sm"
               >
                 Post
