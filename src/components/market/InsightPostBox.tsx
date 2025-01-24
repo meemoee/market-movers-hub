@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -13,6 +13,7 @@ import { UserCircle, Image as ImageIcon, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as React from "react";
 
+// Custom textarea component without minimum height constraint
 const TextareaAutosize = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
@@ -33,18 +34,6 @@ TextareaAutosize.displayName = "TextareaAutosize";
 export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState("everyone");
-  const [isOpen, setIsOpen] = useState(false);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (isOpen) {
-        setIsOpen(false);
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isOpen]);
 
   const handlePost = () => {
     // TODO: Implement post functionality
@@ -89,13 +78,11 @@ export function InsightPostBox() {
               <Select
                 value={visibility}
                 onValueChange={setVisibility}
-                open={isOpen}
-                onOpenChange={setIsOpen}
               >
                 <SelectTrigger className="h-7 text-xs px-3 bg-[#E5DEFF] hover:bg-[#D6BCFA] border-0 rounded-full w-[100px] gap-1 text-[#403E43]">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
-                <SelectContent className="w-[100px] min-w-[100px]">
+                <SelectContent>
                   <SelectItem value="everyone">Everyone</SelectItem>
                   <SelectItem value="followers">Followers</SelectItem>
                   <SelectItem value="tier1">Tier 1</SelectItem>
