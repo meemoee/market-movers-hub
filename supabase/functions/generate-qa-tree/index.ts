@@ -37,7 +37,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "Analyze the given question and provide:\n1. A detailed analysis with specific citations\n2. Exactly three analytical follow-up questions\n\nYour response must include specific citations and analysis. YOU MUST phrase each follow-up question with full specificity to the context - each follow-up question must be able to COMPLETELY PORTRAY the ENTIRE context in EACH QUESTION ALONE. Your follow-up questions should explore: popular opinion, source legitimacy, real quotes from relevant people, historical precedents, analagous events, event specifics, specific examples, and comparisons to analogous events."
+            content: "Analyze the given question and provide:\n1. A detailed analysis with specific citations\n2. Exactly three analytical follow-up questions\n\nYour response must include specific citations and analysis. YOU MUST phrase each follow-up question with full specificity to the context - each follow-up question must be able to COMPLETELY PORTRAY the ENTIRE context in EACH QUESTION ALONE. Your follow-up questions should explore: popular opinion, likely alternative outcomes, source legitimacy, real quotes from relevant people, historical precedents, analagous events, event specifics, most likely alternative outcome, specific examples, and comparisons to analogous events."
           },
           {
             role: "user",
