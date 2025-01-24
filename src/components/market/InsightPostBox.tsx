@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -34,6 +34,21 @@ TextareaAutosize.displayName = "TextareaAutosize";
 export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState("everyone");
+  const [isSelectOpen, setIsSelectOpen] = useState(false);
+
+  useEffect(() => {
+    if (isSelectOpen) {
+      const handleScroll = () => {
+        setIsSelectOpen(false);
+      };
+
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      
+      return () => {
+        window.removeEventListener('scroll', handleScroll);
+      };
+    }
+  }, [isSelectOpen]);
 
   const handlePost = () => {
     console.log("Posting insight:", { content, visibility });
@@ -82,7 +97,12 @@ export function InsightPostBox() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Select value={visibility} onValueChange={setVisibility}>
+              <Select 
+                value={visibility} 
+                onValueChange={setVisibility}
+                open={isSelectOpen}
+                onOpenChange={setIsSelectOpen}
+              >
                 <SelectTrigger className="h-7 text-xs px-3 bg-[#E5DEFF] hover:bg-[#D6BCFA] border-0 rounded-full w-[100px] text-[#403E43]">
                   <SelectValue />
                 </SelectTrigger>
