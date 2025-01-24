@@ -30,7 +30,7 @@ export function InsightPostBox() {
           </AvatarFallback>
         </Avatar>
         
-        <div className="flex-1 space-y-3">
+        <div className="flex-1 space-y-2">
           <Textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
@@ -38,12 +38,12 @@ export function InsightPostBox() {
             className="min-h-[80px] bg-background resize-none border-none focus-visible:ring-1 text-sm"
           />
           
-          <div className="flex items-center justify-between">
-            <div className="flex gap-1.5">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
+          <div className="flex items-center justify-between py-0.5">
+            <div className="flex gap-1">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                 <ImageIcon className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                 <LinkIcon className="h-4 w-4" />
               </Button>
             </div>
@@ -53,7 +53,7 @@ export function InsightPostBox() {
                 value={visibility}
                 onValueChange={setVisibility}
               >
-                <SelectTrigger className="w-[120px] h-8 text-sm">
+                <SelectTrigger className="h-7 text-xs px-2.5 bg-transparent border-muted/20 hover:bg-accent rounded-full w-[100px]">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
                 <SelectContent>
@@ -68,7 +68,7 @@ export function InsightPostBox() {
               <Button 
                 onClick={handlePost}
                 disabled={!content.trim()}
-                className="px-4 h-8 text-sm"
+                className="h-7 px-3 text-xs font-medium rounded-full"
                 size="sm"
               >
                 Post
