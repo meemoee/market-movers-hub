@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { UserCircle, ArrowUp, ArrowDown } from "lucide-react";
 
 interface NewsArticle {
   id: string;
@@ -17,6 +19,12 @@ const PLACEHOLDER_GRADIENTS = [
   'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
   'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
   'linear-gradient(to right, #ee9ca7, #ffdde1)'
+];
+
+const PLACEHOLDER_PROFILES = [
+  { name: 'Alex Chen', price: 0.78, change: 0.12 },
+  { name: 'Sarah Kim', price: 0.65, change: -0.08 },
+  { name: 'Mike Davis', price: 0.92, change: 0.05 }
 ];
 
 function isLightColor(rgb: string): boolean {
@@ -38,7 +46,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
-        // Get distinct on position, ordered by created_at desc within each position
         .or(`position.eq.1,position.eq.2,position.eq.3`)
         .order('position', { ascending: true })
         .order('created_at', { ascending: false });
@@ -53,6 +60,38 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     fetchArticles();
   }, [selectedInterval]);
+
+  const renderProfileInfo = (position: number) => {
+    const profile = PLACEHOLDER_PROFILES[position - 1];
+    if (!profile) return null;
+
+    return (
+      <div className="flex items-center gap-2 mt-2">
+        <Avatar className="h-6 w-6">
+          <AvatarFallback className="bg-primary/10">
+            <UserCircle className="h-4 w-4" />
+          </AvatarFallback>
+        </Avatar>
+        <span className="text-sm font-medium">{profile.name}</span>
+        <div className="ml-auto flex items-center gap-1">
+          <span className="text-sm font-semibold">${profile.price.toFixed(2)}</span>
+          <div className={cn(
+            "flex items-center gap-0.5",
+            profile.change > 0 ? "text-green-500" : "text-red-500"
+          )}>
+            {profile.change > 0 ? (
+              <ArrowUp className="h-3 w-3" />
+            ) : (
+              <ArrowDown className="h-3 w-3" />
+            )}
+            <span className="text-xs font-medium">
+              {Math.abs(profile.change * 100).toFixed(1)}%
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderArticle = (position: number) => {
     const article = articles.find(a => a.position === position);
@@ -83,7 +122,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           )}
           
-          {/* Gradient overlay */}
           <div 
             className="absolute -inset-[50px] rounded-lg scale-110 transform"
             style={{ 
@@ -99,21 +137,19 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           />
         </div>
 
-        {/* Content */}
         <div className="relative h-full p-6 flex flex-col justify-end z-10">
-          <h3 className={cn("text-2xl font-black leading-tight", textColorClass)}>
+          <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
             {article.title}
           </h3>
+          {renderProfileInfo(position)}
         </div>
       </div>
     );
 
-    // If no link, return content without anchor wrapper
     if (!article.link) {
       return content;
     }
 
-    // Wrap in anchor tag if link exists
     return (
       <a 
         href={article.link}
@@ -129,12 +165,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   return (
     <div className="w-full mt-3">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {/* First column - large box */}
         <div className="md:row-span-2 aspect-square">
           {renderArticle(1)}
         </div>
-
-        {/* Second column - two smaller boxes */}
         <div>
           {renderArticle(2)}
         </div>
