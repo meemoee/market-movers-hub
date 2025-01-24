@@ -24,10 +24,10 @@ export function InsightPostBox() {
 
   return (
     <div className="w-full mb-4">
-      <div className="flex gap-4">
-        <Avatar className="h-12 w-12">
+      <div className="flex gap-3">
+        <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-primary/10">
-            <UserCircle className="h-7 w-7" />
+            <UserCircle className="h-6 w-6" />
           </AvatarFallback>
         </Avatar>
         
@@ -36,7 +36,7 @@ export function InsightPostBox() {
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Share your market insight..."
-            className="min-h-[80px] bg-transparent resize-none border-none focus-visible:ring-1 text-lg placeholder:text-lg"
+            className="min-h-[40px] py-2 bg-transparent resize-none border-none focus-visible:ring-1 text-lg placeholder:text-lg transition-all duration-200"
           />
           
           <Separator className="bg-border/50" />
