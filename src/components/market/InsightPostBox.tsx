@@ -38,23 +38,6 @@ export function InsightPostBox() {
   const [visibility, setVisibility] = useState("everyone");
   const [isOpen, setIsOpen] = useState(false);
 
-  // Set up scroll handler to close dropdown when scrolling occurs
-  useEffect(() => {
-    if (!isOpen) return; // Only add listener when dropdown is open
-
-    const handleScroll = () => {
-      setIsOpen(false);
-    };
-
-    // Add scroll listener when dropdown opens
-    window.addEventListener('scroll', handleScroll, { passive: true });
-
-    // Clean up listener when dropdown closes or component unmounts
-    return () => {
-      window.removeEventListener('scroll', handleScroll);
-    };
-  }, [isOpen]); // Re-run effect when isOpen changes
-
   const handlePost = () => {
     console.log("Posting insight:", { content, visibility });
     setContent("");
