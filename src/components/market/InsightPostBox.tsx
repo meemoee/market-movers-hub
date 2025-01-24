@@ -13,7 +13,7 @@ import { UserCircle, Image as ImageIcon, Link as LinkIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import * as React from "react";
 
-// Custom textarea component without minimum height constraint
+// Custom textarea component that automatically adjusts height
 const TextareaAutosize = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
@@ -35,10 +35,17 @@ export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState("everyone");
 
+  // Handle post submission
   const handlePost = () => {
     // TODO: Implement post functionality
     console.log("Posting insight:", { content, visibility });
     setContent("");
+  };
+
+  // Handle textarea height adjustment
+  const adjustTextareaHeight = (element: HTMLTextAreaElement) => {
+    element.style.height = 'auto';
+    element.style.height = element.scrollHeight + 'px';
   };
 
   return (
@@ -54,7 +61,10 @@ export function InsightPostBox() {
           <div className="flex items-center min-h-[40px]">
             <TextareaAutosize
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => {
+                setContent(e.target.value);
+                adjustTextareaHeight(e.target);
+              }}
               placeholder="Share your market insight..."
               className="text-lg placeholder:text-lg resize-none border-none leading-relaxed overflow-hidden"
               rows={1}
@@ -84,8 +94,17 @@ export function InsightPostBox() {
                 </SelectTrigger>
                 <SelectContent 
                   className="w-[100px] min-w-[100px]"
+                  position="popper"
+                  side="bottom"
+                  sideOffset={4}
                   onCloseAutoFocus={(e) => e.preventDefault()}
-                  onPointerDownOutside={(e) => e.preventDefault()}
+                  onEscapeKeyDown={() => setVisibility("everyone")}
+                  onInteractOutside={(e) => {
+                    if (e.target instanceof Node && !e.currentTarget.contains(e.target)) {
+                      setVisibility("everyone");
+                    }
+                  }}
+                  portalled={false}
                 >
                   <SelectItem value="everyone">Everyone</SelectItem>
                   <SelectItem value="followers">Followers</SelectItem>
