@@ -22,38 +22,38 @@ export function InsightPostBox() {
   };
 
   return (
-    <div className="w-full bg-card rounded-xl p-4 mb-6 border border-border">
-      <div className="flex gap-3">
-        <Avatar className="h-10 w-10">
+    <div className="w-full bg-card rounded-lg p-3 mb-4 border border-border">
+      <div className="flex gap-2">
+        <Avatar className="h-8 w-8">
           <AvatarFallback className="bg-primary/10">
-            <UserCircle className="h-6 w-6" />
+            <UserCircle className="h-5 w-5" />
           </AvatarFallback>
         </Avatar>
         
-        <div className="flex-1 space-y-4">
+        <div className="flex-1 space-y-3">
           <Textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
             placeholder="Share your market insight..."
-            className="min-h-[100px] bg-background resize-none"
+            className="min-h-[80px] bg-background resize-none border-none focus-visible:ring-1 text-sm"
           />
           
           <div className="flex items-center justify-between">
-            <div className="flex gap-2">
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary">
-                <ImageIcon className="h-5 w-5" />
+            <div className="flex gap-1.5">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
+                <ImageIcon className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary">
-                <LinkIcon className="h-5 w-5" />
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-8 w-8 p-0">
+                <LinkIcon className="h-4 w-4" />
               </Button>
             </div>
             
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Select
                 value={visibility}
                 onValueChange={setVisibility}
               >
-                <SelectTrigger className="w-[140px]">
+                <SelectTrigger className="w-[120px] h-8 text-sm">
                   <SelectValue placeholder="Visibility" />
                 </SelectTrigger>
                 <SelectContent>
@@ -68,7 +68,8 @@ export function InsightPostBox() {
               <Button 
                 onClick={handlePost}
                 disabled={!content.trim()}
-                className="px-6"
+                className="px-4 h-8 text-sm"
+                size="sm"
               >
                 Post
               </Button>
