@@ -4,6 +4,7 @@ import { TopMoversHeader } from './market/TopMoversHeader';
 import { TopMoversContent } from './market/TopMoversContent';
 import { TransactionDialog } from './market/TransactionDialog';
 import { MarketStatsBento } from './market/MarketStatsBento';
+import { InsightPostBox } from './market/InsightPostBox';
 
 interface TimeInterval {
   label: string;
@@ -155,6 +156,8 @@ export default function TopMoversList({
       <div className="w-full px-0 sm:px-4 -mt-20">
         <div className="flex flex-col items-center space-y-3 pt-20">
           <MarketStatsBento selectedInterval={selectedInterval} />
+          
+          <InsightPostBox />
 
           <TopMoversContent
             isLoading={isLoading || false}
