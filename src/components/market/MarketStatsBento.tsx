@@ -76,13 +76,13 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </Avatar>
         <div className="flex items-center gap-1">
           <span className="text-sm font-medium">{profile.name}</span>
-          <div className={cn("text-xs flex items-center gap-0.5", priceColor)}>
+          <div className={cn("text-[10px] flex items-center gap-0.5 opacity-80", priceColor)}>
             <span>${profile.price.toFixed(2)}</span>
             <span className="inline-flex items-center">
               {profile.change > 0 ? (
-                <ArrowUp className="h-3 w-3" />
+                <ArrowUp className="h-2 w-2" />
               ) : (
-                <ArrowDown className="h-3 w-3" />
+                <ArrowDown className="h-2 w-2" />
               )}
               {Math.abs(profile.change * 100).toFixed(1)}%
             </span>
