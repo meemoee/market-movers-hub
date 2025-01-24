@@ -204,20 +204,20 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       <div key={node.id} className="relative flex flex-col">
         <div className="flex items-stretch">
           {depth > 0 && (
-            <div className="relative w-9 flex-shrink-0">
-              <div className="absolute top-0 bottom-0 left-9 w-[2px] bg-border" />
+            <div className="relative w-6 sm:w-9 flex-shrink-0">
+              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
             </div>
           )}
 
-          <div className="flex-grow min-w-0 pl-[72px] pb-6 relative">
+          <div className="flex-grow min-w-0 pl-6 sm:pl-[72px] pb-6 relative">
             {depth > 0 && (
-              <div className="absolute left-0 top-4 h-[2px] w-6 bg-border" />
+              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
             )}
 
-            <div className="absolute left-[24px] top-0">
-              <Avatar className="h-9 w-9 border-2 border-background">
+            <div className="absolute left-[12px] sm:left-[24px] top-0">
+              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
                 <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-4 w-4 text-primary" />
+                  <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
                 </AvatarFallback>
               </Avatar>
             </div>
