@@ -22,7 +22,7 @@ export function InsightPostBox() {
   };
 
   return (
-    <div className="w-full bg-card rounded-lg p-3 mb-4 border border-border">
+    <div className="w-full mb-4">
       <div className="flex gap-2">
         <Avatar className="h-8 w-8">
           <AvatarFallback className="bg-primary/10">
