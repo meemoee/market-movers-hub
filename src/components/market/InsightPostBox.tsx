@@ -85,8 +85,6 @@ export function InsightPostBox() {
                 <SelectContent 
                   className="w-[100px] min-w-[100px]"
                   onCloseAutoFocus={(e) => e.preventDefault()}
-                  onInteractOutside={() => {}}
-                  onEscapeKeyDown={(e) => e.preventDefault()}
                   onPointerDownOutside={(e) => e.preventDefault()}
                 >
                   <SelectItem value="everyone">Everyone</SelectItem>
