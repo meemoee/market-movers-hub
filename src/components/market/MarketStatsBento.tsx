@@ -130,14 +130,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         />
         
         {/* Main content container with larger gap for thicker border */}
-        <div className="absolute inset-[4px] rounded-lg overflow-hidden">
-          {/* Background image */}
-          <div className="absolute inset-0">
+        <div className="absolute inset-[4px] rounded-lg overflow-hidden bg-background">
+          {/* Background image - match parent's rounded corners */}
+          <div className="absolute inset-0 rounded-lg overflow-hidden">
             {article.image_url && (
               <img 
                 src={article.image_url} 
                 alt={article.title}
-                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg"
               />
             )}
           </div>
