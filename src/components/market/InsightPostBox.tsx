@@ -38,7 +38,6 @@ export function InsightPostBox() {
   const [visibility, setVisibility] = useState("everyone");
   const [isOpen, setIsOpen] = useState(false);
 
-  // Add scroll event listener when dropdown is open
   useEffect(() => {
     const handleScroll = () => {
       if (isOpen) {
@@ -46,12 +45,14 @@ export function InsightPostBox() {
       }
     };
 
+    // Only add the event listener if the dropdown is open
     if (isOpen) {
-      window.addEventListener('scroll', handleScroll, { passive: true });
+      // Use capture phase to ensure we handle the scroll before it affects the page
+      window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
     }
 
     return () => {
-      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll, { capture: true });
     };
   }, [isOpen]);
 
@@ -115,6 +116,7 @@ export function InsightPostBox() {
                 <PopoverContent 
                   className="w-[100px] p-0" 
                   sideOffset={4}
+                  style={{ position: 'fixed' }}
                 >
                   <div className="flex flex-col">
                     {visibilityOptions.map((option) => (
