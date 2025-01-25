@@ -112,17 +112,17 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     
     const content = (
       <div className="relative h-full w-full group">
-        <div className="absolute inset-0 rounded-lg overflow-hidden">
+        <div className="relative h-full w-full overflow-hidden rounded-lg">
           {article.image_url && (
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
             />
           )}
           
           <div 
-            className="absolute -inset-[50px] rounded-lg scale-110 transform backdrop-blur-sm"
+            className="absolute inset-0 backdrop-blur-sm"
             style={{ 
               background: article.gradient_start_rgb && article.gradient_end_rgb
                 ? `linear-gradient(to top, 
