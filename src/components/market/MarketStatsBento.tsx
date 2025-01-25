@@ -98,7 +98,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     if (!article) {
       const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
-        <div className="relative h-full w-full">
+        <div className="relative h-full w-full rounded-lg overflow-hidden">
           <div 
             className="absolute inset-0"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
@@ -111,32 +111,36 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const textColorClass = isLight ? "text-black" : "text-white";
     
     const content = (
-      <div className="relative h-full w-full group">
-        <div className="relative h-full w-full overflow-hidden rounded-lg">
+      <div className="relative h-full w-full rounded-lg overflow-hidden">
+        {/* Background image container */}
+        <div className="absolute inset-0">
           {article.image_url && (
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="absolute inset-0 h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
             />
           )}
-          
-          <div 
-            className="absolute inset-0 backdrop-blur-sm"
-            style={{ 
-              background: article.gradient_start_rgb && article.gradient_end_rgb
-                ? `linear-gradient(to top, 
-                    rgb(${article.gradient_start_rgb}) 0%, 
-                    rgba(${article.gradient_end_rgb}, 0.98) 20%,
-                    rgba(${article.gradient_end_rgb}, 0.85) 40%,
-                    rgba(${article.gradient_end_rgb}, 0.7) 60%,
-                    rgba(${article.gradient_end_rgb}, 0.5) 80%)`
-                : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0.0) 80%)'
-            }} 
-          />
         </div>
+        
+        {/* Combined gradient overlay - positioned on top of the image */}
+        <div 
+          className="absolute inset-0 backdrop-blur-[2px]"
+          style={{ 
+            background: article.gradient_start_rgb && article.gradient_end_rgb
+              ? `linear-gradient(to top, 
+                  rgb(${article.gradient_start_rgb}) 0%, 
+                  rgba(${article.gradient_end_rgb}, 0.98) 20%,
+                  rgba(${article.gradient_end_rgb}, 0.85) 40%,
+                  rgba(${article.gradient_end_rgb}, 0.7) 60%,
+                  rgba(${article.gradient_end_rgb}, 0.5) 80%,
+                  rgba(${article.gradient_end_rgb}, 0) 100%)`
+              : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0) 100%)'
+          }} 
+        />
 
-        <div className="relative h-full p-6 flex flex-col justify-end z-10">
+        {/* Content container - absolutely positioned at the bottom */}
+        <div className="absolute inset-x-0 bottom-0 p-6">
           <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
             {article.title}
           </h3>
@@ -146,7 +150,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     );
 
     if (!article.link) {
-      return content;
+      return (
+        <div className="group h-full w-full">
+          {content}
+        </div>
+      );
     }
 
     return (
@@ -154,7 +162,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
+        className="group block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
       >
         {content}
       </a>
@@ -167,10 +175,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         <div className="md:row-span-2 aspect-square">
           {renderArticle(1)}
         </div>
-        <div>
+        <div className="aspect-[2/1]">
           {renderArticle(2)}
         </div>
-        <div>
+        <div className="aspect-[2/1]">
           {renderArticle(3)}
         </div>
       </div>
