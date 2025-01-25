@@ -109,44 +109,59 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
+
+    const gradientAngle = "135deg"; // Diagonal gradient
     
     const content = (
-      <div className="relative h-full w-full rounded-lg overflow-hidden">
-        {/* Background image container */}
-        <div className="absolute inset-0">
-          {article.image_url && (
-            <img 
-              src={article.image_url} 
-              alt={article.title}
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-            />
-          )}
-        </div>
-        
-        {/* Combined gradient overlay */}
+      <div className="relative h-full w-full rounded-lg overflow-hidden group">
+        {/* Border gradient container */}
         <div 
-          className="absolute inset-0 backdrop-blur-[2px]"
+          className="absolute -inset-[2px] rounded-lg opacity-75 transition-opacity group-hover:opacity-100"
           style={{ 
-            background: article.gradient_start_rgb && article.gradient_end_rgb
-              ? `linear-gradient(to top, 
-                  rgba(${article.gradient_end_rgb}, 0.75) 0%,
-                  rgba(${article.gradient_end_rgb}, 0.65) 15%,
-                  rgba(${article.gradient_end_rgb}, 0.5) 30%,
-                  rgba(${article.gradient_end_rgb}, 0.35) 45%,
-                  rgba(${article.gradient_end_rgb}, 0.2) 60%,
-                  rgba(${article.gradient_start_rgb}, 0.15) 75%,
-                  rgba(${article.gradient_start_rgb}, 0.08) 85%,
-                  rgba(${article.gradient_start_rgb}, 0) 100%)`
-              : 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.7) 20%, rgba(0,0,0,0.6) 40%, rgba(0,0,0,0.4) 60%, rgba(0,0,0,0.2) 80%, rgba(0,0,0,0) 100%)'
-          }} 
+            background: article.gradient_end_rgb
+              ? `linear-gradient(${gradientAngle}, rgba(${article.gradient_end_rgb}, 0.5), rgba(${article.gradient_start_rgb}, 0.2))`
+              : 'linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.1))'
+          }}
         />
+        
+        {/* Main content container with small gap for border */}
+        <div className="absolute inset-[2px] rounded-lg overflow-hidden">
+          {/* Background image */}
+          <div className="absolute inset-0">
+            {article.image_url && (
+              <img 
+                src={article.image_url} 
+                alt={article.title}
+                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+              />
+            )}
+          </div>
+          
+          {/* Gradient overlay */}
+          <div 
+            className="absolute inset-0 backdrop-blur-[2px]"
+            style={{ 
+              background: article.gradient_start_rgb && article.gradient_end_rgb
+                ? `linear-gradient(${gradientAngle}, 
+                    rgba(${article.gradient_end_rgb}, 0.75) 0%,
+                    rgba(${article.gradient_end_rgb}, 0.6) 20%,
+                    rgba(${article.gradient_end_rgb}, 0.4) 40%,
+                    rgba(${article.gradient_end_rgb}, 0.2) 60%,
+                    rgba(${article.gradient_end_rgb}, 0.1) 70%,
+                    rgba(${article.gradient_start_rgb}, 0.08) 80%,
+                    rgba(${article.gradient_start_rgb}, 0.05) 90%,
+                    rgba(${article.gradient_start_rgb}, 0) 100%)`
+                : `linear-gradient(${gradientAngle}, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)`
+            }} 
+          />
 
-        {/* Content container */}
-        <div className="absolute inset-x-0 bottom-0 p-6">
-          <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
-            {article.title}
-          </h3>
-          {renderProfileInfo(position)}
+          {/* Content */}
+          <div className="absolute inset-x-0 bottom-0 p-6">
+            <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
+              {article.title}
+            </h3>
+            {renderProfileInfo(position)}
+          </div>
         </div>
       </div>
     );
