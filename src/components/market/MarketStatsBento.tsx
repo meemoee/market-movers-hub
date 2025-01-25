@@ -100,7 +100,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       return (
         <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
           <div 
-            className="absolute inset-0"
+            className="absolute inset-0 rounded-lg"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
           />
         </div>
@@ -112,72 +112,48 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const gradientAngle = "135deg";
     
     const content = (
-      <div className="relative h-full w-full group">
-        {/* Outer container with border gradient */}
-        <div className="absolute -inset-[4px] rounded-xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]">
-          <div 
-            className="absolute inset-0 rounded-xl"
-            style={{ 
-              background: article.gradient_end_rgb
-                ? `linear-gradient(${gradientAngle}, 
-                    rgba(${article.gradient_end_rgb}, 0.9),
-                    rgba(${article.gradient_end_rgb}, 0.7) 25%,
-                    rgba(${article.gradient_end_rgb}, 0.4) 50%,
-                    rgba(${article.gradient_start_rgb}, 0.2) 75%,
-                    rgba(${article.gradient_start_rgb}, 0.1))`
-                : 'linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1))'
-            }}
-          />
+      <div className="relative h-full w-full group rounded-lg overflow-hidden">
+        {/* Image Background Layer */}
+        <div className="absolute inset-0">
+          {article.image_url && (
+            <img 
+              src={article.image_url} 
+              alt={article.title}
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+            />
+          )}
         </div>
         
-        {/* Main content container */}
-        <div className="absolute inset-[4px] rounded-lg overflow-hidden bg-background">
-          {/* Background image container */}
-          <div className="absolute inset-0">
-            {article.image_url && (
-              <img 
-                src={article.image_url} 
-                alt={article.title}
-                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-              />
-            )}
-          </div>
-          
-          {/* Gradient overlay */}
-          <div 
-            className="absolute inset-0 backdrop-blur-[2px]"
-            style={{ 
-              background: article.gradient_start_rgb && article.gradient_end_rgb
-                ? `linear-gradient(${gradientAngle}, 
-                    rgba(${article.gradient_end_rgb}, 0.75) 0%,
-                    rgba(${article.gradient_end_rgb}, 0.6) 20%,
-                    rgba(${article.gradient_end_rgb}, 0.4) 40%,
-                    rgba(${article.gradient_end_rgb}, 0.2) 60%,
-                    rgba(${article.gradient_end_rgb}, 0.1) 70%,
-                    rgba(${article.gradient_start_rgb}, 0.08) 80%,
-                    rgba(${article.gradient_start_rgb}, 0.05) 90%,
-                    rgba(${article.gradient_start_rgb}, 0) 100%)`
+        {/* Gradient Overlay */}
+        <div 
+          className="absolute inset-0 backdrop-blur-[2px] pointer-events-none"
+          style={{ 
+            background: article.gradient_start_rgb && article.gradient_end_rgb
+              ? `linear-gradient(${gradientAngle}, 
+                  rgba(${article.gradient_end_rgb}, 0.75) 0%,
+                  rgba(${article.gradient_end_rgb}, 0.6) 20%,
+                  rgba(${article.gradient_end_rgb}, 0.4) 40%,
+                  rgba(${article.gradient_end_rgb}, 0.2) 60%,
+                  rgba(${article.gradient_end_rgb}, 0.1) 70%,
+                  rgba(${article.gradient_start_rgb}, 0.08) 80%,
+                  rgba(${article.gradient_start_rgb}, 0.05) 90%,
+                  rgba(${article.gradient_start_rgb}, 0) 100%)`
                 : `linear-gradient(${gradientAngle}, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)`
-            }} 
-          />
+          }} 
+        />
 
-          {/* Content */}
-          <div className="absolute inset-x-0 bottom-0 p-6">
-            <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
-              {article.title}
-            </h3>
-            {renderProfileInfo(position)}
-          </div>
+        {/* Content */}
+        <div className="absolute inset-x-0 bottom-0 p-6 flex flex-col justify-end">
+          <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
+            {article.title}
+          </h3>
+          {renderProfileInfo(position)}
         </div>
       </div>
     );
 
     if (!article.link) {
-      return (
-        <div className="group h-full w-full">
-          {content}
-        </div>
-      );
+      return <div>{content}</div>;
     }
 
     return (
@@ -185,7 +161,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="group block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
+        className="block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
       >
         {content}
       </a>
