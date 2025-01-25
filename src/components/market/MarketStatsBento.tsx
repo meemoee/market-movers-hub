@@ -68,7 +68,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
 
     return (
-      <div className="flex items-center gap-2 mt-2">
+      <div className="flex items-center gap-2 mt-2 relative z-10">
         <Avatar className="h-6 w-6">
           <AvatarFallback className="bg-primary/10">
             <UserCircle className="h-4 w-4" />
@@ -98,7 +98,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     if (!article) {
       const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
-        <div className="relative h-full w-full rounded-lg overflow-hidden">
+        <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
           <div 
             className="absolute inset-0"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
@@ -109,35 +109,36 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
     const textColorClass = isLight ? "text-black" : "text-white";
-
-    const gradientAngle = "135deg"; // Diagonal gradient
+    const gradientAngle = "135deg";
     
     const content = (
-      <div className="relative h-full w-full rounded-lg overflow-hidden">
-        {/* Border gradient container - thick beautiful border */}
-        <div 
-          className="absolute -inset-[4px] rounded-xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]"
-          style={{ 
-            background: article.gradient_end_rgb
-              ? `linear-gradient(${gradientAngle}, 
-                  rgba(${article.gradient_end_rgb}, 0.9),
-                  rgba(${article.gradient_end_rgb}, 0.7) 25%,
-                  rgba(${article.gradient_end_rgb}, 0.4) 50%,
-                  rgba(${article.gradient_start_rgb}, 0.2) 75%,
-                  rgba(${article.gradient_start_rgb}, 0.1))`
-              : 'linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1))'
-          }}
-        />
+      <div className="relative h-full w-full group">
+        {/* Outer container with border gradient */}
+        <div className="absolute -inset-[4px] rounded-xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]">
+          <div 
+            className="absolute inset-0 rounded-xl"
+            style={{ 
+              background: article.gradient_end_rgb
+                ? `linear-gradient(${gradientAngle}, 
+                    rgba(${article.gradient_end_rgb}, 0.9),
+                    rgba(${article.gradient_end_rgb}, 0.7) 25%,
+                    rgba(${article.gradient_end_rgb}, 0.4) 50%,
+                    rgba(${article.gradient_start_rgb}, 0.2) 75%,
+                    rgba(${article.gradient_start_rgb}, 0.1))`
+                : 'linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1))'
+            }}
+          />
+        </div>
         
-        {/* Main content container with larger gap for thicker border */}
+        {/* Main content container */}
         <div className="absolute inset-[4px] rounded-lg overflow-hidden bg-background">
-          {/* Background image - match parent's rounded corners */}
-          <div className="absolute inset-0 rounded-lg overflow-hidden">
+          {/* Background image container */}
+          <div className="absolute inset-0">
             {article.image_url && (
               <img 
                 src={article.image_url} 
                 alt={article.title}
-                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg"
+                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
               />
             )}
           </div>
