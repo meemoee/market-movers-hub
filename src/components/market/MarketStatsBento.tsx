@@ -123,7 +123,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           )}
         </div>
         
-        {/* Combined gradient overlay - positioned on top of the image */}
+        {/* Combined gradient overlay */}
         <div 
           className="absolute inset-0 backdrop-blur-[2px]"
           style={{ 
@@ -139,7 +139,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           }} 
         />
 
-        {/* Content container - absolutely positioned at the bottom */}
+        {/* Content container */}
         <div className="absolute inset-x-0 bottom-0 p-6">
           <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
             {article.title}
@@ -171,14 +171,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="md:row-span-2 aspect-square">
+      <div className="grid grid-cols-1 md:grid-cols-2 auto-rows-fr gap-3">
+        <div className="row-span-2 aspect-square">
           {renderArticle(1)}
         </div>
-        <div className="aspect-[2/1]">
+        <div className="h-full">
           {renderArticle(2)}
         </div>
-        <div className="aspect-[2/1]">
+        <div className="h-full">
           {renderArticle(3)}
         </div>
       </div>
