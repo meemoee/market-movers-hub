@@ -129,11 +129,13 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           style={{ 
             background: article.gradient_start_rgb && article.gradient_end_rgb
               ? `linear-gradient(to top, 
-                  rgb(${article.gradient_start_rgb}) 0%, 
-                  rgba(${article.gradient_end_rgb}, 0.98) 20%,
-                  rgba(${article.gradient_end_rgb}, 0.85) 40%,
-                  rgba(${article.gradient_end_rgb}, 0.7) 60%,
-                  rgba(${article.gradient_end_rgb}, 0.5) 80%,
+                  rgba(${article.gradient_start_rgb}, 0.8) 0%,
+                  rgba(${article.gradient_end_rgb}, 0.75) 15%,
+                  rgba(${article.gradient_end_rgb}, 0.7) 30%,
+                  rgba(${article.gradient_end_rgb}, 0.6) 45%,
+                  rgba(${article.gradient_end_rgb}, 0.45) 60%,
+                  rgba(${article.gradient_end_rgb}, 0.3) 75%,
+                  rgba(${article.gradient_end_rgb}, 0.15) 90%,
                   rgba(${article.gradient_end_rgb}, 0) 100%)`
               : 'linear-gradient(to top, rgba(0,0,0,0.98) 0%, rgba(0,0,0,0.85) 20%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0) 100%)'
           }} 
