@@ -114,18 +114,23 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     
     const content = (
       <div className="relative h-full w-full rounded-lg overflow-hidden group">
-        {/* Border gradient container */}
+        {/* Border gradient container - thick beautiful border */}
         <div 
-          className="absolute -inset-[2px] rounded-lg opacity-75 transition-opacity group-hover:opacity-100"
+          className="absolute -inset-[4px] rounded-xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]"
           style={{ 
             background: article.gradient_end_rgb
-              ? `linear-gradient(${gradientAngle}, rgba(${article.gradient_end_rgb}, 0.5), rgba(${article.gradient_start_rgb}, 0.2))`
-              : 'linear-gradient(135deg, rgba(255,255,255,0.2), rgba(255,255,255,0.1))'
+              ? `linear-gradient(${gradientAngle}, 
+                  rgba(${article.gradient_end_rgb}, 0.9),
+                  rgba(${article.gradient_end_rgb}, 0.7) 25%,
+                  rgba(${article.gradient_end_rgb}, 0.4) 50%,
+                  rgba(${article.gradient_start_rgb}, 0.2) 75%,
+                  rgba(${article.gradient_start_rgb}, 0.1))`
+              : 'linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1))'
           }}
         />
         
-        {/* Main content container with small gap for border */}
-        <div className="absolute inset-[2px] rounded-lg overflow-hidden">
+        {/* Main content container with larger gap for thicker border */}
+        <div className="absolute inset-[4px] rounded-lg overflow-hidden">
           {/* Background image */}
           <div className="absolute inset-0">
             {article.image_url && (
