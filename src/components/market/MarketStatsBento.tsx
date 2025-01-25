@@ -122,7 +122,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           )}
           
           <div 
-            className="absolute -inset-[50px] rounded-lg scale-110 transform"
+            className="absolute -inset-[50px] rounded-lg scale-110 transform backdrop-blur-sm"
             style={{ 
               background: article.gradient_start_rgb && article.gradient_end_rgb
                 ? `linear-gradient(to top, 
