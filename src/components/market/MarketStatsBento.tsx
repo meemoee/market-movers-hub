@@ -116,7 +116,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       <div className="relative h-full w-full rounded-lg overflow-hidden group">
         {/* Border gradient container - thick beautiful border */}
         <div 
-          className="absolute -inset-[4px] rounded-xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]"
+          className="absolute -inset-[6px] rounded-2xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]"
           style={{ 
             background: article.gradient_end_rgb
               ? `linear-gradient(${gradientAngle}, 
@@ -129,15 +129,16 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           }}
         />
         
-        {/* Main content container with larger gap for thicker border */}
-        <div className="absolute inset-[4px] rounded-lg overflow-hidden bg-background">
-          {/* Background image - match parent's rounded corners */}
-          <div className="absolute inset-0 rounded-lg overflow-hidden">
+        {/* Main content container - slightly smaller radius than border */}
+        <div className="absolute inset-[6px] rounded-xl overflow-hidden bg-background">
+          {/* Image container - same radius as parent */}
+          <div className="absolute inset-0 rounded-xl overflow-hidden">
             {article.image_url && (
               <img 
                 src={article.image_url} 
                 alt={article.title}
-                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg"
+                className="h-[105%] w-[105%] object-cover transition-transform duration-200 group-hover:scale-105 scale-110"
+                style={{ margin: '-2.5%' }}
               />
             )}
           </div>
