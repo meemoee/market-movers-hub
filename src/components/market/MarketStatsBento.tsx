@@ -113,7 +113,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const gradientAngle = "135deg"; // Diagonal gradient
     
     const content = (
-      <div className="relative h-full w-full rounded-lg overflow-hidden group">
+      <div className="relative h-full w-full rounded-lg overflow-hidden">
         {/* Border gradient container - thick beautiful border */}
         <div 
           className="absolute -inset-[4px] rounded-xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]"
