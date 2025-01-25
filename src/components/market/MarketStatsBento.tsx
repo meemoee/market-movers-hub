@@ -114,7 +114,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     
     const content = (
       <div className="relative h-full w-full rounded-lg overflow-hidden group">
-        {/* Border gradient container - thick beautiful border */}
+        {/* Border gradient container */}
         <div 
           className="absolute -inset-[6px] rounded-2xl opacity-90 transition-all duration-300 group-hover:opacity-100 group-hover:blur-[1px]"
           style={{ 
@@ -129,16 +129,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           }}
         />
         
-        {/* Main content container - slightly smaller radius than border */}
-        <div className="absolute inset-[6px] rounded-xl overflow-hidden bg-background">
-          {/* Image container - same radius as parent */}
-          <div className="absolute inset-0 rounded-xl overflow-hidden">
+        <div className="absolute inset-[6px] rounded-2xl overflow-hidden bg-background">
+          <div className="absolute -inset-[2px] rounded-2xl overflow-hidden">
             {article.image_url && (
               <img 
                 src={article.image_url} 
                 alt={article.title}
-                className="h-[105%] w-[105%] object-cover transition-transform duration-200 group-hover:scale-105 scale-110"
-                style={{ margin: '-2.5%' }}
+                className="h-[110%] w-[110%] object-cover transition-transform duration-200 group-hover:scale-105 scale-125"
+                style={{ margin: '-5%' }}
               />
             )}
           </div>
