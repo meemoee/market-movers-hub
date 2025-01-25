@@ -33,7 +33,12 @@ export function VisibilitySelect({ value, onValueChange }: VisibilitySelectProps
       >
         <SelectValue>{visibilityOptions.find(opt => opt.value === value)?.label}</SelectValue>
       </SelectTrigger>
-      <SelectContent className="w-[100px] p-0">
+      <SelectContent 
+        className="w-[100px] p-0 overflow-hidden"
+        align="end"
+        position="popper"
+        sideOffset={5}
+      >
         <SelectGroup>
           {visibilityOptions.map((option) => (
             <SelectItem
