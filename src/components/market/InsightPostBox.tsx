@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
@@ -37,6 +37,23 @@ export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [visibility, setVisibility] = useState("everyone");
   const [isOpen, setIsOpen] = useState(false);
+
+  // Add scroll event listener when dropdown is open
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isOpen) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      window.addEventListener('scroll', handleScroll, { passive: true });
+    }
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+    };
+  }, [isOpen]);
 
   const handlePost = () => {
     console.log("Posting insight:", { content, visibility });
