@@ -2,10 +2,10 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { UserCircle, Image as ImageIcon, Link as LinkIcon, ChevronDown } from "lucide-react";
-import { cn } from "@/lib/utils";
-import * as React from "react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { UserCircle, Image as ImageIcon, Link as LinkIcon, ChevronDown } from 'lucide-react'
+import { cn } from "@/lib/utils"
+import * as React from "react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 // Custom textarea component that automatically adjusts height
 const TextareaAutosize = React.forwardRef<
@@ -66,7 +66,7 @@ export function InsightPostBox() {
   };
 
   return (
-    <div className="w-full mb-4">
+    <div className="w-full mb-4 py-4">
       <div className="flex gap-3">
         <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-primary/10">
