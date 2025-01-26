@@ -15,12 +15,6 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
-function isLightColor(rgb: string): boolean {
-  const [r, g, b] = rgb.split(',').map(Number);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5;
-}
-
 interface MarketStatsBentoProps {
   selectedInterval: string;
 }
@@ -49,7 +43,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     fetchArticles();
   }, [selectedInterval]);
 
-  const renderProfileInfo = (position: number, isLight: boolean) => {
+  const renderProfileInfo = (position: number) => {
     const profile = {
       name: ['Alex Chen', 'Sarah Kim', 'Mike Davis'][position - 1],
       price: [0.78, 0.65, 0.92][position - 1],
@@ -58,18 +52,17 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     if (!profile) return null;
 
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
-    const textColorClass = isLight ? "text-black" : "text-white";
 
     return (
-      <div className="flex items-center gap-2 relative z-10">
+      <div className="flex items-center gap-2">
         <Avatar className="h-6 w-6">
           <AvatarFallback className="bg-primary/10">
             <UserCircle className="h-4 w-4" />
           </AvatarFallback>
         </Avatar>
         <div className="flex items-center gap-1">
-          <span className={cn("text-sm font-medium", textColorClass)}>{profile.name}</span>
-          <div className={cn("text-[10px] flex items-center gap-0.5 opacity-80", priceColor)}>
+          <span className="text-sm font-medium text-foreground">{profile.name}</span>
+          <div className={cn("text-[10px] flex items-center gap-0.5 opacity-90", priceColor)}>
             <span>${profile.price.toFixed(2)}</span>
             <span className="inline-flex items-center">
               {profile.change > 0 ? (
@@ -90,26 +83,15 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     
     if (!article) {
       return (
-        <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
-          <div 
-            className="absolute inset-0 rounded-lg"
-            style={{ background: `linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)` }}
-          />
-        </div>
+        <div className="h-full rounded-lg bg-muted/10 border border-border/5" />
       );
     }
-
-    const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
-    const textColorClass = isLight ? "text-black" : "text-white";
-    const gradientAngle = "135deg";
-    
-    const startOpacity = isLight ? 0.6 : 0.85;
-    const midOpacity = isLight ? 0.4 : 0.6;
-    const endOpacity = isLight ? 0.02 : 0.05;
     
     const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        <div className="absolute inset-0">
+      <div className="flex flex-col h-full group">
+        {/* Image Section */}
+        <div className="relative rounded-lg overflow-hidden" style={{ height: position === 1 ? '70%' : '65%' }}>
+          <div className="absolute inset-0 bg-card/50" />
           {article.image_url && (
             <img 
               src={article.image_url} 
@@ -118,24 +100,12 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             />
           )}
         </div>
-        
-        <div 
-          className="absolute inset-0 backdrop-blur-[2px] pointer-events-none"
-          style={{ 
-            background: article.gradient_start_rgb && article.gradient_end_rgb
-              ? `linear-gradient(${gradientAngle}, 
-                  rgba(${article.gradient_end_rgb}, ${startOpacity}) 0%,
-                  rgba(${article.gradient_end_rgb}, ${midOpacity}) 40%,
-                  rgba(${article.gradient_start_rgb}, ${endOpacity}) 80%,
-                  rgba(${article.gradient_start_rgb}, 0) 100%)`
-                : `linear-gradient(${gradientAngle}, rgba(0,0,0,${isLight ? 0.3 : 0.8}) 0%, rgba(0,0,0,0) 100%)`
-          }} 
-        />
 
-        <div className="absolute inset-x-0 bottom-0 px-4 pb-3 pt-12 flex flex-col justify-end">
-          <div className="space-y-1.5">
-            {renderProfileInfo(position, isLight)}
-            <h3 className={cn("text-xl font-bold leading-tight", textColorClass)}>
+        {/* Content Card */}
+        <div className="flex-1 -mt-3 rounded-lg bg-card border border-border/10 p-3 transition-colors group-hover:bg-card/80">
+          <div className="space-y-2">
+            {renderProfileInfo(position)}
+            <h3 className="text-lg font-semibold leading-tight text-foreground line-clamp-2">
               {article.title}
             </h3>
           </div>
@@ -144,7 +114,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     );
 
     if (!article.link) {
-      return <div>{content}</div>;
+      return <div className="h-full">{content}</div>;
     }
 
     return (
