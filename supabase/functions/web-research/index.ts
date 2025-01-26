@@ -1,22 +1,22 @@
-// Required imports for edge function
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
-// CORS headers configuration for cross-origin requests
+// Configuration constants
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+// CORS headers for cross-origin requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Fetch OpenRouter API key from environment variables
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
-
-// Helper function to generate search queries using OpenRouter
+// Generates optimized search queries for the given topic
 async function generateSearchQueries(intent: string, openrouterApiKey: string): Promise<string[]> {
   console.log('Generating search queries for:', intent)
   
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
       "Authorization": `Bearer ${openrouterApiKey}`,
@@ -41,10 +41,11 @@ async function generateSearchQueries(intent: string, openrouterApiKey: string): 
   const result = await response.json()
   const content = result.choices[0].message.content.trim()
   const queriesData = JSON.parse(content)
+  console.log('Generated queries:', queriesData.queries)
   return queriesData.queries || []
 }
 
-// Helper function to perform web search using Bing API
+// Performs web search using Bing API
 async function performWebSearch(query: string, bingApiKey: string): Promise<any[]> {
   console.log('Performing web search for query:', query)
   
@@ -59,11 +60,13 @@ async function performWebSearch(query: string, bingApiKey: string): Promise<any[
   }
 
   const data = await response.json()
+  console.log(`Found ${data.webPages?.value?.length || 0} results for query:`, query)
   return data.webPages?.value || []
 }
 
-// Helper function to fetch and clean content from URLs
+// Fetches and cleans content from a URL
 async function fetchContent(url: string): Promise<string | null> {
+  console.log('Fetching content from:', url)
   try {
     const response = await fetch(url, {
       headers: {
@@ -72,11 +75,13 @@ async function fetchContent(url: string): Promise<string | null> {
     })
     
     if (!response.ok) {
+      console.log(`Failed to fetch ${url}: ${response.status}`)
       return null
     }
     
     const contentType = response.headers.get('content-type')
     if (!contentType?.includes('text/html')) {
+      console.log(`Skipping non-HTML content from ${url}: ${contentType}`)
       return null
     }
     
@@ -97,9 +102,9 @@ async function fetchContent(url: string): Promise<string | null> {
   }
 }
 
-// Main serve function for the edge function
+// Main server function
 serve(async (req) => {
-  // Handle CORS preflight requests
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -109,7 +114,7 @@ serve(async (req) => {
   const stream = new TransformStream()
   const writer = stream.writable.getWriter()
 
-  // Create response object early to establish connection
+  // Create response object
   const response = new Response(stream.readable, {
     headers: {
       ...corsHeaders,
@@ -119,10 +124,11 @@ serve(async (req) => {
     }
   })
 
-  // Helper function to send SSE messages
+  // Helper function for sending SSE messages
   async function sendSSEMessage(data: any) {
     try {
       const message = `data: ${JSON.stringify(data)}\n\n`
+      console.log('Sending SSE message:', message)
       await writer.write(encoder.encode(message))
     } catch (error) {
       console.error('Error sending SSE message:', error)
@@ -131,7 +137,7 @@ serve(async (req) => {
   }
 
   try {
-    // Get input data
+    // Get and validate input
     const { description } = await req.json()
     if (!description) {
       throw new Error('No description provided')
@@ -171,11 +177,11 @@ serve(async (req) => {
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 
-    // Prepare and execute analysis
+    // Analyze content
     const analysisPrompt = `Analyze the following search results about ${description}:\n\n` +
       validContents.map((content, index) => `Content from result ${index + 1}:\n${content}\n`).join('\n')
 
-    const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const analysisResponse = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
         "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
@@ -226,24 +232,27 @@ serve(async (req) => {
       }
     }
 
-    // Close the stream properly
     await writer.close()
     return response
 
   } catch (error) {
     console.error('Error in web-research function:', error)
     
-    // Try to send error through stream before closing
     try {
       await sendSSEMessage({ 
         type: 'error', 
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error occurred'
       })
-    } catch (e) {
-      console.error('Error sending error message:', e)
+    } catch (streamError) {
+      console.error('Failed to send error through stream:', streamError)
     }
     
-    await writer.close()
+    try {
+      await writer.close()
+    } catch (closeError) {
+      console.error('Error closing writer:', closeError)
+    }
+
     return response
   }
 })
