@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Search, Globe } from "lucide-react"
+import { Loader2, Search } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client"
-import { Separator } from "@/components/ui/separator"
 
 interface WebResearchCardProps {
   description: string
@@ -13,20 +12,17 @@ interface WebResearchCardProps {
 interface ResearchResult {
   url: string
   content: string
-  title?: string
 }
 
 export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
-  const [error, setError] = useState<string | null>(null)
 
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
     setResults([])
-    setError(null)
 
     try {
       const response = await supabase.functions.invoke<any>('web-research', {
@@ -56,10 +52,8 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
-                    if (parsed.type === 'results' && parsed.data.length > 0) {
+                    if (parsed.type === 'results') {
                       setResults(parsed.data)
-                      // If we got results, consider the operation successful even if not all sources were processed
-                      setIsLoading(false)
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
                     }
@@ -70,9 +64,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
               }
               
               push()
-            }).catch(error => {
-              console.error('Stream error:', error)
-              controller.error(error)
             })
           }
           
@@ -87,23 +78,14 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       }
     } catch (error) {
       console.error('Error in web research:', error)
-      setError('An error occurred while fetching research results')
+      setProgress(prev => [...prev, 'Error occurred during research'])
     } finally {
       setIsLoading(false)
     }
   }
 
-  const extractDomain = (url: string) => {
-    try {
-      const domain = new URL(url).hostname.replace('www.', '')
-      return domain
-    } catch {
-      return url
-    }
-  }
-
   return (
-    <Card className="p-4 space-y-4 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Web Research</h3>
         <Button 
@@ -126,46 +108,33 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </Button>
       </div>
 
-      {error && (
-        <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
-          {error}
-        </div>
-      )}
-
-      {isLoading && progress.length > 0 && (
-        <div className="rounded-md border bg-muted/50 p-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Processing {progress.length} sources...</span>
-          </div>
-        </div>
+      {progress.length > 0 && (
+        <ScrollArea className="h-[200px] rounded-md border p-4">
+          {progress.map((message, index) => (
+            <div key={index} className="text-sm text-muted-foreground">
+              {message}
+            </div>
+          ))}
+        </ScrollArea>
       )}
 
       {results.length > 0 && (
-        <ScrollArea className="h-[400px] rounded-md border p-4">
-          <div className="space-y-4">
-            {results.map((result, index) => (
-              <div key={index} className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <Globe className="h-4 w-4 mt-1 text-muted-foreground" />
-                  <div className="space-y-1 flex-1">
-                    <a 
-                      href={result.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-sm font-medium hover:underline text-primary inline-flex items-center gap-1"
-                    >
-                      {extractDomain(result.url)}
-                    </a>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      {result.content.slice(0, 280)}...
-                    </p>
-                  </div>
-                </div>
-                {index < results.length - 1 && <Separator />}
-              </div>
-            ))}
-          </div>
+        <ScrollArea className="h-[300px] rounded-md border p-4">
+          {results.map((result, index) => (
+            <div key={index} className="mb-4 last:mb-0">
+              <a 
+                href={result.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm font-medium text-blue-500 hover:underline"
+              >
+                {result.url}
+              </a>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {result.content.slice(0, 200)}...
+              </p>
+            </div>
+          ))}
         </ScrollArea>
       )}
     </Card>

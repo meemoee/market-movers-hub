@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
 const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
@@ -13,7 +14,7 @@ const corsHeaders = {
 
 class ContentCollector {
   totalChars: number
-  collectedData: { url: string; content: string; title?: string }[]
+  collectedData: { url: string; content: string }[]
   seenUrls: Set<string>
 
   constructor() {
@@ -22,7 +23,7 @@ class ContentCollector {
     this.seenUrls = new Set()
   }
 
-  addContent(url: string, content: string, title?: string): boolean {
+  addContent(url: string, content: string): boolean {
     if (this.totalChars >= TOTAL_CHAR_LIMIT) {
       return false
     }
@@ -32,8 +33,7 @@ class ContentCollector {
       this.totalChars += contentLen
       this.collectedData.push({
         url,
-        content,
-        title
+        content
       })
       return true
     }
@@ -90,74 +90,52 @@ class WebScraper {
     }
   }
 
-  extractTextContent(html: string): string {
-    return html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&[^;]+;/g, ' ')
+  parseHtml(html: string) {
+    const $ = load(html)
+    
+    // Remove scripts and styles
+    $('script, style').remove()
+    
+    // Get text content and clean it
+    const text = $('body').text()
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .join(' ')
       .replace(/\s+/g, ' ')
       .trim()
+      
+    return text
   }
 
-  async fetchAndParseContent(result: any) {
+  async fetchAndParseContent(url: string) {
     try {
-      this.sendUpdate(`Fetching: ${result.url}`)
-      
-      // Skip known problematic domains
-      const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
-      const url = new URL(result.url)
-      if (skipDomains.some(domain => url.hostname.includes(domain))) {
-        console.log(`Skipping social media domain: ${url.hostname}`)
-        return
-      }
-
-      const response = await fetch(result.url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-        },
-        // Add a timeout to prevent hanging on slow responses
-        signal: AbortSignal.timeout(10000)
-      })
-
+      this.sendUpdate(`Fetching: ${url}`)
+      const response = await fetch(url)
       if (!response.ok) {
-        console.error(`HTTP error ${response.status} for ${result.url}`)
-        return
-      }
-
-      const contentType = response.headers.get('content-type')
-      if (!contentType?.includes('text/html')) {
-        console.log(`Skipping non-HTML content type: ${contentType}`)
-        return
+        throw new Error(`HTTP error: ${response.status}`)
       }
 
       const html = await response.text()
-      const content = this.extractTextContent(html).slice(0, PER_PAGE_LIMIT)
+      const content = this.parseHtml(html).slice(0, PER_PAGE_LIMIT)
 
       if (content) {
-        const added = this.collector.addContent(result.url, content, result.name)
+        const added = this.collector.addContent(url, content)
         if (!added) {
           throw new Error('Content limit reached')
         }
       }
     } catch (error) {
-      // Log the error but don't throw it - this allows processing to continue
-      if (error.name === 'AbortError') {
-        console.log(`Request timeout for ${result.url}`)
-      } else {
-        console.error(`Error processing ${result.url}:`, error)
-      }
+      console.error(`Error processing ${url}:`, error)
     }
   }
 
-  async processBatch(results: any[], batchSize = 15) {
+  async processBatch(urls: string[], batchSize = 15) {
     const tasks = []
-    for (const result of results.slice(0, batchSize)) {
-      if (!this.collector.seenUrls.has(result.url)) {
-        this.collector.seenUrls.add(result.url)
-        tasks.push(this.fetchAndParseContent(result))
+    for (const url of urls.slice(0, batchSize)) {
+      if (!this.collector.seenUrls.has(url)) {
+        this.collector.seenUrls.add(url)
+        tasks.push(this.fetchAndParseContent(url))
       }
     }
 
@@ -180,13 +158,14 @@ class WebScraper {
   async collectContent(searchResults: any[]) {
     this.sendUpdate('Starting content collection...')
     
+    const urls = searchResults.map(result => result.url)
     const batchSize = 40
 
-    for (let startIdx = 0; startIdx < searchResults.length; startIdx += batchSize) {
-      const batchResults = searchResults.slice(startIdx, startIdx + batchSize)
+    for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
+      const batchUrls = urls.slice(startIdx, startIdx + batchSize)
       this.sendUpdate(`Processing batch ${Math.floor(startIdx/batchSize) + 1}`)
       
-      const shouldContinue = await this.processBatch(batchResults, batchSize)
+      const shouldContinue = await this.processBatch(batchUrls, batchSize)
       
       if (!shouldContinue) {
         this.sendUpdate('Content limit reached or batch processing complete')
@@ -217,10 +196,6 @@ class WebScraper {
     this.sendUpdate(`Total URLs processed: ${this.collector.seenUrls.size}`)
     this.sendUpdate(`Successfully collected content from ${collectedData.length} pages`)
     
-    // Send final results
-    const resultsData = `data: ${JSON.stringify({ type: 'results', data: collectedData })}\n\n`
-    this.controller.enqueue(this.encoder.encode(resultsData))
-    
     return collectedData
   }
 }
@@ -243,7 +218,15 @@ serve(async (req) => {
       start: async (controller) => {
         try {
           const scraper = new WebScraper(BING_API_KEY, controller)
-          await scraper.run(query)
+          const results = await scraper.run(query)
+          
+          // Send the final results
+          controller.enqueue(
+            new TextEncoder().encode(
+              `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
+            )
+          )
+          
           controller.close()
         } catch (error) {
           controller.error(error)
