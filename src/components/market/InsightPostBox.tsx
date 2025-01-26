@@ -1,12 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { UserCircle, Image as ImageIcon, Link as LinkIcon } from 'lucide-react'
+import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import * as React from "react"
 
-// Custom textarea component that automatically adjusts height
 const TextareaAutosize = React.forwardRef<
   HTMLTextAreaElement,
   React.TextareaHTMLAttributes<HTMLTextAreaElement>
@@ -26,9 +25,22 @@ TextareaAutosize.displayName = "TextareaAutosize";
 
 export function InsightPostBox() {
   const [content, setContent] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (isPrivacyOpen) {
+        setIsPrivacyOpen(false);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [isPrivacyOpen]);
 
   const handlePost = () => {
-    console.log("Posting insight:", { content });
+    console.log("Posting insight:", { content, isPrivate });
     setContent("");
   };
 
@@ -73,14 +85,62 @@ export function InsightPostBox() {
               </Button>
             </div>
             
-            <Button 
-              onClick={handlePost}
-              disabled={!content.trim()}
-              className="h-7 px-3 text-xs font-medium rounded-full"
-              size="sm"
-            >
-              Post
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsPrivacyOpen(!isPrivacyOpen)}
+                  className="h-7 px-2 flex items-center gap-1 text-xs"
+                >
+                  {isPrivate ? (
+                    <>
+                      <Lock className="h-3 w-3" />
+                      Private
+                    </>
+                  ) : (
+                    <>
+                      <Globe className="h-3 w-3" />
+                      Public
+                    </>
+                  )}
+                </Button>
+                
+                {isPrivacyOpen && (
+                  <div className="absolute right-0 mt-1 bg-popover border border-border rounded-md shadow-lg z-50">
+                    <button
+                      className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent/50 flex items-center gap-1"
+                      onClick={() => {
+                        setIsPrivate(false);
+                        setIsPrivacyOpen(false);
+                      }}
+                    >
+                      <Globe className="h-3 w-3" />
+                      Public
+                    </button>
+                    <button
+                      className="w-full px-3 py-1.5 text-xs text-left hover:bg-accent/50 flex items-center gap-1"
+                      onClick={() => {
+                        setIsPrivate(true);
+                        setIsPrivacyOpen(false);
+                      }}
+                    >
+                      <Lock className="h-3 w-3" />
+                      Private
+                    </button>
+                  </div>
+                )}
+              </div>
+              
+              <Button 
+                onClick={handlePost}
+                disabled={!content.trim()}
+                className="h-7 px-3 text-xs font-medium rounded-full"
+                size="sm"
+              >
+                Post
+              </Button>
+            </div>
           </div>
         </div>
       </div>

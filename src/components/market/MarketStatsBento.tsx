@@ -125,8 +125,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           )}
         </div>
 
-        <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between">
-          <div className="space-y-2">
+        <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between relative">
+          <div className="space-y-2 pr-16">
             <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
               {article.title}
             </h3>
@@ -167,6 +167,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             </CarouselItem>
           ))}
         </CarouselContent>
+        <div className="absolute bottom-24 right-4 flex items-center gap-2 z-10">
+          <CarouselPrevious className="relative h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 border-0 text-white" />
+          <CarouselNext className="relative h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 border-0 text-white" />
+        </div>
       </Carousel>
     </div>
   );
