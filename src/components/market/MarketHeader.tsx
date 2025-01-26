@@ -23,6 +23,10 @@ export function MarketHeader({
   outcomes = ["Yes", "No"],
   onToggleExpand
 }: MarketHeaderProps) {
+  const truncateOutcome = (outcome: string) => {
+    return outcome.length > 8 ? `${outcome.slice(0, 6)}...` : outcome;
+  };
+
   return (
     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -51,7 +55,7 @@ export function MarketHeader({
           onClick={onBuy}
           className="flex-1 sm:flex-initial flex flex-col items-center justify-center"
         >
-          <span className="text-xs truncate max-w-full">{outcomes[0]}</span>
+          <span className="text-xs truncate max-w-[80px]">{truncateOutcome(outcomes[0])}</span>
           {bestAsk !== undefined && (
             <span className="text-[11px] font-medium opacity-90">
               {(bestAsk * 100).toFixed(1)}¢
@@ -63,7 +67,7 @@ export function MarketHeader({
           onClick={onSell}
           className="flex-1 sm:flex-initial flex flex-col items-center justify-center"
         >
-          <span className="text-xs truncate max-w-full">{outcomes[1]}</span>
+          <span className="text-xs truncate max-w-[80px]">{truncateOutcome(outcomes[1])}</span>
           {bestBid !== undefined && (
             <span className="text-[11px] font-medium opacity-90">
               {(bestBid * 100).toFixed(1)}¢

@@ -44,7 +44,7 @@ export function TopMoversHeader({
               </button>
 
               {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-card/80 backdrop-blur-md border border-border rounded-lg shadow-xl z-50">
+                <div className="absolute top-full left-0 mt-2 bg-card/40 backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
