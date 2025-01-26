@@ -63,14 +63,35 @@ async function performWebSearch(query: string, bingApiKey: string): Promise<any[
 async function fetchContent(url: string): Promise<string | null> {
   console.log('Attempting to fetch content from:', url)
   try {
-    const response = await fetch(url)
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      }
+    })
+    
     if (!response.ok) {
       console.error(`Failed to fetch ${url}: ${response.status}`)
       return null
     }
+    
+    const contentType = response.headers.get('content-type')
+    if (!contentType || !contentType.includes('text/html')) {
+      console.error(`Skipping non-HTML content from ${url}: ${contentType}`)
+      return null
+    }
+    
     const text = await response.text()
     console.log(`Successfully fetched content from ${url}, length: ${text.length}`)
-    return text
+    
+    // Basic HTML cleaning
+    const cleanedText = text
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    
+    return cleanedText.slice(0, 5000) // Limit content length
   } catch (error) {
     console.error(`Error fetching ${url}:`, error)
     return null
@@ -129,17 +150,32 @@ serve(async (req) => {
       `data: ${JSON.stringify({ type: 'websites', count: allResults.length })}\n\n`
     ))
 
-    // Fetch content in parallel batches
-    console.log('Starting content fetching')
-    const contentPromises = allResults.map(result => fetchContent(result.url))
-    const contents = await Promise.all(contentPromises)
-    const validContents = contents.filter(Boolean)
-    console.log('Successfully fetched content from', validContents.length, 'websites')
+    // Process URLs in smaller batches to avoid overwhelming the server
+    const batchSize = 5
+    const validContents: string[] = []
+    
+    console.log('Starting content fetching in batches')
+    for (let i = 0; i < allResults.length; i += batchSize) {
+      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}`)
+      const batch = allResults.slice(i, i + batchSize)
+      
+      const batchPromises = batch.map(result => fetchContent(result.url))
+      const batchContents = await Promise.all(batchPromises)
+      
+      const validBatchContents = batchContents.filter(Boolean) as string[]
+      validContents.push(...validBatchContents)
+      
+      // Update website count after each batch
+      console.log(`Processed ${validContents.length} valid contents so far`)
+      await writer.write(encoder.encode(
+        `data: ${JSON.stringify({ type: 'websites', count: validContents.length })}\n\n`
+      ))
+      
+      // Small delay between batches
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
 
-    // Update website count with successful fetches
-    await writer.write(encoder.encode(
-      `data: ${JSON.stringify({ type: 'websites', count: validContents.length })}\n\n`
-    ))
+    console.log('Content fetching complete. Valid contents:', validContents.length)
 
     // Prepare content for analysis
     console.log('Preparing content for analysis')
