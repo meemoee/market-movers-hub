@@ -123,39 +123,55 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       );
     }
 
-    const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card">
-        <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
-          {article.image_url ? (
-            <img 
-              src={article.image_url} 
-              alt={article.title}
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg"
-            />
-          ) : (
-            <div 
-              className="h-full w-full rounded-lg"
-              style={{ 
-                background: article.gradient_start_rgb && article.gradient_end_rgb
-                  ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
-                  : PLACEHOLDER_GRADIENTS[0]
-              }}
-            />
-          )}
-        </div>
+    const gradientBorder = article.gradient_start_rgb && article.gradient_end_rgb
+      ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
+      : null;
 
-        <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between relative">
-          <div className="space-y-2 px-12">
-            <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
-              {article.title}
-            </h3>
-            {article.subtitle && (
-              <p className="text-sm text-muted-foreground line-clamp-3">
-                {article.subtitle}
-              </p>
+    const content = (
+      <div 
+        className={cn(
+          "relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card",
+          gradientBorder && "p-[1px]" // Add 1px padding for gradient border
+        )}
+      >
+        <div 
+          className={cn(
+            "h-full w-full flex flex-col rounded-lg overflow-hidden",
+            gradientBorder && "bg-card" // Add background to content container when there's a gradient
+          )}
+        >
+          <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
+            {article.image_url ? (
+              <img 
+                src={article.image_url} 
+                alt={article.title}
+                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg"
+              />
+            ) : (
+              <div 
+                className="h-full w-full rounded-lg"
+                style={{ 
+                  background: article.gradient_start_rgb && article.gradient_end_rgb
+                    ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
+                    : PLACEHOLDER_GRADIENTS[0]
+                }}
+              />
             )}
           </div>
-          {renderProfileInfo(article.position)}
+
+          <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between relative">
+            <div className="space-y-2 px-12">
+              <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
+                {article.title}
+              </h3>
+              {article.subtitle && (
+                <p className="text-sm text-muted-foreground line-clamp-3">
+                  {article.subtitle}
+                </p>
+              )}
+            </div>
+            {renderProfileInfo(article.position)}
+          </div>
         </div>
       </div>
     );
