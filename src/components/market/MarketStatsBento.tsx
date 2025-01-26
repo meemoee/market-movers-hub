@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { UserCircle, ArrowUp, ArrowDown } from "lucide-react";
+import { Card } from "@/components/ui/card";
 
 interface NewsArticle {
   id: string;
@@ -26,12 +27,6 @@ const PLACEHOLDER_PROFILES = [
   { name: 'Sarah Kim', price: 0.65, change: -0.08 },
   { name: 'Mike Davis', price: 0.92, change: 0.05 }
 ];
-
-function isLightColor(rgb: string): boolean {
-  const [r, g, b] = rgb.split(',').map(Number);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5;
-}
 
 interface MarketStatsBentoProps {
   selectedInterval: string;
@@ -68,7 +63,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
 
     return (
-      <div className="flex items-center gap-2 mt-2 relative z-10">
+      <div className="flex items-center gap-2 mt-2">
         <Avatar className="h-6 w-6">
           <AvatarFallback className="bg-primary/10">
             <UserCircle className="h-4 w-4" />
@@ -98,7 +93,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     if (!article) {
       const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
-        <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
+        <div className="relative h-full w-full rounded-lg overflow-hidden">
           <div 
             className="absolute inset-0 rounded-lg"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
@@ -107,53 +102,33 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       );
     }
 
-    const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
-    const textColorClass = isLight ? "text-black" : "text-white";
-    const gradientAngle = "135deg";
-    
     const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        {/* Image Background Layer */}
-        <div className="absolute inset-0">
-          {article.image_url && (
+      <div className="relative h-full w-full group flex flex-col">
+        {/* Image Container */}
+        <div className="relative w-full h-3/4 rounded-lg overflow-hidden mb-4">
+          {article.image_url ? (
             <img 
               src={article.image_url} 
               alt={article.title}
               className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
             />
+          ) : (
+            <div className="h-full w-full bg-accent" />
           )}
         </div>
         
-        {/* Gradient Overlay */}
-        <div 
-          className="absolute inset-0 backdrop-blur-[2px] pointer-events-none"
-          style={{ 
-            background: article.gradient_start_rgb && article.gradient_end_rgb
-              ? `linear-gradient(${gradientAngle}, 
-                  rgba(${article.gradient_end_rgb}, 0.75) 0%,
-                  rgba(${article.gradient_end_rgb}, 0.6) 20%,
-                  rgba(${article.gradient_end_rgb}, 0.4) 40%,
-                  rgba(${article.gradient_end_rgb}, 0.2) 60%,
-                  rgba(${article.gradient_end_rgb}, 0.1) 70%,
-                  rgba(${article.gradient_start_rgb}, 0.08) 80%,
-                  rgba(${article.gradient_start_rgb}, 0.05) 90%,
-                  rgba(${article.gradient_start_rgb}, 0) 100%)`
-                : `linear-gradient(${gradientAngle}, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)`
-          }} 
-        />
-
-        {/* Content */}
-        <div className="absolute inset-x-0 bottom-0 p-6 flex flex-col justify-end">
-          <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
+        {/* Content Card */}
+        <Card className="flex-1 p-4 bg-card/95 backdrop-blur-sm">
+          <h3 className="text-xl font-black leading-tight mb-2 line-clamp-2">
             {article.title}
           </h3>
           {renderProfileInfo(position)}
-        </div>
+        </Card>
       </div>
     );
 
     if (!article.link) {
-      return <div>{content}</div>;
+      return <div className="h-full">{content}</div>;
     }
 
     return (
@@ -161,7 +136,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
+        className="block h-full transition-opacity hover:opacity-95 cursor-pointer"
       >
         {content}
       </a>
