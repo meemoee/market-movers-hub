@@ -27,6 +27,12 @@ const PLACEHOLDER_PROFILES = [
   { name: 'Mike Davis', price: 0.92, change: 0.05 }
 ];
 
+function isLightColor(rgb: string): boolean {
+  const [r, g, b] = rgb.split(',').map(Number);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5;
+}
+
 interface MarketStatsBentoProps {
   selectedInterval: string;
 }
@@ -62,7 +68,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
 
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 mt-2 relative z-10">
         <Avatar className="h-6 w-6">
           <AvatarFallback className="bg-primary/10">
             <UserCircle className="h-4 w-4" />
@@ -94,53 +100,60 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       return (
         <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
           <div 
-            className="absolute inset-0"
+            className="absolute inset-0 rounded-lg"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
           />
         </div>
       );
     }
 
+    const isLight = article.gradient_start_rgb && isLightColor(article.gradient_start_rgb);
+    const textColorClass = isLight ? "text-black" : "text-white";
+    const gradientAngle = "135deg";
+    
     const content = (
-      <div className="relative h-full w-full group">
-        <div className="absolute inset-0 rounded-lg overflow-hidden">
-          <div className="absolute inset-0">
-            {article.image_url ? (
-              <img 
-                src={article.image_url} 
-                alt={article.title}
-                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-              />
-            ) : (
-              <div 
-                className="h-full w-full"
-                style={{ 
-                  background: article.gradient_start_rgb && article.gradient_end_rgb
-                    ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
-                    : PLACEHOLDER_GRADIENTS[0]
-                }}
-              />
-            )}
-          </div>
+      <div className="relative h-full w-full group rounded-lg overflow-hidden">
+        {/* Image Background Layer */}
+        <div className="absolute inset-0">
+          {article.image_url && (
+            <img 
+              src={article.image_url} 
+              alt={article.title}
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+            />
+          )}
+        </div>
+        
+        {/* Gradient Overlay */}
+        <div 
+          className="absolute inset-0 backdrop-blur-[2px] pointer-events-none"
+          style={{ 
+            background: article.gradient_start_rgb && article.gradient_end_rgb
+              ? `linear-gradient(${gradientAngle}, 
+                  rgba(${article.gradient_end_rgb}, 0.75) 0%,
+                  rgba(${article.gradient_end_rgb}, 0.6) 20%,
+                  rgba(${article.gradient_end_rgb}, 0.4) 40%,
+                  rgba(${article.gradient_end_rgb}, 0.2) 60%,
+                  rgba(${article.gradient_end_rgb}, 0.1) 70%,
+                  rgba(${article.gradient_start_rgb}, 0.08) 80%,
+                  rgba(${article.gradient_start_rgb}, 0.05) 90%,
+                  rgba(${article.gradient_start_rgb}, 0) 100%)`
+                : `linear-gradient(${gradientAngle}, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)`
+          }} 
+        />
 
-          <div className="absolute inset-x-0 bottom-0">
-            <div className="relative z-10 p-4">
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent backdrop-blur-[2px]" />
-              
-              <div className="relative z-20">
-                <h3 className="text-base sm:text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
-                  {article.title}
-                </h3>
-                {renderProfileInfo(position)}
-              </div>
-            </div>
-          </div>
+        {/* Content */}
+        <div className="absolute inset-x-0 bottom-0 p-6 flex flex-col justify-end">
+          <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
+            {article.title}
+          </h3>
+          {renderProfileInfo(position)}
         </div>
       </div>
     );
 
     if (!article.link) {
-      return <div className="h-full rounded-lg overflow-hidden">{content}</div>;
+      return <div>{content}</div>;
     }
 
     return (
@@ -148,7 +161,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full transition-opacity hover:opacity-95 cursor-pointer rounded-lg overflow-hidden"
+        className="block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
       >
         {content}
       </a>
@@ -156,18 +169,16 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   };
 
   return (
-    <div className="w-full mt-3 px-2 sm:px-0">
-      <div className="grid grid-cols-1 gap-3" style={{ aspectRatio: '4/5' }}>
-        <div className="h-full">
+    <div className="w-full mt-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 auto-rows-fr gap-3">
+        <div className="row-span-2 aspect-square">
           {renderArticle(1)}
         </div>
-        <div className="grid grid-cols-2 gap-3 h-full">
-          <div className="h-full">
-            {renderArticle(2)}
-          </div>
-          <div className="h-full">
-            {renderArticle(3)}
-          </div>
+        <div className="h-full">
+          {renderArticle(2)}
+        </div>
+        <div className="h-full">
+          {renderArticle(3)}
         </div>
       </div>
     </div>
