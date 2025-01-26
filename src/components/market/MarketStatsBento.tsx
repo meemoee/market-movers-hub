@@ -103,9 +103,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const content = (
       <div className="relative h-full w-full group">
-        {/* Outer container with rounded corners */}
         <div className="absolute inset-0 rounded-lg overflow-hidden">
-          {/* Image container */}
           <div className="absolute inset-0">
             {article.image_url ? (
               <img 
@@ -125,16 +123,12 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          {/* Dark overlay that extends beyond the visible area */}
           <div className="absolute inset-x-0 bottom-0">
-            {/* Inner content container with padding */}
             <div className="relative z-10 p-4">
-              {/* Actual dark backdrop that extends beyond bottom */}
-              <div className="absolute inset-0 -bottom-1 bg-black/70 backdrop-blur-sm" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent backdrop-blur-[2px]" />
               
-              {/* Content */}
               <div className="relative z-20">
-                <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
+                <h3 className="text-base sm:text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
                   {article.title}
                 </h3>
                 {renderProfileInfo(position)}
@@ -162,16 +156,18 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   };
 
   return (
-    <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ aspectRatio: '16/9' }}>
-        <div className="row-span-2 h-full">
+    <div className="w-full mt-3 px-2 sm:px-0">
+      <div className="grid grid-cols-1 gap-3" style={{ aspectRatio: '4/5' }}>
+        <div className="h-full">
           {renderArticle(1)}
         </div>
-        <div className="h-full">
-          {renderArticle(2)}
-        </div>
-        <div className="h-full">
-          {renderArticle(3)}
+        <div className="grid grid-cols-2 gap-3 h-full">
+          <div className="h-full">
+            {renderArticle(2)}
+          </div>
+          <div className="h-full">
+            {renderArticle(3)}
+          </div>
         </div>
       </div>
     </div>
