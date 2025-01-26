@@ -29,10 +29,10 @@ class WebScraper {
   private collector: ContentCollector
   private encoder: TextEncoder
   private controller: ReadableStreamDefaultController<any>
+  private processedUrls: number
   private maxUrlsPerQuery: number
   private maxQueriesProcessed: number
   private queriesProcessed: number
-  private maxConcurrentFetches: number
 
   constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
     if (!bingApiKey) throw new Error('Bing API key is required')
@@ -40,14 +40,14 @@ class WebScraper {
     this.collector = new ContentCollector()
     this.encoder = new TextEncoder()
     this.controller = controller
-    this.maxUrlsPerQuery = 15
-    this.maxQueriesProcessed = 5
+    this.processedUrls = 0
+    this.maxUrlsPerQuery = 15 // Process fewer URLs per query
+    this.maxQueriesProcessed = 5 // Maximum number of queries to process
     this.queriesProcessed = 0
-    this.maxConcurrentFetches = 5
   }
 
   private sendUpdate(message: string) {
-    console.log(message)
+    console.log(message) // Log for debugging
     const data = `data: ${JSON.stringify({ message })}\n\n`
     this.controller.enqueue(this.encoder.encode(data))
   }
@@ -69,7 +69,7 @@ class WebScraper {
     try {
       const params = new URLSearchParams({
         q: query,
-        count: "50",
+        count: "10", // Reduced count per request
         offset: offset.toString(),
         responseFilter: "Webpages"
       })
@@ -92,7 +92,7 @@ class WebScraper {
   }
 
   async fetchAndParseContent(url: string) {
-    if (this.shouldSkipUrl(url) || !this.collector.shouldProcessUrl(url)) return null
+    if (this.shouldSkipUrl(url) || !this.collector.shouldProcessUrl(url)) return
 
     try {
       const controller = new AbortController()
@@ -108,43 +108,44 @@ class WebScraper {
       
       clearTimeout(timeoutId)
 
-      if (!response.ok) return null
+      if (!response.ok) return
 
       const contentType = response.headers.get('content-type')
-      if (!contentType?.includes('text/html')) return null
+      if (!contentType?.includes('text/html')) return
 
       const html = await response.text()
       const $ = load(html)
       
+      // Remove unnecessary elements
       $('script, style, nav, header, footer, iframe, noscript').remove()
       
       const title = $('title').text().trim()
       const content = $('body').text()
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 5000)
+        .slice(0, 2500) // Reduced content length
 
       if (content) {
-        return { url, content, title }
+        this.sendResults([{ url, content, title }])
+        this.processedUrls++
       }
     } catch (error) {
-      return null
+      // Skip failed URLs silently
+      return
     }
   }
 
-  async processBatchInParallel(urls: string[]) {
-    const batchResults = await Promise.all(
-      urls.map(url => this.fetchAndParseContent(url))
-    )
-    
-    const validResults = batchResults.filter(result => result !== null)
-    if (validResults.length > 0) {
-      this.sendResults(validResults)
+  async processBatch(urls: string[]) {
+    const batchSize = 3 // Process very small batches
+    for (let i = 0; i < urls.length; i += batchSize) {
+      const batchUrls = urls.slice(i, i + batchSize)
+      const promises = batchUrls.map(url => this.fetchAndParseContent(url))
+      await Promise.all(promises)
+      await new Promise(resolve => setTimeout(resolve, 300)) // Delay between mini-batches
     }
   }
 
-  async processQueryInParallel(query: string) {
-    this.sendUpdate(`Processing query: ${query}`)
+  async processQuery(query: string) {
     let offset = 0
     let urlsProcessed = 0
 
@@ -153,44 +154,33 @@ class WebScraper {
       if (!searchResults.length) break
 
       const urls = searchResults.map(result => result.url)
-      const batches = []
+      await this.processBatch(urls)
       
-      for (let i = 0; i < urls.length; i += this.maxConcurrentFetches) {
-        const batch = urls.slice(i, i + this.maxConcurrentFetches)
-        batches.push(batch)
-      }
-
-      for (const batch of batches) {
-        await this.processBatchInParallel(batch)
-        await new Promise(resolve => setTimeout(resolve, 200))
-      }
-
       urlsProcessed += urls.length
-      offset += 50
+      offset += 10
       
+      // Break if we've processed enough URLs
       if (urlsProcessed >= this.maxUrlsPerQuery) break
-      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Delay between search batches
     }
   }
 
   async run(queries: string[]) {
-    this.sendUpdate(`Starting parallel web research for ${queries.length} queries`)
+    this.sendUpdate(`Starting web research for ${queries.length} queries`)
     
-    const queryBatches = []
-    for (let i = 0; i < queries.length; i += 2) {
-      queryBatches.push(queries.slice(i, i + 2))
-    }
-
-    for (const batch of queryBatches) {
+    for (const query of queries) {
       if (this.queriesProcessed >= this.maxQueriesProcessed) {
         this.sendUpdate('Reached maximum number of queries to process')
         break
       }
 
-      await Promise.all(batch.map(query => this.processQueryInParallel(query)))
-      this.queriesProcessed += batch.length
+      this.sendUpdate(`Processing query ${this.queriesProcessed + 1}/${this.maxQueriesProcessed}: ${query}`)
+      await this.processQuery(query)
+      this.queriesProcessed++
       
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Add delay between queries
+      await new Promise(resolve => setTimeout(resolve, 2000))
     }
 
     return true
