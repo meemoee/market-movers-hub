@@ -123,24 +123,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       );
     }
 
-    const gradientBorder = article.gradient_start_rgb && article.gradient_end_rgb
-      ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
-      : null;
-
     const content = (
-      <div 
-        className={cn(
-          "relative h-full w-full group rounded-lg overflow-hidden",
-          gradientBorder && "p-[1px]" // Add 1px padding for gradient border
-        )}
-        style={gradientBorder ? { background: gradientBorder } : undefined}
-      >
-        <div 
-          className={cn(
-            "h-full w-full flex flex-col rounded-lg overflow-hidden",
-            gradientBorder && "bg-card" // Add background to content container when there's a gradient
-          )}
-        >
+      <div className="relative h-full w-full group rounded-lg overflow-hidden bg-card">
+        <div className="h-full w-full flex flex-col rounded-lg overflow-hidden">
           <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
             {article.image_url ? (
               <img 
@@ -204,8 +189,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className="absolute left-4 top-[65%] -translate-y-1/2 h-8 w-8 rounded-full bg-transparent hover:bg-black/10 border-0 text-foreground" />
-          <CarouselNext className="absolute right-4 top-[65%] -translate-y-1/2 h-8 w-8 rounded-full bg-transparent hover:bg-black/10 border-0 text-foreground" />
+          <CarouselPrevious className="absolute left-4 top-[80%] -translate-y-1/2 h-8 w-8 rounded-full bg-transparent hover:bg-black/10 border-0 text-foreground" />
+          <CarouselNext className="absolute right-4 top-[80%] -translate-y-1/2 h-8 w-8 rounded-full bg-transparent hover:bg-black/10 border-0 text-foreground" />
         </Carousel>
       </div>
     </div>
