@@ -4,6 +4,7 @@ import PriceChart from "./PriceChart";
 import { WebResearchCard } from "./WebResearchCard";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { PriceData, MarketEvent } from './chart/types';
 
 interface MarketDetailsProps {
   description?: string;
@@ -24,7 +25,12 @@ export function MarketDetails({
         .select('*')
         .eq('market_id', marketId)
         .order('timestamp', { ascending: true });
-      return data || [];
+      
+      // Transform the data to match PriceData type
+      return (data || []).map(d => ({
+        time: new Date(d.timestamp).getTime(),
+        price: d.last_traded_price || 0
+      }));
     }
   });
 
@@ -36,7 +42,16 @@ export function MarketDetails({
         .select('*')
         .eq('market_id', marketId)
         .order('timestamp', { ascending: true });
-      return data || [];
+      
+      // Transform the data to match MarketEvent type
+      return (data || []).map(d => ({
+        id: d.id,
+        event_type: d.event_type,
+        title: d.title,
+        description: d.description,
+        timestamp: new Date(d.timestamp).getTime(),
+        icon: d.icon
+      }));
     }
   });
 

@@ -23,6 +23,14 @@ const intervals = [
 
 const formatDate = timeFormat("%b %d");
 
+interface ChartProps {
+  data: PriceData[];
+  events: MarketEvent[];
+  width: number;
+  height: number;
+  margin?: { top: number; right: number; bottom: number; left: number };
+}
+
 interface PriceChartProps {
   marketId: string;
   data: PriceData[];
@@ -37,7 +45,7 @@ function Chart({
   width, 
   height, 
   margin = { top: 20, right: 30, bottom: 30, left: 40 } 
-}: PriceChartProps) {
+}: ChartProps) {
   const {
     showTooltip,
     hideTooltip,
