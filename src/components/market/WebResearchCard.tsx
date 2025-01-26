@@ -28,8 +28,22 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setError(null)
 
     try {
-      const response = await supabase.functions.invoke<any>('web-research', {
+      // First, generate queries
+      const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
         body: { query: description }
+      })
+
+      if (queriesError) {
+        throw new Error(`Error generating queries: ${queriesError.message}`)
+      }
+
+      if (!queriesData.queries || !Array.isArray(queriesData.queries)) {
+        throw new Error('Invalid queries response')
+      }
+
+      // Then, perform web scraping with the generated queries
+      const response = await supabase.functions.invoke('web-scrape', {
+        body: { queries: queriesData.queries }
       })
 
       if (response.error) throw response.error
