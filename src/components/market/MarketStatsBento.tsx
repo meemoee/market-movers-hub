@@ -15,18 +15,6 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
-const PLACEHOLDER_GRADIENTS = [
-  'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
-  'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
-  'linear-gradient(to right, #ee9ca7, #ffdde1)'
-];
-
-const PLACEHOLDER_PROFILES = [
-  { name: 'Alex Chen', price: 0.78, change: 0.12 },
-  { name: 'Sarah Kim', price: 0.65, change: -0.08 },
-  { name: 'Mike Davis', price: 0.92, change: 0.05 }
-];
-
 function isLightColor(rgb: string): boolean {
   const [r, g, b] = rgb.split(',').map(Number);
   const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
@@ -62,14 +50,18 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   }, [selectedInterval]);
 
   const renderProfileInfo = (position: number, isLight: boolean) => {
-    const profile = PLACEHOLDER_PROFILES[position - 1];
+    const profile = {
+      name: ['Alex Chen', 'Sarah Kim', 'Mike Davis'][position - 1],
+      price: [0.78, 0.65, 0.92][position - 1],
+      change: [0.12, -0.08, 0.05][position - 1],
+    };
     if (!profile) return null;
 
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
     const textColorClass = isLight ? "text-black" : "text-white";
 
     return (
-      <div className="flex items-center gap-2 mt-2 relative z-10">
+      <div className="flex items-center gap-2 relative z-10">
         <Avatar className="h-6 w-6">
           <AvatarFallback className="bg-primary/10">
             <UserCircle className="h-4 w-4" />
@@ -97,12 +89,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const article = articles.find(a => a.position === position);
     
     if (!article) {
-      const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
         <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
           <div 
             className="absolute inset-0 rounded-lg"
-            style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
+            style={{ background: `linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)` }}
           />
         </div>
       );
@@ -112,14 +103,12 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const textColorClass = isLight ? "text-black" : "text-white";
     const gradientAngle = "135deg";
     
-    // Adjust opacity based on text color
     const startOpacity = isLight ? 0.6 : 0.85;
     const midOpacity = isLight ? 0.4 : 0.6;
     const endOpacity = isLight ? 0.02 : 0.05;
     
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        {/* Image Background Layer */}
         <div className="absolute inset-0">
           {article.image_url && (
             <img 
@@ -130,7 +119,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           )}
         </div>
         
-        {/* Gradient Overlay */}
         <div 
           className="absolute inset-0 backdrop-blur-[2px] pointer-events-none"
           style={{ 
@@ -144,12 +132,13 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           }} 
         />
 
-        {/* Content */}
-        <div className="absolute inset-x-0 bottom-0 p-6 flex flex-col justify-end">
-          <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
-            {article.title}
-          </h3>
-          {renderProfileInfo(position, isLight)}
+        <div className="absolute inset-x-0 bottom-0 px-4 pb-3 pt-12 flex flex-col justify-end">
+          <div className="space-y-1.5">
+            {renderProfileInfo(position, isLight)}
+            <h3 className={cn("text-xl font-bold leading-tight", textColorClass)}>
+              {article.title}
+            </h3>
+          </div>
         </div>
       </div>
     );
