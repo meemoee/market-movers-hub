@@ -20,62 +20,91 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
       console.error('No market description provided');
       return;
     }
-
+  
     setIsSearching(true);
     setAnalysis("");
     setWebsiteCount(0);
     setError("");
-
+  
     try {
       const { data, error } = await supabase.functions.invoke('web-research', {
         body: { description: marketDescription }
       });
-
+  
       if (error) {
         console.error('Error invoking web-research function:', error);
         setError('Failed to start web research');
         throw error;
       }
-
+  
       console.log('Received response from web-research:', data);
       const reader = new Response(data.body).body?.getReader();
       const decoder = new TextDecoder();
-
+  
+      let accumulatedContent = '';
+  
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
           console.log('Stream complete');
           break;
         }
-
+  
         const chunk = decoder.decode(value);
         console.log('Received chunk:', chunk);
-        const lines = chunk.split('\n');
-
+        const lines = chunk.split('\n').filter(line => line.trim());
+  
         for (const line of lines) {
-          if (!line.trim()) continue;
-
           if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
+  
             try {
-              const data = JSON.parse(line.slice(6));
-              console.log('Parsed streaming data:', data);
+              const parsed = JSON.parse(jsonStr);
               
-              if (data.type === 'websites') {
-                console.log('Updating website count:', data.count);
-                setWebsiteCount(data.count);
-              } else if (data.type === 'analysis') {
-                console.log('Updating analysis with content:', data.content);
-                setAnalysis(prev => prev + data.content);
+              // Handle website count updates
+              if (parsed.type === 'websites') {
+                console.log('Updating website count:', parsed.count);
+                setWebsiteCount(parsed.count);
+                continue;
+              }
+              
+              // Handle analysis content
+              if (parsed.type === 'analysis') {
+                console.log('Updating analysis with content:', parsed.content);
+                setAnalysis(prev => prev + parsed.content);
+                continue;
+              }
+  
+              // Handle legacy format (if any previous format exists)
+              const content = parsed.choices?.[0]?.delta?.content;
+              if (content) {
+                accumulatedContent += content;
+                
+                try {
+                  const parsedJson = JSON.parse(accumulatedContent);
+                  if (parsedJson && typeof parsedJson === 'object' && parsedJson.content) {
+                    setAnalysis(prev => prev + parsedJson.content);
+                  }
+                } catch (parseError) {
+                  // Continue accumulating if not valid JSON yet
+                  continue;
+                }
               }
             } catch (e) {
-              console.error('Error parsing chunk:', e, 'Raw line:', line);
+              console.error('Error parsing SSE data:', e, 'Raw line:', line);
             }
           }
         }
       }
     } catch (error) {
-      console.error('Error during web research:', error);
-      setError('Failed to complete web research');
+      console.error('Error in handleSearch:', error);
+      setError(error.message || 'An error occurred during web research');
+      toast({
+        variant: "destructive",
+        title: "Research Error",
+        description: "Failed to complete web research. Please try again.",
+      });
     } finally {
       setIsSearching(false);
     }
