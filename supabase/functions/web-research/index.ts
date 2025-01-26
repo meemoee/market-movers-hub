@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
 const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
@@ -14,7 +13,7 @@ const corsHeaders = {
 
 class ContentCollector {
   totalChars: number
-  collectedData: { url: string; content: string }[]
+  collectedData: { url: string; content: string; title?: string }[]
   seenUrls: Set<string>
 
   constructor() {
@@ -23,7 +22,7 @@ class ContentCollector {
     this.seenUrls = new Set()
   }
 
-  addContent(url: string, content: string): boolean {
+  addContent(url: string, content: string, title?: string): boolean {
     if (this.totalChars >= TOTAL_CHAR_LIMIT) {
       return false
     }
@@ -33,7 +32,8 @@ class ContentCollector {
       this.totalChars += contentLen
       this.collectedData.push({
         url,
-        content
+        content,
+        title
       })
       return true
     }
@@ -91,27 +91,27 @@ class WebScraper {
   }
 
   parseHtml(html: string) {
-    const $ = load(html)
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
     
     // Remove scripts and styles
-    $('script, style').remove()
+    doc.querySelectorAll('script, style').forEach(el => el.remove())
     
     // Get text content and clean it
-    const text = $('body').text()
+    const text = doc.body?.textContent || ''
+    return text
       .split('\n')
       .map(line => line.trim())
       .filter(Boolean)
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim()
-      
-    return text
   }
 
-  async fetchAndParseContent(url: string) {
+  async fetchAndParseContent(result: any) {
     try {
-      this.sendUpdate(`Fetching: ${url}`)
-      const response = await fetch(url)
+      this.sendUpdate(`Fetching: ${result.url}`)
+      const response = await fetch(result.url)
       if (!response.ok) {
         throw new Error(`HTTP error: ${response.status}`)
       }
@@ -120,22 +120,22 @@ class WebScraper {
       const content = this.parseHtml(html).slice(0, PER_PAGE_LIMIT)
 
       if (content) {
-        const added = this.collector.addContent(url, content)
+        const added = this.collector.addContent(result.url, content, result.name)
         if (!added) {
           throw new Error('Content limit reached')
         }
       }
     } catch (error) {
-      console.error(`Error processing ${url}:`, error)
+      console.error(`Error processing ${result.url}:`, error)
     }
   }
 
-  async processBatch(urls: string[], batchSize = 15) {
+  async processBatch(results: any[], batchSize = 15) {
     const tasks = []
-    for (const url of urls.slice(0, batchSize)) {
-      if (!this.collector.seenUrls.has(url)) {
-        this.collector.seenUrls.add(url)
-        tasks.push(this.fetchAndParseContent(url))
+    for (const result of results.slice(0, batchSize)) {
+      if (!this.collector.seenUrls.has(result.url)) {
+        this.collector.seenUrls.add(result.url)
+        tasks.push(this.fetchAndParseContent(result))
       }
     }
 
@@ -158,14 +158,13 @@ class WebScraper {
   async collectContent(searchResults: any[]) {
     this.sendUpdate('Starting content collection...')
     
-    const urls = searchResults.map(result => result.url)
     const batchSize = 40
 
-    for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
-      const batchUrls = urls.slice(startIdx, startIdx + batchSize)
+    for (let startIdx = 0; startIdx < searchResults.length; startIdx += batchSize) {
+      const batchResults = searchResults.slice(startIdx, startIdx + batchSize)
       this.sendUpdate(`Processing batch ${Math.floor(startIdx/batchSize) + 1}`)
       
-      const shouldContinue = await this.processBatch(batchUrls, batchSize)
+      const shouldContinue = await this.processBatch(batchResults, batchSize)
       
       if (!shouldContinue) {
         this.sendUpdate('Content limit reached or batch processing complete')
@@ -196,6 +195,10 @@ class WebScraper {
     this.sendUpdate(`Total URLs processed: ${this.collector.seenUrls.size}`)
     this.sendUpdate(`Successfully collected content from ${collectedData.length} pages`)
     
+    // Send final results
+    const resultsData = `data: ${JSON.stringify({ type: 'results', data: collectedData })}\n\n`
+    this.controller.enqueue(this.encoder.encode(resultsData))
+    
     return collectedData
   }
 }
@@ -218,15 +221,7 @@ serve(async (req) => {
       start: async (controller) => {
         try {
           const scraper = new WebScraper(BING_API_KEY, controller)
-          const results = await scraper.run(query)
-          
-          // Send the final results
-          controller.enqueue(
-            new TextEncoder().encode(
-              `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
-            )
-          )
-          
+          await scraper.run(query)
           controller.close()
         } catch (error) {
           controller.error(error)
