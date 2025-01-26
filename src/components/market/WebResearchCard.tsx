@@ -20,11 +20,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
     setResults([])
+    setError(null)
 
     try {
       const response = await supabase.functions.invoke<any>('web-research', {
@@ -54,8 +56,10 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
-                    if (parsed.type === 'results') {
+                    if (parsed.type === 'results' && parsed.data.length > 0) {
                       setResults(parsed.data)
+                      // If we got results, consider the operation successful even if not all sources were processed
+                      setIsLoading(false)
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
                     }
@@ -66,6 +70,9 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
               }
               
               push()
+            }).catch(error => {
+              console.error('Stream error:', error)
+              controller.error(error)
             })
           }
           
@@ -80,7 +87,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       }
     } catch (error) {
       console.error('Error in web research:', error)
-      setProgress(prev => [...prev, 'Error occurred during research'])
+      setError('An error occurred while fetching research results')
     } finally {
       setIsLoading(false)
     }
@@ -119,7 +126,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </Button>
       </div>
 
-      {progress.length > 0 && (
+      {error && (
+        <div className="rounded-md bg-destructive/15 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      )}
+
+      {isLoading && progress.length > 0 && (
         <div className="rounded-md border bg-muted/50 p-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
