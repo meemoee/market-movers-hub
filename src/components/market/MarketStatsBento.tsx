@@ -90,7 +90,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const content = (
       <div className="flex flex-col h-full group">
         {/* Image Section */}
-        <div className="relative rounded-lg overflow-hidden" style={{ height: position === 1 ? '70%' : '65%' }}>
+        <div className="relative rounded-lg overflow-hidden" style={{ height: "65%" }}>
           <div className="absolute inset-0 bg-card/50" />
           {article.image_url && (
             <img 
@@ -102,8 +102,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </div>
 
         {/* Content Card */}
-        <div className="flex-1 -mt-3 rounded-lg bg-card border border-border/10 p-3 transition-colors group-hover:bg-card/80">
-          <div className="space-y-2">
+        <div className="flex-1 -mt-3 rounded-lg bg-card border border-border/10 p-4 transition-colors group-hover:bg-card/80">
+          <div className="flex flex-col h-full gap-3">
             {renderProfileInfo(position)}
             <h3 className="text-lg font-semibold leading-tight text-foreground line-clamp-2">
               {article.title}
@@ -122,7 +122,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full w-full transition-opacity hover:opacity-95 cursor-pointer"
+        className="block h-full transition-opacity hover:opacity-95 cursor-pointer"
       >
         {content}
       </a>
@@ -131,8 +131,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 auto-rows-fr gap-3">
-        <div className="row-span-2 aspect-square">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ 
+        gridTemplateRows: 'repeat(2, minmax(250px, 1fr))'
+      }}>
+        <div className="row-span-2 h-full">
           {renderArticle(1)}
         </div>
         <div className="h-full">
