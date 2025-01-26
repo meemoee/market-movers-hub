@@ -90,21 +90,14 @@ class WebScraper {
     }
   }
 
-  parseHtml(html: string) {
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(html, 'text/html')
-    
-    // Remove scripts and styles
-    doc.querySelectorAll('script, style').forEach(el => el.remove())
-    
-    // Get text content and clean it
-    const text = doc.body?.textContent || ''
-    return text
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
+  extractTextContent(html: string): string {
+    // Simple regex-based approach to extract text
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
+      .replace(/<[^>]+>/g, ' ') // Remove HTML tags
+      .replace(/&[^;]+;/g, ' ') // Remove HTML entities
+      .replace(/\s+/g, ' ') // Normalize whitespace
       .trim()
   }
 
@@ -117,7 +110,7 @@ class WebScraper {
       }
 
       const html = await response.text()
-      const content = this.parseHtml(html).slice(0, PER_PAGE_LIMIT)
+      const content = this.extractTextContent(html).slice(0, PER_PAGE_LIMIT)
 
       if (content) {
         const added = this.collector.addContent(result.url, content, result.name)
