@@ -83,12 +83,15 @@ async function fetchContent(url: string): Promise<string | null> {
     }
     
     const contentType = response.headers.get('content-type')
+    console.log(`Content type for ${url}: ${contentType}`)
+    
     if (!contentType?.includes('text/html')) {
       console.log(`Skipping non-HTML content from ${url}: ${contentType}`)
       return null
     }
     
     const text = await response.text()
+    console.log(`Retrieved ${text.length} characters from ${url}`)
     
     const cleanedText = text
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
@@ -97,6 +100,7 @@ async function fetchContent(url: string): Promise<string | null> {
       .replace(/\s+/g, ' ')
       .trim()
     
+    console.log(`Cleaned text length: ${cleanedText.length} characters`)
     return cleanedText.slice(0, 5000)
   } catch (error) {
     console.error(`Error fetching ${url}:`, error)
