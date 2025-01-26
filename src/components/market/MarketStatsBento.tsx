@@ -125,12 +125,19 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          {/* Dark overlay that extends beyond the visible area */}
+          {/* Dark overlay with content */}
           <div className="absolute inset-x-0 bottom-0">
-            {/* Inner content container with padding */}
-            <div className="relative z-10 p-4">
-              {/* Actual dark backdrop that extends beyond bottom */}
-              <div className="absolute inset-0 -bottom-1 bg-black/70 backdrop-blur-sm" />
+            {/* Content wrapper with padding */}
+            <div className="relative p-4">
+              {/* Dark backdrop that extends beyond bottom */}
+              <div 
+                className="absolute inset-0 -bottom-2 bg-black/70 backdrop-blur-sm"
+                style={{
+                  clipPath: 'inset(0 0 -2px 0)',
+                  borderBottomLeftRadius: 'inherit',
+                  borderBottomRightRadius: 'inherit'
+                }}
+              />
               
               {/* Content */}
               <div className="relative z-20">
