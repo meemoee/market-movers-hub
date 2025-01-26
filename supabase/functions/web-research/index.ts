@@ -91,22 +91,46 @@ class WebScraper {
   }
 
   extractTextContent(html: string): string {
-    // Simple regex-based approach to extract text
     return html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove scripts
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '') // Remove styles
-      .replace(/<[^>]+>/g, ' ') // Remove HTML tags
-      .replace(/&[^;]+;/g, ' ') // Remove HTML entities
-      .replace(/\s+/g, ' ') // Normalize whitespace
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&[^;]+;/g, ' ')
+      .replace(/\s+/g, ' ')
       .trim()
   }
 
   async fetchAndParseContent(result: any) {
     try {
       this.sendUpdate(`Fetching: ${result.url}`)
-      const response = await fetch(result.url)
+      
+      // Skip known problematic domains
+      const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
+      const url = new URL(result.url)
+      if (skipDomains.some(domain => url.hostname.includes(domain))) {
+        console.log(`Skipping social media domain: ${url.hostname}`)
+        return
+      }
+
+      const response = await fetch(result.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+        },
+        // Add a timeout to prevent hanging on slow responses
+        signal: AbortSignal.timeout(10000)
+      })
+
       if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`)
+        console.error(`HTTP error ${response.status} for ${result.url}`)
+        return
+      }
+
+      const contentType = response.headers.get('content-type')
+      if (!contentType?.includes('text/html')) {
+        console.log(`Skipping non-HTML content type: ${contentType}`)
+        return
       }
 
       const html = await response.text()
@@ -119,7 +143,12 @@ class WebScraper {
         }
       }
     } catch (error) {
-      console.error(`Error processing ${result.url}:`, error)
+      // Log the error but don't throw it - this allows processing to continue
+      if (error.name === 'AbortError') {
+        console.log(`Request timeout for ${result.url}`)
+      } else {
+        console.error(`Error processing ${result.url}:`, error)
+      }
     }
   }
 
