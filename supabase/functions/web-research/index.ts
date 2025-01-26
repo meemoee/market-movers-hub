@@ -37,6 +37,7 @@ async function generateSearchQueries(intent: string, openrouterApiKey: string): 
   console.log('OpenRouter response:', result)
   const content = result.choices[0].message.content.trim()
   const queriesData = JSON.parse(content)
+  console.log('Generated queries:', queriesData.queries)
   return queriesData.queries || []
 }
 
@@ -57,6 +58,23 @@ async function performWebSearch(query: string, bingApiKey: string): Promise<any[
   const data = await response.json()
   console.log('Received search results:', data.webPages?.value?.length || 0, 'results')
   return data.webPages?.value || []
+}
+
+async function fetchContent(url: string): Promise<string | null> {
+  console.log('Attempting to fetch content from:', url)
+  try {
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.error(`Failed to fetch ${url}: ${response.status}`)
+      return null
+    }
+    const text = await response.text()
+    console.log(`Successfully fetched content from ${url}, length: ${text.length}`)
+    return text
+  } catch (error) {
+    console.error(`Error fetching ${url}:`, error)
+    return null
+  }
 }
 
 serve(async (req) => {
@@ -81,10 +99,6 @@ serve(async (req) => {
       throw new Error('Required API keys not configured')
     }
 
-    // Generate search queries
-    const queries = await generateSearchQueries(description, openrouterApiKey)
-    console.log('Generated queries:', queries)
-
     // Create transform stream for SSE
     const stream = new TransformStream()
     const writer = stream.writable.getWriter()
@@ -99,22 +113,42 @@ serve(async (req) => {
       }
     })
 
+    // Generate search queries
+    const queries = await generateSearchQueries(description, openrouterApiKey)
+    console.log('Generated queries:', queries)
+
     // Process searches in parallel
+    console.log('Starting parallel searches')
     const searchPromises = queries.map(query => performWebSearch(query, bingApiKey))
     const searchResults = await Promise.all(searchPromises)
     const allResults = searchResults.flat()
+    console.log('Total search results:', allResults.length)
 
     // Send total websites found
     await writer.write(encoder.encode(
       `data: ${JSON.stringify({ type: 'websites', count: allResults.length })}\n\n`
     ))
 
+    // Fetch content in parallel batches
+    console.log('Starting content fetching')
+    const contentPromises = allResults.map(result => fetchContent(result.url))
+    const contents = await Promise.all(contentPromises)
+    const validContents = contents.filter(Boolean)
+    console.log('Successfully fetched content from', validContents.length, 'websites')
+
+    // Update website count with successful fetches
+    await writer.write(encoder.encode(
+      `data: ${JSON.stringify({ type: 'websites', count: validContents.length })}\n\n`
+    ))
+
     // Prepare content for analysis
+    console.log('Preparing content for analysis')
     const analysisPrompt = `Analyze the following search results about ${description}:\n\n` +
-      allResults.map((result, index) => 
-        `${index + 1}. ${result.name}\n${result.snippet}\n${result.url}\n`
+      validContents.map((content, index) => 
+        `Content from result ${index + 1}:\n${content}\n`
       ).join('\n')
 
+    console.log('Starting analysis with OpenRouter')
     // Get analysis from OpenRouter
     const analysisResponse = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -137,15 +171,19 @@ serve(async (req) => {
       throw new Error('Failed to get analysis')
     }
 
+    console.log('Starting to stream analysis')
     const reader = analysisResponse.body?.getReader()
     const decoder = new TextDecoder()
-    let analysisText = ''
 
     while (true) {
       const { done, value } = await reader.read()
-      if (done) break
+      if (done) {
+        console.log('Analysis stream complete')
+        break
+      }
 
       const chunk = decoder.decode(value)
+      console.log('Received analysis chunk:', chunk)
       const lines = chunk.split('\n')
 
       for (const line of lines) {
@@ -157,7 +195,7 @@ serve(async (req) => {
             const parsed = JSON.parse(data)
             const content = parsed.choices?.[0]?.delta?.content
             if (content) {
-              analysisText += content
+              console.log('Sending analysis content:', content)
               await writer.write(encoder.encode(
                 `data: ${JSON.stringify({ type: 'analysis', content })}\n\n`
               ))
