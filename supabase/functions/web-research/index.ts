@@ -12,7 +12,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Browser-like headers to avoid some 403 errors
 const fetchHeaders = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -71,11 +70,6 @@ class WebScraper {
     this.controller.enqueue(this.encoder.encode(data))
   }
 
-  private sendError(message: string) {
-    const data = `data: ${JSON.stringify({ type: 'error', message })}\n\n`
-    this.controller.enqueue(this.encoder.encode(data))
-  }
-
   private sendResults(results: any[]) {
     const data = `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
     this.controller.enqueue(this.encoder.encode(data))
@@ -110,11 +104,9 @@ class WebScraper {
   }
 
   extractTextContent(html: string): string {
-    // Remove scripts and style elements
     html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
     
-    // Remove HTML tags while preserving content
     const text = html.replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -134,13 +126,10 @@ class WebScraper {
 
   async fetchAndParseContent(url: string) {
     if (this.shouldSkipUrl(url)) {
-      this.sendUpdate(`Skipping social media URL: ${url}`)
       return
     }
 
     try {
-      this.sendUpdate(`Fetching: ${url}`)
-      
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000)
 
@@ -152,12 +141,12 @@ class WebScraper {
       clearTimeout(timeoutId)
 
       if (!response.ok) {
-        throw new Error(`HTTP error: ${response.status}`)
+        return
       }
 
       const contentType = response.headers.get('content-type')
       if (!contentType?.includes('text/html')) {
-        throw new Error('Not an HTML page')
+        return
       }
 
       const html = await response.text()
@@ -172,15 +161,11 @@ class WebScraper {
             content: content.slice(0, PER_PAGE_LIMIT),
             title
           }])
-        } else {
-          throw new Error('Content limit reached')
         }
       }
     } catch (error) {
-      console.error(`Error processing ${url}:`, error)
-      if (error.message !== 'Content limit reached') {
-        this.sendError(`Failed to process ${url}: ${error.message}`)
-      }
+      // Silently skip failed URLs
+      return
     }
   }
 
@@ -204,7 +189,6 @@ class WebScraper {
       if (error.message === 'Content limit reached') {
         return false
       }
-      console.error('Batch processing error:', error)
       return true
     }
   }

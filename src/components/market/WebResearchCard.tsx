@@ -57,8 +57,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                     const parsed = JSON.parse(jsonStr)
                     if (parsed.type === 'results') {
                       setResults(prev => [...prev, ...parsed.data])
-                    } else if (parsed.type === 'error') {
-                      setError(parsed.message)
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
                     }
@@ -133,22 +131,22 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         <ScrollArea className="h-[400px] rounded-md border p-4">
           {results.map((result, index) => (
             <div key={index} className="mb-6 last:mb-0 p-3 bg-accent/5 rounded-lg">
-              <div className="flex items-start justify-between gap-4">
+              <div className="space-y-2">
                 <h4 className="text-sm font-medium">
                   {result.title || new URL(result.url).hostname}
                 </h4>
+                <p className="text-sm text-muted-foreground line-clamp-3">
+                  {result.content}
+                </p>
                 <a 
                   href={result.url} 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="text-xs text-blue-500 hover:underline shrink-0"
+                  className="text-xs text-blue-500 hover:underline block"
                 >
-                  View Source
+                  {result.url}
                 </a>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
-                {result.content}
-              </p>
             </div>
           ))}
         </ScrollArea>
