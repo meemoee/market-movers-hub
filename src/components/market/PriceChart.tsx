@@ -23,12 +23,12 @@ const intervals = [
 
 const formatDate = timeFormat("%b %d");
 
-interface ChartProps {
+interface PriceChartProps {
+  marketId: string;
   data: PriceData[];
   events: MarketEvent[];
-  width: number;
-  height: number;
-  margin?: { top: number; right: number; bottom: number; left: number };
+  selectedInterval: string;
+  onIntervalSelect?: (interval: string) => void;
 }
 
 function Chart({ 
@@ -37,7 +37,7 @@ function Chart({
   width, 
   height, 
   margin = { top: 20, right: 30, bottom: 30, left: 40 } 
-}: ChartProps) {
+}: PriceChartProps) {
   const {
     showTooltip,
     hideTooltip,
@@ -280,17 +280,11 @@ function Chart({
   );
 }
 
-interface PriceChartProps {
-  data: PriceData[];
-  events: MarketEvent[];
-  selectedInterval: string;
-  onIntervalSelect?: (interval: string) => void;
-}
-
 export default function PriceChart({ 
-  data, 
-  events,
-  selectedInterval, 
+  marketId,
+  data = [], 
+  events = [],
+  selectedInterval = '1d', 
   onIntervalSelect 
 }: PriceChartProps) {
   const normalizedData = useMemo(() => 

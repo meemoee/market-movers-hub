@@ -2,6 +2,8 @@ import { QADisplay } from "./QADisplay";
 import { OrderBook } from "./OrderBook";
 import PriceChart from "./PriceChart";
 import { WebResearchCard } from "./WebResearchCard";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 interface MarketDetailsProps {
   description?: string;
@@ -14,10 +16,39 @@ export function MarketDetails({
   marketId,
   question,
 }: MarketDetailsProps) {
+  const { data: priceData = [] } = useQuery({
+    queryKey: ['market-prices', marketId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('market_prices')
+        .select('*')
+        .eq('market_id', marketId)
+        .order('timestamp', { ascending: true });
+      return data || [];
+    }
+  });
+
+  const { data: events = [] } = useQuery({
+    queryKey: ['market-events', marketId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('market_events')
+        .select('*')
+        .eq('market_id', marketId)
+        .order('timestamp', { ascending: true });
+      return data || [];
+    }
+  });
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <PriceChart marketId={marketId} />
+        <PriceChart 
+          marketId={marketId} 
+          data={priceData}
+          events={events}
+          selectedInterval="1d"
+        />
         <OrderBook marketId={marketId} />
       </div>
       
