@@ -11,20 +11,15 @@ const corsHeaders = {
 }
 
 class ContentCollector {
-  totalChars: number
-  collectedData: { url: string; content: string; title?: string }[]
   seenUrls: Set<string>
-
+  
   constructor() {
-    this.totalChars = 0
-    this.collectedData = []
     this.seenUrls = new Set()
   }
 
-  addContent(url: string, content: string, title?: string): boolean {
+  shouldProcessUrl(url: string): boolean {
     if (this.seenUrls.has(url)) return false
     this.seenUrls.add(url)
-    this.collectedData.push({ url, content, title })
     return true
   }
 }
@@ -35,6 +30,9 @@ class WebScraper {
   private encoder: TextEncoder
   private controller: ReadableStreamDefaultController<any>
   private processedUrls: number
+  private maxUrlsPerQuery: number
+  private maxQueriesProcessed: number
+  private queriesProcessed: number
 
   constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
     if (!bingApiKey) throw new Error('Bing API key is required')
@@ -43,9 +41,13 @@ class WebScraper {
     this.encoder = new TextEncoder()
     this.controller = controller
     this.processedUrls = 0
+    this.maxUrlsPerQuery = 15 // Process fewer URLs per query
+    this.maxQueriesProcessed = 5 // Maximum number of queries to process
+    this.queriesProcessed = 0
   }
 
   private sendUpdate(message: string) {
+    console.log(message) // Log for debugging
     const data = `data: ${JSON.stringify({ message })}\n\n`
     this.controller.enqueue(this.encoder.encode(data))
   }
@@ -55,44 +57,46 @@ class WebScraper {
     this.controller.enqueue(this.encoder.encode(data))
   }
 
-  async searchBing(query: string, offset = 0) {
-    this.sendUpdate(`Searching Bing for: ${query} (offset: ${offset})`)
-    
-    const headers = { "Ocp-Apim-Subscription-Key": this.bingApiKey }
-    const params = new URLSearchParams({
-      q: query,
-      count: "50",
-      offset: offset.toString(),
-      responseFilter: "Webpages"
-    })
+  private shouldSkipUrl(url: string): boolean {
+    const skipDomains = [
+      'reddit.com', 'facebook.com', 'twitter.com', 'instagram.com',
+      'youtube.com', 'tiktok.com', 'pinterest.com', 'linkedin.com'
+    ]
+    return skipDomains.some(domain => url.includes(domain))
+  }
 
+  async searchBing(query: string, offset = 0): Promise<any[]> {
     try {
-      const response = await fetch(`${BING_SEARCH_URL}?${params}`, { headers })
-      if (!response.ok) throw new Error(`Bing API error: ${response.status}`)
+      const params = new URLSearchParams({
+        q: query,
+        count: "10", // Reduced count per request
+        offset: offset.toString(),
+        responseFilter: "Webpages"
+      })
+
+      const response = await fetch(`${BING_SEARCH_URL}?${params}`, {
+        headers: { "Ocp-Apim-Subscription-Key": this.bingApiKey }
+      })
+
+      if (!response.ok) {
+        console.error('Bing API error:', response.status)
+        return []
+      }
+
       const data = await response.json()
-      const results = data.webPages?.value || []
-      this.sendUpdate(`Found ${results.length} search results`)
-      return results
+      return data.webPages?.value || []
     } catch (error) {
       console.error("Search error:", error)
       return []
     }
   }
 
-  shouldSkipUrl(url: string): boolean {
-    const skipDomains = [
-      'reddit.com', 'facebook.com', 'twitter.com', 'instagram.com',
-      'youtube.com', 'tiktok.com', 'pinterest.com'
-    ]
-    return skipDomains.some(domain => url.includes(domain))
-  }
-
   async fetchAndParseContent(url: string) {
-    if (this.shouldSkipUrl(url)) return
+    if (this.shouldSkipUrl(url) || !this.collector.shouldProcessUrl(url)) return
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000)
+      const timeoutId = setTimeout(() => controller.abort(), 5000)
 
       const response = await fetch(url, {
         headers: {
@@ -112,43 +116,53 @@ class WebScraper {
       const html = await response.text()
       const $ = load(html)
       
-      $('script').remove()
-      $('style').remove()
-      $('nav').remove()
-      $('header').remove()
-      $('footer').remove()
+      // Remove unnecessary elements
+      $('script, style, nav, header, footer, iframe, noscript').remove()
       
       const title = $('title').text().trim()
       const content = $('body').text()
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 5000)
+        .slice(0, 2500) // Reduced content length
 
       if (content) {
-        const added = this.collector.addContent(url, content, title)
-        if (added) {
-          this.sendResults([{ url, content, title }])
-          this.processedUrls++
-        }
+        this.sendResults([{ url, content, title }])
+        this.processedUrls++
       }
     } catch (error) {
+      // Skip failed URLs silently
       return
     }
   }
 
-  async processBatch(urls: string[], batchSize = 5) {
-    const tasks = []
-    for (const url of urls.slice(0, batchSize)) {
-      tasks.push(this.fetchAndParseContent(url))
+  async processBatch(urls: string[]) {
+    const batchSize = 3 // Process very small batches
+    for (let i = 0; i < urls.length; i += batchSize) {
+      const batchUrls = urls.slice(i, i + batchSize)
+      const promises = batchUrls.map(url => this.fetchAndParseContent(url))
+      await Promise.all(promises)
+      await new Promise(resolve => setTimeout(resolve, 300)) // Delay between mini-batches
     }
+  }
 
-    if (tasks.length === 0) return false
+  async processQuery(query: string) {
+    let offset = 0
+    let urlsProcessed = 0
 
-    try {
-      await Promise.all(tasks)
-      return true
-    } catch (error) {
-      return true
+    while (urlsProcessed < this.maxUrlsPerQuery) {
+      const searchResults = await this.searchBing(query, offset)
+      if (!searchResults.length) break
+
+      const urls = searchResults.map(result => result.url)
+      await this.processBatch(urls)
+      
+      urlsProcessed += urls.length
+      offset += 10
+      
+      // Break if we've processed enough URLs
+      if (urlsProcessed >= this.maxUrlsPerQuery) break
+      
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Delay between search batches
     }
   }
 
@@ -156,33 +170,20 @@ class WebScraper {
     this.sendUpdate(`Starting web research for ${queries.length} queries`)
     
     for (const query of queries) {
-      let offset = 0
-      let totalProcessed = 0
-      const maxResults = 50 // Maximum results per query
-      
-      while (totalProcessed < maxResults) {
-        this.sendUpdate(`Processing search query: ${query} (batch ${offset/10 + 1})`)
-        const searchResults = await this.searchBing(query, offset)
-        
-        if (!searchResults.length) break
-
-        const urls = searchResults.map(result => result.url)
-        const batchSize = 5 // Process in very small batches
-
-        for (let startIdx = 0; startIdx < urls.length && totalProcessed < maxResults; startIdx += batchSize) {
-          const batchUrls = urls.slice(startIdx, startIdx + batchSize)
-          await this.processBatch(batchUrls, batchSize)
-          
-          totalProcessed += batchSize
-          await new Promise(resolve => setTimeout(resolve, 500)) // Longer delay between batches
-        }
-
-        offset += 10 // Increment offset for next batch of search results
-        await new Promise(resolve => setTimeout(resolve, 1000)) // Delay between search API calls
+      if (this.queriesProcessed >= this.maxQueriesProcessed) {
+        this.sendUpdate('Reached maximum number of queries to process')
+        break
       }
+
+      this.sendUpdate(`Processing query ${this.queriesProcessed + 1}/${this.maxQueriesProcessed}: ${query}`)
+      await this.processQuery(query)
+      this.queriesProcessed++
+      
+      // Add delay between queries
+      await new Promise(resolve => setTimeout(resolve, 2000))
     }
 
-    return this.collector.collectedData
+    return true
   }
 }
 
