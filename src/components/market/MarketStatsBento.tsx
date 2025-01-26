@@ -130,9 +130,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const content = (
       <div 
         className={cn(
-          "relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card",
+          "relative h-full w-full group rounded-lg overflow-hidden",
           gradientBorder && "p-[1px]" // Add 1px padding for gradient border
         )}
+        style={gradientBorder ? { background: gradientBorder } : undefined}
       >
         <div 
           className={cn(
