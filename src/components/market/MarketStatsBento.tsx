@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { UserCircle, ArrowUp, ArrowDown } from "lucide-react";
+import { UserCircle, ArrowLeft, ArrowRight } from "lucide-react";
 import {
   Carousel,
   CarouselContent,
@@ -47,8 +47,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
-        .order('position', { ascending: true })
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(5); // Only fetch the 5 most recent articles
 
       if (error) {
         console.error('Error fetching news articles:', error);
@@ -106,7 +106,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card">
-        {/* Image Container */}
         <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg">
           {article.image_url ? (
             <img 
@@ -126,7 +125,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           )}
         </div>
 
-        {/* Content Container */}
         <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between">
           <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
             {article.title}
@@ -154,7 +152,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <Carousel className="w-full">
+      <Carousel className="w-full relative">
         <CarouselContent>
           {articles.map((article) => (
             <CarouselItem key={article.id} className="h-[500px]">
@@ -162,8 +160,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious />
-        <CarouselNext />
+        <div className="absolute inset-y-0 left-4 right-4 flex items-center justify-between pointer-events-none">
+          <CarouselPrevious className="relative pointer-events-auto h-8 w-8 rounded-full bg-transparent border-0 hover:bg-white/10 text-white" />
+          <CarouselNext className="relative pointer-events-auto h-8 w-8 rounded-full bg-transparent border-0 hover:bg-white/10 text-white" />
+        </div>
       </Carousel>
     </div>
   );
