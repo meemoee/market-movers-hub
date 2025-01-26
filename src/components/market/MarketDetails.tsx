@@ -30,7 +30,7 @@ export function MarketDetails({
 
       <QADisplay
         marketId={marketId}
-        question={question}
+        marketQuestion={question}
         bestBid={bestBid}
         bestAsk={bestAsk}
       />

@@ -19,14 +19,13 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
     setWebsiteCount(0);
 
     try {
-      const { data: { stream }, error } = await supabase.functions.invoke('web-research', {
-        body: { description: marketDescription },
-        responseType: 'stream',
+      const { data, error } = await supabase.functions.invoke('web-research', {
+        body: { description: marketDescription }
       });
 
       if (error) throw error;
 
-      const reader = stream.getReader();
+      const reader = new Response(data.body).body?.getReader();
       const decoder = new TextDecoder();
 
       while (true) {
