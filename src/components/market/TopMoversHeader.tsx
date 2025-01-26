@@ -32,19 +32,19 @@ export function TopMoversHeader({
     <div className="sticky top-14 z-40 w-full">
       <Card className="rounded-t-none border-t-0 bg-card/95 backdrop-blur-supports-backdrop-blur:bg-card/95 backdrop-blur-supports-backdrop-blur:backdrop-blur-sm p-4 w-full relative">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
-          <div className="flex items-center flex-wrap gap-2">
+          <div className="flex items-center flex-wrap">
             <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">What happened in the last</h2>
-            <div className="relative">
+            <div className="relative -ml-1">
               <button
                 onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-                className="flex items-center gap-1 px-2 py-1.5 ml-0.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-xl sm:text-2xl font-bold"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-xl sm:text-2xl font-bold"
               >
-                <span>{timeIntervals.find(i => i.value === selectedInterval)?.label}</span>
+                <span>{timeIntervals.find(i => i.value === selectedInterval)?.label.replace('minutes', 'mins')}</span>
                 <ChevronDown className="w-4 h-4" />
               </button>
 
               {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-card border border-border rounded-lg shadow-xl z-50 max-h-[300px] overflow-y-auto">
+                <div className="absolute top-full left-0 mt-2 bg-card/80 backdrop-blur-md border border-border rounded-lg shadow-xl z-50">
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
@@ -56,7 +56,7 @@ export function TopMoversHeader({
                         onIntervalChange(interval.value);
                       }}
                     >
-                      {interval.label}
+                      {interval.label.replace('minutes', 'mins')}
                     </button>
                   ))}
                 </div>

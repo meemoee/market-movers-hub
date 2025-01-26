@@ -12,7 +12,7 @@ interface TimeInterval {
 }
 
 const formatInterval = (minutes: number): string => {
-  if (minutes < 60) return `${minutes} minutes`;
+  if (minutes < 60) return `${minutes} mins`;
   if (minutes === 60) return '1 hour';
   if (minutes < 1440) return `${minutes / 60} hours`;
   if (minutes === 1440) return '1 day';
