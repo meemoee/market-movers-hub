@@ -12,6 +12,7 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
   const [isSearching, setIsSearching] = useState(false);
   const [websiteCount, setWebsiteCount] = useState(0);
   const [analysis, setAnalysis] = useState<string>("");
+  const [error, setError] = useState<string>("");
 
   const handleSearch = async () => {
     console.log('Starting web research with description:', marketDescription);
@@ -23,6 +24,7 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
     setIsSearching(true);
     setAnalysis("");
     setWebsiteCount(0);
+    setError("");
 
     try {
       const { data, error } = await supabase.functions.invoke('web-research', {
@@ -31,6 +33,7 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
 
       if (error) {
         console.error('Error invoking web-research function:', error);
+        setError('Failed to start web research');
         throw error;
       }
 
@@ -40,7 +43,10 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
 
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          console.log('Stream complete');
+          break;
+        }
 
         const chunk = decoder.decode(value);
         console.log('Received chunk:', chunk);
@@ -49,21 +55,27 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
         for (const line of lines) {
           if (!line.trim()) continue;
 
-          try {
-            const data = JSON.parse(line);
-            console.log('Parsed data:', data);
-            if (data.type === 'websites') {
-              setWebsiteCount(data.count);
-            } else if (data.type === 'analysis') {
-              setAnalysis(prev => prev + data.content);
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              console.log('Parsed streaming data:', data);
+              
+              if (data.type === 'websites') {
+                console.log('Updating website count:', data.count);
+                setWebsiteCount(data.count);
+              } else if (data.type === 'analysis') {
+                console.log('Updating analysis with content:', data.content);
+                setAnalysis(prev => prev + data.content);
+              }
+            } catch (e) {
+              console.error('Error parsing chunk:', e, 'Raw line:', line);
             }
-          } catch (e) {
-            console.error('Error parsing chunk:', e, 'Raw line:', line);
           }
         }
       }
     } catch (error) {
       console.error('Error during web research:', error);
+      setError('Failed to complete web research');
     } finally {
       setIsSearching(false);
     }
@@ -94,6 +106,12 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
             )}
           </Button>
         </div>
+
+        {error && (
+          <div className="text-sm text-red-500">
+            {error}
+          </div>
+        )}
 
         {analysis && (
           <div className="text-sm text-muted-foreground whitespace-pre-wrap">
