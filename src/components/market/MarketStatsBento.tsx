@@ -10,6 +10,7 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { useEventListener } from "@/hooks/use-event-listener";
 
 interface NewsArticle {
   id: string;
@@ -126,12 +127,12 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </div>
 
         <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between relative">
-          <div className="space-y-2 pr-16">
+          <div className="space-y-2 px-8">
             <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
               {article.title}
             </h3>
             {article.subtitle && (
-              <p className="text-sm text-muted-foreground line-clamp-2">
+              <p className="text-sm text-muted-foreground line-clamp-3">
                 {article.subtitle}
               </p>
             )}
@@ -159,7 +160,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <Carousel className="w-full relative">
+      <Carousel className="w-full relative" opts={{ loop: true }}>
         <CarouselContent>
           {articles.map((article) => (
             <CarouselItem key={article.id} className="h-[500px]">
@@ -167,10 +168,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             </CarouselItem>
           ))}
         </CarouselContent>
-        <div className="absolute bottom-24 right-4 flex items-center gap-2 z-10">
-          <CarouselPrevious className="relative h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 border-0 text-white" />
-          <CarouselNext className="relative h-8 w-8 rounded-full bg-black/20 hover:bg-black/40 border-0 text-white" />
-        </div>
+        <CarouselPrevious className="absolute left-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
+        <CarouselNext className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
       </Carousel>
     </div>
   );
