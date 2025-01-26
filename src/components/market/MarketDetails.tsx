@@ -13,8 +13,6 @@ interface MarketDetailsProps {
 
 export function MarketDetails({
   description,
-  bestBid,
-  bestAsk,
   marketId,
   question,
 }: MarketDetailsProps) {
@@ -22,7 +20,7 @@ export function MarketDetails({
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <PriceChart marketId={marketId} />
-        <OrderBook marketId={marketId} bestBid={bestBid} bestAsk={bestAsk} />
+        <OrderBook marketId={marketId} />
       </div>
       
       {description && (
@@ -34,7 +32,7 @@ export function MarketDetails({
         </div>
       )}
 
-      <QADisplay marketId={marketId} question={question} />
+      <QADisplay marketId={marketId} />
     </div>
   );
 }

@@ -22,9 +22,8 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setTotalSites(0)
 
     try {
-      const { data: stream } = await supabase.functions.invoke<ReadableStream>("web-research", {
-        body: { query: description },
-        responseType: 'stream'
+      const { data: stream } = await supabase.functions.invoke("web-research", {
+        body: { query: description }
       })
 
       if (!stream) {
