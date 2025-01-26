@@ -28,56 +28,69 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setError(null)
 
     try {
-      const response = await supabase.functions.invoke<any>('web-research', {
+      // First, generate queries
+      const queriesResponse = await supabase.functions.invoke<any>('generate-queries', {
         body: { query: description }
       })
 
-      if (response.error) throw response.error
+      if (queriesResponse.error) throw queriesResponse.error
+      
+      const { queries } = queriesResponse.data
+      setProgress(prev => [...prev, `Generated ${queries.length} research queries`])
 
-      const stream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder()
-          const reader = new Response(response.data.body).body?.getReader()
-          
-          function push() {
-            reader?.read().then(({done, value}) => {
-              if (done) {
-                controller.close()
-                return
-              }
-              
-              const chunk = textDecoder.decode(value)
-              const lines = chunk.split('\n').filter(line => line.trim())
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr)
-                    if (parsed.type === 'results') {
-                      setResults(prev => [...prev, ...parsed.data])
-                    } else if (parsed.message) {
-                      setProgress(prev => [...prev, parsed.message])
+      // Then process each query with web scraping
+      for (const query of queries) {
+        const response = await supabase.functions.invoke<any>('web-scrape', {
+          body: { query }
+        })
+
+        if (response.error) throw response.error
+
+        const stream = new ReadableStream({
+          start(controller) {
+            const textDecoder = new TextDecoder()
+            const reader = new Response(response.data.body).body?.getReader()
+            
+            function push() {
+              reader?.read().then(({done, value}) => {
+                if (done) {
+                  controller.close()
+                  return
+                }
+                
+                const chunk = textDecoder.decode(value)
+                const lines = chunk.split('\n').filter(line => line.trim())
+                
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const jsonStr = line.slice(6).trim()
+                    
+                    try {
+                      const parsed = JSON.parse(jsonStr)
+                      if (parsed.type === 'results') {
+                        setResults(prev => [...prev, ...parsed.data])
+                      } else if (parsed.message) {
+                        setProgress(prev => [...prev, parsed.message])
+                      }
+                    } catch (e) {
+                      console.error('Error parsing SSE data:', e)
                     }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e)
                   }
                 }
-              }
-              
-              push()
-            })
+                
+                push()
+              })
+            }
+            
+            push()
           }
-          
-          push()
-        }
-      })
+        })
 
-      const reader = stream.getReader()
-      while (true) {
-        const { done } = await reader.read()
-        if (done) break
+        const reader = stream.getReader()
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
       }
     } catch (error) {
       console.error('Error in web research:', error)
