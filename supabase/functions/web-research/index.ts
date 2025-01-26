@@ -31,7 +31,7 @@ async function generateSubQueries(query: string): Promise<string[]> {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "anthropic/claude-3-haiku",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",
