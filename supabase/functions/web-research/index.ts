@@ -3,20 +3,13 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
-const PER_PAGE_LIMIT = 5000
-const TOTAL_CHAR_LIMIT = 240000
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-const fetchHeaders = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.5',
-  'Connection': 'keep-alive',
 }
 
 class ContentCollector {
@@ -31,21 +24,61 @@ class ContentCollector {
   }
 
   addContent(url: string, content: string, title?: string): boolean {
-    if (this.totalChars >= TOTAL_CHAR_LIMIT) {
-      return false
+    if (this.seenUrls.has(url)) return false
+    
+    this.seenUrls.add(url)
+    this.collectedData.push({ url, content, title })
+    return true
+  }
+}
+
+async function generateSubQueries(query: string): Promise<string[]> {
+  console.log('Generating sub-queries for:', query)
+  
+  try {
+    const response = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Research App',
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that generates search queries."
+          },
+          {
+            role: "user",
+            content: `Generate 5 diverse search queries to gather comprehensive information about the following topic. Focus on different aspects that would be relevant for market research:
+
+Topic: ${query}
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`
+          }
+        ],
+        response_format: { type: "json_object" }
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
-    const contentLen = content.length
-    if (this.totalChars + contentLen <= TOTAL_CHAR_LIMIT) {
-      this.totalChars += contentLen
-      this.collectedData.push({
-        url,
-        content,
-        title
-      })
-      return true
-    }
-    return false
+    const result = await response.json()
+    const content = result.choices[0].message.content.trim()
+    const queriesData = JSON.parse(content)
+    const queries = queriesData.queries || []
+    
+    console.log('Generated queries:', queries)
+    return queries
+
+  } catch (error) {
+    console.error("Error generating queries:", error)
+    return [query] // Fallback to original query if generation fails
   }
 }
 
@@ -103,68 +136,58 @@ class WebScraper {
     }
   }
 
-  extractTextContent(html: string): string {
-    html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-    
-    const text = html.replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-    
-    return text
-  }
-
-  extractTitle(html: string): string {
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-    return titleMatch ? titleMatch[1].trim() : ''
-  }
-
   shouldSkipUrl(url: string): boolean {
     const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
     return skipDomains.some(domain => url.includes(domain))
   }
 
   async fetchAndParseContent(url: string) {
-    if (this.shouldSkipUrl(url)) {
-      return
-    }
+    if (this.shouldSkipUrl(url)) return
 
     try {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 10000)
 
       const response = await fetch(url, {
-        headers: fetchHeaders,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html',
+        },
         signal: controller.signal
       })
       
       clearTimeout(timeoutId)
 
-      if (!response.ok) {
-        return
-      }
+      if (!response.ok) return
 
       const contentType = response.headers.get('content-type')
-      if (!contentType?.includes('text/html')) {
-        return
-      }
+      if (!contentType?.includes('text/html')) return
 
       const html = await response.text()
-      const content = this.extractTextContent(html)
-      const title = this.extractTitle(html)
+      const $ = load(html)
+      
+      // Remove scripts and styles
+      $('script').remove()
+      $('style').remove()
+      
+      const title = $('title').text().trim()
+      const content = $('body').text()
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 5000)
 
       if (content) {
-        const added = this.collector.addContent(url, content.slice(0, PER_PAGE_LIMIT), title)
+        const added = this.collector.addContent(url, content, title)
         if (added) {
           this.sendResults([{
             url,
-            content: content.slice(0, PER_PAGE_LIMIT),
+            content,
             title
           }])
         }
       }
     } catch (error) {
-      // Silently skip failed URLs
+      // Skip failed URLs silently
       return
     }
   }
@@ -172,10 +195,7 @@ class WebScraper {
   async processBatch(urls: string[], batchSize = 15) {
     const tasks = []
     for (const url of urls.slice(0, batchSize)) {
-      if (!this.collector.seenUrls.has(url)) {
-        this.collector.seenUrls.add(url)
-        tasks.push(this.fetchAndParseContent(url))
-      }
+      tasks.push(this.fetchAndParseContent(url))
     }
 
     if (tasks.length === 0) {
@@ -186,54 +206,40 @@ class WebScraper {
       await Promise.all(tasks)
       return true
     } catch (error) {
-      if (error.message === 'Content limit reached') {
-        return false
-      }
       return true
     }
   }
 
-  async collectContent(searchResults: any[]) {
-    this.sendUpdate('Starting content collection...')
+  async run(query: string) {
+    this.sendUpdate(`Starting web research for query: ${query}`)
     
-    const urls = searchResults.map(result => result.url)
-    const batchSize = 40
-
-    for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
-      const batchUrls = urls.slice(startIdx, startIdx + batchSize)
-      this.sendUpdate(`Processing batch ${Math.floor(startIdx/batchSize) + 1}`)
+    // Generate sub-queries using OpenRouter
+    const subQueries = await generateSubQueries(query)
+    this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
+    
+    // Process each sub-query
+    for (const subQuery of subQueries) {
+      this.sendUpdate(`Processing search query: ${subQuery}`)
+      const searchResults = await this.searchBing(subQuery)
       
-      const shouldContinue = await this.processBatch(batchUrls, batchSize)
-      
-      if (!shouldContinue) {
-        this.sendUpdate('Content limit reached or batch processing complete')
-        break
+      if (!searchResults.length) {
+        continue
       }
 
-      await new Promise(resolve => setTimeout(resolve, 100))
+      const urls = searchResults.map(result => result.url)
+      const batchSize = 40
+
+      for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
+        const batchUrls = urls.slice(startIdx, startIdx + batchSize)
+        const shouldContinue = await this.processBatch(batchUrls, batchSize)
+        
+        if (!shouldContinue) break
+
+        await new Promise(resolve => setTimeout(resolve, 100))
+      }
     }
 
     return this.collector.collectedData
-  }
-
-  async run(query: string) {
-    this.sendUpdate(`Starting web research for query: ${query}`)
-    const searchResults = await this.searchBing(query)
-    
-    if (!searchResults.length) {
-      this.sendUpdate("No search results found.")
-      return []
-    }
-
-    const startTime = Date.now()
-    const collectedData = await this.collectContent(searchResults)
-    const endTime = Date.now()
-
-    this.sendUpdate(`Content collection completed in ${(endTime - startTime) / 1000} seconds`)
-    this.sendUpdate(`Total URLs processed: ${this.collector.seenUrls.size}`)
-    this.sendUpdate(`Successfully collected content from ${collectedData.length} pages`)
-    
-    return collectedData
   }
 }
 
@@ -249,11 +255,15 @@ serve(async (req) => {
       throw new Error('BING_API_KEY is not configured')
     }
 
+    if (!OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY is not configured')
+    }
+
     const stream = new ReadableStream({
       start: async (controller) => {
         try {
           const scraper = new WebScraper(BING_API_KEY, controller)
-          const results = await scraper.run(query)
+          await scraper.run(query)
           controller.close()
         } catch (error) {
           controller.error(error)
