@@ -80,20 +80,23 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   const renderArticle = (position: number) => {
     const article = articles.find(a => a.position === position);
     const isMainArticle = position === 1;
-    const containerHeight = isMainArticle ? '400px' : '200px';
-    const imageHeight = isMainArticle ? '320px' : '120px';
     
     if (!article) {
       return (
-        <div className="rounded-lg bg-muted/10 border border-border/5" style={{ height: containerHeight }} />
+        <div className={cn(
+          "rounded-lg bg-muted/10 border border-border/5",
+          isMainArticle ? "h-[400px]" : "h-[196px]"
+        )} />
       );
     }
     
     const content = (
       <div className="flex flex-col h-full group">
         <div 
-          className="relative rounded-lg overflow-hidden flex-shrink-0"
-          style={{ height: imageHeight }}
+          className={cn(
+            "relative rounded-lg overflow-hidden flex-shrink-0",
+            isMainArticle ? "h-[320px]" : "h-[116px]"
+          )}
         >
           <div className="absolute inset-0 bg-card/50" />
           {article.image_url && (
@@ -117,7 +120,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     );
 
     if (!article.link) {
-      return <div style={{ height: containerHeight }}>{content}</div>;
+      return <div className={isMainArticle ? "h-[400px]" : "h-[196px]"}>{content}</div>;
     }
 
     return (
@@ -125,8 +128,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="block transition-opacity hover:opacity-95 cursor-pointer"
-        style={{ height: containerHeight }}
+        className={cn(
+          "block transition-opacity hover:opacity-95 cursor-pointer",
+          isMainArticle ? "h-[400px]" : "h-[196px]"
+        )}
       >
         {content}
       </a>
@@ -139,13 +144,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         <div>
           {renderArticle(1)}
         </div>
-        <div className="grid grid-rows-2 gap-2">
-          <div>
-            {renderArticle(2)}
-          </div>
-          <div>
-            {renderArticle(3)}
-          </div>
+        <div className="grid grid-rows-2 gap-0">
+          {renderArticle(2)}
+          {renderArticle(3)}
         </div>
       </div>
     </div>
