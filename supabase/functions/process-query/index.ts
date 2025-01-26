@@ -47,7 +47,7 @@ class ContentProcessor {
     
     const params = new URLSearchParams({
       q: query,
-      count: "20", // Reduced from 50 to limit processing time
+      count: "50",  // Back to original 50 results
       responseFilter: "Webpages"
     })
 
@@ -72,7 +72,7 @@ class ContentProcessor {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000) // Reduced timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000)  // Back to original 10s timeout
 
       const response = await fetch(url, {
         headers: {
@@ -91,14 +91,14 @@ class ContentProcessor {
       const html = await response.text()
       const $ = load(html)
       
-      // Remove scripts, styles, and other non-content elements
+      // Remove non-content elements for cleaner results
       $('script, style, nav, header, footer, iframe, noscript').remove()
       
       const title = $('title').text().trim()
       const content = $('body').text()
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 3000) // Reduced from 5000
+        .slice(0, 5000)  // Back to original 5000 char limit
 
       return content ? { url, content, title } : null
     } catch (error) {
@@ -106,7 +106,7 @@ class ContentProcessor {
     }
   }
 
-  async processBatch(urls: string[], batchSize = 5) { // Reduced from 15
+  async processBatch(urls: string[], batchSize = 40) {  // Back to original batch size of 40
     const tasks = []
     for (const url of urls.slice(0, batchSize)) {
       tasks.push(this.fetchAndParseContent(url))
@@ -129,11 +129,12 @@ class ContentProcessor {
     if (!searchResults.length) return
 
     const urls = searchResults.map(result => result.url)
-    const batchSize = 5 // Reduced from 40
+    const batchSize = 40
 
     for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
       const batchUrls = urls.slice(startIdx, startIdx + batchSize)
       await this.processBatch(batchUrls, batchSize)
+      // Small delay between batches to prevent rate limiting
       await new Promise(resolve => setTimeout(resolve, 100))
     }
   }
