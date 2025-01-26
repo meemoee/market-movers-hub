@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { UserCircle, ArrowLeft, ArrowRight } from "lucide-react";
+import { UserCircle, ArrowUpIcon, ArrowDownIcon } from "lucide-react";
 import {
   Carousel,
   CarouselContent,
@@ -48,7 +48,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         .select('*')
         .eq('time_interval', selectedInterval)
         .order('created_at', { ascending: false })
-        .limit(5); // Only fetch the 5 most recent articles
+        .limit(5);
 
       if (error) {
         console.error('Error fetching news articles:', error);
@@ -80,9 +80,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             <span>${profile.price.toFixed(2)}</span>
             <span className="inline-flex items-center">
               {profile.change > 0 ? (
-                <ArrowUp className="h-2 w-2" />
+                <ArrowUpIcon className="h-2 w-2" />
               ) : (
-                <ArrowDown className="h-2 w-2" />
+                <ArrowDownIcon className="h-2 w-2" />
               )}
               {Math.abs(profile.change * 100).toFixed(1)}%
             </span>
