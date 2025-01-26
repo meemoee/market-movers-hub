@@ -37,20 +37,18 @@ export function TopMoversHeader({
             <div className="relative -ml-1">
               <button
                 onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-                className="flex items-center gap-1 px-2 py-1.5 rounded-full bg-accent/50 hover:bg-accent/70 transition-colors text-xl sm:text-2xl font-bold"
+                className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-accent/20 transition-colors text-xl sm:text-2xl font-bold"
               >
                 <span>{timeIntervals.find(i => i.value === selectedInterval)?.label.replace('minutes', 'mins')}</span>
                 <ChevronDown className="w-4 h-4" />
               </button>
 
               {isTimeIntervalDropdownOpen && (
-                <div className="absolute top-full left-0 mt-2 bg-card/40 backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
+                <div className="absolute top-full left-0 mt-2 bg-transparent backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
                   {timeIntervals.map((interval) => (
                     <button
                       key={interval.value}
-                      className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-xl sm:text-2xl font-bold ${
-                        selectedInterval === interval.value ? 'bg-accent/30' : ''
-                      }`}
+                      className="w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-xl sm:text-2xl font-bold whitespace-nowrap"
                       onClick={() => {
                         setIsTimeIntervalDropdownOpen(false);
                         onIntervalChange(interval.value);
