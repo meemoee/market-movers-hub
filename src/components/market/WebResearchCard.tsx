@@ -20,68 +20,80 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [currentQueryIndex, setCurrentQueryIndex] = useState(0)
+  const [totalQueries, setTotalQueries] = useState(0)
 
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
     setResults([])
     setError(null)
+    setCurrentQueryIndex(0)
+    setTotalQueries(0)
 
     try {
-      const response = await supabase.functions.invoke<any>('web-research', {
+      // First, generate queries
+      const queriesResponse = await supabase.functions.invoke('generate-queries', {
         body: { query: description }
       })
 
-      if (response.error) throw response.error
+      if (queriesResponse.error) throw queriesResponse.error
 
-      const stream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder()
-          const reader = new Response(response.data.body).body?.getReader()
-          
-          function push() {
-            reader?.read().then(({done, value}) => {
-              if (done) {
-                controller.close()
-                return
-              }
-              
-              const chunk = textDecoder.decode(value)
-              const lines = chunk.split('\n').filter(line => line.trim())
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr)
-                    if (parsed.type === 'results') {
-                      setResults(prev => [...prev, ...parsed.data])
-                    } else if (parsed.message) {
-                      setProgress(prev => [...prev, parsed.message])
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e)
+      const { queries } = queriesResponse.data
+      setTotalQueries(queries.length)
+      setProgress(prev => [...prev, `Generated ${queries.length} research queries`])
+
+      // Process each query sequentially
+      for (let i = 0; i < queries.length; i++) {
+        setCurrentQueryIndex(i + 1)
+        const query = queries[i]
+        
+        const response = await supabase.functions.invoke<any>('process-query', {
+          body: { query }
+        })
+
+        if (response.error) {
+          console.error(`Error processing query ${i + 1}:`, response.error)
+          continue
+        }
+
+        const stream = new Response(response.data.body).body
+        if (!stream) continue
+
+        const reader = stream.getReader()
+        const decoder = new TextDecoder()
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            const chunk = decoder.decode(value)
+            const lines = chunk.split('\n').filter(line => line.trim())
+
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                const jsonStr = line.slice(6).trim()
+                try {
+                  const parsed = JSON.parse(jsonStr)
+                  if (parsed.type === 'results') {
+                    setResults(prev => [...prev, ...parsed.data])
+                  } else if (parsed.message) {
+                    setProgress(prev => [...prev, parsed.message])
                   }
+                } catch (e) {
+                  console.error('Error parsing SSE data:', e)
                 }
               }
-              
-              push()
-            })
+            }
           }
-          
-          push()
+        } finally {
+          reader.releaseLock()
         }
-      })
-
-      const reader = stream.getReader()
-      while (true) {
-        const { done } = await reader.read()
-        if (done) break
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error in web research:', error)
-      setError('Error occurred during research')
+      setError(error.message)
     } finally {
       setIsLoading(false)
     }
@@ -100,7 +112,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
           {isLoading ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Researching...
+              {currentQueryIndex}/{totalQueries} Queries...
             </>
           ) : (
             <>
