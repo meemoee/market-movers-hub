@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -11,6 +11,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { useEventListener } from "@/hooks/use-event-listener";
+import type { CarouselApi } from "@/components/ui/carousel";
 
 interface NewsArticle {
   id: string;
@@ -41,6 +42,8 @@ interface MarketStatsBentoProps {
 
 export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
+  const [api, setApi] = useState<CarouselApi>();
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchArticles = async () => {
@@ -61,6 +64,21 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     fetchArticles();
   }, [selectedInterval]);
+
+  useEventListener(
+    'wheel',
+    (e: WheelEvent) => {
+      if (!carouselRef.current?.contains(e.target as Node)) return;
+      e.preventDefault();
+      if (e.deltaY > 0) {
+        api?.next();
+      } else {
+        api?.prev();
+      }
+    },
+    carouselRef.current,
+    { passive: false }
+  );
 
   const renderProfileInfo = (position: number) => {
     const profile = PLACEHOLDER_PROFILES[position - 1];
@@ -160,17 +178,19 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <Carousel className="w-full relative" opts={{ loop: true }}>
-        <CarouselContent>
-          {articles.map((article) => (
-            <CarouselItem key={article.id} className="h-[500px]">
-              {renderArticle(article)}
-            </CarouselItem>
-          ))}
-        </CarouselContent>
-        <CarouselPrevious className="absolute left-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
-        <CarouselNext className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
-      </Carousel>
+      <div ref={carouselRef}>
+        <Carousel className="w-full relative" opts={{ loop: true }} setApi={setApi}>
+          <CarouselContent>
+            {articles.map((article) => (
+              <CarouselItem key={article.id} className="h-[500px]">
+                {renderArticle(article)}
+              </CarouselItem>
+            ))}
+          </CarouselContent>
+          <CarouselPrevious className="absolute left-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
+          <CarouselNext className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
+        </Carousel>
+      </div>
     </div>
   );
 }
