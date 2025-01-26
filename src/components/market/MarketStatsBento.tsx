@@ -125,16 +125,16 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card">
-        <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg">
+        <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
           {article.image_url ? (
             <img 
               src={article.image_url} 
               alt={article.title}
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg"
             />
           ) : (
             <div 
-              className="h-full w-full"
+              className="h-full w-full rounded-lg"
               style={{ 
                 background: article.gradient_start_rgb && article.gradient_end_rgb
                   ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
@@ -145,7 +145,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </div>
 
         <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between relative">
-          <div className="space-y-2 px-8">
+          <div className="space-y-2 px-12">
             <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
               {article.title}
             </h3>
@@ -187,8 +187,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
               </CarouselItem>
             ))}
           </CarouselContent>
-          <CarouselPrevious className="absolute left-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
-          <CarouselNext className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-black/10 hover:bg-black/20 border-0 text-white" />
+          <CarouselPrevious className="absolute left-4 top-[65%] -translate-y-1/2 h-8 w-8 rounded-full bg-transparent hover:bg-black/10 border-0 text-foreground" />
+          <CarouselNext className="absolute right-4 top-[65%] -translate-y-1/2 h-8 w-8 rounded-full bg-transparent hover:bg-black/10 border-0 text-foreground" />
         </Carousel>
       </div>
     </div>
