@@ -1,13 +1,22 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
 const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
+const PER_PAGE_LIMIT = 5000
+const TOTAL_CHAR_LIMIT = 240000
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+const fetchHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.5',
+  'Connection': 'keep-alive',
 }
 
 class ContentCollector {
@@ -22,148 +31,210 @@ class ContentCollector {
   }
 
   addContent(url: string, content: string, title?: string): boolean {
-    if (this.seenUrls.has(url)) {
+    if (this.totalChars >= TOTAL_CHAR_LIMIT) {
       return false
     }
 
     const contentLen = content.length
-    if (this.totalChars + contentLen <= 240000) { // 240k char limit
+    if (this.totalChars + contentLen <= TOTAL_CHAR_LIMIT) {
       this.totalChars += contentLen
       this.collectedData.push({
         url,
-        content: content.slice(0, 5000), // Limit per result
+        content,
         title
       })
-      console.log(`Added ${contentLen} chars from ${url}`)
-      this.seenUrls.add(url)
       return true
     }
     return false
   }
 }
 
-async function generateSubQueries(query: string): Promise<string[]> {
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
-        messages: [
-          {
-            role: "system",
-            content: "You are a research assistant that helps break down complex queries into specific sub-queries."
-          },
-          {
-            role: "user",
-            content: `Generate 5 specific search queries to gather comprehensive information about: ${query}
+class WebScraper {
+  private bingApiKey: string
+  private collector: ContentCollector
+  private encoder: TextEncoder
+  private controller: ReadableStreamDefaultController<any>
 
-Respond with a JSON object containing a 'queries' key with an array of search query strings.`
-          }
-        ],
-        response_format: { type: "json_object" }
-      })
+  constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
+    if (!bingApiKey) {
+      throw new Error('Bing API key is required')
+    }
+    this.bingApiKey = bingApiKey
+    this.collector = new ContentCollector()
+    this.encoder = new TextEncoder()
+    this.controller = controller
+  }
+
+  private sendUpdate(message: string) {
+    const data = `data: ${JSON.stringify({ message })}\n\n`
+    this.controller.enqueue(this.encoder.encode(data))
+  }
+
+  private sendResults(results: any[]) {
+    const data = `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
+    this.controller.enqueue(this.encoder.encode(data))
+  }
+
+  async searchBing(query: string) {
+    this.sendUpdate(`Searching Bing for: ${query}`)
+    
+    const headers = {
+      "Ocp-Apim-Subscription-Key": this.bingApiKey
+    }
+    
+    const params = new URLSearchParams({
+      q: query,
+      count: "50",
+      responseFilter: "Webpages"
     })
 
-    if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    console.log('OpenRouter response:', JSON.stringify(data, null, 2))
-    
-    const content = data.choices[0].message.content.trim()
-    const parsedContent = JSON.parse(content)
-    
-    if (Array.isArray(parsedContent.queries)) {
-      return parsedContent.queries
-    }
-    
-    return [query]
-  } catch (error) {
-    console.error('Error generating sub-queries:', error)
-    return [query]
-  }
-}
-
-async function searchBing(query: string) {
-  console.log('\nSearching Bing for:', query)
-  
-  const params = new URLSearchParams({
-    q: query,
-    count: "50",
-    responseFilter: "Webpages"
-  })
-
-  try {
-    const response = await fetch(`${BING_SEARCH_URL}?${params}`, {
-      headers: { "Ocp-Apim-Subscription-Key": BING_API_KEY }
-    })
-
-    if (!response.ok) {
-      throw new Error(`Bing API error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    return data.webPages?.value || []
-  } catch (error) {
-    console.error('Search error:', error)
-    return []
-  }
-}
-
-async function extractTextContent(url: string): Promise<string> {
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    try {
+      const response = await fetch(`${BING_SEARCH_URL}?${params}`, { headers })
+      if (!response.ok) {
+        throw new Error(`Bing API error: ${response.status}`)
       }
-    })
-    
-    if (!response.ok) return ''
-    
-    const html = await response.text()
-    const cleanText = html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      const data = await response.json()
+      const results = data.webPages?.value || []
+      this.sendUpdate(`Found ${results.length} search results`)
+      return results
+    } catch (error) {
+      console.error("Search error:", error)
+      return []
+    }
+  }
+
+  extractTextContent(html: string): string {
+    html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
+    
+    const text = html.replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
     
-    return cleanText
-  } catch (error) {
-    console.error(`Error extracting content from ${url}:`, error)
-    return ''
+    return text
   }
-}
 
-async function processBatch(urls: string[], collector: ContentCollector, controller: ReadableStreamDefaultController) {
-  const tasks = urls.map(async (url) => {
+  extractTitle(html: string): string {
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+    return titleMatch ? titleMatch[1].trim() : ''
+  }
+
+  shouldSkipUrl(url: string): boolean {
+    const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
+    return skipDomains.some(domain => url.includes(domain))
+  }
+
+  async fetchAndParseContent(url: string) {
+    if (this.shouldSkipUrl(url)) {
+      return
+    }
+
     try {
-      const content = await extractTextContent(url)
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+      const response = await fetch(url, {
+        headers: fetchHeaders,
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+
+      if (!response.ok) {
+        return
+      }
+
+      const contentType = response.headers.get('content-type')
+      if (!contentType?.includes('text/html')) {
+        return
+      }
+
+      const html = await response.text()
+      const content = this.extractTextContent(html)
+      const title = this.extractTitle(html)
+
       if (content) {
-        const added = collector.addContent(url, content)
+        const added = this.collector.addContent(url, content.slice(0, PER_PAGE_LIMIT), title)
         if (added) {
-          controller.enqueue(`data: ${JSON.stringify({
-            type: 'results',
-            data: [{
-              url,
-              content: content.slice(0, 5000)
-            }]
-          })}\n\n`)
+          this.sendResults([{
+            url,
+            content: content.slice(0, PER_PAGE_LIMIT),
+            title
+          }])
         }
       }
     } catch (error) {
-      console.error(`Error processing ${url}:`, error)
+      // Silently skip failed URLs
+      return
     }
-  })
+  }
 
-  await Promise.all(tasks)
+  async processBatch(urls: string[], batchSize = 15) {
+    const tasks = []
+    for (const url of urls.slice(0, batchSize)) {
+      if (!this.collector.seenUrls.has(url)) {
+        this.collector.seenUrls.add(url)
+        tasks.push(this.fetchAndParseContent(url))
+      }
+    }
+
+    if (tasks.length === 0) {
+      return false
+    }
+
+    try {
+      await Promise.all(tasks)
+      return true
+    } catch (error) {
+      if (error.message === 'Content limit reached') {
+        return false
+      }
+      return true
+    }
+  }
+
+  async collectContent(searchResults: any[]) {
+    this.sendUpdate('Starting content collection...')
+    
+    const urls = searchResults.map(result => result.url)
+    const batchSize = 40
+
+    for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
+      const batchUrls = urls.slice(startIdx, startIdx + batchSize)
+      this.sendUpdate(`Processing batch ${Math.floor(startIdx/batchSize) + 1}`)
+      
+      const shouldContinue = await this.processBatch(batchUrls, batchSize)
+      
+      if (!shouldContinue) {
+        this.sendUpdate('Content limit reached or batch processing complete')
+        break
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100))
+    }
+
+    return this.collector.collectedData
+  }
+
+  async run(query: string) {
+    this.sendUpdate(`Starting web research for query: ${query}`)
+    const searchResults = await this.searchBing(query)
+    
+    if (!searchResults.length) {
+      this.sendUpdate("No search results found.")
+      return []
+    }
+
+    const startTime = Date.now()
+    const collectedData = await this.collectContent(searchResults)
+    const endTime = Date.now()
+
+    this.sendUpdate(`Content collection completed in ${(endTime - startTime) / 1000} seconds`)
+    this.sendUpdate(`Total URLs processed: ${this.collector.seenUrls.size}`)
+    this.sendUpdate(`Successfully collected content from ${collectedData.length} pages`)
+    
+    return collectedData
+  }
 }
 
 serve(async (req) => {
@@ -173,46 +244,21 @@ serve(async (req) => {
 
   try {
     const { query } = await req.json()
-    console.log('\nStarting web research for query:', query)
+
+    if (!BING_API_KEY) {
+      throw new Error('BING_API_KEY is not configured')
+    }
 
     const stream = new ReadableStream({
-      async start(controller) {
+      start: async (controller) => {
         try {
-          const collector = new ContentCollector()
-          const encoder = new TextEncoder()
-
-          const sendUpdate = (message: string) => {
-            const data = `data: ${JSON.stringify({ message })}\n\n`
-            controller.enqueue(encoder.encode(data))
-          }
-
-          const subQueries = await generateSubQueries(query)
-          sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
-
-          for (const subQuery of subQueries) {
-            sendUpdate(`Processing search query: ${subQuery}`)
-            sendUpdate(`Searching Bing for: ${subQuery}`)
-
-            const searchResults = await searchBing(subQuery)
-            const urls = searchResults.map(result => result.url)
-            
-            // Process URLs in batches of 15
-            for (let i = 0; i < urls.length; i += 15) {
-              const batchUrls = urls.slice(i, i + 15)
-              await processBatch(batchUrls, collector, controller)
-              
-              // Small pause between batches
-              await new Promise(resolve => setTimeout(resolve, 100))
-            }
-          }
-
-          sendUpdate(`Research completed with ${collector.collectedData.length} results`)
+          const scraper = new WebScraper(BING_API_KEY, controller)
+          const results = await scraper.run(query)
           controller.close()
         } catch (error) {
-          console.error('Stream processing error:', error)
           controller.error(error)
         }
-      }
+      },
     })
 
     return new Response(stream, {
@@ -224,12 +270,11 @@ serve(async (req) => {
       },
     })
   } catch (error) {
-    console.error('Request processing error:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
     )
   }
