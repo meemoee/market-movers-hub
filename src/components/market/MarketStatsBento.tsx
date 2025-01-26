@@ -49,7 +49,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       price: [0.78, 0.65, 0.92][position - 1],
       change: [0.12, -0.08, 0.05][position - 1],
     };
-    if (!profile) return null;
 
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
 
@@ -80,11 +79,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   const renderArticle = (position: number) => {
     const article = articles.find(a => a.position === position);
-    
-    // Determine sizing based on position
     const isMainArticle = position === 1;
-    const containerHeight = isMainArticle ? '520px' : '260px';
-    const imageHeight = isMainArticle ? '420px' : '160px';
+    const containerHeight = isMainArticle ? '400px' : '200px';
+    const imageHeight = isMainArticle ? '320px' : '120px';
     
     if (!article) {
       return (
@@ -94,7 +91,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     
     const content = (
       <div className="flex flex-col h-full group">
-        {/* Image Section */}
         <div 
           className="relative rounded-lg overflow-hidden flex-shrink-0"
           style={{ height: imageHeight }}
@@ -109,11 +105,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           )}
         </div>
 
-        {/* Content Card - Fixed height for both sizes */}
-        <div className="flex-shrink-0 h-[100px] -mt-3 rounded-lg bg-card border border-border/10 p-4 transition-colors group-hover:bg-card/80">
+        <div className="flex-shrink-0 h-[80px] -mt-3 rounded-lg bg-card border border-border/10 p-3 transition-colors group-hover:bg-card/80">
           <div className="flex flex-col justify-between h-full">
             {renderProfileInfo(position)}
-            <h3 className="text-lg font-semibold leading-tight text-foreground line-clamp-2">
+            <h3 className="text-sm font-semibold leading-tight text-foreground line-clamp-2">
               {article.title}
             </h3>
           </div>
@@ -140,11 +135,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
         <div>
           {renderArticle(1)}
         </div>
-        <div className="grid grid-rows-2 gap-3">
+        <div className="grid grid-rows-2 gap-2">
           <div>
             {renderArticle(2)}
           </div>
