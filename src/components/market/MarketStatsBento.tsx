@@ -124,7 +124,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </div>
 
         {/* Content Section - Dark overlay at bottom */}
-        <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-sm p-4">
+        <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-sm p-4 rounded-b-lg">
           <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
             {article.title}
           </h3>
