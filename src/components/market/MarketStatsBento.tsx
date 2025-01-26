@@ -103,9 +103,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const content = (
       <div className="relative h-full w-full group">
-        {/* Main container with border radius */}
+        {/* Outer container with rounded corners */}
         <div className="absolute inset-0 rounded-lg overflow-hidden">
-          {/* Background image layer */}
+          {/* Image container */}
           <div className="absolute inset-0">
             {article.image_url ? (
               <img 
@@ -125,37 +125,28 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          {/* Text overlay container */}
+          {/* Dark overlay that extends beyond the visible area */}
           <div className="absolute inset-x-0 bottom-0">
-            {/* Dark backdrop with extended bounds */}
-            <div 
-              className="absolute inset-0 bottom-[-2px] bg-black/70 backdrop-blur-sm"
-              style={{
-                clipPath: 'inset(0 0 -2px 0)',
-                borderBottomLeftRadius: 'inherit',
-                borderBottomRightRadius: 'inherit'
-              }}
-            />
-            
-            {/* Content container */}
-            <div className="relative p-4">
-              <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
-                {article.title}
-              </h3>
-              {renderProfileInfo(position)}
+            {/* Inner content container with padding */}
+            <div className="relative z-10 p-4">
+              {/* Actual dark backdrop that extends beyond bottom */}
+              <div className="absolute inset-0 -bottom-1 bg-black/70 backdrop-blur-sm" />
+              
+              {/* Content */}
+              <div className="relative z-20">
+                <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
+                  {article.title}
+                </h3>
+                {renderProfileInfo(position)}
+              </div>
             </div>
           </div>
         </div>
       </div>
     );
 
-    const wrapperClasses = cn(
-      "h-full rounded-lg overflow-hidden",
-      article.link && "transition-opacity hover:opacity-95 cursor-pointer"
-    );
-
     if (!article.link) {
-      return <div className={wrapperClasses}>{content}</div>;
+      return <div className="h-full rounded-lg overflow-hidden">{content}</div>;
     }
 
     return (
@@ -163,7 +154,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className={wrapperClasses}
+        className="block h-full transition-opacity hover:opacity-95 cursor-pointer rounded-lg overflow-hidden"
       >
         {content}
       </a>
