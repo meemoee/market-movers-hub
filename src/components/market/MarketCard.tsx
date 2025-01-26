@@ -55,6 +55,8 @@ export function MarketCard({
       {isExpanded && (
         <MarketDetails
           description={market.description}
+          bestBid={market.final_best_bid}
+          bestAsk={market.final_best_ask}
           marketId={market.market_id}
           question={market.question}
         />

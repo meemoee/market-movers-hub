@@ -1,82 +1,128 @@
-import { QADisplay } from "./QADisplay";
-import { OrderBook } from "./OrderBook";
-import PriceChart from "./PriceChart";
-import { WebResearchCard } from "./WebResearchCard";
-import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
-import type { PriceData, MarketEvent } from './chart/types';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import PriceChart from './PriceChart';
+import { QADisplay } from './QADisplay';
 
 interface MarketDetailsProps {
+  bestBid: number;
+  bestAsk: number;
   description?: string;
   marketId: string;
   question: string;
 }
 
 export function MarketDetails({
+  bestBid,
+  bestAsk,
   description,
   marketId,
-  question,
+  question
 }: MarketDetailsProps) {
-  const { data: priceData = [] } = useQuery({
-    queryKey: ['market-prices', marketId],
+  const [selectedInterval, setSelectedInterval] = useState('1d');
+
+  const { data: priceHistory, isLoading: isPriceLoading } = useQuery({
+    queryKey: ['priceHistory', marketId, selectedInterval],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('market_prices')
-        .select('*')
-        .eq('market_id', marketId)
-        .order('timestamp', { ascending: true });
+      console.log('Fetching price history for market:', marketId);
+      const response = await supabase.functions.invoke<{ t: string; y: number }[]>('price-history', {
+        body: JSON.stringify({ marketId, interval: selectedInterval })
+      });
+
+      if (response.error) {
+        console.error('Price history error:', response.error);
+        throw response.error;
+      }
       
-      // Transform the data to match PriceData type
-      return (data || []).map(d => ({
-        time: new Date(d.timestamp).getTime(),
-        price: d.last_traded_price || 0
+      console.log('Price history response:', response.data);
+      return response.data.map(point => ({
+        time: new Date(point.t).getTime(),
+        price: point.y * 100
       }));
-    }
+    },
+    enabled: !!marketId
   });
 
-  const { data: events = [] } = useQuery({
-    queryKey: ['market-events', marketId],
+  const { data: marketEvents, isLoading: isEventsLoading } = useQuery({
+    queryKey: ['marketEvents', marketId],
     queryFn: async () => {
-      const { data } = await supabase
+      console.log('Fetching market events for:', marketId);
+      const { data, error } = await supabase
         .from('market_events')
         .select('*')
         .eq('market_id', marketId)
         .order('timestamp', { ascending: true });
-      
-      // Transform the data to match MarketEvent type
-      return (data || []).map(d => ({
-        id: d.id,
-        event_type: d.event_type,
-        title: d.title,
-        description: d.description,
-        timestamp: new Date(d.timestamp).getTime(),
-        icon: d.icon
+
+      if (error) {
+        console.error('Market events error:', error);
+        throw error;
+      }
+
+      console.log('Market events response:', data);
+      return data.map(event => ({
+        ...event,
+        timestamp: new Date(event.timestamp).getTime()
       }));
-    }
+    },
+    enabled: !!marketId
   });
+
+  const isLoading = isPriceLoading || isEventsLoading;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <PriceChart 
-          marketId={marketId} 
-          data={priceData}
-          events={events}
-          selectedInterval="1d"
-        />
-        <OrderBook marketId={marketId} />
-      </div>
-      
-      {description && (
-        <div className="space-y-4">
-          <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-            {description}
+      {/* Price History Section */}
+      <div>
+        <div className="text-sm text-muted-foreground mb-2">Price History</div>
+        {isLoading ? (
+          <div className="h-[300px] flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-          <WebResearchCard description={description} />
+        ) : priceHistory && priceHistory.length > 0 ? (
+          <PriceChart
+            data={priceHistory}
+            events={marketEvents || []}
+            selectedInterval={selectedInterval}
+            onIntervalSelect={setSelectedInterval}
+          />
+        ) : (
+          <div className="h-[300px] flex items-center justify-center text-sm text-muted-foreground">
+            No price history available
+          </div>
+        )}
+      </div>
+
+      {/* QA Tree Section */}
+      <div className="mt-6 border-t border-border pt-4">
+        <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
+        <QADisplay 
+          marketId={marketId} 
+          marketQuestion={question}
+        />
+      </div>
+
+      {/* Market Details Section */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <div className="text-sm text-muted-foreground">Best Bid</div>
+          <div className="text-lg font-medium text-green-500">
+            {(bestBid * 100).toFixed(2)}¢
+          </div>
+        </div>
+        <div>
+          <div className="text-sm text-muted-foreground">Best Ask</div>
+          <div className="text-lg font-medium text-red-500">
+            {(bestAsk * 100).toFixed(2)}¢
+          </div>
+        </div>
+      </div>
+
+      {description && (
+        <div>
+          <div className="text-sm text-muted-foreground mb-1">Description</div>
+          <div className="text-sm">{description}</div>
         </div>
       )}
-
-      <QADisplay marketId={marketId} marketQuestion={question} />
     </div>
   );
 }

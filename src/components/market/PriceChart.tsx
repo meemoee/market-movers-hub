@@ -31,14 +31,6 @@ interface ChartProps {
   margin?: { top: number; right: number; bottom: number; left: number };
 }
 
-interface PriceChartProps {
-  marketId: string;
-  data: PriceData[];
-  events: MarketEvent[];
-  selectedInterval: string;
-  onIntervalSelect?: (interval: string) => void;
-}
-
 function Chart({ 
   data, 
   events,
@@ -288,11 +280,17 @@ function Chart({
   );
 }
 
+interface PriceChartProps {
+  data: PriceData[];
+  events: MarketEvent[];
+  selectedInterval: string;
+  onIntervalSelect?: (interval: string) => void;
+}
+
 export default function PriceChart({ 
-  marketId,
-  data = [], 
-  events = [],
-  selectedInterval = '1d', 
+  data, 
+  events,
+  selectedInterval, 
   onIntervalSelect 
 }: PriceChartProps) {
   const normalizedData = useMemo(() => 
