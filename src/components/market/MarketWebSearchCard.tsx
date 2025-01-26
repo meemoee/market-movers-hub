@@ -3,12 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Loader2, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast"; // Added proper import
 
 interface MarketWebSearchCardProps {
   marketDescription: string;
 }
 
 export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardProps) {
+  const { toast } = useToast(); // Initialize toast hook
   const [isSearching, setIsSearching] = useState(false);
   const [websiteCount, setWebsiteCount] = useState(0);
   const [analysis, setAnalysis] = useState<string>("");
@@ -34,6 +36,11 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
       if (error) {
         console.error('Error invoking web-research function:', error);
         setError('Failed to start web research');
+        toast({
+          variant: "destructive",
+          title: "Research Error",
+          description: "Failed to start web research. Please try again."
+        });
         throw error;
       }
   
