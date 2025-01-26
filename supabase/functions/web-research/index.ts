@@ -12,9 +12,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Browser-like headers to avoid some 403 errors
+const fetchHeaders = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.5',
+  'Connection': 'keep-alive',
+}
+
 class ContentCollector {
   totalChars: number
-  collectedData: { url: string; content: string }[]
+  collectedData: { url: string; content: string; title?: string }[]
   seenUrls: Set<string>
 
   constructor() {
@@ -23,7 +31,7 @@ class ContentCollector {
     this.seenUrls = new Set()
   }
 
-  addContent(url: string, content: string): boolean {
+  addContent(url: string, content: string, title?: string): boolean {
     if (this.totalChars >= TOTAL_CHAR_LIMIT) {
       return false
     }
@@ -33,7 +41,8 @@ class ContentCollector {
       this.totalChars += contentLen
       this.collectedData.push({
         url,
-        content
+        content,
+        title
       })
       return true
     }
@@ -59,6 +68,16 @@ class WebScraper {
 
   private sendUpdate(message: string) {
     const data = `data: ${JSON.stringify({ message })}\n\n`
+    this.controller.enqueue(this.encoder.encode(data))
+  }
+
+  private sendError(message: string) {
+    const data = `data: ${JSON.stringify({ type: 'error', message })}\n\n`
+    this.controller.enqueue(this.encoder.encode(data))
+  }
+
+  private sendResults(results: any[]) {
+    const data = `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
     this.controller.enqueue(this.encoder.encode(data))
   }
 
@@ -90,43 +109,78 @@ class WebScraper {
     }
   }
 
-  parseHtml(html: string) {
-    const $ = load(html)
+  extractTextContent(html: string): string {
+    // Remove scripts and style elements
+    html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
     
-    // Remove scripts and styles
-    $('script, style').remove()
-    
-    // Get text content and clean it
-    const text = $('body').text()
-      .split('\n')
-      .map(line => line.trim())
-      .filter(Boolean)
-      .join(' ')
+    // Remove HTML tags while preserving content
+    const text = html.replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
-      
+    
     return text
   }
 
+  extractTitle(html: string): string {
+    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
+    return titleMatch ? titleMatch[1].trim() : ''
+  }
+
+  shouldSkipUrl(url: string): boolean {
+    const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
+    return skipDomains.some(domain => url.includes(domain))
+  }
+
   async fetchAndParseContent(url: string) {
+    if (this.shouldSkipUrl(url)) {
+      this.sendUpdate(`Skipping social media URL: ${url}`)
+      return
+    }
+
     try {
       this.sendUpdate(`Fetching: ${url}`)
-      const response = await fetch(url)
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
+
+      const response = await fetch(url, {
+        headers: fetchHeaders,
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+
       if (!response.ok) {
         throw new Error(`HTTP error: ${response.status}`)
       }
 
+      const contentType = response.headers.get('content-type')
+      if (!contentType?.includes('text/html')) {
+        throw new Error('Not an HTML page')
+      }
+
       const html = await response.text()
-      const content = this.parseHtml(html).slice(0, PER_PAGE_LIMIT)
+      const content = this.extractTextContent(html)
+      const title = this.extractTitle(html)
 
       if (content) {
-        const added = this.collector.addContent(url, content)
-        if (!added) {
+        const added = this.collector.addContent(url, content.slice(0, PER_PAGE_LIMIT), title)
+        if (added) {
+          this.sendResults([{
+            url,
+            content: content.slice(0, PER_PAGE_LIMIT),
+            title
+          }])
+        } else {
           throw new Error('Content limit reached')
         }
       }
     } catch (error) {
       console.error(`Error processing ${url}:`, error)
+      if (error.message !== 'Content limit reached') {
+        this.sendError(`Failed to process ${url}: ${error.message}`)
+      }
     }
   }
 
@@ -172,7 +226,6 @@ class WebScraper {
         break
       }
 
-      // Small pause between batches
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 
@@ -180,7 +233,7 @@ class WebScraper {
   }
 
   async run(query: string) {
-    this.sendUpdate(`Starting web scraping for query: ${query}`)
+    this.sendUpdate(`Starting web research for query: ${query}`)
     const searchResults = await this.searchBing(query)
     
     if (!searchResults.length) {
@@ -201,7 +254,6 @@ class WebScraper {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -213,20 +265,11 @@ serve(async (req) => {
       throw new Error('BING_API_KEY is not configured')
     }
 
-    // Create a stream for sending updates
     const stream = new ReadableStream({
       start: async (controller) => {
         try {
           const scraper = new WebScraper(BING_API_KEY, controller)
           const results = await scraper.run(query)
-          
-          // Send the final results
-          controller.enqueue(
-            new TextEncoder().encode(
-              `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
-            )
-          )
-          
           controller.close()
         } catch (error) {
           controller.error(error)

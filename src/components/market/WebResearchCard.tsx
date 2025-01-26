@@ -12,17 +12,20 @@ interface WebResearchCardProps {
 interface ResearchResult {
   url: string
   content: string
+  title?: string
 }
 
 export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
     setResults([])
+    setError(null)
 
     try {
       const response = await supabase.functions.invoke<any>('web-research', {
@@ -53,7 +56,9 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                   try {
                     const parsed = JSON.parse(jsonStr)
                     if (parsed.type === 'results') {
-                      setResults(parsed.data)
+                      setResults(prev => [...prev, ...parsed.data])
+                    } else if (parsed.type === 'error') {
+                      setError(parsed.message)
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
                     }
@@ -78,7 +83,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       }
     } catch (error) {
       console.error('Error in web research:', error)
-      setProgress(prev => [...prev, 'Error occurred during research'])
+      setError('Error occurred during research')
     } finally {
       setIsLoading(false)
     }
@@ -108,8 +113,14 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </Button>
       </div>
 
+      {error && (
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
+          {error}
+        </div>
+      )}
+
       {progress.length > 0 && (
-        <ScrollArea className="h-[200px] rounded-md border p-4">
+        <ScrollArea className="h-[100px] rounded-md border p-4">
           {progress.map((message, index) => (
             <div key={index} className="text-sm text-muted-foreground">
               {message}
@@ -119,19 +130,24 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       )}
 
       {results.length > 0 && (
-        <ScrollArea className="h-[300px] rounded-md border p-4">
+        <ScrollArea className="h-[400px] rounded-md border p-4">
           {results.map((result, index) => (
-            <div key={index} className="mb-4 last:mb-0">
-              <a 
-                href={result.url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-sm font-medium text-blue-500 hover:underline"
-              >
-                {result.url}
-              </a>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {result.content.slice(0, 200)}...
+            <div key={index} className="mb-6 last:mb-0 p-3 bg-accent/5 rounded-lg">
+              <div className="flex items-start justify-between gap-4">
+                <h4 className="text-sm font-medium">
+                  {result.title || new URL(result.url).hostname}
+                </h4>
+                <a 
+                  href={result.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-500 hover:underline shrink-0"
+                >
+                  View Source
+                </a>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground line-clamp-3">
+                {result.content}
               </p>
             </div>
           ))}
