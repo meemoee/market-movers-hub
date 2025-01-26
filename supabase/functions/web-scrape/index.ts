@@ -119,7 +119,7 @@ class WebScraper {
       const content = $('body').text()
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 2500) // Reduced from 5000
+        .slice(0, 5000) // Reduced from 5000
 
       if (content) {
         const added = this.collector.addContent(url, content, title)
