@@ -1,3 +1,4 @@
+import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -9,13 +10,13 @@ const corsHeaders = {
 }
 
 async function generateSearchQueries(intent: string, openrouterApiKey: string): Promise<string[]> {
+  console.log('Generating search queries for:', intent)
+  
   const response = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
       "Authorization": `Bearer ${openrouterApiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": 'http://localhost:5173',
-      "X-Title": 'Market Analysis App',
+      "Content-Type": "application/json"
     },
     body: JSON.stringify({
       "model": "google/gemini-flash-1.5",
@@ -25,88 +26,112 @@ async function generateSearchQueries(intent: string, openrouterApiKey: string): 
       ],
       "response_format": {"type": "json_object"}
     })
-  });
+  })
 
-  if (!response.ok) throw new Error(`OpenRouter API error: ${response.status}`);
-  const result = await response.json();
-  const content = result.choices[0].message.content.trim();
-  const queriesData = JSON.parse(content);
-  return queriesData.queries || [];
+  if (!response.ok) {
+    console.error(`OpenRouter API error: ${response.status}`)
+    throw new Error(`OpenRouter API error: ${response.status}`)
+  }
+
+  const result = await response.json()
+  console.log('OpenRouter response:', result)
+  const content = result.choices[0].message.content.trim()
+  const queriesData = JSON.parse(content)
+  console.log('Generated queries:', queriesData.queries)
+  return queriesData.queries || []
 }
 
 async function performWebSearch(query: string, bingApiKey: string): Promise<any[]> {
+  console.log('Performing web search for query:', query)
+  
   const response = await fetch(`${BING_SEARCH_URL}?q=${encodeURIComponent(query)}&count=50&responseFilter=Webpages`, {
     headers: {
       'Ocp-Apim-Subscription-Key': bingApiKey
     }
-  });
+  })
 
-  if (!response.ok) throw new Error(`Bing Search API error: ${response.status}`);
-  const data = await response.json();
-  return data.webPages?.value || [];
+  if (!response.ok) {
+    console.error(`Bing Search API error: ${response.status}`)
+    throw new Error(`Bing Search API error: ${response.status}`)
+  }
+
+  const data = await response.json()
+  console.log('Received search results:', data.webPages?.value?.length || 0, 'results')
+  return data.webPages?.value || []
 }
 
 async function fetchContent(url: string): Promise<string | null> {
+  console.log('🔍 Attempting to fetch content from:', url)
   try {
+    console.log('📡 Sending fetch request to:', url)
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
       }
-    });
+    })
     
-    if (!response.ok) return null;
+    console.log(`📥 Received response from ${url}, status:`, response.status)
+    if (!response.ok) {
+      console.error(`❌ Failed to fetch ${url}: ${response.status}`)
+      return null
+    }
     
-    const contentType = response.headers.get('content-type');
-    if (!contentType?.includes('text/html')) return null;
+    const contentType = response.headers.get('content-type')
+    console.log(`📄 Content-Type for ${url}:`, contentType)
+    if (!contentType || !contentType.includes('text/html')) {
+      console.error(`⚠️ Skipping non-HTML content from ${url}: ${contentType}`)
+      return null
+    }
     
-    const text = await response.text();
+    console.log(`📖 Reading text content from ${url}`)
+    const text = await response.text()
+    console.log(`✅ Successfully fetched content from ${url}, length: ${text.length}`)
+    
+    // Basic HTML cleaning
+    console.log(`🧹 Cleaning HTML content for ${url}`)
     const cleanedText = text
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
-      .trim();
+      .trim()
     
-    return cleanedText.slice(0, 5000);
+    const truncatedText = cleanedText.slice(0, 5000)
+    console.log(`✂️ Truncated content length for ${url}:`, truncatedText.length)
+    return truncatedText
   } catch (error) {
-    console.error(`Error fetching ${url}:`, error);
-    return null;
+    console.error(`❌ Error fetching ${url}:`, error)
+    return null
   }
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-  const bingApiKey = Deno.env.get('BING_API_KEY');
+  console.log('🚀 Starting web research function')
   
-  if (!openrouterApiKey || !bingApiKey) {
-    return new Response(
-      JSON.stringify({ error: 'API keys not configured' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
   }
 
-  const encoder = new TextEncoder();
-  const stream = new TransformStream();
-  const writer = stream.writable.getWriter();
+  const encoder = new TextEncoder()
 
   try {
-    const { description } = await req.json();
-    if (!description) throw new Error('Description is required');
+    const { description } = await req.json()
+    console.log('📝 Received description:', description)
+    
+    if (!description) {
+      throw new Error('No description provided')
+    }
 
-    // Set up timeout and state tracking
-    const timeout = setTimeout(() => {
-      writer.abort(new Error('Operation timed out'));
-    }, 300000); // 5 minute timeout
+    const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
+    const bingApiKey = Deno.env.get('BING_API_KEY')
+    
+    if (!openrouterApiKey || !bingApiKey) {
+      throw new Error('Required API keys not configured')
+    }
 
-    let processedCount = 0;
-    let validContentCount = 0;
-    const validContents: string[] = [];
-
-    // Initialize SSE response
+    const stream = new TransformStream()
+    const writer = stream.writable.getWriter()
+    
     const response = new Response(stream.readable, {
       headers: {
         ...corsHeaders,
@@ -114,120 +139,130 @@ serve(async (req) => {
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
       }
-    });
+    })
 
-    // Generate search queries
-    const queries = await generateSearchQueries(description, openrouterApiKey);
-    if (!queries.length) throw new Error('Failed to generate search queries');
+    console.log('🔍 Generating search queries')
+    const queries = await generateSearchQueries(description, openrouterApiKey)
+    console.log('✅ Generated queries:', queries)
 
-    // Perform searches
-    const searchPromises = queries.map(query => performWebSearch(query, bingApiKey));
-    const searchResults = await Promise.all(searchPromises);
-    const allResults = searchResults.flat();
+    console.log('🌐 Starting parallel searches')
+    const searchPromises = queries.map(query => performWebSearch(query, bingApiKey))
+    const searchResults = await Promise.all(searchPromises)
+    const allResults = searchResults.flat()
+    console.log('📊 Total search results:', allResults.length)
 
-    // Send initial count
+    console.log('📡 Sending initial website count update')
     await writer.write(encoder.encode(
-      `data: ${JSON.stringify({ type: 'websites', count: processedCount })}\n\n`
-    ));
+      `data: ${JSON.stringify({ type: 'websites', count: allResults.length })}\n\n`
+    ))
 
-    // Process content in batches
-    const batchSize = 5;
+    const batchSize = 5
+    const validContents: string[] = []
+    
+    console.log('📦 Starting content fetching in batches')
     for (let i = 0; i < allResults.length; i += batchSize) {
-      const batch = allResults.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i/batchSize) + 1
+      console.log(`🔄 Processing batch ${batchNumber} of ${Math.ceil(allResults.length/batchSize)}`)
+      const batch = allResults.slice(i, i + batchSize)
       
-      // Process batch in parallel
-      const batchPromises = batch.map(result => fetchContent(result.url));
-      const contents = await Promise.all(batchPromises);
+      console.log(`📥 Fetching content for batch ${batchNumber}:`, batch.map(r => r.url))
+      const batchPromises = batch.map(result => fetchContent(result.url))
+      const batchContents = await Promise.all(batchPromises)
       
-      // Count valid contents
-      contents.forEach(content => {
-        if (content) {
-          validContents.push(content);
-          validContentCount++;
-          processedCount++;
-          // Send count update
-          writer.write(encoder.encode(
-            `data: ${JSON.stringify({ type: 'websites', count: processedCount })}\n\n`
-          ));
-        }
-      });
-
-      // Add delay between batches
-      await new Promise(resolve => setTimeout(resolve, 100));
+      const validBatchContents = batchContents.filter(Boolean) as string[]
+      console.log(`✅ Valid contents in batch ${batchNumber}:`, validBatchContents.length)
+      validContents.push(...validBatchContents)
+      
+      console.log(`📊 Total valid contents so far: ${validContents.length}`)
+      await writer.write(encoder.encode(
+        `data: ${JSON.stringify({ type: 'websites', count: validContents.length })}\n\n`
+      ))
+      
+      console.log(`⏳ Adding delay before next batch`)
+      await new Promise(resolve => setTimeout(resolve, 100))
     }
 
-    // Process final analysis
-    if (validContents.length > 0) {
-      const analysisResponse = await fetch(OPENROUTER_URL, {
-        method: 'POST',
-        headers: {
-          "Authorization": `Bearer ${openrouterApiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": 'http://localhost:5173',
-          "X-Title": 'Market Analysis App',
-        },
-        body: JSON.stringify({
-          "model": "google/gemini-flash-1.5",
-          "messages": [
-            {"role": "system", "content": "You are a helpful assistant that synthesizes information from multiple sources."},
-            {"role": "user", "content": `Analyze the following search results about ${description}:\n\n${validContents.join('\n\n')}`}
-          ],
-          "stream": true
-        })
-      });
+    console.log('🏁 Content fetching complete. Total valid contents:', validContents.length)
 
-      if (!analysisResponse.ok) throw new Error('Analysis request failed');
+    console.log('📝 Preparing content for analysis')
+    const analysisPrompt = `Analyze the following search results about ${description}:\n\n` +
+      validContents.map((content, index) => 
+        `Content from result ${index + 1}:\n${content}\n`
+      ).join('\n')
 
-      const reader = analysisResponse.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
+    console.log('🤖 Starting analysis with OpenRouter')
+    const analysisResponse = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        "Authorization": `Bearer ${openrouterApiKey}`,
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream"
+      },
+      body: JSON.stringify({
+        "model": "google/gemini-flash-1.5",
+        "messages": [
+          {"role": "system", "content": "You are a helpful assistant that synthesizes information from multiple sources."},
+          {"role": "user", "content": analysisPrompt}
+        ],
+        "stream": true
+      })
+    })
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    if (!analysisResponse.ok) {
+      console.error('❌ Failed to get analysis:', analysisResponse.status)
+      throw new Error('Failed to get analysis')
+    }
 
-        buffer += decoder.decode(value);
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+    console.log('📡 Starting to stream analysis')
+    const reader = analysisResponse.body?.getReader()
+    const decoder = new TextDecoder()
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') continue;
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) {
+        console.log('✅ Analysis stream complete')
+        break
+      }
 
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices?.[0]?.delta?.content;
-              if (content) {
-                await writer.write(encoder.encode(
-                  `data: ${JSON.stringify({ type: 'analysis', content })}\n\n`
-                ));
-              }
-            } catch (e) {
-              continue;
+      const chunk = decoder.decode(value)
+      console.log('📝 Received analysis chunk:', chunk)
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+
+          try {
+            const parsed = JSON.parse(data)
+            const content = parsed.choices?.[0]?.delta?.content
+            if (content) {
+              console.log('📤 Sending analysis content:', content)
+              await writer.write(encoder.encode(
+                `data: ${JSON.stringify({ type: 'analysis', content })}\n\n`
+              ))
             }
+          } catch (e) {
+            console.error('❌ Error parsing SSE data:', e)
           }
         }
       }
     }
 
-    clearTimeout(timeout);
-    await writer.close();
-    return response;
+    await writer.close()
+    return response
 
   } catch (error) {
-    console.error('Error in web-research function:', error);
-    try {
-      await writer.write(encoder.encode(
-        `data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`
-      ));
-      await writer.close();
-    } catch (writeError) {
-      console.error('Error writing error message:', writeError);
-    }
+    console.error('❌ Error in web-research function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+      { 
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      }
+    )
   }
-});
+})
