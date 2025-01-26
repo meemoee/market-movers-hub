@@ -62,7 +62,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
 
     return (
-      <div className="flex items-center gap-2 mt-2">
+      <div className="flex items-center gap-2">
         <Avatar className="h-6 w-6">
           <AvatarFallback className="bg-primary/10">
             <UserCircle className="h-4 w-4" />
@@ -102,9 +102,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     }
 
     const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden flex flex-col">
+      <div className="relative h-full w-full group rounded-lg overflow-hidden">
         {/* Image Section */}
-        <div className="relative h-[65%] overflow-hidden rounded-lg">
+        <div className="absolute inset-0">
           {article.image_url ? (
             <img 
               src={article.image_url} 
@@ -123,9 +123,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           )}
         </div>
 
-        {/* Content Section */}
-        <div className="flex-1 bg-card/95 backdrop-blur-sm p-4 rounded-lg mt-2">
-          <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2">
+        {/* Content Section - Dark overlay at bottom */}
+        <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-sm p-4">
+          <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
             {article.title}
           </h3>
           {renderProfileInfo(position)}
@@ -151,7 +151,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ aspectRatio: '4/3' }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3" style={{ aspectRatio: '16/9' }}>
         <div className="row-span-2 h-full">
           {renderArticle(1)}
         </div>
