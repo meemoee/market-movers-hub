@@ -36,9 +36,7 @@ class WebScraper {
   private controller: ReadableStreamDefaultController<any>
 
   constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
-    if (!bingApiKey) {
-      throw new Error('Bing API key is required')
-    }
+    if (!bingApiKey) throw new Error('Bing API key is required')
     this.bingApiKey = bingApiKey
     this.collector = new ContentCollector()
     this.encoder = new TextEncoder()
@@ -58,21 +56,16 @@ class WebScraper {
   async searchBing(query: string) {
     this.sendUpdate(`Searching Bing for: ${query}`)
     
-    const headers = {
-      "Ocp-Apim-Subscription-Key": this.bingApiKey
-    }
-    
+    const headers = { "Ocp-Apim-Subscription-Key": this.bingApiKey }
     const params = new URLSearchParams({
       q: query,
-      count: "50",
+      count: "25", // Reduced from 50 to limit processing
       responseFilter: "Webpages"
     })
 
     try {
       const response = await fetch(`${BING_SEARCH_URL}?${params}`, { headers })
-      if (!response.ok) {
-        throw new Error(`Bing API error: ${response.status}`)
-      }
+      if (!response.ok) throw new Error(`Bing API error: ${response.status}`)
       const data = await response.json()
       const results = data.webPages?.value || []
       this.sendUpdate(`Found ${results.length} search results`)
@@ -84,7 +77,10 @@ class WebScraper {
   }
 
   shouldSkipUrl(url: string): boolean {
-    const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
+    const skipDomains = [
+      'reddit.com', 'facebook.com', 'twitter.com', 'instagram.com',
+      'youtube.com', 'tiktok.com', 'pinterest.com'
+    ]
     return skipDomains.some(domain => url.includes(domain))
   }
 
@@ -93,7 +89,7 @@ class WebScraper {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000)
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // Reduced timeout
 
       const response = await fetch(url, {
         headers: {
@@ -115,21 +111,20 @@ class WebScraper {
       
       $('script').remove()
       $('style').remove()
+      $('nav').remove()
+      $('header').remove()
+      $('footer').remove()
       
       const title = $('title').text().trim()
       const content = $('body').text()
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 5000)
+        .slice(0, 2500) // Reduced from 5000
 
       if (content) {
         const added = this.collector.addContent(url, content, title)
         if (added) {
-          this.sendResults([{
-            url,
-            content,
-            title
-          }])
+          this.sendResults([{ url, content, title }])
         }
       }
     } catch (error) {
@@ -137,15 +132,13 @@ class WebScraper {
     }
   }
 
-  async processBatch(urls: string[], batchSize = 15) {
+  async processBatch(urls: string[], batchSize = 10) { // Reduced from 15
     const tasks = []
     for (const url of urls.slice(0, batchSize)) {
       tasks.push(this.fetchAndParseContent(url))
     }
 
-    if (tasks.length === 0) {
-      return false
-    }
+    if (tasks.length === 0) return false
 
     try {
       await Promise.all(tasks)
@@ -162,12 +155,10 @@ class WebScraper {
       this.sendUpdate(`Processing search query: ${query}`)
       const searchResults = await this.searchBing(query)
       
-      if (!searchResults.length) {
-        continue
-      }
+      if (!searchResults.length) continue
 
       const urls = searchResults.map(result => result.url)
-      const batchSize = 40
+      const batchSize = 20 // Reduced from 40
 
       for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
         const batchUrls = urls.slice(startIdx, startIdx + batchSize)
@@ -175,7 +166,7 @@ class WebScraper {
         
         if (!shouldContinue) break
 
-        await new Promise(resolve => setTimeout(resolve, 100))
+        await new Promise(resolve => setTimeout(resolve, 200)) // Increased delay between batches
       }
     }
 
