@@ -63,7 +63,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
 
     return (
-      <div className="flex items-center gap-2 mt-2">
+      <div className="flex items-center gap-2">
         <Avatar className="h-6 w-6">
           <AvatarFallback className="bg-primary/10">
             <UserCircle className="h-4 w-4" />
@@ -103,9 +103,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     }
 
     const content = (
-      <div className="relative h-full w-full group flex flex-col">
+      <div className="relative h-full w-full group">
         {/* Image Container */}
-        <div className="relative w-full h-3/4 rounded-lg overflow-hidden mb-4">
+        <div className="relative h-[70%] rounded-lg overflow-hidden">
           {article.image_url ? (
             <img 
               src={article.image_url} 
@@ -118,8 +118,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         </div>
         
         {/* Content Card */}
-        <Card className="flex-1 p-4 bg-card/95 backdrop-blur-sm">
-          <h3 className="text-xl font-black leading-tight mb-2 line-clamp-2">
+        <Card className="absolute bottom-0 left-0 right-0 p-4 bg-card/95 backdrop-blur-sm min-h-[30%]">
+          <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2">
             {article.title}
           </h3>
           {renderProfileInfo(position)}
@@ -145,14 +145,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 auto-rows-fr gap-3">
-        <div className="row-span-2 aspect-square">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 h-[600px]">
+        <div className="row-span-2 h-full">
           {renderArticle(1)}
         </div>
-        <div className="h-full">
+        <div className="h-[294px]">
           {renderArticle(2)}
         </div>
-        <div className="h-full">
+        <div className="h-[294px]">
           {renderArticle(3)}
         </div>
       </div>
