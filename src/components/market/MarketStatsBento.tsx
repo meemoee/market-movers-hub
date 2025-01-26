@@ -125,29 +125,18 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          {/* Dark overlay container with negative margin technique */}
+          {/* Dark overlay container */}
           <div className="absolute inset-x-0 bottom-0">
-            <div className="relative">
-              {/* Extended dark backdrop container */}
-              <div className="absolute -left-1 -right-1 -bottom-1 overflow-hidden">
-                {/* Dark backdrop with blur and opacity */}
-                <div 
-                  className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-                  style={{
-                    transform: 'scale(1.1)',
-                    margin: '-2px',
-                    borderRadius: 'inherit',
-                  }}
-                />
-              </div>
-              
-              {/* Content container */}
-              <div className="relative z-20 p-4">
-                <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
-                  {article.title}
-                </h3>
-                {renderProfileInfo(position)}
-              </div>
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent h-32">
+              <div className="absolute inset-0 backdrop-blur-[2px]" />
+            </div>
+            
+            {/* Content container */}
+            <div className="relative z-20 p-4">
+              <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
+                {article.title}
+              </h3>
+              {renderProfileInfo(position)}
             </div>
           </div>
         </div>
