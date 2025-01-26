@@ -125,22 +125,26 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          {/* Dark overlay with content */}
-          <div className="absolute inset-x-0 bottom-0">
-            {/* Content wrapper with padding */}
-            <div className="relative p-4">
-              {/* Dark backdrop that extends beyond bottom */}
+          {/* Dark overlay container */}
+          <div className="absolute inset-x-0 bottom-0 overflow-hidden rounded-b-lg">
+            {/* Content wrapper */}
+            <div className="relative">
+              {/* Dark backdrop with multiple techniques to prevent corner leakage */}
               <div 
-                className="absolute inset-0 -bottom-2 bg-black/70 backdrop-blur-sm"
+                className="absolute inset-0 bg-black/70 backdrop-blur-sm"
                 style={{
-                  clipPath: 'inset(0 0 -2px 0)',
+                  bottom: '-2px',
+                  left: '-1px',
+                  right: '-1px',
+                  clipPath: 'inset(0 0 -2px -1px)',
                   borderBottomLeftRadius: 'inherit',
-                  borderBottomRightRadius: 'inherit'
+                  borderBottomRightRadius: 'inherit',
+                  transform: 'scale(1.02)', // Slight scale to ensure coverage
                 }}
               />
               
-              {/* Content */}
-              <div className="relative z-20">
+              {/* Content container with padding */}
+              <div className="relative z-20 p-4">
                 <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
                   {article.title}
                 </h3>
