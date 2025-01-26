@@ -89,7 +89,7 @@ class WebScraper {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000) // Reduced timeout
+      const timeoutId = setTimeout(() => controller.abort(), 3000) // Reduced timeout
 
       const response = await fetch(url, {
         headers: {
