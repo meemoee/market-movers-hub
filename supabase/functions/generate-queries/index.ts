@@ -31,15 +31,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates search queries."
+            content: "You are a helpful assistant that generates search queries. Always respond with valid JSON containing an array of exactly 5 search queries."
           },
           {
             role: "user",
-            content: `Generate 5 diverse search queries to gather comprehensive information about the following topic. Focus on different aspects that would be relevant for market research:
-
-Topic: ${query}
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`
+            content: `Generate 5 diverse search queries to gather comprehensive information about: ${query}. Focus on different aspects that would be relevant for market research.`
           }
         ],
         response_format: { type: "json_object" }
@@ -51,13 +47,29 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     }
 
     const result = await response.json()
-    const content = result.choices[0].message.content.trim()
-    const queriesData = JSON.parse(content)
+    console.log('Raw OpenRouter response:', result)
     
-    console.log('Generated queries:', queriesData.queries)
+    const content = result.choices[0].message.content
+    console.log('Content from OpenRouter:', content)
+    
+    let queries
+    try {
+      // Parse the content as JSON
+      const parsedContent = JSON.parse(content)
+      queries = parsedContent.queries || []
+      
+      if (!Array.isArray(queries)) {
+        throw new Error('Queries must be an array')
+      }
+      
+      console.log('Successfully parsed queries:', queries)
+    } catch (parseError) {
+      console.error('Error parsing queries:', parseError)
+      throw new Error('Failed to parse queries from response')
+    }
 
     return new Response(
-      JSON.stringify({ queries: queriesData.queries }),
+      JSON.stringify({ queries }),
       { 
         headers: { 
           ...corsHeaders,
