@@ -3,6 +3,13 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { UserCircle, ArrowUp, ArrowDown } from "lucide-react";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "@/components/ui/carousel";
 
 interface NewsArticle {
   id: string;
@@ -40,7 +47,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
-        .or(`position.eq.1,position.eq.2,position.eq.3`)
         .order('position', { ascending: true })
         .order('created_at', { ascending: false });
 
@@ -86,26 +92,20 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     );
   };
 
-  const renderArticle = (position: number) => {
-    const article = articles.find(a => a.position === position);
-    
+  const renderArticle = (article: NewsArticle) => {
     if (!article) {
-      const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
         <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
           <div 
             className="absolute inset-0 rounded-lg"
-            style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
+            style={{ background: PLACEHOLDER_GRADIENTS[0] }}
           />
         </div>
       );
     }
 
     const content = (
-      <div className={cn(
-        "relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card",
-        position === 1 ? "aspect-square" : "aspect-[4/3]"
-      )}>
+      <div className="relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card">
         {/* Image Container */}
         <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg">
           {article.image_url ? (
@@ -128,13 +128,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
         {/* Content Container */}
         <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between">
-          <h3 className={cn(
-            "font-bold leading-tight mb-2 line-clamp-2",
-            position === 1 ? "text-2xl" : "text-lg"
-          )}>
+          <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
             {article.title}
           </h3>
-          {renderProfileInfo(position)}
+          {renderProfileInfo(article.position)}
         </div>
       </div>
     );
@@ -157,17 +154,17 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="row-span-2 aspect-square">
-          {renderArticle(1)}
-        </div>
-        <div className="h-full">
-          {renderArticle(2)}
-        </div>
-        <div className="h-full">
-          {renderArticle(3)}
-        </div>
-      </div>
+      <Carousel className="w-full">
+        <CarouselContent>
+          {articles.map((article) => (
+            <CarouselItem key={article.id} className="h-[500px]">
+              {renderArticle(article)}
+            </CarouselItem>
+          ))}
+        </CarouselContent>
+        <CarouselPrevious />
+        <CarouselNext />
+      </Carousel>
     </div>
   );
 }
