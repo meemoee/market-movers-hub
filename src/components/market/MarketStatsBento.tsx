@@ -102,7 +102,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     }
 
     const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card">
+      <div className={cn(
+        "relative h-full w-full group rounded-lg overflow-hidden flex flex-col bg-card",
+        position === 1 ? "aspect-square" : "aspect-[4/3]"
+      )}>
         {/* Image Container */}
         <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg">
           {article.image_url ? (
@@ -125,7 +128,10 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
         {/* Content Container */}
         <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between">
-          <h3 className="text-lg font-bold leading-tight mb-2 line-clamp-2">
+          <h3 className={cn(
+            "font-bold leading-tight mb-2 line-clamp-2",
+            position === 1 ? "text-2xl" : "text-lg"
+          )}>
             {article.title}
           </h3>
           {renderProfileInfo(position)}
@@ -151,7 +157,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   return (
     <div className="w-full mt-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 auto-rows-fr gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="row-span-2 aspect-square">
           {renderArticle(1)}
         </div>
