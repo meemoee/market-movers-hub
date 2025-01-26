@@ -1,12 +1,10 @@
 import { QADisplay } from "./QADisplay";
 import { OrderBook } from "./OrderBook";
-import { PriceChart } from "./PriceChart";
+import PriceChart from "./PriceChart";
 import { WebResearchCard } from "./WebResearchCard";
 
 interface MarketDetailsProps {
   description?: string;
-  bestBid: number;
-  bestAsk: number;
   marketId: string;
   question: string;
 }
@@ -32,7 +30,7 @@ export function MarketDetails({
         </div>
       )}
 
-      <QADisplay marketId={marketId} />
+      <QADisplay marketId={marketId} marketQuestion={question} />
     </div>
   );
 }
