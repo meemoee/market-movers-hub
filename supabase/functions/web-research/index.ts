@@ -39,7 +39,9 @@ async function generateSubQueries(query: string): Promise<string[]> {
           },
           {
             role: "user",
-            content: `Generate 5 specific search queries to research different aspects of: ${query}`
+            content: `Generate 5 diverse search queries to gather comprehensive information about: ${query}
+
+Respond with a JSON object containing a 'queries' key with an array of search query strings.`
           }
         ],
         response_format: { "type": "json_object" }
@@ -53,8 +55,11 @@ async function generateSubQueries(query: string): Promise<string[]> {
 
     const data = await response.json();
     try {
-      const content = JSON.parse(data.choices[0].message.content);
-      return content.queries || [query];
+      const content = data.choices[0].message.content;
+      console.log('Raw OpenRouter response:', content);
+      const parsedContent = JSON.parse(content);
+      console.log('Parsed content:', parsedContent);
+      return parsedContent.queries || [query];
     } catch (e) {
       console.error('Error parsing OpenRouter response:', e);
       return [query];
@@ -77,7 +82,7 @@ class ContentCollector {
   }
 
   addContent(url: string, content: string, title?: string): boolean {
-    if (this.totalChars >= TOTAL_CHAR_LIMIT) {
+    if (this.seenUrls.has(url) || this.totalChars >= TOTAL_CHAR_LIMIT) {
       return false
     }
 
@@ -86,9 +91,10 @@ class ContentCollector {
       this.totalChars += contentLen
       this.collectedData.push({
         url,
-        content,
+        content: content.slice(0, PER_PAGE_LIMIT),
         title
       })
+      this.seenUrls.add(url)
       return true
     }
     return false
@@ -102,9 +108,6 @@ class WebScraper {
   private controller: ReadableStreamDefaultController<any>
 
   constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
-    if (!bingApiKey) {
-      throw new Error('Bing API key is required')
-    }
     this.bingApiKey = bingApiKey
     this.collector = new ContentCollector()
     this.encoder = new TextEncoder()
@@ -124,10 +127,6 @@ class WebScraper {
   async searchBing(query: string) {
     this.sendUpdate(`Searching Bing for: ${query}`)
     
-    const headers = {
-      "Ocp-Apim-Subscription-Key": this.bingApiKey
-    }
-    
     const params = new URLSearchParams({
       q: query,
       count: "10",
@@ -135,32 +134,28 @@ class WebScraper {
     })
 
     try {
-      const response = await fetch(`${BING_SEARCH_URL}?${params}`, { headers })
+      const response = await fetch(`${BING_SEARCH_URL}?${params}`, { 
+        headers: { "Ocp-Apim-Subscription-Key": this.bingApiKey }
+      })
       if (!response.ok) {
         return []
       }
       const data = await response.json()
-      const results = data.webPages?.value || []
-      return results
+      return data.webPages?.value || []
     } catch (error) {
       return []
     }
   }
 
   extractTextContent(html: string): string {
-    html = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-    
-    const text = html.replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-    
-    return text
+    const $ = load(html)
+    $('script, style, noscript, iframe').remove()
+    return $('body').text().replace(/\s+/g, ' ').trim()
   }
 
   extractTitle(html: string): string {
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i)
-    return titleMatch ? titleMatch[1].trim() : ''
+    const $ = load(html)
+    return $('title').text().trim()
   }
 
   shouldSkipUrl(url: string): boolean {
@@ -169,9 +164,7 @@ class WebScraper {
   }
 
   async fetchAndParseContent(url: string) {
-    if (this.shouldSkipUrl(url)) {
-      return
-    }
+    if (this.shouldSkipUrl(url)) return
 
     try {
       const controller = new AbortController()
@@ -184,21 +177,17 @@ class WebScraper {
       
       clearTimeout(timeoutId)
 
-      if (!response.ok) {
-        return
-      }
+      if (!response.ok) return
 
       const contentType = response.headers.get('content-type')
-      if (!contentType?.includes('text/html')) {
-        return
-      }
+      if (!contentType?.includes('text/html')) return
 
       const html = await response.text()
       const content = this.extractTextContent(html)
       const title = this.extractTitle(html)
 
       if (content) {
-        const added = this.collector.addContent(url, content.slice(0, PER_PAGE_LIMIT), title)
+        const added = this.collector.addContent(url, content, title)
         if (added) {
           this.sendResults([{
             url,
@@ -208,30 +197,21 @@ class WebScraper {
         }
       }
     } catch (error) {
-      return
+      // Silently skip failed URLs
     }
   }
 
   async processBatch(urls: string[]) {
-    const tasks = []
-    for (const url of urls) {
-      if (!this.collector.seenUrls.has(url)) {
-        this.collector.seenUrls.add(url)
-        tasks.push(this.fetchAndParseContent(url))
-      }
-    }
+    const tasks = urls
+      .filter(url => !this.collector.seenUrls.has(url))
+      .map(url => this.fetchAndParseContent(url))
 
-    if (tasks.length === 0) {
-      return false
-    }
+    if (tasks.length === 0) return false
 
     try {
       await Promise.all(tasks)
       return true
     } catch (error) {
-      if (error.message === 'Content limit reached') {
-        return false
-      }
       return true
     }
   }
@@ -239,11 +219,7 @@ class WebScraper {
   async processQuery(query: string) {
     this.sendUpdate(`Processing search query: ${query}`)
     const searchResults = await this.searchBing(query)
-    
-    if (!searchResults.length) {
-      return
-    }
-
+    if (!searchResults.length) return
     const urls = searchResults.map(result => result.url)
     await this.processBatch(urls)
   }
@@ -251,11 +227,9 @@ class WebScraper {
   async run(query: string) {
     this.sendUpdate(`Starting web research for query: ${query}`)
     
-    // Generate sub-queries using OpenRouter
     const subQueries = await generateSubQueries(query)
     this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
     
-    // Process all sub-queries concurrently
     await Promise.all(subQueries.map(subQuery => this.processQuery(subQuery)))
     
     this.sendUpdate(`Research completed with ${this.collector.collectedData.length} results`)
