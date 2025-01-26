@@ -71,9 +71,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       if (!carouselRef.current?.contains(e.target as Node)) return;
       e.preventDefault();
       if (e.deltaY > 0) {
-        api?.next();
+        api?.scrollNext();
       } else {
-        api?.prev();
+        api?.scrollPrev();
       }
     },
     carouselRef.current,
