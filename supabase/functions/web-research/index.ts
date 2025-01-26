@@ -5,14 +5,15 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+const FETCH_TIMEOUT_MS = 5000
+const BATCH_SIZE = 3
+const BATCH_DELAY_MS = 200
 
-// CORS headers for cross-origin requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Generates optimized search queries for the given topic
 async function generateSearchQueries(intent: string, openrouterApiKey: string): Promise<string[]> {
   console.log('Generating search queries for:', intent)
   
@@ -35,6 +36,7 @@ async function generateSearchQueries(intent: string, openrouterApiKey: string): 
   })
 
   if (!response.ok) {
+    console.error('OpenRouter query generation failed:', response.status)
     throw new Error(`OpenRouter API error: ${response.status}`)
   }
 
@@ -45,17 +47,18 @@ async function generateSearchQueries(intent: string, openrouterApiKey: string): 
   return queriesData.queries || []
 }
 
-// Performs web search using Bing API
 async function performWebSearch(query: string, bingApiKey: string): Promise<any[]> {
   console.log('Performing web search for query:', query)
   
   const response = await fetch(`${BING_SEARCH_URL}?q=${encodeURIComponent(query)}&count=50&responseFilter=Webpages`, {
     headers: {
       'Ocp-Apim-Subscription-Key': bingApiKey
-    }
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
   })
 
   if (!response.ok) {
+    console.error('Bing search failed:', response.status)
     throw new Error(`Bing Search API error: ${response.status}`)
   }
 
@@ -64,14 +67,14 @@ async function performWebSearch(query: string, bingApiKey: string): Promise<any[
   return data.webPages?.value || []
 }
 
-// Fetches and cleans content from a URL
 async function fetchContent(url: string): Promise<string | null> {
   console.log('Fetching content from:', url)
   try {
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+      },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
     })
     
     if (!response.ok) {
@@ -87,7 +90,6 @@ async function fetchContent(url: string): Promise<string | null> {
     
     const text = await response.text()
     
-    // Clean HTML content
     const cleanedText = text
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
@@ -102,19 +104,55 @@ async function fetchContent(url: string): Promise<string | null> {
   }
 }
 
-// Main server function
+async function processBatch(
+  batch: any[], 
+  writer: WritableStreamDefaultWriter<Uint8Array>,
+  validContents: string[],
+  processedCount: number,
+  totalCount: number
+): Promise<void> {
+  const encoder = new TextEncoder()
+  
+  try {
+    const batchContents = await Promise.all(
+      batch.map(async result => {
+        try {
+          return await fetchContent(result.url)
+        } catch (error) {
+          console.error(`Error fetching ${result.url}:`, error)
+          return null
+        }
+      })
+    )
+    
+    const validBatchContents = batchContents.filter(Boolean) as string[]
+    validContents.push(...validBatchContents)
+    
+    const message = `data: ${JSON.stringify({
+      type: 'websites',
+      count: validContents.length,
+      processed: processedCount,
+      total: totalCount,
+      currentBatch: batch.length
+    })}\n\n`
+    
+    await writer.write(encoder.encode(message))
+    await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS))
+  } catch (error) {
+    console.error('Error processing batch:', error)
+    throw error
+  }
+}
+
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
-  // Set up streaming response
   const encoder = new TextEncoder()
   const stream = new TransformStream()
   const writer = stream.writable.getWriter()
 
-  // Create response object
   const response = new Response(stream.readable, {
     headers: {
       ...corsHeaders,
@@ -124,60 +162,48 @@ serve(async (req) => {
     }
   })
 
-  // Helper function for sending SSE messages
-  async function sendSSEMessage(data: any) {
-    try {
-      const message = `data: ${JSON.stringify(data)}\n\n`
-      console.log('Sending SSE message:', message)
-      await writer.write(encoder.encode(message))
-    } catch (error) {
-      console.error('Error sending SSE message:', error)
-      throw error
-    }
-  }
-
   try {
-    // Get and validate input
     const { description } = await req.json()
     if (!description) {
       throw new Error('No description provided')
     }
 
-    // Validate API keys
     const bingApiKey = Deno.env.get('BING_API_KEY')
     if (!OPENROUTER_API_KEY || !bingApiKey) {
       throw new Error('Required API keys not configured')
     }
 
-    // Generate and execute searches
     const queries = await generateSearchQueries(description, OPENROUTER_API_KEY)
     const searchResults = await Promise.all(
       queries.map(query => performWebSearch(query, bingApiKey))
     )
     const allResults = searchResults.flat()
 
-    // Send initial website count
-    await sendSSEMessage({ type: 'websites', count: allResults.length })
+    await writer.write(encoder.encode(`data: ${JSON.stringify({ 
+      type: 'websites', 
+      count: allResults.length,
+      processed: 0,
+      total: allResults.length
+    })}\n\n`))
 
-    // Process content in batches
-    const batchSize = 5
     const validContents: string[] = []
 
-    for (let i = 0; i < allResults.length; i += batchSize) {
-      const batch = allResults.slice(i, i + batchSize)
-      const batchContents = await Promise.all(
-        batch.map(result => fetchContent(result.url))
-      )
-      
-      const validBatchContents = batchContents.filter(Boolean) as string[]
-      validContents.push(...validBatchContents)
-      
-      // Send updated count after each batch
-      await sendSSEMessage({ type: 'websites', count: validContents.length })
-      await new Promise(resolve => setTimeout(resolve, 100))
+    for (let i = 0; i < allResults.length; i += BATCH_SIZE) {
+      const batch = allResults.slice(i, i + BATCH_SIZE)
+      try {
+        await processBatch(
+          batch,
+          writer,
+          validContents,
+          i + BATCH_SIZE,
+          allResults.length
+        )
+      } catch (batchError) {
+        console.error(`Error processing batch starting at index ${i}:`, batchError)
+        continue
+      }
     }
 
-    // Analyze content
     const analysisPrompt = `Analyze the following search results about ${description}:\n\n` +
       validContents.map((content, index) => `Content from result ${index + 1}:\n${content}\n`).join('\n')
 
@@ -203,7 +229,6 @@ serve(async (req) => {
       throw new Error('Analysis request failed')
     }
 
-    // Stream analysis results
     const reader = analysisResponse.body?.getReader()
     const decoder = new TextDecoder()
 
@@ -223,7 +248,9 @@ serve(async (req) => {
             const parsed = JSON.parse(data)
             const content = parsed.choices?.[0]?.delta?.content
             if (content) {
-              await sendSSEMessage({ type: 'analysis', content })
+              await writer.write(encoder.encode(
+                `data: ${JSON.stringify({ type: 'analysis', content })}\n\n`
+              ))
             }
           } catch (e) {
             console.error('Error parsing analysis chunk:', e)
@@ -239,10 +266,11 @@ serve(async (req) => {
     console.error('Error in web-research function:', error)
     
     try {
-      await sendSSEMessage({ 
+      const errorMessage = `data: ${JSON.stringify({ 
         type: 'error', 
         message: error instanceof Error ? error.message : 'Unknown error occurred'
-      })
+      })}\n\n`
+      await writer.write(encoder.encode(errorMessage))
     } catch (streamError) {
       console.error('Failed to send error through stream:', streamError)
     }
