@@ -15,7 +15,7 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
-// Default gradient backgrounds for when no image is available
+// Default gradients for placeholders
 const PLACEHOLDER_GRADIENTS = [
   'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
   'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
@@ -90,13 +90,12 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   const renderArticle = (position: number) => {
     const article = articles.find(a => a.position === position);
     
-    // If no article found, render placeholder gradient
     if (!article) {
       const gradientIndex = (position - 1) % PLACEHOLDER_GRADIENTS.length;
       return (
-        <div className="relative h-full w-full rounded-lg overflow-hidden">
+        <div className="relative h-full w-full">
           <div 
-            className="absolute inset-0 rounded-lg"
+            className="absolute inset-0 rounded-[10px]"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
           />
         </div>
@@ -104,9 +103,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     }
 
     const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        {/* Image Layer */}
-        <div className="absolute inset-0">
+      <div className="relative h-full w-full group">
+        {/* Base Image Container */}
+        <div className="relative h-full w-full overflow-hidden rounded-[10px]">
           {article.image_url ? (
             <img 
               src={article.image_url} 
@@ -123,10 +122,18 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
               }}
             />
           )}
+          
+          {/* Gradient Overlay - Separate from text backdrop */}
+          <div 
+            className="absolute inset-0 rounded-[10px]"
+            style={{
+              background: 'linear-gradient(180deg, transparent 0%, transparent 50%, rgba(0,0,0,0.7) 100%)'
+            }}
+          />
         </div>
 
-        {/* Content Layer - Using flex-col justify-end for proper alignment */}
-        <div className="absolute inset-0 flex flex-col justify-end bg-black/70 backdrop-blur-sm p-4 rounded-lg">
+        {/* Text Content - Only at bottom */}
+        <div className="absolute inset-x-0 bottom-0 p-4">
           <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
             {article.title}
           </h3>
@@ -135,7 +142,6 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       </div>
     );
 
-    // Wrap in link if URL exists
     if (!article.link) {
       return <div className="h-full">{content}</div>;
     }
