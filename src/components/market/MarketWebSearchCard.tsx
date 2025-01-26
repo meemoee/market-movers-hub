@@ -14,6 +14,12 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
   const [analysis, setAnalysis] = useState<string>("");
 
   const handleSearch = async () => {
+    console.log('Starting web research with description:', marketDescription);
+    if (!marketDescription) {
+      console.error('No market description provided');
+      return;
+    }
+
     setIsSearching(true);
     setAnalysis("");
     setWebsiteCount(0);
@@ -23,8 +29,12 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
         body: { description: marketDescription }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error invoking web-research function:', error);
+        throw error;
+      }
 
+      console.log('Received response from web-research:', data);
       const reader = new Response(data.body).body?.getReader();
       const decoder = new TextDecoder();
 
@@ -33,6 +43,7 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
         if (done) break;
 
         const chunk = decoder.decode(value);
+        console.log('Received chunk:', chunk);
         const lines = chunk.split('\n');
 
         for (const line of lines) {
@@ -40,13 +51,14 @@ export function MarketWebSearchCard({ marketDescription }: MarketWebSearchCardPr
 
           try {
             const data = JSON.parse(line);
+            console.log('Parsed data:', data);
             if (data.type === 'websites') {
               setWebsiteCount(data.count);
             } else if (data.type === 'analysis') {
               setAnalysis(prev => prev + data.content);
             }
           } catch (e) {
-            console.error('Error parsing chunk:', e);
+            console.error('Error parsing chunk:', e, 'Raw line:', line);
           }
         }
       }

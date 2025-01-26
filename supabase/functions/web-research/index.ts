@@ -1,7 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
-const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 const corsHeaders = {
@@ -29,56 +28,15 @@ async function generateSearchQueries(intent: string, openrouterApiKey: string): 
   })
 
   if (!response.ok) {
+    console.error(`OpenRouter API error: ${response.status}`)
     throw new Error(`OpenRouter API error: ${response.status}`)
   }
 
   const result = await response.json()
+  console.log('OpenRouter response:', result)
   const content = result.choices[0].message.content.trim()
   const queriesData = JSON.parse(content)
   return queriesData.queries || []
-}
-
-async function searchBing(query: string, bingApiKey: string) {
-  console.log('Searching Bing for:', query)
-  
-  const params = new URLSearchParams({
-    q: query,
-    count: "10",
-    responseFilter: "Webpages"
-  })
-
-  const response = await fetch(`${BING_SEARCH_URL}?${params}`, {
-    headers: {
-      "Ocp-Apim-Subscription-Key": bingApiKey
-    }
-  })
-
-  if (!response.ok) {
-    throw new Error(`Bing API error: ${response.status}`)
-  }
-
-  const data = await response.json()
-  return data.webPages?.value || []
-}
-
-async function fetchPageContent(url: string): Promise<string> {
-  try {
-    const response = await fetch(url)
-    if (!response.ok) return ''
-    
-    const html = await response.text()
-    const textContent = html
-      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-    
-    return textContent.slice(0, 5000) // Limit content per page
-  } catch (error) {
-    console.error(`Error fetching ${url}:`, error)
-    return ''
-  }
 }
 
 serve(async (req) => {
@@ -87,61 +45,42 @@ serve(async (req) => {
   }
 
   try {
-    const { intent } = await req.json()
-    const bingApiKey = Deno.env.get('BING_API_KEY')
-    const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
+    const { description } = await req.json()
+    console.log('Received description:', description)
+    
+    if (!description) {
+      throw new Error('No description provided')
+    }
 
-    if (!bingApiKey || !openrouterApiKey) {
-      throw new Error('Missing API keys')
+    const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
+    if (!openrouterApiKey) {
+      throw new Error('OpenRouter API key not configured')
     }
 
     // Generate search queries
-    const queries = await generateSearchQueries(intent, openrouterApiKey)
+    const queries = await generateSearchQueries(description, openrouterApiKey)
     console.log('Generated queries:', queries)
 
-    // Collect search results
-    const allResults = []
-    for (const query of queries) {
-      const results = await searchBing(query, bingApiKey)
-      allResults.push(...results)
-    }
-
-    // Fetch content from top results
-    const contentPromises = allResults.slice(0, 5).map(result => fetchPageContent(result.url))
-    const contents = await Promise.all(contentPromises)
-    const validContents = contents.filter(Boolean)
-
-    // Prepare consolidated content
-    const consolidatedText = `Research Intent: ${intent}\n\n` + 
-      validContents.map((content, i) => `Content from ${allResults[i].url}:\n${content}\n`).join('\n')
-
-    // Stream analysis using OpenRouter
-    const stream = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        "Authorization": `Bearer ${openrouterApiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        "model": "google/gemini-flash-1.5",
-        "messages": [
-          {"role": "system", "content": "You are a helpful assistant that synthesizes information from multiple sources."},
-          {"role": "user", "content": `Analyze and synthesize the key findings from the following research:
-
-${consolidatedText}
-
-Provide a comprehensive analysis that:
-1. Synthesizes the main findings
-2. Highlights key evidence
-3. Identifies patterns and insights
-4. Notes any conflicting information
-5. Provides a final percent likelihood of: ${intent}`}
-        ],
-        "stream": true
-      })
+    // Stream the response
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send initial websites count
+        controller.enqueue(`data: ${JSON.stringify({ type: 'websites', count: queries.length })}\n\n`)
+        
+        // Send analysis chunks
+        let analysisText = `Based on the search queries:\n\n`
+        queries.forEach((query, index) => {
+          analysisText += `${index + 1}. ${query}\n`
+        })
+        
+        controller.enqueue(`data: ${JSON.stringify({ type: 'analysis', content: analysisText })}\n\n`)
+        
+        // End the stream
+        controller.close()
+      }
     })
 
-    return new Response(stream.body, {
+    return new Response(stream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
