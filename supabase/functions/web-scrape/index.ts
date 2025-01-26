@@ -34,6 +34,7 @@ class WebScraper {
   private collector: ContentCollector
   private encoder: TextEncoder
   private controller: ReadableStreamDefaultController<any>
+  private processedUrls: number
 
   constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
     if (!bingApiKey) throw new Error('Bing API key is required')
@@ -41,6 +42,7 @@ class WebScraper {
     this.collector = new ContentCollector()
     this.encoder = new TextEncoder()
     this.controller = controller
+    this.processedUrls = 0
   }
 
   private sendUpdate(message: string) {
@@ -53,13 +55,14 @@ class WebScraper {
     this.controller.enqueue(this.encoder.encode(data))
   }
 
-  async searchBing(query: string) {
-    this.sendUpdate(`Searching Bing for: ${query}`)
+  async searchBing(query: string, offset = 0) {
+    this.sendUpdate(`Searching Bing for: ${query} (offset: ${offset})`)
     
     const headers = { "Ocp-Apim-Subscription-Key": this.bingApiKey }
     const params = new URLSearchParams({
       q: query,
-      count: "25", // Reduced from 50 to limit processing
+      count: "50",
+      offset: offset.toString(),
       responseFilter: "Webpages"
     })
 
@@ -89,7 +92,7 @@ class WebScraper {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 3000) // Reduced timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
 
       const response = await fetch(url, {
         headers: {
@@ -119,12 +122,13 @@ class WebScraper {
       const content = $('body').text()
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 5000) // Reduced from 5000
+        .slice(0, 5000)
 
       if (content) {
         const added = this.collector.addContent(url, content, title)
         if (added) {
           this.sendResults([{ url, content, title }])
+          this.processedUrls++
         }
       }
     } catch (error) {
@@ -132,7 +136,7 @@ class WebScraper {
     }
   }
 
-  async processBatch(urls: string[], batchSize = 10) { // Reduced from 15
+  async processBatch(urls: string[], batchSize = 5) {
     const tasks = []
     for (const url of urls.slice(0, batchSize)) {
       tasks.push(this.fetchAndParseContent(url))
@@ -152,21 +156,29 @@ class WebScraper {
     this.sendUpdate(`Starting web research for ${queries.length} queries`)
     
     for (const query of queries) {
-      this.sendUpdate(`Processing search query: ${query}`)
-      const searchResults = await this.searchBing(query)
+      let offset = 0
+      let totalProcessed = 0
+      const maxResults = 50 // Maximum results per query
       
-      if (!searchResults.length) continue
-
-      const urls = searchResults.map(result => result.url)
-      const batchSize = 20 // Reduced from 40
-
-      for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
-        const batchUrls = urls.slice(startIdx, startIdx + batchSize)
-        const shouldContinue = await this.processBatch(batchUrls, batchSize)
+      while (totalProcessed < maxResults) {
+        this.sendUpdate(`Processing search query: ${query} (batch ${offset/10 + 1})`)
+        const searchResults = await this.searchBing(query, offset)
         
-        if (!shouldContinue) break
+        if (!searchResults.length) break
 
-        await new Promise(resolve => setTimeout(resolve, 200)) // Increased delay between batches
+        const urls = searchResults.map(result => result.url)
+        const batchSize = 5 // Process in very small batches
+
+        for (let startIdx = 0; startIdx < urls.length && totalProcessed < maxResults; startIdx += batchSize) {
+          const batchUrls = urls.slice(startIdx, startIdx + batchSize)
+          await this.processBatch(batchUrls, batchSize)
+          
+          totalProcessed += batchSize
+          await new Promise(resolve => setTimeout(resolve, 500)) // Longer delay between batches
+        }
+
+        offset += 10 // Increment offset for next batch of search results
+        await new Promise(resolve => setTimeout(resolve, 1000)) // Delay between search API calls
       }
     }
 
