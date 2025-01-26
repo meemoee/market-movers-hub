@@ -61,11 +61,12 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     fetchArticles();
   }, [selectedInterval]);
 
-  const renderProfileInfo = (position: number) => {
+  const renderProfileInfo = (position: number, isLight: boolean) => {
     const profile = PLACEHOLDER_PROFILES[position - 1];
     if (!profile) return null;
 
     const priceColor = profile.change >= 0 ? "text-green-500" : "text-red-500";
+    const textColorClass = isLight ? "text-black" : "text-white";
 
     return (
       <div className="flex items-center gap-2 mt-2 relative z-10">
@@ -75,7 +76,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           </AvatarFallback>
         </Avatar>
         <div className="flex items-center gap-1">
-          <span className="text-sm font-medium">{profile.name}</span>
+          <span className={cn("text-sm font-medium", textColorClass)}>{profile.name}</span>
           <div className={cn("text-[10px] flex items-center gap-0.5 opacity-80", priceColor)}>
             <span>${profile.price.toFixed(2)}</span>
             <span className="inline-flex items-center">
@@ -111,6 +112,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const textColorClass = isLight ? "text-black" : "text-white";
     const gradientAngle = "135deg";
     
+    // Adjust opacity based on text color
+    const startOpacity = isLight ? 0.6 : 0.85;
+    const midOpacity = isLight ? 0.4 : 0.6;
+    const endOpacity = isLight ? 0.02 : 0.05;
+    
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden">
         {/* Image Background Layer */}
@@ -130,15 +136,11 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           style={{ 
             background: article.gradient_start_rgb && article.gradient_end_rgb
               ? `linear-gradient(${gradientAngle}, 
-                  rgba(${article.gradient_end_rgb}, 0.75) 0%,
-                  rgba(${article.gradient_end_rgb}, 0.6) 20%,
-                  rgba(${article.gradient_end_rgb}, 0.4) 40%,
-                  rgba(${article.gradient_end_rgb}, 0.2) 60%,
-                  rgba(${article.gradient_end_rgb}, 0.1) 70%,
-                  rgba(${article.gradient_start_rgb}, 0.08) 80%,
-                  rgba(${article.gradient_start_rgb}, 0.05) 90%,
+                  rgba(${article.gradient_end_rgb}, ${startOpacity}) 0%,
+                  rgba(${article.gradient_end_rgb}, ${midOpacity}) 40%,
+                  rgba(${article.gradient_start_rgb}, ${endOpacity}) 80%,
                   rgba(${article.gradient_start_rgb}, 0) 100%)`
-                : `linear-gradient(${gradientAngle}, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)`
+                : `linear-gradient(${gradientAngle}, rgba(0,0,0,${isLight ? 0.3 : 0.8}) 0%, rgba(0,0,0,0) 100%)`
           }} 
         />
 
@@ -147,7 +149,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
           <h3 className={cn("text-2xl font-black leading-tight mb-2", textColorClass)}>
             {article.title}
           </h3>
-          {renderProfileInfo(position)}
+          {renderProfileInfo(position, isLight)}
         </div>
       </div>
     );
