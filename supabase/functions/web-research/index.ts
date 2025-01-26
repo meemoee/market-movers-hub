@@ -61,29 +61,34 @@ async function performWebSearch(query: string, bingApiKey: string): Promise<any[
 }
 
 async function fetchContent(url: string): Promise<string | null> {
-  console.log('Attempting to fetch content from:', url)
+  console.log('🔍 Attempting to fetch content from:', url)
   try {
+    console.log('📡 Sending fetch request to:', url)
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
       }
     })
     
+    console.log(`📥 Received response from ${url}, status:`, response.status)
     if (!response.ok) {
-      console.error(`Failed to fetch ${url}: ${response.status}`)
+      console.error(`❌ Failed to fetch ${url}: ${response.status}`)
       return null
     }
     
     const contentType = response.headers.get('content-type')
+    console.log(`📄 Content-Type for ${url}:`, contentType)
     if (!contentType || !contentType.includes('text/html')) {
-      console.error(`Skipping non-HTML content from ${url}: ${contentType}`)
+      console.error(`⚠️ Skipping non-HTML content from ${url}: ${contentType}`)
       return null
     }
     
+    console.log(`📖 Reading text content from ${url}`)
     const text = await response.text()
-    console.log(`Successfully fetched content from ${url}, length: ${text.length}`)
+    console.log(`✅ Successfully fetched content from ${url}, length: ${text.length}`)
     
     // Basic HTML cleaning
+    console.log(`🧹 Cleaning HTML content for ${url}`)
     const cleanedText = text
       .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
       .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
@@ -91,14 +96,18 @@ async function fetchContent(url: string): Promise<string | null> {
       .replace(/\s+/g, ' ')
       .trim()
     
-    return cleanedText.slice(0, 5000) // Limit content length
+    const truncatedText = cleanedText.slice(0, 5000)
+    console.log(`✂️ Truncated content length for ${url}:`, truncatedText.length)
+    return truncatedText
   } catch (error) {
-    console.error(`Error fetching ${url}:`, error)
+    console.error(`❌ Error fetching ${url}:`, error)
     return null
   }
 }
 
 serve(async (req) => {
+  console.log('🚀 Starting web research function')
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -107,7 +116,7 @@ serve(async (req) => {
 
   try {
     const { description } = await req.json()
-    console.log('Received description:', description)
+    console.log('📝 Received description:', description)
     
     if (!description) {
       throw new Error('No description provided')
@@ -120,11 +129,9 @@ serve(async (req) => {
       throw new Error('Required API keys not configured')
     }
 
-    // Create transform stream for SSE
     const stream = new TransformStream()
     const writer = stream.writable.getWriter()
     
-    // Start response with streaming
     const response = new Response(stream.readable, {
       headers: {
         ...corsHeaders,
@@ -134,58 +141,56 @@ serve(async (req) => {
       }
     })
 
-    // Generate search queries
+    console.log('🔍 Generating search queries')
     const queries = await generateSearchQueries(description, openrouterApiKey)
-    console.log('Generated queries:', queries)
+    console.log('✅ Generated queries:', queries)
 
-    // Process searches in parallel
-    console.log('Starting parallel searches')
+    console.log('🌐 Starting parallel searches')
     const searchPromises = queries.map(query => performWebSearch(query, bingApiKey))
     const searchResults = await Promise.all(searchPromises)
     const allResults = searchResults.flat()
-    console.log('Total search results:', allResults.length)
+    console.log('📊 Total search results:', allResults.length)
 
-    // Send total websites found
+    console.log('📡 Sending initial website count update')
     await writer.write(encoder.encode(
       `data: ${JSON.stringify({ type: 'websites', count: allResults.length })}\n\n`
     ))
 
-    // Process URLs in smaller batches to avoid overwhelming the server
     const batchSize = 5
     const validContents: string[] = []
     
-    console.log('Starting content fetching in batches')
+    console.log('📦 Starting content fetching in batches')
     for (let i = 0; i < allResults.length; i += batchSize) {
-      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}`)
+      const batchNumber = Math.floor(i/batchSize) + 1
+      console.log(`🔄 Processing batch ${batchNumber} of ${Math.ceil(allResults.length/batchSize)}`)
       const batch = allResults.slice(i, i + batchSize)
       
+      console.log(`📥 Fetching content for batch ${batchNumber}:`, batch.map(r => r.url))
       const batchPromises = batch.map(result => fetchContent(result.url))
       const batchContents = await Promise.all(batchPromises)
       
       const validBatchContents = batchContents.filter(Boolean) as string[]
+      console.log(`✅ Valid contents in batch ${batchNumber}:`, validBatchContents.length)
       validContents.push(...validBatchContents)
       
-      // Update website count after each batch
-      console.log(`Processed ${validContents.length} valid contents so far`)
+      console.log(`📊 Total valid contents so far: ${validContents.length}`)
       await writer.write(encoder.encode(
         `data: ${JSON.stringify({ type: 'websites', count: validContents.length })}\n\n`
       ))
       
-      // Small delay between batches
+      console.log(`⏳ Adding delay before next batch`)
       await new Promise(resolve => setTimeout(resolve, 100))
     }
 
-    console.log('Content fetching complete. Valid contents:', validContents.length)
+    console.log('🏁 Content fetching complete. Total valid contents:', validContents.length)
 
-    // Prepare content for analysis
-    console.log('Preparing content for analysis')
+    console.log('📝 Preparing content for analysis')
     const analysisPrompt = `Analyze the following search results about ${description}:\n\n` +
       validContents.map((content, index) => 
         `Content from result ${index + 1}:\n${content}\n`
       ).join('\n')
 
-    console.log('Starting analysis with OpenRouter')
-    // Get analysis from OpenRouter
+    console.log('🤖 Starting analysis with OpenRouter')
     const analysisResponse = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
@@ -204,22 +209,23 @@ serve(async (req) => {
     })
 
     if (!analysisResponse.ok) {
+      console.error('❌ Failed to get analysis:', analysisResponse.status)
       throw new Error('Failed to get analysis')
     }
 
-    console.log('Starting to stream analysis')
+    console.log('📡 Starting to stream analysis')
     const reader = analysisResponse.body?.getReader()
     const decoder = new TextDecoder()
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) {
-        console.log('Analysis stream complete')
+        console.log('✅ Analysis stream complete')
         break
       }
 
       const chunk = decoder.decode(value)
-      console.log('Received analysis chunk:', chunk)
+      console.log('📝 Received analysis chunk:', chunk)
       const lines = chunk.split('\n')
 
       for (const line of lines) {
@@ -231,13 +237,13 @@ serve(async (req) => {
             const parsed = JSON.parse(data)
             const content = parsed.choices?.[0]?.delta?.content
             if (content) {
-              console.log('Sending analysis content:', content)
+              console.log('📤 Sending analysis content:', content)
               await writer.write(encoder.encode(
                 `data: ${JSON.stringify({ type: 'analysis', content })}\n\n`
               ))
             }
           } catch (e) {
-            console.error('Error parsing SSE data:', e)
+            console.error('❌ Error parsing SSE data:', e)
           }
         }
       }
@@ -247,7 +253,7 @@ serve(async (req) => {
     return response
 
   } catch (error) {
-    console.error('Error in web-research function:', error)
+    console.error('❌ Error in web-research function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
