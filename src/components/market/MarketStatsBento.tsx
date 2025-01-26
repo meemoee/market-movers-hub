@@ -94,7 +94,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       return (
         <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
           <div 
-            className="absolute inset-0 rounded-lg"
+            className="absolute inset-0"
             style={{ background: PLACEHOLDER_GRADIENTS[gradientIndex] }}
           />
         </div>
@@ -102,39 +102,51 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     }
 
     const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        {/* Image Section */}
-        <div className="absolute inset-0">
-          {article.image_url ? (
-            <img 
-              src={article.image_url} 
-              alt={article.title}
-              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
-            />
-          ) : (
-            <div 
-              className="h-full w-full"
-              style={{ 
-                background: article.gradient_start_rgb && article.gradient_end_rgb
-                  ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
-                  : PLACEHOLDER_GRADIENTS[0]
-              }}
-            />
-          )}
-        </div>
+      <div className="relative h-full w-full group">
+        {/* Outer container with rounded corners */}
+        <div className="absolute inset-0 rounded-lg overflow-hidden">
+          {/* Image container */}
+          <div className="absolute inset-0">
+            {article.image_url ? (
+              <img 
+                src={article.image_url} 
+                alt={article.title}
+                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+              />
+            ) : (
+              <div 
+                className="h-full w-full"
+                style={{ 
+                  background: article.gradient_start_rgb && article.gradient_end_rgb
+                    ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
+                    : PLACEHOLDER_GRADIENTS[0]
+                }}
+              />
+            )}
+          </div>
 
-        {/* Content Section - Dark overlay at bottom */}
-        <div className="absolute inset-x-0 bottom-0 bg-black/70 backdrop-blur-sm p-4">
-          <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
-            {article.title}
-          </h3>
-          {renderProfileInfo(position)}
+          {/* Dark overlay that extends beyond the visible area */}
+          <div className="absolute inset-x-0 bottom-0">
+            {/* Inner content container with padding */}
+            <div className="relative z-10 p-4">
+              {/* Actual dark backdrop that extends beyond bottom */}
+              <div className="absolute inset-0 -bottom-1 bg-black/70 backdrop-blur-sm" />
+              
+              {/* Content */}
+              <div className="relative z-20">
+                <h3 className="text-xl font-bold leading-tight mb-2 line-clamp-2 text-white">
+                  {article.title}
+                </h3>
+                {renderProfileInfo(position)}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     );
 
     if (!article.link) {
-      return <div className="h-full">{content}</div>;
+      return <div className="h-full rounded-lg overflow-hidden">{content}</div>;
     }
 
     return (
@@ -142,7 +154,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         href={article.link}
         target="_blank"
         rel="noopener noreferrer"
-        className="block h-full transition-opacity hover:opacity-95 cursor-pointer"
+        className="block h-full transition-opacity hover:opacity-95 cursor-pointer rounded-lg overflow-hidden"
       >
         {content}
       </a>
