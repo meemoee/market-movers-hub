@@ -5,7 +5,6 @@ import { Separator } from "@/components/ui/separator";
 import { UserCircle, Image as ImageIcon, Link as LinkIcon } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import * as React from "react"
-import { VisibilitySelect, type VisibilityOption } from "./VisibilitySelect";
 
 // Custom textarea component that automatically adjusts height
 const TextareaAutosize = React.forwardRef<
@@ -27,10 +26,9 @@ TextareaAutosize.displayName = "TextareaAutosize";
 
 export function InsightPostBox() {
   const [content, setContent] = useState("");
-  const [visibility, setVisibility] = useState<VisibilityOption>("everyone");
 
   const handlePost = () => {
-    console.log("Posting insight:", { content, visibility });
+    console.log("Posting insight:", { content });
     setContent("");
   };
 
@@ -75,21 +73,14 @@ export function InsightPostBox() {
               </Button>
             </div>
             
-            <div className="flex items-center gap-2">
-              <VisibilitySelect 
-                value={visibility}
-                onValueChange={setVisibility}
-              />
-              
-              <Button 
-                onClick={handlePost}
-                disabled={!content.trim()}
-                className="h-7 px-3 text-xs font-medium rounded-full"
-                size="sm"
-              >
-                Post
-              </Button>
-            </div>
+            <Button 
+              onClick={handlePost}
+              disabled={!content.trim()}
+              className="h-7 px-3 text-xs font-medium rounded-full"
+              size="sm"
+            >
+              Post
+            </Button>
           </div>
         </div>
       </div>
