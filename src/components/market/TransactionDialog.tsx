@@ -9,7 +9,7 @@ import { Loader2 } from 'lucide-react';
 interface TransactionDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  market: {
+  market?: {
     id: string;
     question: string;
     final_best_ask?: number;
@@ -30,6 +30,10 @@ export function TransactionDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
   const user = useUser();
+
+  if (!market) {
+    return null;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

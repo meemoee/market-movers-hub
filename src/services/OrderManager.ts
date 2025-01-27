@@ -63,91 +63,6 @@ export class OrderManager {
     }
   }
 
-  async validateOrder(
-    userId: string,
-    marketId: string,
-    tokenId: string,
-    outcome: string,
-    side: typeof OrderSide[keyof typeof OrderSide],
-    orderType: typeof OrderType[keyof typeof OrderType],
-    size: number
-  ) {
-    try {
-      const { data: market } = await supabase
-        .from('markets')
-        .select('active, closed, archived')
-        .eq('id', marketId)
-        .single();
-      
-      if (!market) {
-        throw new Error('Market not found');
-      }
-      
-      if (!market.active || market.closed || market.archived) {
-        throw new Error('Market is not active');
-      }
-
-      if (side === OrderSide.SELL) {
-        const { data: holdings } = await supabase
-          .from('holdings')
-          .select('amount')
-          .eq('user_id', userId)
-          .eq('market_id', marketId)
-          .eq('token_id', tokenId)
-          .single();
-        
-        const currentHoldings = holdings ? new Decimal(holdings.amount) : new Decimal(0);
-        if (currentHoldings.lessThan(size)) {
-          throw new Error(`Insufficient holdings. Have: ${currentHoldings}, Need: ${size}`);
-        }
-      } else {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('balance')
-          .eq('id', userId)
-          .single();
-        
-        if (!profile) {
-          throw new Error('Profile not found');
-        }
-        
-        const balance = new Decimal(profile.balance);
-        
-        if (orderType === OrderType.MARKET) {
-          const book = await this.getOrderbookSnapshot(tokenId);
-          const levels = book.asks;
-          
-          if (!levels.length) {
-            throw new Error('No liquidity in orderbook');
-          }
-          
-          let remaining = new Decimal(size);
-          let totalCost = new Decimal(0);
-          
-          for (const level of levels) {
-            if (remaining.lte(0)) break;
-            const fillSize = Decimal.min(remaining, level.size);
-            totalCost = totalCost.plus(fillSize.times(level.price));
-            remaining = remaining.minus(fillSize);
-          }
-          
-          if (remaining.gt(0)) {
-            throw new Error('Insufficient liquidity');
-          }
-          
-          if (totalCost.gt(balance)) {
-            throw new Error('Insufficient balance for worst-case fill');
-          }
-        }
-      }
-
-      return true;
-    } catch (err) {
-      console.error('Order validation error:', err);
-      throw err;
-    }
-  }
-
   async executeMarketOrder(
     userId: string,
     marketId: string,
@@ -157,22 +72,15 @@ export class OrderManager {
     size: number
   ) {
     try {
-      // Validate the order
-      await this.validateOrder(userId, marketId, tokenId, outcome, side, OrderType.MARKET, size);
-      
-      // Get orderbook snapshot for execution
       const book = await this.getOrderbookSnapshot(tokenId);
+      const levels = side === OrderSide.BUY ? book.asks : book.bids;
       
       let remainingSize = new Decimal(size);
       let totalCost = new Decimal(0);
       let filledSize = new Decimal(0);
       
-      const levels = side === OrderSide.BUY ? book.asks : book.bids;
-      
-      // Calculate fills
       for (const level of levels) {
         if (remainingSize.lte(0)) break;
-        
         const fillSize = Decimal.min(remainingSize, level.size);
         totalCost = totalCost.plus(fillSize.times(level.price));
         filledSize = filledSize.plus(fillSize);
@@ -189,28 +97,28 @@ export class OrderManager {
       
       const avgPrice = totalCost.div(filledSize);
 
-      // Start a Supabase transaction using RPC
-      const { data: result, error } = await supabase.rpc('execute_market_order', {
-        p_user_id: userId,
-        p_market_id: marketId,
-        p_token_id: tokenId,
-        p_outcome: outcome,
-        p_side: side,
-        p_size: filledSize.toString(),
-        p_price: avgPrice.toString(),
-        p_total_cost: totalCost.toString()
+      // Execute the order through a custom function
+      const { data, error } = await supabase.functions.invoke('execute-market-order', {
+        body: {
+          userId,
+          marketId,
+          tokenId,
+          outcome,
+          side,
+          size: filledSize.toString(),
+          price: avgPrice.toString(),
+          totalCost: totalCost.toString()
+        }
       });
 
-      if (error) {
-        throw error;
-      }
-
+      if (error) throw error;
+      
       return {
         success: true,
         filledSize: filledSize.toNumber(),
         avgPrice: avgPrice.toNumber(),
         remainingSize: remainingSize.toNumber(),
-        orderId: result.order_id
+        orderId: data.orderId
       };
     } catch (err) {
       console.error('Market order execution error:', err);
