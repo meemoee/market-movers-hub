@@ -138,22 +138,17 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        {/* Main gradient background that covers the entire card */}
+        {/* Single gradient background that covers the entire card */}
         <div 
           className="absolute inset-0 opacity-[0.03]" 
           style={gradientStyle} 
         />
         
         <div className="relative h-full w-full flex flex-col rounded-lg overflow-hidden">
-          {/* Image section with same gradient */}
+          {/* Image section */}
           <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
             {article.image_url ? (
               <div className="relative h-full w-full">
-                {/* Gradient overlay for image section */}
-                <div 
-                  className="absolute inset-0 opacity-[0.03] z-10" 
-                  style={gradientStyle} 
-                />
                 <img 
                   src={article.image_url} 
                   alt={article.title}
@@ -172,13 +167,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          {/* Text section with same gradient */}
+          {/* Text section */}
           <div className="flex-1 p-4 flex flex-col justify-between relative">
-            {/* Additional gradient overlay for text section */}
-            <div 
-              className="absolute inset-0 opacity-[0.03]" 
-              style={gradientStyle} 
-            />
             <div className="space-y-2 px-12 relative z-10">
               <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
                 {article.title}
