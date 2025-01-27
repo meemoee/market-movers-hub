@@ -44,36 +44,21 @@ export type Database = {
       }
       holdings: {
         Row: {
-          amount: number | null
           created_at: string
-          entry_price: number | null
           id: string
           market_id: string
-          outcome: string | null
-          position: string | null
-          token_id: string | null
           user_id: string
         }
         Insert: {
-          amount?: number | null
           created_at?: string
-          entry_price?: number | null
           id?: string
           market_id: string
-          outcome?: string | null
-          position?: string | null
-          token_id?: string | null
           user_id: string
         }
         Update: {
-          amount?: number | null
           created_at?: string
-          entry_price?: number | null
           id?: string
           market_id?: string
-          outcome?: string | null
-          position?: string | null
-          token_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -344,66 +329,6 @@ export type Database = {
           timestamp?: string | null
         }
         Relationships: []
-      }
-      orders: {
-        Row: {
-          created_at: string
-          id: string
-          market_id: string
-          order_type: string
-          outcome: string
-          price: number
-          side: string
-          size: number
-          status: string
-          token_id: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          market_id: string
-          order_type: string
-          outcome: string
-          price: number
-          side: string
-          size: number
-          status: string
-          token_id: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          market_id?: string
-          order_type?: string
-          outcome?: string
-          price?: number
-          side?: string
-          size?: number
-          status?: string
-          token_id?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "orders_market_id_fkey"
-            columns: ["market_id"]
-            isOneToOne: false
-            referencedRelation: "markets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "orders_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       profiles: {
         Row: {

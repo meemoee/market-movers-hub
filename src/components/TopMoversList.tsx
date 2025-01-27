@@ -100,7 +100,30 @@ export default function TopMoversList({
     action: 'buy' | 'sell';
     clobTokenId: string;
   } | null>(null);
+  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
+  const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (!selectedMarket) {
+      setOrderBookData(null);
+      return;
+    }
+    setIsOrderBookLoading(true);
+  }, [selectedMarket]);
+
+  const handleTransaction = () => {
+    if (!selectedMarket || !orderBookData) return;
+    
+    const action = selectedMarket.action;
+    const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
+    
+    toast({
+      title: "Transaction Submitted",
+      description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
+    });
+    setSelectedMarket(null);
+  };
 
   const toggleMarket = (marketId: string) => {
     setExpandedMarkets(prev => {
@@ -150,20 +173,18 @@ export default function TopMoversList({
         </div>
       </div>
 
-      {selectedMarket && (
-        <TransactionDialog
-          isOpen={!!selectedMarket}
-          onClose={() => setSelectedMarket(null)}
-          market={selectedTopMover ? {
-            id: selectedTopMover.market_id,
-            question: selectedTopMover.question,
-            final_best_ask: selectedTopMover.final_best_ask,
-            final_best_bid: selectedTopMover.final_best_bid,
-          } : undefined}
-          action={selectedMarket.action}
-          clobTokenId={selectedMarket.clobTokenId}
-        />
-      )}
+      <TransactionDialog
+        selectedMarket={selectedMarket}
+        topMover={selectedTopMover}
+        onClose={() => setSelectedMarket(null)}
+        orderBookData={orderBookData}
+        isOrderBookLoading={isOrderBookLoading}
+        onOrderBookData={(data) => {
+          setOrderBookData(data);
+          setIsOrderBookLoading(false);
+        }}
+        onConfirm={handleTransaction}
+      />
     </div>
   );
 }

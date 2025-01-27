@@ -1,11 +1,17 @@
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
-import { Button } from '../ui/button';
-import { useToast } from '../ui/use-toast';
-import { orderManager, OrderSide } from '@/services/OrderManager';
-import { useUser } from '@supabase/auth-helpers-react';
 import { Loader2 } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { LiveOrderBook } from './LiveOrderBook';
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -15,141 +21,182 @@ interface OrderBookData {
   spread: number;
 }
 
+interface TopMover {
+  market_id: string;
+  question: string;
+  image: string;
+}
+
 interface TransactionDialogProps {
-  isOpen: boolean;
+  selectedMarket: { 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
+  } | null;
+  topMover: TopMover | null;
   onClose: () => void;
-  market?: {
-    id: string;
-    question: string;
-    final_best_ask?: number;
-    final_best_bid?: number;
-  };
-  action: 'buy' | 'sell';
-  clobTokenId: string;
+  orderBookData: OrderBookData | null;
+  isOrderBookLoading: boolean;
+  onOrderBookData: (data: OrderBookData) => void;
+  onConfirm: () => void;
 }
 
 export function TransactionDialog({
-  isOpen,
+  selectedMarket,
+  topMover,
   onClose,
-  market,
-  action,
-  clobTokenId
+  orderBookData,
+  isOrderBookLoading,
+  onOrderBookData,
+  onConfirm,
 }: TransactionDialogProps) {
-  const [amount, setAmount] = useState<string>('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
-  const [isOrderBookLoading, setIsOrderBookLoading] = useState(true);
   const { toast } = useToast();
-  const user = useUser();
 
-  if (!market) {
-    return null;
-  }
+  const handleConfirm = async () => {
+    if (!selectedMarket) return;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) {
-      toast({
-        title: "Authentication required",
-        description: "Please sign in to place orders",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
     try {
-      const size = parseFloat(amount);
-      if (isNaN(size) || size <= 0) {
-        throw new Error('Invalid amount');
+      // First get the current user's session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "You must be logged in to place orders.",
+        });
+        return;
       }
 
-      const result = await orderManager.executeMarketOrder(
-        user.id,
-        market.id,
-        clobTokenId,
-        "Yes",
-        action === 'buy' ? OrderSide.BUY : OrderSide.SELL,
-        size
-      );
+      const { error } = await supabase
+        .from('holdings')
+        .insert({
+          market_id: selectedMarket.id,
+          user_id: session.user.id,
+        });
 
+      if (error) throw error;
+      
       toast({
-        title: "Order executed successfully",
-        description: `Filled ${result.filledSize} at average price ${result.avgPrice.toFixed(3)}`,
+        title: "Order confirmed",
+        description: "Your order has been placed successfully.",
       });
-
-      onClose();
-    } catch (error) {
+      
+      onConfirm();
+    } catch (error: any) {
+      console.error('Error storing holding:', error);
       toast({
-        title: "Order execution failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
-        variant: "destructive"
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to place your order. Please try again.",
       });
-    } finally {
-      setIsSubmitting(false);
     }
-  };
-
-  const handleOrderBookData = (data: OrderBookData | null) => {
-    setOrderBookData(data);
-    setIsOrderBookLoading(false);
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {action === 'buy' ? 'Buy' : 'Sell'} {market.question}
-          </DialogTitle>
-        </DialogHeader>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">
-              Amount
-            </label>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="w-full p-2 border rounded"
-              placeholder="Enter amount"
-              step="0.01"
-              min="0"
-              required
-            />
-          </div>
-
-          <LiveOrderBook
-            onOrderBookData={handleOrderBookData}
-            isLoading={isOrderBookLoading}
-            clobTokenId={clobTokenId}
-          />
-
-          {orderBookData && (
-            <div className="flex justify-between text-sm text-muted-foreground">
-              <span>Best Ask: {orderBookData.best_ask.toFixed(3)}</span>
-              <span>Best Bid: {orderBookData.best_bid.toFixed(3)}</span>
-            </div>
-          )}
-
-          <Button
-            type="submit"
-            className="w-full"
-            disabled={isSubmitting || !amount}
-          >
-            {isSubmitting ? (
+    <AlertDialog 
+      open={selectedMarket !== null} 
+      onOpenChange={onClose}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <div className="flex items-start gap-4 mb-4">
+            {topMover && (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Executing Order...
+                <img
+                  src={topMover.image}
+                  alt=""
+                  className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <AlertDialogTitle className="text-lg font-semibold mb-1">
+                    {selectedMarket?.action === 'buy' ? 'Buy' : 'Sell'}
+                  </AlertDialogTitle>
+                  <p className="text-sm text-muted-foreground line-clamp-2">
+                    {topMover.question}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+          <AlertDialogDescription className="space-y-4">
+            <LiveOrderBook 
+              onOrderBookData={onOrderBookData}
+              isLoading={isOrderBookLoading}
+              clobTokenId={selectedMarket?.clobTokenId}
+            />
+            
+            {orderBookData && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Bids</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                      {Object.entries(orderBookData.bids)
+                        .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
+                        .slice(0, 5)
+                        .map(([price, size]) => (
+                          <div key={price} className="flex justify-between text-sm">
+                            <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                            <span>{size.toFixed(2)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Asks</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                      {Object.entries(orderBookData.asks)
+                        .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
+                        .slice(0, 5)
+                        .map(([price, size]) => (
+                          <div key={price} className="flex justify-between text-sm">
+                            <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                            <span>{size.toFixed(2)}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
+                  <div>
+                    <div className="text-sm text-muted-foreground">Best Bid</div>
+                    <div className="text-lg font-medium text-green-500">
+                      {(orderBookData.best_bid * 100).toFixed(2)}¢
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-muted-foreground">Best Ask</div>
+                    <div className="text-lg font-medium text-red-500">
+                      {(orderBookData.best_ask * 100).toFixed(2)}¢
+                    </div>
+                  </div>
+                </div>
+                <div className="text-sm text-muted-foreground">
+                  Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
+                </div>
+              </div>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleConfirm}
+            disabled={!orderBookData || isOrderBookLoading}
+            className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+          >
+            {isOrderBookLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Connecting...
               </>
             ) : (
-              `Confirm ${action}`
+              `Confirm ${selectedMarket?.action}`
             )}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
