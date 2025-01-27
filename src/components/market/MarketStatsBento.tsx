@@ -138,18 +138,28 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden">
+        {/* Main gradient background that covers the entire card */}
         <div 
           className="absolute inset-0 opacity-[0.03]" 
           style={gradientStyle} 
         />
-        <div className="relative h-full w-full flex flex-col rounded-lg overflow-hidden bg-background/80 backdrop-blur-[2px]">
+        
+        <div className="relative h-full w-full flex flex-col rounded-lg overflow-hidden">
+          {/* Image section with same gradient */}
           <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
             {article.image_url ? (
-              <img 
-                src={article.image_url} 
-                alt={article.title}
-                className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg"
-              />
+              <div className="relative h-full w-full">
+                {/* Gradient overlay for image section */}
+                <div 
+                  className="absolute inset-0 opacity-[0.03] z-10" 
+                  style={gradientStyle} 
+                />
+                <img 
+                  src={article.image_url} 
+                  alt={article.title}
+                  className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 rounded-lg relative z-0"
+                />
+              </div>
             ) : (
               <div 
                 className="h-full w-full rounded-lg"
@@ -162,8 +172,14 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          <div className="flex-1 p-4 backdrop-blur-sm flex flex-col justify-between relative">
-            <div className="space-y-2 px-12">
+          {/* Text section with same gradient */}
+          <div className="flex-1 p-4 flex flex-col justify-between relative">
+            {/* Additional gradient overlay for text section */}
+            <div 
+              className="absolute inset-0 opacity-[0.03]" 
+              style={gradientStyle} 
+            />
+            <div className="space-y-2 px-12 relative z-10">
               <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
                 {article.title}
               </h3>
