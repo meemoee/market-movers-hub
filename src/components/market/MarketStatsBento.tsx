@@ -123,9 +123,16 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       );
     }
 
+    const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
+      ? {
+          background: `linear-gradient(135deg, rgba(${article.gradient_start_rgb}, 0.03), rgba(${article.gradient_end_rgb}, 0.07))`
+        }
+      : undefined;
+
     const content = (
-      <div className="relative h-full w-full group rounded-lg overflow-hidden bg-card">
-        <div className="h-full w-full flex flex-col rounded-lg overflow-hidden">
+      <div className="relative h-full w-full group rounded-lg overflow-hidden">
+        <div className="absolute inset-0" style={gradientStyle} />
+        <div className="relative h-full w-full flex flex-col rounded-lg overflow-hidden bg-background/80 backdrop-blur-[2px]">
           <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
             {article.image_url ? (
               <img 
@@ -145,7 +152,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
             )}
           </div>
 
-          <div className="flex-1 p-4 bg-card/95 backdrop-blur-sm flex flex-col justify-between relative">
+          <div className="flex-1 p-4 backdrop-blur-sm flex flex-col justify-between relative">
             <div className="space-y-2 px-12">
               <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
                 {article.title}
