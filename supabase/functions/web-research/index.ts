@@ -1,6 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -80,12 +79,11 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     const queries = queriesData.queries || []
     
     console.log('Generated queries:', queries)
-
     return queries
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    return [query] // Fallback to original query if generation fails
+    return [query]
   }
 }
 
@@ -151,9 +149,11 @@ class WebScraper {
     }
 
     const reader = response.body?.getReader()
+    if (!reader) throw new Error('No reader available')
+
     const decoder = new TextDecoder()
 
-    while (reader) {
+    while (true) {
       const { done, value } = await reader.read()
       if (done) break
 
@@ -334,6 +334,7 @@ serve(async (req) => {
           await scraper.run(query)
           controller.close()
         } catch (error) {
+          console.error('Error in web research:', error)
           controller.error(error)
         }
       },
