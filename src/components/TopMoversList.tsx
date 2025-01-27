@@ -29,7 +29,7 @@ const TIME_INTERVALS: TimeInterval[] = [
   { label: formatInterval(480), value: '480' },
   { label: formatInterval(1440), value: '1440' },
   { label: formatInterval(10080), value: '10080' },
-];
+] as const;
 
 export interface TopMover {
   market_id: string;
@@ -125,6 +125,18 @@ export default function TopMoversList({
     setSelectedMarket(null);
   };
 
+  const toggleMarket = (marketId: string) => {
+    setExpandedMarkets(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(marketId)) {
+        newSet.delete(marketId);
+      } else {
+        newSet.add(marketId);
+      }
+      return newSet;
+    });
+  };
+
   const handleMarketAction = (marketId: string, action: 'buy' | 'sell', outcomeIndex: number) => {
     const market = topMovers.find(m => m.market_id === marketId);
     if (!market || !market.clobtokenids || !market.clobtokenids[outcomeIndex]) {
@@ -167,7 +179,7 @@ export default function TopMoversList({
             topMovers={topMovers}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
-            setSelectedMarket={setSelectedMarket}
+            setSelectedMarket={handleMarketAction}
             onLoadMore={onLoadMore}
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
