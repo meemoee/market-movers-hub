@@ -41,8 +41,8 @@ class WebScraper {
     this.encoder = new TextEncoder()
     this.controller = controller
     this.processedUrls = 0
-    this.maxUrlsPerQuery = 10  // Reduced from 15 to 10
-    this.maxQueriesProcessed = 3  // Reduced from 5 to 3
+    this.maxUrlsPerQuery = 12      // Balanced number of URLs per query
+    this.maxQueriesProcessed = 4   // Process 4 queries max
     this.queriesProcessed = 0
   }
 
@@ -58,14 +58,12 @@ class WebScraper {
   }
 
   private shouldSkipUrl(url: string): boolean {
-    // Expanded list of domains to skip
+    // Only skip social media and file downloads
     const skipDomains = [
-      'reddit.com', 'facebook.com', 'twitter.com', 'instagram.com',
-      'youtube.com', 'tiktok.com', 'pinterest.com', 'linkedin.com',
-      'tumblr.com', 'medium.com', 'quora.com', 'amazon.com',
-      'ebay.com', 'wikipedia.org'
+      'reddit.com', 'facebook.com', 'twitter.com', 
+      'instagram.com', 'youtube.com', 'tiktok.com'
     ]
-    const skipExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']
+    const skipExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx']
     
     return skipDomains.some(domain => url.includes(domain)) ||
            skipExtensions.some(ext => url.toLowerCase().endsWith(ext))
@@ -75,7 +73,7 @@ class WebScraper {
     try {
       const params = new URLSearchParams({
         q: query,
-        count: "8",  // Reduced from 10 to 8
+        count: "10",              // Get 10 results per page
         offset: offset.toString(),
         responseFilter: "Webpages"
       })
@@ -102,7 +100,7 @@ class WebScraper {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 4000) // Reduced timeout to 4s
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
 
       const response = await fetch(url, {
         headers: {
@@ -120,23 +118,23 @@ class WebScraper {
       if (!contentType?.includes('text/html')) return
 
       const html = await response.text()
+      
+      // Skip extremely large pages
+      if (html.length > 500000) return
+      
       const $ = load(html)
       
-      // More aggressive element removal
-      $('script, style, nav, header, footer, iframe, noscript, aside, form, .sidebar, .comments, .ad, .advertisement, .menu').remove()
-      $('[class*="nav"], [class*="menu"], [class*="sidebar"], [class*="footer"], [class*="header"]').remove()
-      
-      // Early content length check
-      if (html.length > 100000) return // Skip very large pages
+      // Remove only the most problematic elements
+      $('script, style, nav, iframe').remove()
       
       const title = $('title').text().trim()
-      const content = $('body').text()
+      const mainContent = $('main, article, .content, .article, .post').text() || $('body').text()
+      const content = mainContent
         .replace(/\s+/g, ' ')
-        .replace(/[^\w\s.,!?-]/g, ' ') // Remove special characters
         .trim()
-        .slice(0, 1500) // Reduced from 2500 to 1500
+        .slice(0, 3000) // Allow more content per page
 
-      if (content && content.length > 100) { // Only process if meaningful content exists
+      if (content) {
         this.sendResults([{ url, content, title }])
         this.processedUrls++
       }
@@ -146,15 +144,12 @@ class WebScraper {
   }
 
   async processBatch(urls: string[]) {
-    const batchSize = 3
+    const batchSize = 4  // Process 4 URLs at once
     for (let i = 0; i < urls.length; i += batchSize) {
       const batchUrls = urls.slice(i, i + batchSize)
       const promises = batchUrls.map(url => this.fetchAndParseContent(url))
       await Promise.all(promises)
-      
-      // Progressive delay that increases with each batch
-      const delay = 300 + (i * 50)
-      await new Promise(resolve => setTimeout(resolve, delay))
+      await new Promise(resolve => setTimeout(resolve, 200)) // Consistent small delay
     }
   }
 
@@ -170,13 +165,10 @@ class WebScraper {
       await this.processBatch(urls)
       
       urlsProcessed += urls.length
-      offset += 8 // Adjusted to match new count
+      offset += 10
       
       if (urlsProcessed >= this.maxUrlsPerQuery) break
-      
-      // Progressive delay between searches
-      const delay = 1000 + (urlsProcessed * 100)
-      await new Promise(resolve => setTimeout(resolve, delay))
+      await new Promise(resolve => setTimeout(resolve, 500)) // Consistent delay between searches
     }
   }
 
@@ -193,9 +185,7 @@ class WebScraper {
       await this.processQuery(query)
       this.queriesProcessed++
       
-      // Progressive delay between queries that increases with each query
-      const delay = 2000 + (this.queriesProcessed * 500)
-      await new Promise(resolve => setTimeout(resolve, delay))
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Consistent delay between queries
     }
 
     return true
