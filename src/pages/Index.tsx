@@ -50,7 +50,14 @@ export default function Index() {
       if (page === 1) {
         setAllMovers(data.data);
       } else {
-        setAllMovers(prev => [...prev, ...data.data]);
+        // Remove duplicates by market_id when adding new data
+        const newMovers = [...allMovers];
+        data.data.forEach(mover => {
+          if (!newMovers.some(existing => existing.market_id === mover.market_id)) {
+            newMovers.push(mover);
+          }
+        });
+        setAllMovers(newMovers);
       }
     }
   }, [data?.data, page]);
