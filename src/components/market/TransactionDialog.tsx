@@ -53,7 +53,7 @@ export function TransactionDialog({
   const { toast } = useToast();
 
   const handleConfirm = async () => {
-    if (!selectedMarket) return;
+    if (!selectedMarket || !orderBookData) return;
 
     try {
       // First get the current user's session
@@ -68,23 +68,38 @@ export function TransactionDialog({
         return;
       }
 
-      const { error } = await supabase
-        .from('holdings')
-        .insert({
-          market_id: selectedMarket.id,
-          user_id: session.user.id,
-        });
+      const price = selectedMarket.action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
+      const size = 1; // Default size for now
 
-      if (error) throw error;
+      // Call the execute_market_order function
+      const { data, error } = await supabase.rpc('execute_market_order', {
+        p_user_id: session.user.id,
+        p_market_id: selectedMarket.id,
+        p_token_id: selectedMarket.clobTokenId,
+        p_outcome: 'yes', // Default to 'yes' for now
+        p_side: selectedMarket.action,
+        p_size: size,
+        p_price: price
+      });
+
+      if (error) {
+        console.error('Error executing order:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: error.message || "Failed to place your order. Please try again.",
+        });
+        return;
+      }
       
       toast({
         title: "Order confirmed",
-        description: "Your order has been placed successfully.",
+        description: `Your ${selectedMarket.action} order has been placed successfully at ${(price * 100).toFixed(2)}¢`,
       });
       
       onConfirm();
     } catch (error: any) {
-      console.error('Error storing holding:', error);
+      console.error('Error executing order:', error);
       toast({
         variant: "destructive",
         title: "Error",

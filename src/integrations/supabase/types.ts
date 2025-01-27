@@ -503,6 +503,18 @@ export type Database = {
           volume: number
         }[]
       }
+      execute_market_order: {
+        Args: {
+          p_user_id: string
+          p_market_id: string
+          p_token_id: string
+          p_outcome: string
+          p_side: Database["public"]["Enums"]["order_side"]
+          p_size: number
+          p_price: number
+        }
+        Returns: string
+      }
       get_active_markets: {
         Args: {
           market_ids: string[]
@@ -564,7 +576,9 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      order_side: "buy" | "sell"
+      order_status: "pending" | "completed" | "cancelled" | "failed"
+      order_type: "market" | "limit"
     }
     CompositeTypes: {
       [_ in never]: never
