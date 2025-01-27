@@ -19,12 +19,14 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
+  const [analysis, setAnalysis] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
 
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
     setResults([])
+    setAnalysis('')
     setError(null)
 
     try {
@@ -42,7 +44,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       }
 
       // Then, perform web scraping with the generated queries
-      const response = await supabase.functions.invoke('web-scrape', {
+      const response = await supabase.functions.invoke('web-research', {
         body: { queries: queriesData.queries }
       })
 
@@ -73,6 +75,9 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                       setResults(prev => [...prev, ...parsed.data])
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
+                    } else if (parsed.choices?.[0]?.delta?.content) {
+                      // Handle streaming analysis from Gemini Flash
+                      setAnalysis(prev => prev + parsed.choices[0].delta.content)
                     }
                   } catch (e) {
                     console.error('Error parsing SSE data:', e)
@@ -138,6 +143,14 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
               {message}
             </div>
           ))}
+        </ScrollArea>
+      )}
+
+      {analysis && (
+        <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5">
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            {analysis}
+          </div>
         </ScrollArea>
       )}
 
