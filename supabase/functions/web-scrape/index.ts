@@ -41,13 +41,13 @@ class WebScraper {
     this.encoder = new TextEncoder()
     this.controller = controller
     this.processedUrls = 0
-    this.maxUrlsPerQuery = 15 // Process fewer URLs per query
-    this.maxQueriesProcessed = 5 // Maximum number of queries to process
+    this.maxUrlsPerQuery = 15 // Limit URLs per query
+    this.maxQueriesProcessed = 5 // Maximum queries to process
     this.queriesProcessed = 0
   }
 
   private sendUpdate(message: string) {
-    console.log(message) // Log for debugging
+    console.log(message)
     const data = `data: ${JSON.stringify({ message })}\n\n`
     this.controller.enqueue(this.encoder.encode(data))
   }
@@ -96,7 +96,7 @@ class WebScraper {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000)
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
 
       const response = await fetch(url, {
         headers: {
@@ -123,25 +123,24 @@ class WebScraper {
       const content = $('body').text()
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 2500) // Reduced content length
+        .slice(0, 2500) // Limit content length
 
       if (content) {
         this.sendResults([{ url, content, title }])
         this.processedUrls++
       }
     } catch (error) {
-      // Skip failed URLs silently
-      return
+      return // Skip failed URLs
     }
   }
 
   async processBatch(urls: string[]) {
-    const batchSize = 3 // Process very small batches
+    const batchSize = 3 // Very small batches
     for (let i = 0; i < urls.length; i += batchSize) {
       const batchUrls = urls.slice(i, i + batchSize)
       const promises = batchUrls.map(url => this.fetchAndParseContent(url))
       await Promise.all(promises)
-      await new Promise(resolve => setTimeout(resolve, 300)) // Delay between mini-batches
+      await new Promise(resolve => setTimeout(resolve, 300)) // Delay between batches
     }
   }
 
@@ -159,10 +158,9 @@ class WebScraper {
       urlsProcessed += urls.length
       offset += 10
       
-      // Break if we've processed enough URLs
       if (urlsProcessed >= this.maxUrlsPerQuery) break
       
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Delay between search batches
+      await new Promise(resolve => setTimeout(resolve, 1000)) // Delay between searches
     }
   }
 
@@ -179,8 +177,7 @@ class WebScraper {
       await this.processQuery(query)
       this.queriesProcessed++
       
-      // Add delay between queries
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise(resolve => setTimeout(resolve, 2000)) // Delay between queries
     }
 
     return true
