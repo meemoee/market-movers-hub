@@ -1,135 +1,79 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
-  let redis;
   try {
-    const redisUrl = Deno.env.get('REDIS_URL');
-    if (!redisUrl) {
-      console.error('REDIS_URL environment variable is not set');
-      throw new Error('Redis configuration is missing');
-    }
-
-    console.log('Attempting to connect to Redis...');
-    redis = await connect({
-      hostname: new URL(redisUrl).hostname,
-      port: parseInt(new URL(redisUrl).port),
-      password: new URL(redisUrl).password,
-      tls: redisUrl.startsWith('rediss://')
-    });
+    const { interval = '1440', openOnly = true, page = 1, limit = 20 } = await req.json()
     
-    console.log('Connected to Redis successfully');
-    
-    const { interval = '1440', openOnly = false, page = 1, limit = 20 } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
-    
-    // The interval is now passed directly in minutes
-    const redisInterval = interval;
+    // Create Supabase client using service role key
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
 
-    // Get latest key for this interval
-    const latestKey = await redis.get(`topMovers:${redisInterval}:latest`);
-    console.log(`Latest key lookup result for interval ${redisInterval}:`, latestKey);
-    
-    if (!latestKey) {
-      console.log(`No latest key found for interval: ${redisInterval}`);
-      return new Response(
-        JSON.stringify({
-          data: [],
-          hasMore: false
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200
-        }
-      );
-    }
+    // Calculate time range
+    const endTime = new Date()
+    const startTime = new Date(endTime.getTime() - (parseInt(interval) * 60 * 1000))
 
-    // Get manifest
-    const manifestKey = `topMovers:${redisInterval}:${latestKey}:manifest`;
-    console.log(`Looking for manifest at key: ${manifestKey}`);
-    const manifestData = await redis.get(manifestKey);
-    
-    if (!manifestData) {
-      console.log(`No manifest found at key: ${manifestKey}`);
-      return new Response(
-        JSON.stringify({
-          data: [],
-          hasMore: false
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200
-        }
-      );
-    }
+    // Get markets with price changes
+    const { data: markets, error: marketsError } = await supabase
+      .rpc('get_active_markets_with_prices', {
+        start_time: startTime.toISOString(),
+        end_time: endTime.toISOString(),
+        p_limit: limit,
+        p_offset: (page - 1) * limit
+      })
 
-    const manifest = JSON.parse(manifestData);
-    console.log(`Found manifest with ${manifest.chunks} chunks for interval ${redisInterval}`);
+    if (marketsError) throw marketsError
 
-    // Get all markets from chunks
-    let allMarkets = [];
-    for (let i = 0; i < manifest.chunks; i++) {
-      const chunkKey = `topMovers:${redisInterval}:${latestKey}:chunk:${i}`;
-      const chunkData = await redis.get(chunkKey);
-      if (chunkData) {
-        const markets = JSON.parse(chunkData);
-        allMarkets.push(...markets);
+    // Get full market details
+    const { data: fullMarkets, error: fullMarketsError } = await supabase
+      .from('markets')
+      .select('*')
+      .in('id', markets?.map(m => m.output_market_id) || [])
+      .order('created_at', { ascending: false })
+
+    if (fullMarketsError) throw fullMarketsError
+
+    // Combine market data
+    const topMovers = fullMarkets?.map(market => {
+      const priceData = markets?.find(m => m.output_market_id === market.id)
+      return {
+        ...market,
+        initial_last_traded_price: priceData?.initial_price || 0,
+        final_last_traded_price: priceData?.final_price || 0,
+        price_change: (priceData?.final_price || 0) - (priceData?.initial_price || 0),
       }
-    }
-    console.log(`Retrieved ${allMarkets.length} markets total for interval ${redisInterval}`);
-
-    // Sort by absolute price change
-    allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
-
-    // Apply filters if needed
-    if (openOnly) {
-      allMarkets = allMarkets.filter(m => m.active && !m.archived);
-      console.log(`Filtered to ${allMarkets.length} open markets for interval ${redisInterval}`);
-    }
-
-    // Apply pagination
-    const start = (page - 1) * limit;
-    const paginatedMarkets = allMarkets.slice(start, start + limit);
-    const hasMore = allMarkets.length > start + limit;
-    console.log(`Returning ${paginatedMarkets.length} markets for interval ${redisInterval}, hasMore: ${hasMore}`);
-
-    await redis.close();
+    }) || []
 
     return new Response(
       JSON.stringify({
-        data: paginatedMarkets,
-        hasMore
+        data: topMovers,
+        hasMore: topMovers.length === limit
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
-    );
+    )
 
   } catch (error) {
-    console.error('Error:', error);
-    if (redis) {
-      await redis.close();
-    }
+    console.error('Error:', error)
     return new Response(
-      JSON.stringify({
-        data: [],
-        hasMore: false,
-        error: error.message
-      }),
+      JSON.stringify({ error: error.message }),
       { 
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500
       }
-    );
+    )
   }
-});
+})
