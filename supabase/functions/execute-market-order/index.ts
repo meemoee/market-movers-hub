@@ -1,8 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { corsHeaders } from '../_shared/cors.ts'
 
-const POLY_API_URL = 'https://clob.polymarket.com'
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,51 +13,48 @@ serve(async (req) => {
 
   try {
     const { user_id, market_id, token_id, outcome, side, size, price } = await req.json()
+    console.log('Executing market order:', { user_id, market_id, token_id, outcome, side, size, price })
 
-    // Validate inputs
-    if (!user_id || !market_id || !token_id || !outcome || !side || !size || !price) {
-      throw new Error('Missing required parameters')
-    }
-
-    // Get fresh orderbook snapshot
-    const bookResponse = await fetch(`${POLY_API_URL}/book?market=${token_id}`, {
+    // Get fresh orderbook
+    const response = await fetch(`https://clob.polymarket.com/orderbook/${token_id}`, {
       headers: {
         'Accept': 'application/json'
       }
     })
 
-    if (!bookResponse.ok) {
-      throw new Error(`Failed to fetch orderbook: ${bookResponse.status}`)
+    if (!response.ok) {
+      console.error('Polymarket API error:', response.status)
+      const errorText = await response.text()
+      console.error('Error details:', errorText)
+      throw new Error(`Failed to fetch orderbook: ${response.status}`)
     }
 
-    const book = await bookResponse.json()
+    const book = await response.json()
+    console.log('Got orderbook:', book)
 
-    // Calculate best available price
+    // Verify price against current orderbook
     const bestAsk = Math.min(...book.asks.map((ask: any) => parseFloat(ask.price)))
     const bestBid = Math.max(...book.bids.map((bid: any) => parseFloat(bid.price)))
+    const verifiedPrice = side === 'buy' ? bestAsk : bestBid
 
-    // Price verification
-    if (side === 'buy') {
-      if (parseFloat(price) < bestAsk) {
-        throw new Error('Price has moved unfavorably')
-      }
-      // Execute at best ask
-      price = bestAsk
-    } else {
-      if (parseFloat(price) > bestBid) {
-        throw new Error('Price has moved unfavorably')
-      }
-      // Execute at best bid
-      price = bestBid
+    console.log('Price verification:', {
+      submittedPrice: price,
+      verifiedPrice,
+      bestAsk,
+      bestBid
+    })
+
+    if ((side === 'buy' && price < verifiedPrice) || 
+        (side === 'sell' && price > verifiedPrice)) {
+      throw new Error('Price has moved unfavorably')
     }
 
-    // Initialize Supabase client
+    // Execute the order with verified price
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Execute the order with verified price
     const { data, error } = await supabaseClient.rpc('execute_market_order', {
       p_user_id: user_id,
       p_market_id: market_id,
@@ -63,12 +62,15 @@ serve(async (req) => {
       p_outcome: outcome,
       p_side: side,
       p_size: size,
-      p_price: price
+      p_price: verifiedPrice
     })
 
     if (error) {
+      console.error('Database error:', error)
       throw error
     }
+
+    console.log('Order executed successfully:', data)
 
     return new Response(
       JSON.stringify({ success: true, order_id: data }),
