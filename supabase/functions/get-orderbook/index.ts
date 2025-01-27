@@ -1,7 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { corsHeaders } from '../_shared/cors.ts'
 
-const POLY_API_URL = 'https://clob.polymarket.com'
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -12,24 +14,33 @@ serve(async (req) => {
     const { tokenId } = await req.json()
     
     if (!tokenId) {
-      throw new Error('Token ID is required')
+      throw new Error('tokenId is required')
     }
 
-    const response = await fetch(`${POLY_API_URL}/book?market=${tokenId}`, {
+    const response = await fetch(`https://clob.polymarket.com/orderbook/${tokenId}`, {
       headers: {
         'Accept': 'application/json'
       }
     })
 
     if (!response.ok) {
-      throw new Error(`Polymarket API error: ${response.status}`)
+      console.error('Polymarket API error:', response.status)
+      const errorText = await response.text()
+      console.error('Error details:', errorText)
+      throw new Error(`Failed to fetch orderbook: ${response.status}`)
     }
 
-    const data = await response.json()
+    const book = await response.json()
+    console.log('Successfully fetched orderbook for token:', tokenId)
     
     return new Response(
-      JSON.stringify(data),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify(book),
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
     )
 
   } catch (error) {
@@ -38,7 +49,10 @@ serve(async (req) => {
       JSON.stringify({ error: error.message }),
       { 
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        }
       }
     )
   }
