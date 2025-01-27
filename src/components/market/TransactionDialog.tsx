@@ -5,6 +5,15 @@ import { useToast } from '../ui/use-toast';
 import { orderManager, OrderSide } from '@/services/OrderManager';
 import { useUser } from '@supabase/auth-helpers-react';
 import { Loader2 } from 'lucide-react';
+import { LiveOrderBook } from './LiveOrderBook';
+
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
 
 interface TransactionDialogProps {
   isOpen: boolean;
@@ -28,6 +37,8 @@ export function TransactionDialog({
 }: TransactionDialogProps) {
   const [amount, setAmount] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
+  const [isOrderBookLoading, setIsOrderBookLoading] = useState(true);
   const { toast } = useToast();
   const user = useUser();
 
@@ -79,6 +90,11 @@ export function TransactionDialog({
     }
   };
 
+  const handleOrderBookData = (data: OrderBookData | null) => {
+    setOrderBookData(data);
+    setIsOrderBookLoading(false);
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent>
@@ -105,10 +121,18 @@ export function TransactionDialog({
             />
           </div>
 
-          <div className="flex justify-between text-sm text-muted-foreground">
-            <span>Best Ask: {market.final_best_ask?.toFixed(3) || 'N/A'}</span>
-            <span>Best Bid: {market.final_best_bid?.toFixed(3) || 'N/A'}</span>
-          </div>
+          <LiveOrderBook
+            onOrderBookData={handleOrderBookData}
+            isLoading={isOrderBookLoading}
+            clobTokenId={clobTokenId}
+          />
+
+          {orderBookData && (
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Best Ask: {orderBookData.best_ask.toFixed(3)}</span>
+              <span>Best Bid: {orderBookData.best_bid.toFixed(3)}</span>
+            </div>
+          )}
 
           <Button
             type="submit"
