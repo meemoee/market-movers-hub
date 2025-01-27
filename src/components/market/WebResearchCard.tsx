@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Search } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client"
+import ReactMarkdown from 'react-markdown'
 
 interface WebResearchCardProps {
   description: string
@@ -20,12 +21,16 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [analysis, setAnalysis] = useState('')
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
 
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
     setResults([])
     setError(null)
+    setAnalysis('')
+    setIsAnalyzing(false)
 
     try {
       // First, generate queries
@@ -47,6 +52,8 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       })
 
       if (response.error) throw response.error
+
+      const allContent: string[] = []
 
       const stream = new ReadableStream({
         start(controller) {
@@ -71,6 +78,10 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                     const parsed = JSON.parse(jsonStr)
                     if (parsed.type === 'results') {
                       setResults(prev => [...prev, ...parsed.data])
+                      // Collect content for analysis
+                      parsed.data.forEach((result: ResearchResult) => {
+                        allContent.push(result.content)
+                      })
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
                     }
@@ -93,11 +104,74 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         const { done } = await reader.read()
         if (done) break
       }
+
+      // After collecting all content, start the analysis
+      setIsAnalyzing(true)
+      const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
+        body: { 
+          content: allContent.join('\n\n'),
+          query: description
+        }
+      })
+
+      if (analysisResponse.error) throw analysisResponse.error
+
+      let accumulatedContent = ''
+      
+      const analysisStream = new ReadableStream({
+        start(controller) {
+          const textDecoder = new TextDecoder()
+          const reader = new Response(analysisResponse.data.body).body?.getReader()
+          
+          function push() {
+            reader?.read().then(({done, value}) => {
+              if (done) {
+                controller.close()
+                return
+              }
+              
+              const chunk = textDecoder.decode(value)
+              const lines = chunk.split('\n').filter(line => line.trim())
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const jsonStr = line.slice(6).trim()
+                  
+                  if (jsonStr === '[DONE]') continue
+                  
+                  try {
+                    const parsed = JSON.parse(jsonStr)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    if (content) {
+                      accumulatedContent += content
+                      setAnalysis(accumulatedContent)
+                    }
+                  } catch (e) {
+                    console.error('Error parsing analysis SSE data:', e)
+                  }
+                }
+              }
+              
+              push()
+            })
+          }
+          
+          push()
+        }
+      })
+
+      const analysisReader = analysisStream.getReader()
+      while (true) {
+        const { done } = await analysisReader.read()
+        if (done) break
+      }
+
     } catch (error) {
       console.error('Error in web research:', error)
       setError('Error occurred during research')
     } finally {
       setIsLoading(false)
+      setIsAnalyzing(false)
     }
   }
 
@@ -107,14 +181,14 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         <h3 className="text-lg font-semibold">Web Research</h3>
         <Button 
           onClick={handleResearch} 
-          disabled={isLoading}
+          disabled={isLoading || isAnalyzing}
           variant="outline"
           size="sm"
         >
-          {isLoading ? (
+          {isLoading || isAnalyzing ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Researching...
+              {isAnalyzing ? 'Analyzing...' : 'Researching...'}
             </>
           ) : (
             <>
@@ -138,6 +212,14 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
               {message}
             </div>
           ))}
+        </ScrollArea>
+      )}
+
+      {analysis && (
+        <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
+            {analysis}
+          </ReactMarkdown>
         </ScrollArea>
       )}
 
