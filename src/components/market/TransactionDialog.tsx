@@ -71,15 +71,26 @@ export function TransactionDialog({
       const price = selectedMarket.action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
       const size = 1; // Default size for now
 
-      // Call the execute_market_order function
-      const { data, error } = await supabase.rpc('execute_market_order', {
-        p_user_id: session.user.id,
-        p_market_id: selectedMarket.id,
-        p_token_id: selectedMarket.clobTokenId,
-        p_outcome: 'yes', // Default to 'yes' for now
-        p_side: selectedMarket.action,
-        p_size: size,
-        p_price: price
+      console.log('Executing market order:', {
+        user_id: session.user.id,
+        market_id: selectedMarket.id,
+        token_id: selectedMarket.clobTokenId,
+        outcome: 'yes',
+        side: selectedMarket.action,
+        size,
+        price
+      });
+
+      const { data, error } = await supabase.functions.invoke('execute-market-order', {
+        body: {
+          user_id: session.user.id,
+          market_id: selectedMarket.id,
+          token_id: selectedMarket.clobTokenId,
+          outcome: 'yes', // Default to 'yes' for now
+          side: selectedMarket.action,
+          size: size,
+          price: price
+        }
       });
 
       if (error) {
