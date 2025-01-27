@@ -125,15 +125,17 @@ export default function TopMoversList({
     setSelectedMarket(null);
   };
 
-  const toggleMarket = (marketId: string) => {
-    setExpandedMarkets(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(marketId)) {
-        newSet.delete(marketId);
-      } else {
-        newSet.add(marketId);
-      }
-      return newSet;
+  const handleMarketAction = (marketId: string, action: 'buy' | 'sell', outcomeIndex: number) => {
+    const market = topMovers.find(m => m.market_id === marketId);
+    if (!market || !market.clobtokenids || !market.clobtokenids[outcomeIndex]) {
+      console.error('Invalid market or missing CLOB token ID');
+      return;
+    }
+    
+    setSelectedMarket({
+      id: marketId,
+      action,
+      clobTokenId: market.clobtokenids[outcomeIndex]
     });
   };
 

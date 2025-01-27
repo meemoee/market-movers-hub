@@ -25,6 +25,8 @@ interface TopMover {
   market_id: string;
   question: string;
   image: string;
+  outcomes?: string[];
+  clobtokenids?: string[];
 }
 
 interface TransactionDialogProps {
@@ -53,10 +55,9 @@ export function TransactionDialog({
   const { toast } = useToast();
 
   const handleConfirm = async () => {
-    if (!selectedMarket || !orderBookData) return;
+    if (!selectedMarket || !orderBookData || !topMover) return;
 
     try {
-      // First get the current user's session
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.user) {
@@ -69,13 +70,17 @@ export function TransactionDialog({
       }
 
       const price = selectedMarket.action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
-      const size = 1; // Default size for now
+      const size = 1;
+
+      // Find the index of the selected token ID in the clobtokenids array
+      const tokenIndex = topMover.clobtokenids?.findIndex(id => id === selectedMarket.clobTokenId) ?? -1;
+      const outcome = tokenIndex !== -1 && topMover.outcomes ? topMover.outcomes[tokenIndex] : 'yes';
 
       console.log('Executing market order:', {
         user_id: session.user.id,
         market_id: selectedMarket.id,
         token_id: selectedMarket.clobTokenId,
-        outcome: 'yes',
+        outcome,
         side: selectedMarket.action,
         size,
         price
@@ -86,7 +91,7 @@ export function TransactionDialog({
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
-          outcome: 'yes', // Default to 'yes' for now
+          outcome,
           side: selectedMarket.action,
           size: size,
           price: price
