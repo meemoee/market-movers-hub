@@ -47,6 +47,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
 
   useEffect(() => {
     const fetchArticles = async () => {
+      console.log('Fetching articles for interval:', selectedInterval);
       const { data, error } = await supabase
         .from('news_articles')
         .select('*')
@@ -59,6 +60,7 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
         return;
       }
 
+      console.log('Fetched articles:', data);
       setArticles(data || []);
     };
 
@@ -123,15 +125,23 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       );
     }
 
+    console.log('Article gradient values:', {
+      start: article.gradient_start_rgb,
+      end: article.gradient_end_rgb
+    });
+
     const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
       ? {
-          background: `linear-gradient(135deg, rgba(${article.gradient_start_rgb}, 0.03), rgba(${article.gradient_end_rgb}, 0.07))`
+          background: `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
         }
       : undefined;
 
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        <div className="absolute inset-0" style={gradientStyle} />
+        <div 
+          className="absolute inset-0 opacity-[0.03]" 
+          style={gradientStyle} 
+        />
         <div className="relative h-full w-full flex flex-col rounded-lg overflow-hidden bg-background/80 backdrop-blur-[2px]">
           <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
             {article.image_url ? (
