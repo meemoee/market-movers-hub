@@ -8,7 +8,7 @@ interface TopMoversContentProps {
   topMovers: TopMover[];
   expandedMarkets: Set<string>;
   toggleMarket: (marketId: string) => void;
-  setSelectedMarket: (market: { id: string; action: 'buy' | 'sell'; clobTokenId: string; } | null) => void;
+  setSelectedMarket: (marketId: string, action: 'buy' | 'sell', outcomeIndex: number) => void;
   onLoadMore: () => void;
   hasMore: boolean;
   isLoadingMore?: boolean;
@@ -75,18 +75,8 @@ export function TopMoversContent({
             }}
             isExpanded={expandedMarkets.has(mover.market_id)}
             onToggleExpand={() => toggleMarket(mover.market_id)}
-            onBuy={() => {
-              const clobTokenId = mover.clobtokenids?.[0];
-              if (clobTokenId) {
-                setSelectedMarket({ id: mover.market_id, action: 'buy', clobTokenId });
-              }
-            }}
-            onSell={() => {
-              const clobTokenId = mover.clobtokenids?.[0];
-              if (clobTokenId) {
-                setSelectedMarket({ id: mover.market_id, action: 'sell', clobTokenId });
-              }
-            }}
+            onBuy={() => setSelectedMarket(mover.market_id, 'buy', 0)}
+            onSell={() => setSelectedMarket(mover.market_id, 'sell', 0)}
           />
         </div>
       ))}
