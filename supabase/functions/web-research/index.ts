@@ -30,6 +30,12 @@ class ContentCollector {
     this.collectedData.push({ url, content, title })
     return true
   }
+
+  getAllContent(): string {
+    return this.collectedData.map(item => {
+      return `Title: ${item.title || 'Untitled'}\nContent: ${item.content}\nSource: ${item.url}\n---\n`
+    }).join('\n')
+  }
 }
 
 async function generateSubQueries(query: string): Promise<string[]> {
@@ -74,6 +80,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     const queries = queriesData.queries || []
     
     console.log('Generated queries:', queries)
+
     return queries
 
   } catch (error) {
@@ -108,7 +115,72 @@ class WebScraper {
     this.controller.enqueue(this.encoder.encode(data))
   }
 
-  async searchBing(query: string) {
+  private async streamAnalysis(content: string) {
+    if (!OPENROUTER_API_KEY) {
+      throw new Error('OpenRouter API key is required')
+    }
+
+    this.sendUpdate('Analyzing collected content...')
+
+    const response = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Research App',
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful assistant that analyzes web content and provides concise, relevant insights."
+          },
+          {
+            role: "user",
+            content: `Analyze the following web content and provide a clear, concise analysis focusing on the most important points and their implications:\n\n${content}`
+          }
+        ],
+        stream: true
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`)
+    }
+
+    const reader = response.body?.getReader()
+    const decoder = new TextDecoder()
+
+    while (reader) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n').filter(line => line.trim())
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim()
+          if (jsonStr === '[DONE]') continue
+
+          try {
+            const parsed = JSON.parse(jsonStr)
+            const content = parsed.choices?.[0]?.delta?.content
+            if (content) {
+              const data = `data: ${JSON.stringify({ type: 'analysis', content })}\n\n`
+              this.controller.enqueue(this.encoder.encode(data))
+            }
+          } catch (e) {
+            console.error('Error parsing SSE data:', e)
+          }
+        }
+      }
+    }
+  }
+
+  private async searchBing(query: string) {
     this.sendUpdate(`Searching Bing for: ${query}`)
     
     const headers = {
@@ -136,12 +208,12 @@ class WebScraper {
     }
   }
 
-  shouldSkipUrl(url: string): boolean {
+  private shouldSkipUrl(url: string): boolean {
     const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
     return skipDomains.some(domain => url.includes(domain))
   }
 
-  async fetchAndParseContent(url: string) {
+  private async fetchAndParseContent(url: string) {
     if (this.shouldSkipUrl(url)) return
 
     try {
@@ -192,7 +264,7 @@ class WebScraper {
     }
   }
 
-  async processBatch(urls: string[], batchSize = 15) {
+  private async processBatch(urls: string[], batchSize = 15) {
     const tasks = []
     for (const url of urls.slice(0, batchSize)) {
       tasks.push(this.fetchAndParseContent(url))
@@ -213,18 +285,14 @@ class WebScraper {
   async run(query: string) {
     this.sendUpdate(`Starting web research for query: ${query}`)
     
-    // Generate sub-queries using OpenRouter
     const subQueries = await generateSubQueries(query)
     this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
     
-    // Process each sub-query
     for (const subQuery of subQueries) {
       this.sendUpdate(`Processing search query: ${subQuery}`)
       const searchResults = await this.searchBing(subQuery)
       
-      if (!searchResults.length) {
-        continue
-      }
+      if (!searchResults.length) continue
 
       const urls = searchResults.map(result => result.url)
       const batchSize = 40
@@ -238,6 +306,10 @@ class WebScraper {
         await new Promise(resolve => setTimeout(resolve, 100))
       }
     }
+
+    // After collecting all content, stream the analysis
+    const allContent = this.collector.getAllContent()
+    await this.streamAnalysis(allContent)
 
     return this.collector.collectedData
   }
@@ -253,10 +325,6 @@ serve(async (req) => {
 
     if (!BING_API_KEY) {
       throw new Error('BING_API_KEY is not configured')
-    }
-
-    if (!OPENROUTER_API_KEY) {
-      throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
     const stream = new ReadableStream({

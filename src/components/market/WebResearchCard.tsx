@@ -19,16 +19,17 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
+  const [analysis, setAnalysis] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
     setResults([])
+    setAnalysis('')
     setError(null)
 
     try {
-      // First, generate queries
       const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
         body: { query: description }
       })
@@ -41,9 +42,8 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         throw new Error('Invalid queries response')
       }
 
-      // Then, perform web scraping with the generated queries
-      const response = await supabase.functions.invoke('web-scrape', {
-        body: { queries: queriesData.queries }
+      const response = await supabase.functions.invoke('web-research', {
+        body: { query: description }
       })
 
       if (response.error) throw response.error
@@ -71,6 +71,8 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                     const parsed = JSON.parse(jsonStr)
                     if (parsed.type === 'results') {
                       setResults(prev => [...prev, ...parsed.data])
+                    } else if (parsed.type === 'analysis') {
+                      setAnalysis(prev => prev + parsed.content)
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
                     }
@@ -138,6 +140,14 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
               {message}
             </div>
           ))}
+        </ScrollArea>
+      )}
+
+      {analysis && (
+        <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5">
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            {analysis}
+          </div>
         </ScrollArea>
       )}
 
