@@ -36,11 +36,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful market research analyst. Analyze the provided web content and provide insights about market probabilities and relevant factors. Be concise and focus on key points."
+            content: "You are a helpful market research analyst. Analyze the provided web content and provide detailed insights about market probabilities and relevant factors using chain of thought."
           },
           {
             role: "user",
-            content: `Based on this web research content, analyze the likelihood and key factors for this query: ${query}\n\nContent:\n${content}`
+            content: `Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}\n\nContent:\n${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
           }
         ],
         stream: true
