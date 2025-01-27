@@ -29,7 +29,7 @@ const TIME_INTERVALS: TimeInterval[] = [
   { label: formatInterval(480), value: '480' },
   { label: formatInterval(1440), value: '1440' },
   { label: formatInterval(10080), value: '10080' },
-] as const;
+];
 
 export interface TopMover {
   market_id: string;
@@ -137,20 +137,6 @@ export default function TopMoversList({
     });
   };
 
-  const handleMarketAction = (marketId: string, action: 'buy' | 'sell', outcomeIndex: number) => {
-    const market = topMovers.find(m => m.market_id === marketId);
-    if (!market || !market.clobtokenids || !market.clobtokenids[outcomeIndex]) {
-      console.error('Invalid market or missing CLOB token ID');
-      return;
-    }
-    
-    setSelectedMarket({
-      id: marketId,
-      action,
-      clobTokenId: market.clobtokenids[outcomeIndex]
-    });
-  };
-
   const selectedTopMover = selectedMarket 
     ? topMovers.find(m => m.market_id === selectedMarket.id)
     : null;
@@ -179,7 +165,7 @@ export default function TopMoversList({
             topMovers={topMovers}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
-            setSelectedMarket={handleMarketAction}
+            setSelectedMarket={setSelectedMarket}
             onLoadMore={onLoadMore}
             hasMore={hasMore}
             isLoadingMore={isLoadingMore}
