@@ -130,9 +130,9 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
       end: article.gradient_end_rgb
     });
 
-    const gradientStyle = article.gradient_start_rgb && article.gradient_end_rgb
+    const gradientStyle = article.gradient_end_rgb
       ? {
-          background: `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
+          background: `linear-gradient(135deg, hsl(var(--background)), rgb(${article.gradient_end_rgb}))`
         }
       : undefined;
 
@@ -159,8 +159,8 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
               <div 
                 className="h-full w-full rounded-lg"
                 style={{ 
-                  background: article.gradient_start_rgb && article.gradient_end_rgb
-                    ? `linear-gradient(135deg, rgb(${article.gradient_start_rgb}), rgb(${article.gradient_end_rgb}))`
+                  background: article.gradient_end_rgb
+                    ? `linear-gradient(135deg, hsl(var(--background)), rgb(${article.gradient_end_rgb}))`
                     : PLACEHOLDER_GRADIENTS[0]
                 }}
               />
