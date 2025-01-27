@@ -41,8 +41,8 @@ class WebScraper {
     this.encoder = new TextEncoder()
     this.controller = controller
     this.processedUrls = 0
-    this.maxUrlsPerQuery = 15 // Limit URLs per query
-    this.maxQueriesProcessed = 5 // Maximum queries to process
+    this.maxUrlsPerQuery = 10  // Reduced from 15 to 10
+    this.maxQueriesProcessed = 3  // Reduced from 5 to 3
     this.queriesProcessed = 0
   }
 
@@ -58,18 +58,24 @@ class WebScraper {
   }
 
   private shouldSkipUrl(url: string): boolean {
+    // Expanded list of domains to skip
     const skipDomains = [
       'reddit.com', 'facebook.com', 'twitter.com', 'instagram.com',
-      'youtube.com', 'tiktok.com', 'pinterest.com', 'linkedin.com'
+      'youtube.com', 'tiktok.com', 'pinterest.com', 'linkedin.com',
+      'tumblr.com', 'medium.com', 'quora.com', 'amazon.com',
+      'ebay.com', 'wikipedia.org'
     ]
-    return skipDomains.some(domain => url.includes(domain))
+    const skipExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx']
+    
+    return skipDomains.some(domain => url.includes(domain)) ||
+           skipExtensions.some(ext => url.toLowerCase().endsWith(ext))
   }
 
   async searchBing(query: string, offset = 0): Promise<any[]> {
     try {
       const params = new URLSearchParams({
         q: query,
-        count: "10", // Reduced count per request
+        count: "8",  // Reduced from 10 to 8
         offset: offset.toString(),
         responseFilter: "Webpages"
       })
@@ -96,7 +102,7 @@ class WebScraper {
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 4000) // Reduced timeout to 4s
 
       const response = await fetch(url, {
         headers: {
@@ -116,16 +122,21 @@ class WebScraper {
       const html = await response.text()
       const $ = load(html)
       
-      // Remove unnecessary elements
-      $('script, style, nav, header, footer, iframe, noscript').remove()
+      // More aggressive element removal
+      $('script, style, nav, header, footer, iframe, noscript, aside, form, .sidebar, .comments, .ad, .advertisement, .menu').remove()
+      $('[class*="nav"], [class*="menu"], [class*="sidebar"], [class*="footer"], [class*="header"]').remove()
+      
+      // Early content length check
+      if (html.length > 100000) return // Skip very large pages
       
       const title = $('title').text().trim()
       const content = $('body').text()
         .replace(/\s+/g, ' ')
+        .replace(/[^\w\s.,!?-]/g, ' ') // Remove special characters
         .trim()
-        .slice(0, 2500) // Limit content length
+        .slice(0, 1500) // Reduced from 2500 to 1500
 
-      if (content) {
+      if (content && content.length > 100) { // Only process if meaningful content exists
         this.sendResults([{ url, content, title }])
         this.processedUrls++
       }
@@ -135,12 +146,15 @@ class WebScraper {
   }
 
   async processBatch(urls: string[]) {
-    const batchSize = 3 // Very small batches
+    const batchSize = 3
     for (let i = 0; i < urls.length; i += batchSize) {
       const batchUrls = urls.slice(i, i + batchSize)
       const promises = batchUrls.map(url => this.fetchAndParseContent(url))
       await Promise.all(promises)
-      await new Promise(resolve => setTimeout(resolve, 300)) // Delay between batches
+      
+      // Progressive delay that increases with each batch
+      const delay = 300 + (i * 50)
+      await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
 
@@ -156,11 +170,13 @@ class WebScraper {
       await this.processBatch(urls)
       
       urlsProcessed += urls.length
-      offset += 10
+      offset += 8 // Adjusted to match new count
       
       if (urlsProcessed >= this.maxUrlsPerQuery) break
       
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Delay between searches
+      // Progressive delay between searches
+      const delay = 1000 + (urlsProcessed * 100)
+      await new Promise(resolve => setTimeout(resolve, delay))
     }
   }
 
@@ -177,7 +193,9 @@ class WebScraper {
       await this.processQuery(query)
       this.queriesProcessed++
       
-      await new Promise(resolve => setTimeout(resolve, 2000)) // Delay between queries
+      // Progressive delay between queries that increases with each query
+      const delay = 2000 + (this.queriesProcessed * 500)
+      await new Promise(resolve => setTimeout(resolve, delay))
     }
 
     return true
