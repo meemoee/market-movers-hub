@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -133,11 +134,11 @@ class WebScraper {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that analyzes web content and provides concise, relevant insights."
+            content: "You are a helpful assistant that analyzes web content and provides concise, relevant insights. Focus on extracting key information and implications from the provided content."
           },
           {
             role: "user",
-            content: `Analyze the following web content and provide a clear, concise analysis focusing on the most important points and their implications:\n\n${content}`
+            content: `Analyze the following web content and provide a clear, focused analysis of the key points and their implications:\n\n${content}`
           }
         ],
         stream: true
@@ -309,6 +310,7 @@ class WebScraper {
 
     // After collecting all content, stream the analysis
     const allContent = this.collector.getAllContent()
+    console.log('Collected content length:', allContent.length)
     await this.streamAnalysis(allContent)
 
     return this.collector.collectedData
