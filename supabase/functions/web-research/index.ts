@@ -5,66 +5,11 @@ import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-async function streamAnalysis(content: string, controller: ReadableStreamDefaultController) {
-  const encoder = new TextEncoder()
-  
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Research App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful assistant that analyzes web research content and provides concise, relevant insights."
-          },
-          {
-            role: "user",
-            content: `Analyze this web research content and provide key insights: ${content}`
-          }
-        ],
-        stream: true
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`)
-    }
-
-    const reader = response.body?.getReader()
-    const decoder = new TextDecoder()
-
-    while (reader) {
-      const { done, value } = await reader.read()
-      if (done) break
-
-      const chunk = decoder.decode(value)
-      const lines = chunk.split('\n').filter(line => line.trim())
-      
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = `data: ${line.slice(6)}\n\n`
-          controller.enqueue(encoder.encode(data))
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error streaming analysis:', error)
-    const errorMessage = `data: ${JSON.stringify({ error: error.message })}\n\n`
-    controller.enqueue(encoder.encode(errorMessage))
-  }
 }
 
 class ContentCollector {
@@ -305,26 +250,20 @@ serve(async (req) => {
 
   try {
     const { query } = await req.json()
-    
-    if (!BING_API_KEY || !OPENROUTER_API_KEY) {
-      throw new Error('Required API keys not configured')
+
+    if (!BING_API_KEY) {
+      throw new Error('BING_API_KEY is not configured')
+    }
+
+    if (!OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
     const stream = new ReadableStream({
-      async start(controller) {
+      start: async (controller) => {
         try {
           const scraper = new WebScraper(BING_API_KEY, controller)
-          const results = await scraper.run(query)
-          
-          // Combine all content for analysis
-          const combinedContent = results.map(r => r.content).join('\n\n')
-          
-          // Stream the analysis after web scraping is complete
-          if (combinedContent) {
-            controller.enqueue(encoder.encode('data: {"message": "Starting content analysis..."}\n\n'))
-            await streamAnalysis(combinedContent, controller)
-          }
-          
+          await scraper.run(query)
           controller.close()
         } catch (error) {
           controller.error(error)
