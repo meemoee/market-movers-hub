@@ -125,7 +125,7 @@ export default function RightSidebar() {
   const defaultContent = [
     {
       icon: Zap,
-      question: "Use AI to turn your opinions into portfolios",
+      question: "Turn your 💬 into 💰",
       answer: "Hunchex will find relevant markets to what you say and track their performance over time.",
       subPoints: [
         { icon: TrendingUp, text: "Track price changes in real-time" },
@@ -157,9 +157,14 @@ export default function RightSidebar() {
       <div className="p-6 overflow-y-auto h-full">
         {!hasStartedChat ? (
           <>
-            <h2 className="text-xl font-bold mb-6 whitespace-nowrap overflow-hidden text-ellipsis">
-              Turn your 💬 into 💰
-            </h2>
+            <div className="mb-6">
+              <h2 className="text-xl font-bold whitespace-nowrap overflow-hidden text-ellipsis">
+                A New Market
+              </h2>
+              <h2 className="text-xl font-bold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-purple-400 to-purple-600 text-transparent bg-clip-text">
+                For a New Age
+              </h2>
+            </div>
             {defaultContent.map((item, index) => (
               <div key={index} className="mb-6 pb-6 border-b border-white/10 last:border-0">
                 <div className="flex items-center mb-2">
