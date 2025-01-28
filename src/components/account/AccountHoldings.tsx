@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "../ui/card";
 import { ScrollArea } from "../ui/scroll-area";
+import { Separator } from "../ui/separator";
 
 interface Holding {
   id: string;
@@ -74,28 +75,33 @@ export function AccountHoldings() {
   }
 
   return (
-    <ScrollArea className="h-[300px] pr-4">
-      <div className="space-y-3">
-        {holdings.map((holding) => (
-          <Card key={holding.id} className="p-3 flex items-start gap-3">
-            {holding.market?.image && (
-              <img
-                src={holding.market.image}
-                alt=""
-                className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-              />
-            )}
-            <div className="flex-1 min-w-0">
-              <p className="text-sm line-clamp-2 mb-1">
-                {holding.market?.question || 'Unknown Market'}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
-              </p>
+    <Card className="border p-0 overflow-hidden">
+      <ScrollArea className="h-[400px]">
+        <div>
+          {holdings.map((holding, index) => (
+            <div key={holding.id}>
+              <div className="p-4 flex items-start gap-3">
+                {holding.market?.image && (
+                  <img
+                    src={holding.market.image}
+                    alt=""
+                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                  />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm line-clamp-2 mb-1">
+                    {holding.market?.question || 'Unknown Market'}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
+                  </p>
+                </div>
+              </div>
+              {index < holdings.length - 1 && <Separator />}
             </div>
-          </Card>
-        ))}
-      </div>
-    </ScrollArea>
+          ))}
+        </div>
+      </ScrollArea>
+    </Card>
   );
 }
