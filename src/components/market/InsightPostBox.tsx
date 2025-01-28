@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Package } from 'lucide-react'
+import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Sparkle } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import * as React from "react"
 
@@ -58,7 +58,7 @@ export function InsightPostBox() {
       <div className="flex gap-3">
         <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-primary/10">
-            <UserCircle className="h-6 w-6" />
+            M
           </AvatarFallback>
         </Avatar>
         
@@ -86,6 +86,15 @@ export function InsightPostBox() {
               </Button>
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                 <LinkIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleGeneratePortfolio}
+                className="h-7 px-3 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1 ml-2"
+              >
+                Generate portfolio
+                <Sparkle className="h-3 w-3" />
               </Button>
             </div>
             
@@ -135,16 +144,6 @@ export function InsightPostBox() {
                   </div>
                 )}
               </div>
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleGeneratePortfolio}
-                className="h-7 px-3 text-xs font-medium rounded-full flex items-center gap-1"
-              >
-                <Package className="h-3 w-3" />
-                Generate portfolio
-              </Button>
               
               <Button 
                 onClick={handlePost}
