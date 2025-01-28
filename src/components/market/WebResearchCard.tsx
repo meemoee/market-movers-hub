@@ -49,7 +49,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         throw new Error(`Error generating queries: ${queriesError.message}`)
       }
 
-      if (!queriesData.queries || !Array.isArray(queriesData.queries)) {
+      if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
         throw new Error('Invalid queries response')
       }
 
@@ -83,11 +83,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
-                    if (parsed.type === 'results') {
+                    if (parsed.type === 'results' && Array.isArray(parsed.data)) {
                       setResults(prev => [...prev, ...parsed.data])
                       // Collect content for analysis
                       parsed.data.forEach((result: ResearchResult) => {
-                        allContent.push(result.content)
+                        if (result?.content) {
+                          allContent.push(result.content)
+                        }
                       })
                     } else if (parsed.message) {
                       setProgress(prev => [...prev, parsed.message])
@@ -110,6 +112,10 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       while (true) {
         const { done } = await reader.read()
         if (done) break
+      }
+
+      if (allContent.length === 0) {
+        throw new Error('No content collected from web scraping')
       }
 
       // After collecting all content, start the analysis
@@ -183,7 +189,9 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
 
       if (insightsResponse.error) throw insightsResponse.error
       
-      setInsights(insightsResponse.data)
+      if (insightsResponse.data) {
+        setInsights(insightsResponse.data)
+      }
 
     } catch (error) {
       console.error('Error in web research:', error)
@@ -240,17 +248,19 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
             <Target className="h-4 w-4 text-primary" />
             <span className="text-sm font-medium">Probability: {insights.probability}</span>
           </div>
-          <div className="space-y-2">
-            <div className="text-sm font-medium">Areas Needing Research:</div>
-            <ul className="space-y-1">
-              {insights.areasForResearch.map((area, index) => (
-                <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
-                  <ArrowRight className="h-3 w-3" />
-                  {area}
-                </li>
-              ))}
-            </ul>
-          </div>
+          {Array.isArray(insights.areasForResearch) && insights.areasForResearch.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Areas Needing Research:</div>
+              <ul className="space-y-1">
+                {insights.areasForResearch.map((area, index) => (
+                  <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
+                    <ArrowRight className="h-3 w-3" />
+                    {area}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
@@ -262,7 +272,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </ScrollArea>
       )}
 
-      {results.length > 0 && (
+      {Array.isArray(results) && results.length > 0 && (
         <ScrollArea className="h-[400px] rounded-md border p-4">
           {results.map((result, index) => (
             <div key={index} className="mb-6 last:mb-0 p-3 bg-accent/5 rounded-lg">
