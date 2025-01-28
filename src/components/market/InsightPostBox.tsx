@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock } from 'lucide-react'
+import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Package } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import * as React from "react"
 
@@ -42,6 +42,10 @@ export function InsightPostBox() {
   const handlePost = () => {
     console.log("Posting insight:", { content, isPrivate });
     setContent("");
+  };
+
+  const handleGeneratePortfolio = () => {
+    console.log("Generating portfolio");
   };
 
   const adjustTextareaHeight = (element: HTMLTextAreaElement) => {
@@ -131,6 +135,16 @@ export function InsightPostBox() {
                   </div>
                 )}
               </div>
+
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleGeneratePortfolio}
+                className="h-7 px-3 text-xs font-medium rounded-full flex items-center gap-1"
+              >
+                <Package className="h-3 w-3" />
+                Generate portfolio
+              </Button>
               
               <Button 
                 onClick={handlePost}

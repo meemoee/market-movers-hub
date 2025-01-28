@@ -70,7 +70,7 @@ export function MarketHeader({
           <span className="text-xs truncate max-w-[80px]">{truncateOutcome(outcomes[1])}</span>
           {bestBid !== undefined && (
             <span className="text-[11px] font-medium opacity-90">
-              {(bestBid * 100).toFixed(1)}¢
+              {(100 - (bestBid * 100)).toFixed(1)}¢
             </span>
           )}
         </HoverButton>
