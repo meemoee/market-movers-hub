@@ -32,7 +32,7 @@ interface TopMover {
 interface TransactionDialogProps {
   selectedMarket: { 
     id: string; 
-    action: 'buy' | 'sell';
+    action: 'buy';
     clobTokenId: string;
   } | null;
   topMover: TopMover | null;
@@ -78,7 +78,6 @@ export function TransactionDialog({
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
           outcome: selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'yes' : 'no',
-          side: 'buy', // Always 'buy' since we're buying the respective outcome
           size,
           price
         }
@@ -127,7 +126,7 @@ export function TransactionDialog({
                 />
                 <div className="flex-1 min-w-0">
                   <AlertDialogTitle className="text-lg font-semibold mb-1">
-                    {selectedMarket?.action === 'buy' ? 'Buy' : 'Sell'}
+                    Buy {selectedMarket?.clobTokenId === topMover?.clobtokenids?.[0] ? 'Yes' : 'No'}
                   </AlertDialogTitle>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {topMover.question}
@@ -201,7 +200,7 @@ export function TransactionDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={!orderBookData || isOrderBookLoading}
-            className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+            className="bg-green-500 hover:bg-green-600"
           >
             {isOrderBookLoading ? (
               <>
@@ -209,7 +208,7 @@ export function TransactionDialog({
                 Connecting...
               </>
             ) : (
-              `Confirm ${selectedMarket?.action}`
+              'Confirm Buy'
             )}
           </AlertDialogAction>
         </AlertDialogFooter>

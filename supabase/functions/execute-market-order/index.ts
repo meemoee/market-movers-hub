@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,31 +11,34 @@ serve(async (req) => {
   }
 
   try {
-    const { user_id, market_id, token_id, outcome, side, size, price } = await req.json()
-    console.log('Executing market order:', { user_id, market_id, token_id, outcome, side, size, price })
+    const { user_id, market_id, token_id, outcome, size, price } = await req.json()
+    console.log('Executing market order:', { user_id, market_id, token_id, outcome, size, price })
 
     // Verify current orderbook price
-    const orderbookResponse = await fetch(`https://clob.polymarket.com/orderbook/${token_id}`, {
-      headers: { 'Accept': 'application/json' }
-    })
+    const orderbookResponse = await fetch(`https://clob.polymarket.com/orderbook/${token_id}`)
 
     if (!orderbookResponse.ok) {
+      console.error('Failed to fetch orderbook:', orderbookResponse.status)
       throw new Error('Failed to fetch current orderbook')
     }
 
     const orderbook = await orderbookResponse.json()
     console.log('Current orderbook:', orderbook)
 
-    // For a buy order, verify against best ask
-    // For a sell order, verify against best bid
+    // Get best ask price since all orders are buys
     const bestAsk = Math.min(...orderbook.asks.map((ask: any) => parseFloat(ask.price)))
-    const bestBid = Math.max(...orderbook.bids.map((bid: any) => parseFloat(bid.price)))
+    console.log('Best ask price:', bestAsk)
 
     // Allow small price difference to account for slight delays
     const PRICE_TOLERANCE = 0.005 // 0.5% tolerance
-    const priceIsValid = Math.abs(price - (side === 'buy' ? bestAsk : bestBid)) <= PRICE_TOLERANCE
+    const priceIsValid = Math.abs(price - bestAsk) <= PRICE_TOLERANCE
 
     if (!priceIsValid) {
+      console.error('Price validation failed:', { 
+        submittedPrice: price, 
+        bestAsk, 
+        difference: Math.abs(price - bestAsk)
+      })
       throw new Error('Price has moved unfavorably')
     }
 
@@ -52,7 +54,7 @@ serve(async (req) => {
       p_market_id: market_id,
       p_token_id: token_id,
       p_outcome: outcome,
-      p_side: side,
+      p_side: 'buy', // All orders are buys of their respective outcome
       p_size: size,
       p_price: price
     })
