@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "../ui/card";
+import { ScrollArea } from "../ui/scroll-area";
 
 interface Holding {
   id: string;
   market_id: string;
+  entry_price: number | null;
   market: {
     question: string;
     image: string | null;
@@ -47,6 +49,7 @@ export function AccountHoldings() {
         .select(`
           id,
           market_id,
+          entry_price,
           market:markets (
             question,
             image
@@ -71,23 +74,28 @@ export function AccountHoldings() {
   }
 
   return (
-    <div className="space-y-3">
-      {holdings.map((holding) => (
-        <Card key={holding.id} className="p-3 flex items-start gap-3">
-          {holding.market?.image && (
-            <img
-              src={holding.market.image}
-              alt=""
-              className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-            />
-          )}
-          <div className="flex-1 min-w-0">
-            <p className="text-sm line-clamp-2">
-              {holding.market?.question || 'Unknown Market'}
-            </p>
-          </div>
-        </Card>
-      ))}
-    </div>
+    <ScrollArea className="h-[300px] pr-4">
+      <div className="space-y-3">
+        {holdings.map((holding) => (
+          <Card key={holding.id} className="p-3 flex items-start gap-3">
+            {holding.market?.image && (
+              <img
+                src={holding.market.image}
+                alt=""
+                className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+              />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm line-clamp-2 mb-1">
+                {holding.market?.question || 'Unknown Market'}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
+              </p>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </ScrollArea>
   );
 }
