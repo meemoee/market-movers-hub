@@ -71,7 +71,7 @@ export function TransactionDialog({
         return;
       }
 
-      const price = selectedMarket.action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
+      const price = orderBookData.best_ask;
       const isFirstOutcome = selectedMarket.clobTokenId === topMover.clobtokenids?.[0];
       const selectedOutcome = isFirstOutcome ? topMover.outcomes[0] : topMover.outcomes[1];
       
@@ -80,8 +80,8 @@ export function TransactionDialog({
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
-          outcome: selectedOutcome,
-          side: selectedMarket.action,
+          outcome: selectedOutcome, // Store the actual outcome title
+          side: 'buy', // Always 'buy' since we're buying the respective outcome
           size,
           price
         }
@@ -99,7 +99,7 @@ export function TransactionDialog({
 
       toast({
         title: "Order confirmed",
-        description: `Your order to ${selectedMarket.action} ${selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
+        description: `Your order to buy ${selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
       });
       
       onConfirm();
