@@ -158,10 +158,10 @@ export default function RightSidebar() {
         {!hasStartedChat ? (
           <>
             <div className="mb-8">
-              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-2">
+              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
                 A New Market
               </h2>
-              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-purple-500 via-purple-600 to-purple-400 text-transparent bg-clip-text">
+              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-purple-600 via-purple-400 to-purple-700 text-transparent bg-clip-text">
                 For a New Age
               </h2>
             </div>
