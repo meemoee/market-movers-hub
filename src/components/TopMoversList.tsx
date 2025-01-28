@@ -97,7 +97,7 @@ export default function TopMoversList({
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ 
     id: string; 
-    action: 'buy' | 'sell';
+    action: 'buy';
     clobTokenId: string;
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
@@ -115,12 +115,11 @@ export default function TopMoversList({
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;
     
-    const action = selectedMarket.action;
-    const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
+    const price = orderBookData.best_ask;
     
     toast({
       title: "Transaction Submitted",
-      description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
+      description: `Your buy order has been submitted at ${(price * 100).toFixed(2)}¢`,
     });
     setSelectedMarket(null);
   };
