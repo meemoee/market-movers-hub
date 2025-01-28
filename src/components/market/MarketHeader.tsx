@@ -1,4 +1,12 @@
 import { HoverButton } from "@/components/ui/hover-button";
+import { Button } from "@/components/ui/button";
+import { ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface MarketHeaderProps {
   image: string;
@@ -6,8 +14,8 @@ interface MarketHeaderProps {
   yesSubTitle?: string;
   bestBid?: number;
   bestAsk?: number;
-  onBuy: () => void;
-  onSell: () => void;
+  onBuy: (outcome: number) => void;
+  onSell: (outcome: number) => void;
   outcomes?: string[];
   onToggleExpand: () => void;
 }
@@ -50,30 +58,40 @@ export function MarketHeader({
         </div>
       </div>
       <div className="flex w-full sm:w-auto gap-2 h-12">
-        <HoverButton
-          variant="buy"
-          onClick={onBuy}
-          className="flex-1 sm:flex-initial flex flex-col items-center justify-center"
-        >
-          <span className="text-xs truncate max-w-[80px]">{truncateOutcome(outcomes[0])}</span>
-          {bestAsk !== undefined && (
-            <span className="text-[11px] font-medium opacity-90">
-              {(bestAsk * 100).toFixed(1)}¢
-            </span>
-          )}
-        </HoverButton>
-        <HoverButton
-          variant="sell"
-          onClick={onSell}
-          className="flex-1 sm:flex-initial flex flex-col items-center justify-center"
-        >
-          <span className="text-xs truncate max-w-[80px]">{truncateOutcome(outcomes[1])}</span>
-          {bestBid !== undefined && (
-            <span className="text-[11px] font-medium opacity-90">
-              {(bestBid * 100).toFixed(1)}¢
-            </span>
-          )}
-        </HoverButton>
+        {[0, 1].map((index) => (
+          <DropdownMenu key={index}>
+            <DropdownMenuTrigger asChild>
+              <HoverButton
+                variant={index === 0 ? "buy" : "sell"}
+                className="flex-1 sm:flex-initial flex flex-col items-center justify-center"
+              >
+                <span className="text-xs truncate max-w-[80px]">{truncateOutcome(outcomes[index])}</span>
+                {index === 0 ? (
+                  bestAsk !== undefined && (
+                    <span className="text-[11px] font-medium opacity-90">
+                      {(bestAsk * 100).toFixed(1)}¢
+                    </span>
+                  )
+                ) : (
+                  bestBid !== undefined && (
+                    <span className="text-[11px] font-medium opacity-90">
+                      {(bestBid * 100).toFixed(1)}¢
+                    </span>
+                  )
+                )}
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </HoverButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={() => onBuy(index)}>
+                Buy {outcomes[index]}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onSell(index)}>
+                Sell {outcomes[index]}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ))}
       </div>
     </div>
   );
