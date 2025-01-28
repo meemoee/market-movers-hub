@@ -8,7 +8,7 @@ interface TopMoversContentProps {
   topMovers: TopMover[];
   expandedMarkets: Set<string>;
   toggleMarket: (marketId: string) => void;
-  setSelectedMarket: (market: { id: string; action: 'buy'; clobTokenId: string; } | null) => void;
+  setSelectedMarket: (market: { id: string; action: 'buy' | 'sell'; clobTokenId: string; } | null) => void;
   onLoadMore: () => void;
   hasMore: boolean;
   isLoadingMore?: boolean;
