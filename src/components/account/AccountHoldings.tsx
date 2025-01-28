@@ -8,7 +8,6 @@ interface Holding {
   id: string;
   market_id: string;
   entry_price: number | null;
-  outcome: string | null;
   market: {
     question: string;
     image: string | null;
@@ -52,7 +51,6 @@ export function AccountHoldings() {
           id,
           market_id,
           entry_price,
-          outcome,
           market:markets (
             question,
             image
@@ -94,14 +92,9 @@ export function AccountHoldings() {
                   <p className="text-sm line-clamp-2 mb-1">
                     {holding.market?.question || 'Unknown Market'}
                   </p>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">
-                      Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Outcome: {holding.outcome || 'Unknown'}
-                    </p>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
+                  </p>
                 </div>
               </div>
               {index < holdings.length - 1 && <Separator />}
