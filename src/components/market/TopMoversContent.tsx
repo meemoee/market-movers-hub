@@ -78,13 +78,21 @@ export function TopMoversContent({
             onBuy={() => {
               const clobTokenId = mover.clobtokenids?.[0];
               if (clobTokenId) {
-                setSelectedMarket({ id: mover.market_id, action: 'buy', clobTokenId });
+                setSelectedMarket({ 
+                  id: mover.market_id, 
+                  action: 'buy', 
+                  clobTokenId 
+                });
               }
             }}
             onSell={() => {
-              const clobTokenId = mover.clobtokenids?.[0];
+              const clobTokenId = mover.clobtokenids?.[1] || mover.clobtokenids?.[0];
               if (clobTokenId) {
-                setSelectedMarket({ id: mover.market_id, action: 'sell', clobTokenId });
+                setSelectedMarket({ 
+                  id: mover.market_id, 
+                  action: 'sell', 
+                  clobTokenId 
+                });
               }
             }}
           />

@@ -25,6 +25,7 @@ interface TopMover {
   market_id: string;
   question: string;
   image: string;
+  clobtokenids?: string[];
 }
 
 interface TransactionDialogProps {
@@ -56,7 +57,6 @@ export function TransactionDialog({
     if (!selectedMarket || !orderBookData) return;
 
     try {
-      // First get the current user's session
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.user) {
@@ -75,7 +75,7 @@ export function TransactionDialog({
         user_id: session.user.id,
         market_id: selectedMarket.id,
         token_id: selectedMarket.clobTokenId,
-        outcome: 'yes',
+        outcome: selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'yes' : 'no',
         side: selectedMarket.action,
         size,
         price
@@ -86,7 +86,7 @@ export function TransactionDialog({
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
-          outcome: 'yes', // Default to 'yes' for now
+          outcome: selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'yes' : 'no',
           side: selectedMarket.action,
           size: size,
           price: price
