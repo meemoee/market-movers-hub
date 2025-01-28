@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Search } from "lucide-react"
+import { Loader2, Search, Target, ArrowRight } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 
@@ -16,6 +16,11 @@ interface ResearchResult {
   title?: string
 }
 
+interface ExtractedInsights {
+  probability: string
+  areasForResearch: string[]
+}
+
 export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -23,6 +28,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [insights, setInsights] = useState<ExtractedInsights | null>(null)
 
   const handleResearch = async () => {
     setIsLoading(true)
@@ -31,6 +37,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setError(null)
     setAnalysis('')
     setIsAnalyzing(false)
+    setInsights(null)
 
     try {
       // First, generate queries
@@ -166,6 +173,18 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         if (done) break
       }
 
+      // Extract insights using the new edge function
+      const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
+        body: {
+          webContent: allContent.join('\n\n'),
+          analysis: accumulatedContent
+        }
+      })
+
+      if (insightsResponse.error) throw insightsResponse.error
+      
+      setInsights(insightsResponse.data)
+
     } catch (error) {
       console.error('Error in web research:', error)
       setError('Error occurred during research')
@@ -213,6 +232,26 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
             </div>
           ))}
         </ScrollArea>
+      )}
+
+      {insights && (
+        <div className="space-y-4 rounded-md border p-4 bg-accent/5">
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">Probability: {insights.probability}</span>
+          </div>
+          <div className="space-y-2">
+            <div className="text-sm font-medium">Areas Needing Research:</div>
+            <ul className="space-y-1">
+              {insights.areasForResearch.map((area, index) => (
+                <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
+                  <ArrowRight className="h-3 w-3" />
+                  {area}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
 
       {analysis && (
