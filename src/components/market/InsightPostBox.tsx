@@ -58,7 +58,7 @@ export function InsightPostBox() {
       <div className="flex gap-3">
         <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-primary/10">
-            M
+            {localStorage.getItem('userEmail')?.charAt(0).toUpperCase() || '?'}
           </AvatarFallback>
         </Avatar>
         

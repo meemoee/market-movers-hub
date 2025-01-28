@@ -157,11 +157,11 @@ export default function RightSidebar() {
       <div className="p-6 overflow-y-auto h-full">
         {!hasStartedChat ? (
           <>
-            <div className="mb-12">
+            <div className="mb-16">
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
                 A New Market
               </h2>
-              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-[#9b87f5] via-[#8B5CF6] to-[#D946EF] text-transparent bg-clip-text">
+              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] text-transparent bg-clip-text">
                 For a New Age
               </h2>
             </div>
