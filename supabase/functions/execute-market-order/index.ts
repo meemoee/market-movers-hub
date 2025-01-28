@@ -15,46 +15,38 @@ serve(async (req) => {
     const { user_id, market_id, token_id, outcome, side, size, price } = await req.json()
     console.log('Executing market order:', { user_id, market_id, token_id, outcome, side, size, price })
 
-    // Get fresh orderbook
-    const response = await fetch(`https://clob.polymarket.com/orderbook/${token_id}`, {
-      headers: {
-        'Accept': 'application/json'
-      }
+    // Verify current orderbook price
+    const orderbookResponse = await fetch(`https://clob.polymarket.com/orderbook/${token_id}`, {
+      headers: { 'Accept': 'application/json' }
     })
 
-    if (!response.ok) {
-      console.error('Polymarket API error:', response.status)
-      const errorText = await response.text()
-      console.error('Error details:', errorText)
-      throw new Error(`Failed to fetch orderbook: ${response.status}`)
+    if (!orderbookResponse.ok) {
+      throw new Error('Failed to fetch current orderbook')
     }
 
-    const book = await response.json()
-    console.log('Got orderbook:', book)
+    const orderbook = await orderbookResponse.json()
+    console.log('Current orderbook:', orderbook)
 
-    // Verify price against current orderbook
-    const bestAsk = Math.min(...book.asks.map((ask: any) => parseFloat(ask.price)))
-    const bestBid = Math.max(...book.bids.map((bid: any) => parseFloat(bid.price)))
-    const verifiedPrice = side === 'buy' ? bestAsk : bestBid
+    // For a buy order, verify against best ask
+    // For a sell order, verify against best bid
+    const bestAsk = Math.min(...orderbook.asks.map((ask: any) => parseFloat(ask.price)))
+    const bestBid = Math.max(...orderbook.bids.map((bid: any) => parseFloat(bid.price)))
 
-    console.log('Price verification:', {
-      submittedPrice: price,
-      verifiedPrice,
-      bestAsk,
-      bestBid
-    })
+    // Allow small price difference to account for slight delays
+    const PRICE_TOLERANCE = 0.005 // 0.5% tolerance
+    const priceIsValid = Math.abs(price - (side === 'buy' ? bestAsk : bestBid)) <= PRICE_TOLERANCE
 
-    if ((side === 'buy' && price < verifiedPrice) || 
-        (side === 'sell' && price > verifiedPrice)) {
+    if (!priceIsValid) {
       throw new Error('Price has moved unfavorably')
     }
 
-    // Execute the order with verified price
+    // Create Supabase client
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
+    // Execute the order using the database function
     const { data, error } = await supabaseClient.rpc('execute_market_order', {
       p_user_id: user_id,
       p_market_id: market_id,
@@ -62,7 +54,7 @@ serve(async (req) => {
       p_outcome: outcome,
       p_side: side,
       p_size: size,
-      p_price: verifiedPrice
+      p_price: price
     })
 
     if (error) {

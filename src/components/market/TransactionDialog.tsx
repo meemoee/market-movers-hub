@@ -12,6 +12,7 @@ import {
 import { LiveOrderBook } from './LiveOrderBook';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { useState } from 'react';
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -52,6 +53,7 @@ export function TransactionDialog({
   onConfirm,
 }: TransactionDialogProps) {
   const { toast } = useToast();
+  const [size, setSize] = useState(1);
 
   const handleConfirm = async () => {
     if (!selectedMarket || !orderBookData) return;
@@ -68,28 +70,17 @@ export function TransactionDialog({
         return;
       }
 
-      const price = selectedMarket.action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
-      const size = 1; // Default size for now
-
-      console.log('Executing market order:', {
-        user_id: session.user.id,
-        market_id: selectedMarket.id,
-        token_id: selectedMarket.clobTokenId,
-        outcome: selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'yes' : 'no',
-        side: selectedMarket.action,
-        size,
-        price
-      });
-
+      const price = orderBookData.best_ask;
+      
       const { data, error } = await supabase.functions.invoke('execute-market-order', {
         body: {
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
           outcome: selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'yes' : 'no',
-          side: selectedMarket.action,
-          size: size,
-          price: price
+          side: 'buy', // Always 'buy' since we're buying the respective outcome
+          size,
+          price
         }
       });
 
@@ -102,10 +93,10 @@ export function TransactionDialog({
         });
         return;
       }
-      
+
       toast({
         title: "Order confirmed",
-        description: `Your ${selectedMarket.action} order has been placed successfully at ${(price * 100).toFixed(2)}¢`,
+        description: `Your order to buy ${selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'Yes' : 'No'} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
       });
       
       onConfirm();

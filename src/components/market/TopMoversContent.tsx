@@ -86,11 +86,11 @@ export function TopMoversContent({
               }
             }}
             onSell={() => {
-              const clobTokenId = mover.clobtokenids?.[1] || mover.clobtokenids?.[0];
+              const clobTokenId = mover.clobtokenids?.[1];
               if (clobTokenId) {
                 setSelectedMarket({ 
                   id: mover.market_id, 
-                  action: 'sell', 
+                  action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
                   clobTokenId 
                 });
               }
