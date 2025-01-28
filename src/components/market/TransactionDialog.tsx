@@ -27,6 +27,7 @@ interface TopMover {
   question: string;
   image: string;
   clobtokenids?: string[];
+  outcomes?: string[];
 }
 
 interface TransactionDialogProps {
@@ -56,7 +57,7 @@ export function TransactionDialog({
   const [size, setSize] = useState(1);
 
   const handleConfirm = async () => {
-    if (!selectedMarket || !orderBookData) return;
+    if (!selectedMarket || !orderBookData || !topMover?.outcomes) return;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -71,13 +72,15 @@ export function TransactionDialog({
       }
 
       const price = orderBookData.best_ask;
+      const isFirstOutcome = selectedMarket.clobTokenId === topMover.clobtokenids?.[0];
+      const selectedOutcome = isFirstOutcome ? topMover.outcomes[0] : topMover.outcomes[1];
       
       const { data, error } = await supabase.functions.invoke('execute-market-order', {
         body: {
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
-          outcome: selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'yes' : 'no',
+          outcome: selectedOutcome, // Store the actual outcome title
           side: 'buy', // Always 'buy' since we're buying the respective outcome
           size,
           price
@@ -96,7 +99,7 @@ export function TransactionDialog({
 
       toast({
         title: "Order confirmed",
-        description: `Your order to buy ${selectedMarket.clobTokenId === topMover?.clobtokenids?.[0] ? 'Yes' : 'No'} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
+        description: `Your order to buy ${selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
       });
       
       onConfirm();
