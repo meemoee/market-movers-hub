@@ -14,8 +14,9 @@ export default function Header({ onMenuClick }: HeaderProps) {
         >
           <Menu size={20} />
         </button>
-        <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
-          Market Movers
+        <h1 className="text-xl font-bold">
+          <span className="text-[#9b87f5]">hun</span>
+          <span className="text-[#D946EF]">chex</span>
         </h1>
         <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
           <Bell size={20} />
