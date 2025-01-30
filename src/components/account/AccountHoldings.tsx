@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card } from "../ui/card";
 import { ScrollArea } from "../ui/scroll-area";
 import { Separator } from "../ui/separator";
+import { useQuery } from "@tanstack/react-query";
 
 interface Holding {
   id: string;
@@ -15,9 +16,40 @@ interface Holding {
   } | null;
 }
 
+interface MarketPrice {
+  market_id: string;
+  last_traded_price: number;
+  timestamp: string;
+}
+
 export function AccountHoldings() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch latest prices for all markets in holdings
+  const { data: latestPrices } = useQuery({
+    queryKey: ['latestPrices', holdings.map(h => h.market_id)],
+    queryFn: async () => {
+      if (holdings.length === 0) return {};
+      
+      const { data, error } = await supabase
+        .from('market_prices')
+        .select('market_id, last_traded_price, timestamp')
+        .in('market_id', holdings.map(h => h.market_id))
+        .order('timestamp', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      // Convert to map for easy lookup
+      return (data || []).reduce((acc, price) => ({
+        ...acc,
+        [price.market_id]: price.last_traded_price
+      }), {});
+    },
+    enabled: holdings.length > 0,
+    refetchInterval: 30000 // Refresh every 30 seconds
+  });
 
   useEffect(() => {
     fetchHoldings();
@@ -68,6 +100,11 @@ export function AccountHoldings() {
     }
   };
 
+  const calculatePriceChange = (entryPrice: number | null, currentPrice: number | null) => {
+    if (!entryPrice || !currentPrice) return null;
+    return ((currentPrice - entryPrice) / entryPrice) * 100;
+  };
+
   if (isLoading) {
     return <div className="text-sm text-muted-foreground">Loading holdings...</div>;
   }
@@ -80,33 +117,48 @@ export function AccountHoldings() {
     <Card className="border p-0 overflow-hidden">
       <ScrollArea className="h-[400px]">
         <div>
-          {holdings.map((holding, index) => (
-            <div key={holding.id}>
-              <div className="p-4 flex items-start gap-3">
-                {holding.market?.image && (
-                  <img
-                    src={holding.market.image}
-                    alt=""
-                    className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
-                  />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm line-clamp-2 mb-1">
-                    {holding.market?.question || 'Unknown Market'}
-                  </p>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">
-                      Outcome: {holding.outcome}
+          {holdings.map((holding, index) => {
+            const currentPrice = latestPrices?.[holding.market_id];
+            const priceChange = calculatePriceChange(holding.entry_price, currentPrice);
+            
+            return (
+              <div key={holding.id}>
+                <div className="p-4 flex items-start gap-3">
+                  {holding.market?.image && (
+                    <img
+                      src={holding.market.image}
+                      alt=""
+                      className="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                    />
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm line-clamp-2 mb-1">
+                      {holding.market?.question || 'Unknown Market'}
                     </p>
-                    <p className="text-sm text-muted-foreground">
-                      Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        Outcome: {holding.outcome}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
+                      </p>
+                      {currentPrice && (
+                        <p className="text-sm">
+                          Current Price: ${currentPrice.toFixed(2)}
+                          {priceChange && (
+                            <span className={`ml-2 ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                              ({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%)
+                            </span>
+                          )}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
+                {index < holdings.length - 1 && <Separator />}
               </div>
-              {index < holdings.length - 1 && <Separator />}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </ScrollArea>
     </Card>
