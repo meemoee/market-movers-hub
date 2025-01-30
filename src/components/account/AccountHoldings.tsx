@@ -94,7 +94,17 @@ export function AccountHoldings() {
         `);
 
       if (error) throw error;
-      setHoldings(data || []);
+      
+      // Transform the data to ensure outcomes is properly typed
+      const transformedData = (data || []).map(holding => ({
+        ...holding,
+        market: holding.market ? {
+          ...holding.market,
+          outcomes: Array.isArray(holding.market.outcomes) ? holding.market.outcomes : null
+        } : null
+      }));
+      
+      setHoldings(transformedData);
     } catch (error) {
       console.error('Error fetching holdings:', error);
     } finally {
