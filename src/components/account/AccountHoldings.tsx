@@ -13,6 +13,7 @@ interface Holding {
   market: {
     question: string;
     image: string | null;
+    outcomes: string[] | null;
   } | null;
 }
 
@@ -87,7 +88,8 @@ export function AccountHoldings() {
           outcome,
           market:markets (
             question,
-            image
+            image,
+            outcomes
           )
         `);
 
@@ -100,9 +102,22 @@ export function AccountHoldings() {
     }
   };
 
-  const calculatePriceChange = (entryPrice: number | null, currentPrice: number | null) => {
+  const calculatePriceChange = (entryPrice: number | null, currentPrice: number | null, isNoOutcome: boolean) => {
     if (!entryPrice || !currentPrice) return null;
-    return ((currentPrice - entryPrice) / entryPrice) * 100;
+    
+    // Adjust prices for No outcomes
+    const adjustedEntryPrice = isNoOutcome ? 1 - entryPrice : entryPrice;
+    const adjustedCurrentPrice = isNoOutcome ? 1 - currentPrice : currentPrice;
+    
+    return ((adjustedCurrentPrice - adjustedEntryPrice) / adjustedEntryPrice) * 100;
+  };
+
+  const getAdjustedPrice = (price: number | null, holding: Holding) => {
+    if (!price || !holding.market?.outcomes) return price;
+    
+    // Check if this is a No outcome (second outcome in the array)
+    const isNoOutcome = holding.outcome === holding.market.outcomes[1];
+    return isNoOutcome ? 1 - price : price;
   };
 
   if (isLoading) {
@@ -118,8 +133,12 @@ export function AccountHoldings() {
       <ScrollArea className="h-[400px]">
         <div>
           {holdings.map((holding, index) => {
-            const currentPrice = latestPrices?.[holding.market_id];
-            const priceChange = calculatePriceChange(holding.entry_price, currentPrice);
+            const rawCurrentPrice = latestPrices?.[holding.market_id];
+            const isNoOutcome = holding.market?.outcomes ? holding.outcome === holding.market.outcomes[1] : false;
+            
+            const currentPrice = getAdjustedPrice(rawCurrentPrice, holding);
+            const entryPrice = getAdjustedPrice(holding.entry_price, holding);
+            const priceChange = calculatePriceChange(entryPrice, currentPrice, isNoOutcome);
             
             return (
               <div key={holding.id}>
@@ -140,7 +159,7 @@ export function AccountHoldings() {
                         Outcome: {holding.outcome}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
+                        Entry Price: ${entryPrice?.toFixed(2) || '0.00'}
                       </p>
                       {currentPrice && (
                         <p className="text-sm">
