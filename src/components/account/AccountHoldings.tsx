@@ -23,31 +23,44 @@ interface MarketPrice {
   timestamp: string;
 }
 
+interface TopMoverData {
+  market_id: string;
+  price_change: number;
+  final_last_traded_price: number;
+}
+
 export function AccountHoldings() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedInterval, setSelectedInterval] = useState("1440"); // Default to 24h
 
   // Fetch latest prices and price changes for all markets in holdings
-  const { data: latestPrices } = useQuery({
-    queryKey: ['latestPrices', holdings.map(h => h.market_id), selectedInterval],
+  const { data: marketData } = useQuery({
+    queryKey: ['topMovers', holdings.map(h => h.market_id), selectedInterval],
     queryFn: async () => {
       if (holdings.length === 0) return {};
       
-      // Get price changes from the top movers cache
-      const { data: topMoversData, error: topMoversError } = await supabase
-        .from('market_prices')
-        .select('market_id, last_traded_price, timestamp')
-        .in('market_id', holdings.map(h => h.market_id))
-        .order('timestamp', { ascending: false })
-        .limit(1);
+      const { data: topMoversData, error: topMoversError } = await supabase.functions.invoke<{
+        data: TopMoverData[];
+      }>('get-top-movers', {
+        body: {
+          interval: selectedInterval,
+          openOnly: false,
+          page: 1,
+          limit: 100,
+          marketIds: holdings.map(h => h.market_id)
+        }
+      });
 
       if (topMoversError) throw topMoversError;
 
       // Convert to map for easy lookup
-      return (topMoversData || []).reduce((acc, price) => ({
+      return (topMoversData?.data || []).reduce((acc, mover) => ({
         ...acc,
-        [price.market_id]: price.last_traded_price
+        [mover.market_id]: {
+          currentPrice: mover.final_last_traded_price,
+          priceChange: mover.price_change
+        }
       }), {});
     },
     enabled: holdings.length > 0,
@@ -69,7 +82,7 @@ export function AccountHoldings() {
         },
         (payload) => {
           console.log('New holding detected:', payload);
-          fetchHoldings(); // Refresh the holdings list when a new one is added
+          fetchHoldings();
         }
       )
       .subscribe();
@@ -124,15 +137,6 @@ export function AccountHoldings() {
     return isNoOutcome ? 1 - price : price;
   };
 
-  const calculatePriceChange = (entryPrice: number | null, currentPrice: number | null, isNoOutcome: boolean) => {
-    if (!entryPrice || !currentPrice) return null;
-    
-    // Only adjust current price for No outcomes, entry price is already correct
-    const adjustedCurrentPrice = isNoOutcome ? 1 - currentPrice : currentPrice;
-    
-    return ((adjustedCurrentPrice - entryPrice) / entryPrice) * 100;
-  };
-
   if (isLoading) {
     return <div className="text-sm text-muted-foreground">Loading holdings...</div>;
   }
@@ -146,11 +150,12 @@ export function AccountHoldings() {
       <ScrollArea className="h-[400px]">
         <div>
           {holdings.map((holding, index) => {
-            const rawCurrentPrice = latestPrices?.[holding.market_id];
+            const marketInfo = marketData?.[holding.market_id];
             const isNoOutcome = holding.market?.outcomes ? holding.outcome === holding.market.outcomes[1] : false;
             
-            const currentPrice = getAdjustedPrice(rawCurrentPrice, holding);
-            const priceChange = calculatePriceChange(holding.entry_price, rawCurrentPrice, isNoOutcome);
+            // Only adjust current price for No outcomes, entry price is already correct
+            const currentPrice = marketInfo ? getAdjustedPrice(marketInfo.currentPrice, holding) : null;
+            const priceChange = marketInfo?.priceChange;
             
             return (
               <div key={holding.id}>
