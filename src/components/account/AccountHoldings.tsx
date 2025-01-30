@@ -26,24 +26,26 @@ interface MarketPrice {
 export function AccountHoldings() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedInterval, setSelectedInterval] = useState("1440"); // Default to 24h
 
-  // Fetch latest prices for all markets in holdings
+  // Fetch latest prices and price changes for all markets in holdings
   const { data: latestPrices } = useQuery({
-    queryKey: ['latestPrices', holdings.map(h => h.market_id)],
+    queryKey: ['latestPrices', holdings.map(h => h.market_id), selectedInterval],
     queryFn: async () => {
       if (holdings.length === 0) return {};
       
-      const { data, error } = await supabase
+      // Get price changes from the top movers cache
+      const { data: topMoversData, error: topMoversError } = await supabase
         .from('market_prices')
         .select('market_id, last_traded_price, timestamp')
         .in('market_id', holdings.map(h => h.market_id))
         .order('timestamp', { ascending: false })
         .limit(1);
 
-      if (error) throw error;
+      if (topMoversError) throw topMoversError;
 
       // Convert to map for easy lookup
-      return (data || []).reduce((acc, price) => ({
+      return (topMoversData || []).reduce((acc, price) => ({
         ...acc,
         [price.market_id]: price.last_traded_price
       }), {});
@@ -114,22 +116,21 @@ export function AccountHoldings() {
     }
   };
 
-  const calculatePriceChange = (entryPrice: number | null, currentPrice: number | null, isNoOutcome: boolean) => {
-    if (!entryPrice || !currentPrice) return null;
-    
-    // Adjust prices for No outcomes
-    const adjustedEntryPrice = isNoOutcome ? 1 - entryPrice : entryPrice;
-    const adjustedCurrentPrice = isNoOutcome ? 1 - currentPrice : currentPrice;
-    
-    return ((adjustedCurrentPrice - adjustedEntryPrice) / adjustedEntryPrice) * 100;
-  };
-
   const getAdjustedPrice = (price: number | null, holding: Holding) => {
     if (!price || !holding.market?.outcomes) return price;
     
     // Check if this is a No outcome (second outcome in the array)
     const isNoOutcome = holding.outcome === holding.market.outcomes[1];
     return isNoOutcome ? 1 - price : price;
+  };
+
+  const calculatePriceChange = (entryPrice: number | null, currentPrice: number | null, isNoOutcome: boolean) => {
+    if (!entryPrice || !currentPrice) return null;
+    
+    // Only adjust current price for No outcomes, entry price is already correct
+    const adjustedCurrentPrice = isNoOutcome ? 1 - currentPrice : currentPrice;
+    
+    return ((adjustedCurrentPrice - entryPrice) / entryPrice) * 100;
   };
 
   if (isLoading) {
@@ -149,8 +150,7 @@ export function AccountHoldings() {
             const isNoOutcome = holding.market?.outcomes ? holding.outcome === holding.market.outcomes[1] : false;
             
             const currentPrice = getAdjustedPrice(rawCurrentPrice, holding);
-            const entryPrice = getAdjustedPrice(holding.entry_price, holding);
-            const priceChange = calculatePriceChange(entryPrice, currentPrice, isNoOutcome);
+            const priceChange = calculatePriceChange(holding.entry_price, rawCurrentPrice, isNoOutcome);
             
             return (
               <div key={holding.id}>
@@ -171,7 +171,7 @@ export function AccountHoldings() {
                         Outcome: {holding.outcome}
                       </p>
                       <p className="text-sm text-muted-foreground">
-                        Entry Price: ${entryPrice?.toFixed(2) || '0.00'}
+                        Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
                       </p>
                       {currentPrice && (
                         <p className="text-sm">
