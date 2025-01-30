@@ -68,9 +68,13 @@ Return ONLY a JSON object with these two fields:
     }
 
     const result = await response.json()
-    console.log('Extracted insights:', result)
+    console.log('Raw OpenRouter response:', result)
 
-    return new Response(JSON.stringify(result), {
+    // Parse the content string into a JSON object
+    const insights = JSON.parse(result.choices[0].message.content)
+    console.log('Parsed insights:', insights)
+
+    return new Response(JSON.stringify(insights), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
