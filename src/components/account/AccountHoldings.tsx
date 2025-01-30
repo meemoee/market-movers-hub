@@ -100,7 +100,9 @@ export function AccountHoldings() {
         ...holding,
         market: holding.market ? {
           ...holding.market,
-          outcomes: Array.isArray(holding.market.outcomes) ? holding.market.outcomes : null
+          outcomes: Array.isArray(holding.market.outcomes) 
+            ? holding.market.outcomes.map(outcome => String(outcome))
+            : null
         } : null
       }));
       
