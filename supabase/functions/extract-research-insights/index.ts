@@ -21,9 +21,8 @@ serve(async (req) => {
       throw new Error('Both web content and analysis must be provided')
     }
 
-    console.log('Extracting insights from content and analysis')
-    console.log('Analysis length:', analysis.length)
     console.log('Web content length:', webContent.length)
+    console.log('Analysis length:', analysis.length)
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -47,7 +46,7 @@ serve(async (req) => {
 2. The list of areas needing further research
 
 Web Content:
-${webContent}
+${webContent.slice(0, 15000)}
 
 Analysis:
 ${analysis}
@@ -62,6 +61,12 @@ Return ONLY a JSON object with these two fields:
         stream: true
       })
     })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('OpenRouter API error:', errorText)
+      throw new Error(`OpenRouter API error: ${response.status}`)
+    }
 
     // Create a TransformStream to parse the SSE data
     const transformStream = new TransformStream({
