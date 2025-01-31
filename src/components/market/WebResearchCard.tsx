@@ -29,6 +29,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [analysis, setAnalysis] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [insights, setInsights] = useState<ExtractedInsights | null>(null)
+  const [streamedContent, setStreamedContent] = useState('')
 
   const getProbabilityColor = (probability: string) => {
     const numericProb = parseInt(probability.replace('%', ''))
@@ -43,6 +44,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setAnalysis('')
     setIsAnalyzing(false)
     setInsights(null)
+    setStreamedContent('')
 
     try {
       // First, generate queries
@@ -184,7 +186,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         if (done) break
       }
 
-      // Extract insights using the new edge function
+      // Extract insights using the streaming edge function
       const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
         body: {
           webContent: allContent.join('\n\n'),
@@ -193,9 +195,64 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       })
 
       if (insightsResponse.error) throw insightsResponse.error
+
+      let streamedInsights = ''
       
-      if (insightsResponse.data) {
-        setInsights(insightsResponse.data)
+      const insightsStream = new ReadableStream({
+        start(controller) {
+          const textDecoder = new TextDecoder()
+          const reader = new Response(insightsResponse.data.body).body?.getReader()
+          
+          function push() {
+            reader?.read().then(({done, value}) => {
+              if (done) {
+                controller.close()
+                return
+              }
+              
+              const chunk = textDecoder.decode(value)
+              const lines = chunk.split('\n').filter(line => line.trim())
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const jsonStr = line.slice(6).trim()
+                  
+                  try {
+                    const parsed = JSON.parse(jsonStr)
+                    if (parsed.content) {
+                      streamedInsights += parsed.content
+                      setStreamedContent(streamedInsights)
+                      
+                      // Try to parse the accumulated content as JSON when it looks complete
+                      if (streamedInsights.includes('}')) {
+                        try {
+                          const parsedInsights = JSON.parse(streamedInsights)
+                          if (parsedInsights.probability && parsedInsights.areasForResearch) {
+                            setInsights(parsedInsights)
+                          }
+                        } catch (e) {
+                          // Not valid JSON yet, keep accumulating
+                        }
+                      }
+                    }
+                  } catch (e) {
+                    console.error('Error parsing insights SSE data:', e)
+                  }
+                }
+              }
+              
+              push()
+            })
+          }
+          
+          push()
+        }
+      })
+
+      const insightsReader = insightsStream.getReader()
+      while (true) {
+        const { done } = await insightsReader.read()
+        if (done) break
       }
 
     } catch (error) {
