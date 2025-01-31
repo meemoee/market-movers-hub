@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Search, Target, ArrowRight } from "lucide-react"
+import { Loader2, Search, Target, ArrowDown } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 
@@ -29,6 +29,11 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [analysis, setAnalysis] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [insights, setInsights] = useState<ExtractedInsights | null>(null)
+
+  const getProbabilityColor = (probability: string) => {
+    const numericProb = parseInt(probability.replace('%', ''))
+    return numericProb >= 50 ? 'text-green-500' : 'text-red-500'
+  }
 
   const handleResearch = async () => {
     setIsLoading(true)
@@ -242,28 +247,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </ScrollArea>
       )}
 
-      {insights && (
-        <div className="space-y-4 rounded-md border p-4 bg-accent/5">
-          <div className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">Probability: {insights.probability}</span>
-          </div>
-          {Array.isArray(insights.areasForResearch) && insights.areasForResearch.length > 0 && (
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Areas Needing Research:</div>
-              <ul className="space-y-1">
-                {insights.areasForResearch.map((area, index) => (
-                  <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
-                    <ArrowRight className="h-3 w-3" />
-                    {area}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-      )}
-
       {analysis && (
         <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
@@ -295,6 +278,33 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
             </div>
           ))}
         </ScrollArea>
+      )}
+
+      {insights && (
+        <div className="space-y-4 rounded-md border p-4 bg-accent/5">
+          <div className="flex items-center gap-2">
+            <Target className="h-4 w-4 text-primary" />
+            <span className={`text-sm font-medium ${getProbabilityColor(insights.probability)}`}>
+              Probability: {insights.probability}
+            </span>
+          </div>
+          {Array.isArray(insights.areasForResearch) && insights.areasForResearch.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">Areas Needing Research:</div>
+              <ul className="space-y-1">
+                {insights.areasForResearch.map((area, index) => (
+                  <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
+                    <ArrowDown className="h-3 w-3" />
+                    {area}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div className="flex justify-center pt-2">
+            <ArrowDown className="h-5 w-5 text-muted-foreground animate-bounce" />
+          </div>
+        </div>
       )}
     </Card>
   )
