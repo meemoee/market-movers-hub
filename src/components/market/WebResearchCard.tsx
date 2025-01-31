@@ -21,6 +21,11 @@ interface ExtractedInsights {
   areasForResearch: string[]
 }
 
+interface StreamingState {
+  rawText: string
+  parsedData: ExtractedInsights | null
+}
+
 export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -28,7 +33,10 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [insights, setInsights] = useState<ExtractedInsights | null>(null)
+  const [streamingState, setStreamingState] = useState<StreamingState>({
+    rawText: '',
+    parsedData: null
+  })
 
   const getProbabilityColor = (probability: string) => {
     const numericProb = parseInt(probability.replace('%', ''))
@@ -42,7 +50,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setError(null)
     setAnalysis('')
     setIsAnalyzing(false)
-    setInsights(null)
+    setStreamingState({ rawText: '', parsedData: null })
 
     try {
       // First, generate queries
@@ -184,7 +192,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         if (done) break
       }
 
-      // Extract insights using the new edge function
+      // Extract insights using streaming
       const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
         body: {
           webContent: allContent.join('\n\n'),
@@ -193,9 +201,74 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       })
 
       if (insightsResponse.error) throw insightsResponse.error
+
+      let accumulatedJson = ''
       
-      if (insightsResponse.data) {
-        setInsights(insightsResponse.data)
+      const insightsStream = new ReadableStream({
+        start(controller) {
+          const textDecoder = new TextDecoder()
+          const reader = new Response(insightsResponse.data.body).body?.getReader()
+          
+          function push() {
+            reader?.read().then(({done, value}) => {
+              if (done) {
+                controller.close()
+                return
+              }
+              
+              const chunk = textDecoder.decode(value)
+              const lines = chunk.split('\n').filter(line => line.trim())
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const jsonStr = line.slice(6).trim()
+                  if (jsonStr === '[DONE]') continue
+                  
+                  try {
+                    const parsed = JSON.parse(jsonStr)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    
+                    if (content) {
+                      // Accumulate JSON text
+                      accumulatedJson += content
+                      
+                      setStreamingState(prev => {
+                        const newState = {
+                          rawText: prev.rawText + content,
+                          parsedData: prev.parsedData
+                        }
+
+                        // Try parsing accumulated JSON
+                        try {
+                          const parsedJson = JSON.parse(accumulatedJson)
+                          if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
+                            newState.parsedData = parsedJson
+                          }
+                        } catch {
+                          // Continue accumulating if not valid JSON yet
+                        }
+
+                        return newState
+                      })
+                    }
+                  } catch (e) {
+                    console.debug('Chunk parse error (expected):', e)
+                  }
+                }
+              }
+              
+              push()
+            })
+          }
+          
+          push()
+        }
+      })
+
+      const insightsReader = insightsStream.getReader()
+      while (true) {
+        const { done } = await insightsReader.read()
+        if (done) break
       }
 
     } catch (error) {
@@ -280,19 +353,30 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </ScrollArea>
       )}
 
-      {insights && (
+      {streamingState.rawText && !streamingState.parsedData && (
+        <div className="space-y-4 rounded-md border p-4 bg-accent/5">
+          <div className="text-sm text-muted-foreground animate-pulse">
+            Analyzing insights...
+          </div>
+          <pre className="text-xs overflow-x-auto">
+            {streamingState.rawText}
+          </pre>
+        </div>
+      )}
+
+      {streamingState.parsedData && (
         <div className="space-y-4 rounded-md border p-4 bg-accent/5">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-primary" />
-            <span className={`text-sm font-medium ${getProbabilityColor(insights.probability)}`}>
-              Probability: {insights.probability}
+            <span className={`text-sm font-medium ${getProbabilityColor(streamingState.parsedData.probability)}`}>
+              Probability: {streamingState.parsedData.probability}
             </span>
           </div>
-          {Array.isArray(insights.areasForResearch) && insights.areasForResearch.length > 0 && (
+          {Array.isArray(streamingState.parsedData.areasForResearch) && streamingState.parsedData.areasForResearch.length > 0 && (
             <div className="space-y-2">
               <div className="text-sm font-medium">Areas Needing Research:</div>
               <ul className="space-y-1">
-                {insights.areasForResearch.map((area, index) => (
+                {streamingState.parsedData.areasForResearch.map((area, index) => (
                   <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
                     <ArrowDown className="h-3 w-3" />
                     {area}

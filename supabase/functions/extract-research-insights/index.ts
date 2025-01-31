@@ -1,5 +1,4 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -17,13 +16,10 @@ serve(async (req) => {
   try {
     const { webContent, analysis } = await req.json()
     
-    if (!webContent || !analysis) {
-      throw new Error('Both web content and analysis must be provided')
-    }
-
-    console.log('Extracting insights from content and analysis')
+    // Trim content to avoid token limits
+    const trimmedContent = webContent.slice(0, 15000)
+    console.log('Web content length:', trimmedContent.length)
     console.log('Analysis length:', analysis.length)
-    console.log('Web content length:', webContent.length)
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -38,44 +34,30 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a precise data extractor. Extract the final probability percentage and areas needing further research from the provided analysis."
+            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with two fields: probability (a percentage string like '75%') and areasForResearch (an array of strings describing areas needing more research)."
           },
           {
             role: "user",
-            content: `Based on this web research content and analysis, extract ONLY:
-1. The final probability percentage mentioned
-2. The list of areas needing further research
-
-Web Content:
-${webContent}
-
-Analysis:
-${analysis}
-
-Return ONLY a JSON object with these two fields:
-{
-  "probability": "X%" (where X is the number),
-  "areasForResearch": ["area1", "area2", etc]
-}`
+            content: `Based on this web research and analysis, provide the probability and areas needing more research:\n\nWeb Content:\n${trimmedContent}\n\nAnalysis:\n${analysis}`
           }
         ],
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
+        stream: true
       })
     })
 
     if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`)
+      console.error('OpenRouter API error:', response.status, await response.text())
+      throw new Error('Failed to get insights from OpenRouter')
     }
 
-    const result = await response.json()
-    console.log('Raw OpenRouter response:', result)
-
-    // Parse the content string into a JSON object
-    const insights = JSON.parse(result.choices[0].message.content)
-    console.log('Parsed insights:', insights)
-
-    return new Response(JSON.stringify(insights), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    return new Response(response.body, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
     })
 
   } catch (error) {
