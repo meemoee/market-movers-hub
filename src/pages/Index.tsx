@@ -80,14 +80,11 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Subtle Purple Gradient */}
-      <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden">
-        <div 
-          className="absolute inset-0 opacity-[0.03] bg-gradient-to-tr from-purple-300/20 to-transparent"
-          style={{ 
-            backdropFilter: 'blur(1px)',
-            transform: 'translate3d(0, 0, 0)' // Force GPU acceleration
-          }} 
+      {/* Purple Glow Effect */}
+      <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <Glow 
+          variant="top" 
+          className="opacity-30 scale-150 translate-x-1/4 -translate-y-1/4 blur-3xl"
         />
       </div>
 
@@ -116,7 +113,7 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0 min-h-screen -mt-20`}>
+          <div className={`flex-1 min-w-0 min-h-screen`}>
             <TopMoversList
               topMovers={allMovers}
               error={error?.message || null}
