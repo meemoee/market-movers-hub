@@ -154,17 +154,11 @@ export default function TopMoversList({
       />
       
       <div className="w-full px-0 sm:px-4 -mt-20">
-        <div className="flex flex-col items-center space-y-6 pt-28 border border-white/10 rounded-lg bg-black/10 backdrop-blur-[2px] relative overflow-hidden">
-          {/* Subtle gradient overlay */}
-          <div 
-            className="absolute inset-0 pointer-events-none opacity-5"
-            style={{
-              background: 'radial-gradient(circle at top right, hsl(var(--brand)), transparent 70%)',
-            }}
-          />
-          
+        <div className="flex flex-col items-center space-y-6 pt-28 border border-white/10 rounded-lg bg-black/20 backdrop-blur-sm">
           <InsightPostBox />
+          
           <MarketStatsBento selectedInterval={selectedInterval} />
+
           <TopMoversContent
             isLoading={isLoading || false}
             error={error}
