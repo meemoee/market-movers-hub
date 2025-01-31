@@ -13,7 +13,7 @@ export default function MarketMoverCard({ title, price, change, volume }: Market
   const changePercentage = change * 100; // Convert to percentage points
   
   return (
-    <Card className="p-4 bg-card hover:bg-card/80 transition-colors cursor-pointer">
+    <Card className="p-4 backdrop-blur-md bg-black/30 border border-white/10 hover:bg-black/40 transition-colors cursor-pointer">
       <div className="flex justify-between items-start mb-2">
         <h3 className="font-medium text-sm line-clamp-2 flex-1">{title}</h3>
         {isPositive ? (
