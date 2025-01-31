@@ -16,4 +16,7 @@ export interface Market {
   price: number;
   price_change: number;
   volume: number;
+  final_last_traded_price?: number;
+  final_best_ask?: number;
+  final_best_bid?: number;
 }
