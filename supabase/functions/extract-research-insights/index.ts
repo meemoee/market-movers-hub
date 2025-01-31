@@ -1,5 +1,5 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -21,8 +21,9 @@ serve(async (req) => {
       throw new Error('Both web content and analysis must be provided')
     }
 
-    console.log('Web content length:', webContent.length)
+    console.log('Extracting insights from content and analysis')
     console.log('Analysis length:', analysis.length)
+    console.log('Web content length:', webContent.length)
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -46,7 +47,7 @@ serve(async (req) => {
 2. The list of areas needing further research
 
 Web Content:
-${webContent.slice(0, 15000)}
+${webContent}
 
 Analysis:
 ${analysis}
@@ -58,48 +59,23 @@ Return ONLY a JSON object with these two fields:
 }`
           }
         ],
-        stream: true
+        response_format: { type: "json_object" }
       })
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error('OpenRouter API error:', errorText)
       throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
-    // Create a TransformStream to parse the SSE data
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        const lines = text.split('\n').filter(line => line.trim())
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim()
-            if (jsonStr === '[DONE]') continue
-            
-            try {
-              const parsed = JSON.parse(jsonStr)
-              const content = parsed.choices?.[0]?.delta?.content
-              if (content) {
-                controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`)
-              }
-            } catch (e) {
-              console.error('Error parsing SSE data:', e)
-            }
-          }
-        }
-      }
-    })
+    const result = await response.json()
+    console.log('Raw OpenRouter response:', result)
 
-    return new Response(response.body?.pipeThrough(transformStream), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
+    // Parse the content string into a JSON object
+    const insights = JSON.parse(result.choices[0].message.content)
+    console.log('Parsed insights:', insights)
+
+    return new Response(JSON.stringify(insights), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
 
   } catch (error) {
