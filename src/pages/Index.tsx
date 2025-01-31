@@ -5,6 +5,7 @@ import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { Glow } from "@/components/ui/glow";
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} minutes`;
@@ -78,12 +79,15 @@ export default function Index() {
   };
 
   return (
-    <div className="min-h-screen bg-background" style={{
-      backgroundImage: 'url(/gradient.jpg)',
-      backgroundSize: 'cover',
-      backgroundPosition: 'center',
-      backgroundAttachment: 'fixed'
-    }}>
+    <div className="min-h-screen bg-background">
+      {/* Purple Glow Effect */}
+      <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <Glow 
+          variant="top" 
+          className="opacity-30 scale-150 translate-x-1/4 -translate-y-1/4 blur-3xl"
+        />
+      </div>
+
       <Header onMenuClick={toggleSidebar} />
       
       <main className="container mx-auto pt-14 xl:pr-[400px] px-4 relative z-10">

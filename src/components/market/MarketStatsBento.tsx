@@ -117,16 +117,35 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     if (!article) {
       return (
         <div className="relative h-full w-full rounded-lg overflow-hidden border border-border/5">
-          <div className="absolute inset-0 rounded-lg bg-transparent" />
+          <div 
+            className="absolute inset-0 rounded-lg"
+            style={{ background: PLACEHOLDER_GRADIENTS[0] }}
+          />
         </div>
       );
     }
 
+    console.log('Article gradient values:', {
+      start: article.gradient_start_rgb,
+      end: article.gradient_end_rgb
+    });
+
+    const gradientStyle = article.gradient_end_rgb
+      ? {
+          background: `linear-gradient(135deg, hsl(var(--background)), rgb(${article.gradient_end_rgb}))`
+        }
+      : undefined;
+
     const content = (
       <div className="relative h-full w-full group rounded-lg overflow-hidden">
-        <div className="absolute inset-0 bg-transparent" />
+        {/* Single gradient background that covers the entire card */}
+        <div 
+          className="absolute inset-0 opacity-[0.03]" 
+          style={gradientStyle} 
+        />
         
         <div className="relative h-full w-full flex flex-col rounded-lg overflow-hidden">
+          {/* Image section */}
           <div className="relative w-full h-3/5 overflow-hidden rounded-t-lg p-4">
             {article.image_url ? (
               <div className="relative h-full w-full">
@@ -137,10 +156,18 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
                 />
               </div>
             ) : (
-              <div className="h-full w-full rounded-lg bg-transparent" />
+              <div 
+                className="h-full w-full rounded-lg"
+                style={{ 
+                  background: article.gradient_end_rgb
+                    ? `linear-gradient(135deg, hsl(var(--background)), rgb(${article.gradient_end_rgb}))`
+                    : PLACEHOLDER_GRADIENTS[0]
+                }}
+              />
             )}
           </div>
 
+          {/* Text section */}
           <div className="flex-1 p-4 flex flex-col justify-between relative">
             <div className="space-y-2 px-12 relative z-10">
               <h3 className="text-2xl font-bold leading-tight mb-2 line-clamp-2">
