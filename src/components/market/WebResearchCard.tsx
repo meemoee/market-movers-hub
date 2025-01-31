@@ -7,9 +7,10 @@ import { Separator } from "@/components/ui/separator";
 interface WebResearchCardProps {
   marketId: string;
   question: string;
+  description?: string;
 }
 
-export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
+export function WebResearchCard({ marketId, question, description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
         body: JSON.stringify({
           marketId,
           question,
+          description,
         }),
       });
       
