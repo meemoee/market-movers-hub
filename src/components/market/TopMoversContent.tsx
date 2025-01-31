@@ -1,7 +1,6 @@
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
 import { TopMover } from '../TopMoversList';
-import { Market } from '@/types/market';
 
 interface TopMoversContentProps {
   isLoading: boolean;
@@ -68,15 +67,11 @@ export function TopMoversContent({
               volume: mover.final_volume,
               image: mover.image || '/placeholder.svg',
               yes_sub_title: mover.yes_sub_title,
-              description: mover.description,
-              outcomes: mover.outcomes || ["Yes", "No"],
-              active: mover.active,
-              closed: mover.closed,
-              archived: mover.archived,
-              event_id: mover.event_id,
               final_last_traded_price: mover.final_last_traded_price,
               final_best_ask: mover.final_best_ask,
               final_best_bid: mover.final_best_bid,
+              description: mover.description,
+              outcomes: mover.outcomes || ["Yes", "No"],
             }}
             isExpanded={expandedMarkets.has(mover.market_id)}
             onToggleExpand={() => toggleMarket(mover.market_id)}

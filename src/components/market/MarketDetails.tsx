@@ -91,11 +91,7 @@ export function MarketDetails({
 
       {/* Web Research Section */}
       {description && (
-        <WebResearchCard 
-          marketId={marketId}
-          question={question}
-          description={description}
-        />
+        <WebResearchCard description={description} />
       )}
 
       {/* QA Tree Section */}

@@ -55,7 +55,7 @@ export function InsightPostBox() {
 
   return (
     <div className="w-full mb-4 py-4">
-      <div className="flex gap-3 p-4 rounded-lg backdrop-blur-md bg-black/30 border border-white/10">
+      <div className="flex gap-3">
         <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-primary/10">
             {localStorage.getItem('userEmail')?.charAt(0).toUpperCase() || '?'}
