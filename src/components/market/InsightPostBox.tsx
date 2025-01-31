@@ -54,7 +54,7 @@ export function InsightPostBox() {
   };
 
   return (
-    <div className="w-full mb-4 py-4">
+    <div className="w-full mb-4 py-4 px-6">
       <div className="flex gap-3">
         <Avatar className="h-10 w-10">
           <AvatarFallback className="bg-primary/10">
