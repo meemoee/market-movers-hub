@@ -14,7 +14,7 @@ serve(async (req) => {
   }
 
   try {
-    const { question, marketId, parentContent } = await req.json()
+    const { question, marketId, parentContent, isFollowUp } = await req.json()
     
     if (!question) {
       throw new Error('Question is required')
@@ -23,9 +23,10 @@ serve(async (req) => {
     console.log('Analyzing question:', question)
     console.log('Market ID:', marketId)
     console.log('Parent content:', parentContent)
+    console.log('Is follow-up:', isFollowUp)
 
-    // If we have parent content, we're generating follow-up questions with Gemini
-    if (parentContent) {
+    // If this is a request for follow-up questions
+    if (parentContent && !isFollowUp) {
       console.log('Generating follow-up questions using Gemini')
       const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
@@ -65,8 +66,8 @@ serve(async (req) => {
       })
     }
 
-    // For initial analysis, use Perplexity with raw text output
-    console.log('Generating initial analysis using Perplexity')
+    // For both initial analysis and follow-up analysis, use Perplexity
+    console.log('Generating analysis using Perplexity')
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {

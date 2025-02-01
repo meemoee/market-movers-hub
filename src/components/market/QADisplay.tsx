@@ -29,7 +29,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
   const cleanStreamContent = (content: string): string => {
-    // Remove any metadata or formatting markers
     return content
       .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
       .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
@@ -43,23 +42,74 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   const parseStreamChunk = (chunk: string): string | string[] => {
     try {
-      // Try parsing as JSON (for follow-up questions)
       const parsed = JSON.parse(chunk);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return parsed.filter(q => typeof q === 'string' && q.trim());
       }
-      // If it's a content delta
       if (parsed.choices?.[0]?.delta?.content) {
         return cleanStreamContent(parsed.choices[0].delta.content);
       }
       return '';
     } catch (e) {
-      // If not valid JSON, treat as regular content
       return cleanStreamContent(chunk);
     }
   };
 
-  const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0, parentContent: string | null = null) => {
+  const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string, isFollowUp: boolean = false) => {
+    let accumulatedContent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = new TextDecoder().decode(value);
+      const lines = chunk.split('\n').filter(line => line.trim());
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') continue;
+
+          const parsedContent = parseStreamChunk(jsonStr);
+
+          if (Array.isArray(parsedContent) && isFollowUp) {
+            return parsedContent;
+          } else if (typeof parsedContent === 'string' && !isFollowUp) {
+            accumulatedContent += parsedContent;
+            setStreamingContent(prev => ({
+              ...prev,
+              [nodeId]: accumulatedContent
+            }));
+
+            setQaData(prev => {
+              const updateNode = (nodes: QANode[]): QANode[] => {
+                return nodes.map(node => {
+                  if (node.id === nodeId) {
+                    return {
+                      ...node,
+                      analysis: accumulatedContent
+                    };
+                  }
+                  if (node.children.length > 0) {
+                    return {
+                      ...node,
+                      children: updateNode(node.children)
+                    };
+                  }
+                  return node;
+                });
+              };
+              return updateNode(prev);
+            });
+          }
+        }
+      }
+    }
+
+    return isFollowUp ? [] : accumulatedContent;
+  };
+
+  const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
     
     const nodeId = `node-${Date.now()}-${depth}`;
@@ -107,76 +157,45 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         [nodeId]: ''
       }));
 
-      const { data: streamData, error } = await supabase.functions.invoke('generate-qa-tree', {
+      // Get analysis for the current question
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({
           marketId,
           question,
-          parentContent
+          isFollowUp: false
         })
       });
 
-      if (error) throw error;
+      if (analysisError) throw analysisError;
 
-      let accumulatedContent = '';
-      const reader = new Response(streamData.body).body?.getReader();
+      const reader = new Response(analysisData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      const analysis = await processStream(reader, nodeId);
 
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split('\n').filter(line => line.trim());
+      // If this is the root question, get follow-up questions
+      if (!parentId) {
+        const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
+          body: JSON.stringify({
+            marketId,
+            question,
+            parentContent: analysis,
+            isFollowUp: true
+          })
+        });
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === '[DONE]') continue;
+        if (followUpError) throw followUpError;
 
-            const parsedContent = parseStreamChunk(jsonStr);
+        const followUpReader = new Response(followUpData.body).body?.getReader();
+        if (!followUpReader) throw new Error('Failed to create follow-up reader');
 
-            if (Array.isArray(parsedContent)) {
-              // Handle follow-up questions
-              for (const followUpQuestion of parsedContent) {
-                await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
-              }
-            } else if (parsedContent) {
-              // Handle regular content
-              accumulatedContent += parsedContent;
-              setStreamingContent(prev => ({
-                ...prev,
-                [nodeId]: accumulatedContent
-              }));
-
-              // Update node in tree with current analysis
-              setQaData(prev => {
-                const updateNode = (nodes: QANode[]): QANode[] => {
-                  return nodes.map(node => {
-                    if (node.id === nodeId) {
-                      return {
-                        ...node,
-                        analysis: accumulatedContent
-                      };
-                    }
-                    if (node.children.length > 0) {
-                      return {
-                        ...node,
-                        children: updateNode(node.children)
-                      };
-                    }
-                    return node;
-                  });
-                };
-                return updateNode(prev);
-              });
-            }
+        const followUpQuestions = await processStream(followUpReader, nodeId, true);
+        
+        if (Array.isArray(followUpQuestions)) {
+          for (const followUpQuestion of followUpQuestions) {
+            await analyzeQuestion(followUpQuestion, nodeId, depth + 1);
           }
         }
-      }
-
-      // After analysis is complete, get follow-up questions if this isn't from Gemini
-      if (!parentContent) {
-        await analyzeQuestion(question, nodeId, depth + 1, accumulatedContent);
       }
 
     } catch (error) {
