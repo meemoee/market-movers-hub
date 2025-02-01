@@ -28,9 +28,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  const cleanStreamContent = (content: string): string => {
+  const cleanStreamContent = (content: string | undefined): string => {
+    if (!content) return '';
     return content
-      .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
+      .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"\}/g, '')
       .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
       .replace(/"\}\}\]}/g, '')
       .replace(/\{"analysis":/g, '')
@@ -43,18 +44,30 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const parseStreamChunk = (chunk: string): string | string[] => {
     try {
       const parsed = JSON.parse(chunk);
+      
+      // Handle array of follow-up questions
       if (Array.isArray(parsed)) {
         return parsed;
       }
+
+      // Handle streaming delta content
       if (parsed.choices?.[0]?.delta?.content) {
         return cleanStreamContent(parsed.choices[0].delta.content);
       }
-      // Handle the case where we get a complete message object
+
+      // Handle complete message content
       if (parsed.choices?.[0]?.message?.content) {
         return cleanStreamContent(parsed.choices[0].message.content);
       }
+
+      // Handle direct content
+      if (typeof parsed === 'string') {
+        return cleanStreamContent(parsed);
+      }
+
       return '';
     } catch (e) {
+      // If parsing fails, treat as raw content
       return cleanStreamContent(chunk);
     }
   };
@@ -84,15 +97,20 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         jsonContent += new TextDecoder().decode(value);
       }
 
-      // Look for array pattern in the content
+      // Extract array from response
       const matches = jsonContent.match(/\[.*\]/);
       if (matches) {
-        const parsedQuestions = JSON.parse(matches[0]);
-        return Array.isArray(parsedQuestions) ? parsedQuestions : [];
+        try {
+          const parsedQuestions = JSON.parse(matches[0]);
+          return Array.isArray(parsedQuestions) ? parsedQuestions : [];
+        } catch (e) {
+          console.error('Error parsing follow-up questions:', e);
+          return [];
+        }
       }
       return [];
     } catch (e) {
-      console.error('Error parsing follow-up questions:', e);
+      console.error('Error in getGeminiFollowups:', e);
       return [];
     }
   };
@@ -293,7 +311,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     )}
                   </button>
                   <div className="flex-1">
-                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                    <ReactMarkdown>{analysisContent || ''}</ReactMarkdown>
                   </div>
                 </div>
               </div>
