@@ -28,29 +28,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
+  const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0, parentContent: string | null = null) => {
     if (depth >= 3) return;
     
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
-    setExpandedNodes(prev => new Set([...prev, nodeId])); // Auto-expand new nodes
+    setExpandedNodes(prev => new Set([...prev, nodeId]));
     
     try {
-      const { data: streamData, error } = await supabase.functions.invoke('generate-qa-tree', {
-        body: JSON.stringify({
-          marketId,
-          question
-        })
-      });
-
-      if (error) throw error;
-
-      // Initialize streaming content for this node
-      setStreamingContent(prev => ({
-        ...prev,
-        [nodeId]: ''
-      }));
-
       // Create new node in the tree
       setQaData(prev => {
         const newNode: QANode = {
@@ -85,6 +70,22 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateChildren(prev);
       });
 
+      // Initialize streaming content for this node
+      setStreamingContent(prev => ({
+        ...prev,
+        [nodeId]: ''
+      }));
+
+      const { data: streamData, error } = await supabase.functions.invoke('generate-qa-tree', {
+        body: JSON.stringify({
+          marketId,
+          question,
+          parentContent
+        })
+      });
+
+      if (error) throw error;
+
       let accumulatedContent = '';
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
@@ -113,52 +114,72 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   ...prev,
                   [nodeId]: accumulatedContent
                 }));
-                
-                try {
-                  // Try to parse the accumulated content as JSON
-                  const parsedJson = JSON.parse(accumulatedContent);
-                  
-                  if (parsedJson && typeof parsedJson === 'object') {
-                    // Update node in tree with current analysis
-                    setQaData(prev => {
-                      const updateNode = (nodes: QANode[]): QANode[] => {
-                        return nodes.map(node => {
-                          if (node.id === nodeId) {
-                            return {
-                              ...node,
-                              analysis: parsedJson.analysis || ''
-                            };
-                          }
-                          if (node.children.length > 0) {
-                            return {
-                              ...node,
-                              children: updateNode(node.children)
-                            };
-                          }
-                          return node;
-                        });
-                      };
-                      return updateNode(prev);
-                    });
 
-                    // Process follow-up questions after analysis is complete
-                    if (parsedJson.questions && Array.isArray(parsedJson.questions)) {
-                      for (const childQuestion of parsedJson.questions) {
-                        await analyzeQuestion(childQuestion, nodeId, depth + 1);
+                // Update node in tree with current analysis
+                setQaData(prev => {
+                  const updateNode = (nodes: QANode[]): QANode[] => {
+                    return nodes.map(node => {
+                      if (node.id === nodeId) {
+                        return {
+                          ...node,
+                          analysis: accumulatedContent
+                        };
                       }
-                    }
-                  }
-                } catch (parseError) {
-                  // Continue accumulating if not valid JSON yet
-                  continue;
-                }
+                      if (node.children.length > 0) {
+                        return {
+                          ...node,
+                          children: updateNode(node.children)
+                        };
+                      }
+                      return node;
+                    });
+                  };
+                  return updateNode(prev);
+                });
               }
             } catch (e) {
-              console.error('Error parsing SSE data:', e);
+              // If parsing as JSON fails, it's likely the raw Perplexity response
+              const content = jsonStr;
+              if (content && content !== '[DONE]') {
+                accumulatedContent += content;
+                
+                setStreamingContent(prev => ({
+                  ...prev,
+                  [nodeId]: accumulatedContent
+                }));
+
+                setQaData(prev => {
+                  const updateNode = (nodes: QANode[]): QANode[] => {
+                    return nodes.map(node => {
+                      if (node.id === nodeId) {
+                        return {
+                          ...node,
+                          analysis: accumulatedContent
+                        };
+                      }
+                      if (node.children.length > 0) {
+                        return {
+                          ...node,
+                          children: updateNode(node.children)
+                        };
+                      }
+                      return node;
+                    });
+                  };
+                  return updateNode(prev);
+                });
+              }
             }
           }
         }
       }
+
+      // After analysis is complete, get follow-up questions if this isn't from Gemini
+      if (!parentContent) {
+        // Call analyzeQuestion again with the accumulated content to get follow-up questions
+        await analyzeQuestion(question, nodeId, depth + 1, accumulatedContent);
+      }
+
     } catch (error) {
       console.error('Error in analysis:', error);
       toast({
@@ -244,7 +265,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </div>
             </div>
 
-            {node.children.length > 0 && (
+            {node.children.length > 0 && isExpanded && (
               <div className="mt-6">
                 {node.children.map((child) => renderQANode(child, depth + 1))}
               </div>

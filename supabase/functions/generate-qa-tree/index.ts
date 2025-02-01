@@ -14,16 +14,17 @@ serve(async (req) => {
   }
 
   try {
-    const { question, marketId } = await req.json()
+    const { question, marketId, parentContent } = await req.json()
     
     if (!question) {
       throw new Error('Question is required')
     }
     
     console.log('Analyzing question:', question)
-    console.log('Market ID:', marketId) // Optional, for future use
+    console.log('Market ID:', marketId)
+    console.log('Parent content:', parentContent)
 
-    // Get analysis and subquestions from Perplexity
+    // Get analysis from Perplexity (no JSON formatting)
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -37,13 +38,14 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "Analyze the given question and provide:\n1. A long, detailed analysis with specific citations. You must include specific examples and quotes.\n2. Exactly three analytical follow-up questions\n\nYour response must include specific citations and analysis. YOU MUST phrase each follow-up question with full specificity to the context - each follow-up question must be able to COMPLETELY PORTRAY the ENTIRE context in EACH QUESTION ALONE. Your follow-up questions should explore: popular opinion, likely alternative outcomes, source legitimacy, real quotes from relevant people, historical precedents, analagous events, event specifics, most likely alternative outcome, specific examples, and comparisons to analogous events."
+            content: "Analyze the given question and provide a detailed analysis with specific citations. You must include specific examples and quotes. Your response must include specific citations and analysis."
           },
           {
             role: "user",
             content: question
           }
-        ]
+        ],
+        stream: true
       })
     })
 
@@ -51,41 +53,51 @@ serve(async (req) => {
       throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
     }
 
-    const perplexityData = await perplexityResponse.json()
-    const perplexityContent = perplexityData.choices[0].message.content
-
-    // Stream JSON formatting from Gemini Flash
-    const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5-8b",
-        messages: [
-          {
-            role: "system",
-            content: "Extract analysis and questions from the text to create a JSON object EXACTLY in this format:\n{\n  \"analysis\": \"full analysis text\",\n  \"questions\": [\"question1\", \"question2\", \"question3\"]\n}\n\nReturn ONLY the JSON object."
-          },
-          {
-            role: "user",
-            content: perplexityContent
-          }
-        ],
-        response_format: { type: "json_object" },
-        stream: true
+    // If we have parent content, get follow-up questions from Gemini
+    let followupQuestions: string[] = []
+    if (parentContent) {
+      const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:5173',
+          'X-Title': 'Market Analysis App',
+        },
+        body: JSON.stringify({
+          model: "google/gemini-flash-1.5-8b",
+          messages: [
+            {
+              role: "system",
+              content: "Based on the provided question and analysis, generate exactly three analytical follow-up questions. Return ONLY a JSON array of three questions. Each follow-up question must be able to COMPLETELY PORTRAY the ENTIRE context in EACH QUESTION ALONE."
+            },
+            {
+              role: "user",
+              content: `Question: ${question}\n\nAnalysis: ${parentContent}`
+            }
+          ],
+          response_format: { type: "json_object" },
+          stream: true
+        })
       })
-    })
 
-    if (!geminiResponse.ok) {
-      throw new Error(`Gemini API error: ${geminiResponse.status}`)
+      if (!geminiResponse.ok) {
+        throw new Error(`Gemini API error: ${geminiResponse.status}`)
+      }
+
+      // Stream the Gemini response for follow-up questions
+      return new Response(geminiResponse.body, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        }
+      })
     }
 
-    // Stream the JSON response
-    return new Response(geminiResponse.body, {
+    // Stream the Perplexity response for initial analysis
+    return new Response(perplexityResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
