@@ -34,8 +34,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       
       // Handle Perplexity streaming format
       if (parsed.choices?.[0]?.delta?.content) {
-        // Extract just the content from the delta, ignoring citations
-        return parsed.choices[0].delta.content;
+        const content = parsed.choices[0].delta.content;
+        
+        // Skip empty content or completion messages
+        if (!content || parsed.choices[0].finish_reason) {
+          return '';
+        }
+        
+        // Return only the content, ignoring citations and metadata
+        return content;
       }
       
       // Fallback for other formats
@@ -44,6 +51,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         .replace(/"\}\}\]}/g, '')
         .replace(/\\n/g, '\n')
         .replace(/\\/g, '')
+        .replace(/\{"id":".*"\}$/, '') // Remove trailing metadata
         .trim();
     } catch (e) {
       // If JSON parsing fails, return empty string and log error
