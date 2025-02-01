@@ -33,6 +33,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
+    setExpandedNodes(prev => new Set([...prev, nodeId])); // Auto-expand new nodes
     
     try {
       const { data: streamData, error } = await supabase.functions.invoke('generate-qa-tree', {
@@ -199,7 +200,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
     const analysisContent = isStreaming ? streamContent : node.analysis;
-    const firstLine = analysisContent?.split('\n')[0] || '';
 
     return (
       <div key={node.id} className="relative flex flex-col">
@@ -238,11 +238,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     )}
                   </button>
                   <div className="flex-1">
-                    {isExpanded ? (
-                      <ReactMarkdown>{analysisContent}</ReactMarkdown>
-                    ) : (
-                      <div className="line-clamp-1">{firstLine}</div>
-                    )}
+                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
                   </div>
                 </div>
               </div>
