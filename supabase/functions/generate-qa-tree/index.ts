@@ -24,8 +24,9 @@ serve(async (req) => {
     console.log('Market ID:', marketId)
     console.log('Parent content:', parentContent)
 
-    // If we have parent content, we're generating follow-up questions
+    // If we have parent content, we're generating follow-up questions with Gemini
     if (parentContent) {
+      console.log('Generating follow-up questions using Gemini')
       const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -39,14 +40,13 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: "Based on the provided question and analysis, generate exactly three analytical follow-up questions. Return ONLY a JSON array of three questions. Each follow-up question must be able to COMPLETELY PORTRAY the ENTIRE context in EACH QUESTION ALONE."
+              content: "Based on the provided question and analysis, generate exactly three analytical follow-up questions. Return ONLY a JSON array of three questions, with no additional text or formatting."
             },
             {
               role: "user",
               content: `Question: ${question}\n\nAnalysis: ${parentContent}`
             }
           ],
-          response_format: { type: "json_object" },
           stream: true
         })
       })
@@ -65,7 +65,8 @@ serve(async (req) => {
       })
     }
 
-    // For initial analysis, use Perplexity without JSON formatting
+    // For initial analysis, use Perplexity with raw text output
+    console.log('Generating initial analysis using Perplexity')
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -79,7 +80,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "Analyze the given question and provide a detailed analysis with specific citations. You must include specific examples and quotes. Your response must include specific citations and analysis."
+            content: "Analyze the given question and provide a detailed analysis. Focus on facts and specific details. Format your response in clear paragraphs."
           },
           {
             role: "user",

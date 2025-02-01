@@ -29,11 +29,34 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
   const cleanStreamContent = (content: string): string => {
-    // Remove any JSON metadata that might appear in the stream
-    return content.replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
-                 .replace(/\{"analysis":/g, '')
-                 .replace(/\}$/g, '')
-                 .trim();
+    // Remove any metadata or formatting markers
+    return content
+      .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
+      .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
+      .replace(/"\}\}\]}/g, '')
+      .replace(/\{"analysis":/g, '')
+      .replace(/\}$/g, '')
+      .replace(/\\"/g, '"')
+      .replace(/\n\s*\n/g, '\n')
+      .trim();
+  };
+
+  const parseStreamChunk = (chunk: string): string | string[] => {
+    try {
+      // Try parsing as JSON (for follow-up questions)
+      const parsed = JSON.parse(chunk);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      // If it's a content delta
+      if (parsed.choices?.[0]?.delta?.content) {
+        return cleanStreamContent(parsed.choices[0].delta.content);
+      }
+      return '';
+    } catch (e) {
+      // If not valid JSON, treat as regular content
+      return cleanStreamContent(chunk);
+    }
   };
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0, parentContent: string | null = null) => {
@@ -110,65 +133,45 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
 
-            try {
-              // Try parsing as JSON first (for follow-up questions)
-              const parsed = JSON.parse(jsonStr);
-              const content = parsed.choices?.[0]?.delta?.content;
-              
-              if (content) {
-                // If this is a JSON response (follow-up questions)
-                try {
-                  const questions = JSON.parse(content);
-                  if (Array.isArray(questions)) {
-                    // Process each follow-up question
-                    for (const followUpQuestion of questions) {
-                      await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
+            const parsedContent = parseStreamChunk(jsonStr);
+
+            if (Array.isArray(parsedContent)) {
+              // Handle follow-up questions
+              for (const followUpQuestion of parsedContent) {
+                await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
+              }
+            } else if (parsedContent) {
+              // Handle regular content
+              accumulatedContent += parsedContent;
+              setStreamingContent(prev => ({
+                ...prev,
+                [nodeId]: accumulatedContent
+              }));
+
+              // Update node in tree with current analysis
+              setQaData(prev => {
+                const updateNode = (nodes: QANode[]): QANode[] => {
+                  return nodes.map(node => {
+                    if (node.id === nodeId) {
+                      return {
+                        ...node,
+                        analysis: accumulatedContent
+                      };
                     }
-                  }
-                } catch (e) {
-                  // If not valid JSON, treat as regular content
-                  accumulatedContent += cleanStreamContent(content);
-                  setStreamingContent(prev => ({
-                    ...prev,
-                    [nodeId]: accumulatedContent
-                  }));
-                }
-              }
-            } catch (e) {
-              // If parsing as JSON fails, it's the raw Perplexity response
-              const content = cleanStreamContent(jsonStr);
-              if (content && content !== '[DONE]') {
-                accumulatedContent += content;
-                setStreamingContent(prev => ({
-                  ...prev,
-                  [nodeId]: accumulatedContent
-                }));
-              }
+                    if (node.children.length > 0) {
+                      return {
+                        ...node,
+                        children: updateNode(node.children)
+                      };
+                    }
+                    return node;
+                  });
+                };
+                return updateNode(prev);
+              });
             }
           }
         }
-
-        // Update node in tree with current analysis
-        setQaData(prev => {
-          const updateNode = (nodes: QANode[]): QANode[] => {
-            return nodes.map(node => {
-              if (node.id === nodeId) {
-                return {
-                  ...node,
-                  analysis: accumulatedContent
-                };
-              }
-              if (node.children.length > 0) {
-                return {
-                  ...node,
-                  children: updateNode(node.children)
-                };
-              }
-              return node;
-            });
-          };
-          return updateNode(prev);
-        });
       }
 
       // After analysis is complete, get follow-up questions if this isn't from Gemini
