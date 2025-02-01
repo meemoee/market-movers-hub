@@ -28,36 +28,38 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  const cleanStreamContent = (content: string): string => {
-    return content
-      .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
-      .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
-      .replace(/"\}\}\]}/g, '')
-      .replace(/\{"analysis":/g, '')
-      .replace(/\}$/g, '')
-      .replace(/\\"/g, '"')
-      .replace(/\n\s*\n/g, '\n')
-      .trim();
+  const cleanStreamContent = (chunk: string): string => {
+    try {
+      const parsed = JSON.parse(chunk);
+      if (parsed.choices?.[0]?.delta?.content) {
+        return parsed.choices[0].delta.content;
+      }
+    } catch (e) {
+      // If JSON parsing fails, clean the raw chunk
+      return chunk
+        .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
+        .replace(/"\}\}\]}/g, '')
+        .replace(/\\n/g, '\n')
+        .replace(/\\/g, '')
+        .trim();
+    }
+    return '';
   };
 
-  const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
+  const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      const chunk = new TextDecoder().decode(value);
-      const lines = chunk.split('\n').filter(line => line.trim());
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim());
 
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const content = cleanStreamContent(line.slice(6).trim());
             if (content) {
               accumulatedContent += content;
               setStreamingContent(prev => ({
@@ -86,11 +88,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                 return updateNode(prev);
               });
             }
-          } catch (error) {
-            console.error('Error processing stream chunk:', error);
           }
         }
       }
+    } catch (error) {
+      console.error('Error processing stream:', error);
+      throw error;
     }
 
     return accumulatedContent;
@@ -138,13 +141,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateChildren(prev);
       });
 
-      // Initialize streaming content for this node
+      // Initialize streaming content
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
       }));
 
-      // Get analysis for the current question
+      // Get analysis
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({
           marketId,
@@ -156,12 +159,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (analysisError) throw analysisError;
 
       const reader = new Response(analysisData.body).body?.getReader();
-      if (!reader) throw new Error('Failed to create analysis reader');
+      if (!reader) throw new Error('Failed to create reader');
 
-      const analysis = await processAnalysisStream(reader, nodeId);
+      const analysis = await processStream(reader, nodeId);
 
-      // If this is the root question, get follow-up questions
+      // Get follow-up questions for root question
       if (!parentId) {
+        console.log('Getting follow-up questions...');
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({
             marketId,
@@ -174,29 +178,27 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (followUpError) throw followUpError;
 
         try {
-          const content = JSON.parse(followUpData.choices[0].message.content);
-          const followUpQuestions = content.map(item => item.question);
-          
-          // Process each follow-up question
-          for (const followUpQuestion of followUpQuestions) {
-            await analyzeQuestion(followUpQuestion, nodeId, depth + 1);
+          // Parse the raw JSON string directly
+          const followUpQuestions = JSON.parse(followUpData);
+          console.log('Parsed follow-up questions:', followUpQuestions);
+
+          for (const item of followUpQuestions) {
+            if (item?.question) {
+              await analyzeQuestion(item.question, nodeId, depth + 1);
+            }
           }
         } catch (error) {
-          console.error('Error parsing follow-up questions:', error);
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Failed to process follow-up questions."
-          });
+          console.error('Error parsing follow-ups:', error, 'Raw data:', followUpData);
+          throw new Error('Failed to parse follow-up questions');
         }
       }
 
     } catch (error) {
-      console.error('Error in analysis:', error);
+      console.error('Analysis error:', error);
       toast({
         variant: "destructive",
         title: "Analysis Error",
-        description: "Failed to analyze the question. Please try again.",
+        description: error instanceof Error ? error.message : "Failed to analyze the question",
       });
     }
   };
