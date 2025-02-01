@@ -117,7 +117,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
 
-      let accumulatedContent = '';
+      let streamContent = '';
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
@@ -138,14 +138,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             if (Array.isArray(parsedContent)) {
               // Handle follow-up questions
               for (const followUpQuestion of parsedContent) {
-                await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
+                await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
               }
             } else if (parsedContent) {
               // Handle regular content
-              accumulatedContent += parsedContent;
+              streamContent += parsedContent;
               setStreamingContent(prev => ({
                 ...prev,
-                [nodeId]: accumulatedContent
+                [nodeId]: streamContent
               }));
 
               // Update node in tree with current analysis
@@ -155,7 +155,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     if (node.id === nodeId) {
                       return {
                         ...node,
-                        analysis: accumulatedContent
+                        analysis: streamContent
                       };
                     }
                     if (node.children.length > 0) {
@@ -174,17 +174,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         }
       }
 
-      // After analysis is complete, get follow-up questions if this isn't from Gemini
-      // Get analysis regardless of parentContent
-    const accumulatedContent = await getPerplexityAnalysis(question);
-    
-    // Only generate follow-up questions if this isn't a follow-up itself
-    if (!parentContent) {
-      const followUpQuestions = await getGeminiFollowups(question, accumulatedContent);
-      for (const followUpQuestion of followUpQuestions) {
-        await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
+      // After streaming is complete, get follow-up questions if this isn't a follow-up
+      if (!parentContent) {
+        const followUpQuestions = await getGeminiFollowups(question, streamContent);
+        for (const followUpQuestion of followUpQuestions) {
+          await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
+        }
       }
-    }
 
     } catch (error) {
       console.error('Error in analysis:', error);
