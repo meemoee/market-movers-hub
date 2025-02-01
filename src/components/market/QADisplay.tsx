@@ -28,6 +28,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
+  const cleanStreamContent = (content: string): string => {
+    // Remove any JSON metadata that might appear in the stream
+    return content.replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
+                 .replace(/\{"analysis":/g, '')
+                 .replace(/\}$/g, '')
+                 .trim();
+  };
+
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0, parentContent: string | null = null) => {
     if (depth >= 3) return;
     
@@ -103,80 +111,68 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             if (jsonStr === '[DONE]') continue;
 
             try {
+              // Try parsing as JSON first (for follow-up questions)
               const parsed = JSON.parse(jsonStr);
               const content = parsed.choices?.[0]?.delta?.content;
               
               if (content) {
-                accumulatedContent += content;
-                
-                // Update streaming content immediately for live display
-                setStreamingContent(prev => ({
-                  ...prev,
-                  [nodeId]: accumulatedContent
-                }));
-
-                // Update node in tree with current analysis
-                setQaData(prev => {
-                  const updateNode = (nodes: QANode[]): QANode[] => {
-                    return nodes.map(node => {
-                      if (node.id === nodeId) {
-                        return {
-                          ...node,
-                          analysis: accumulatedContent
-                        };
-                      }
-                      if (node.children.length > 0) {
-                        return {
-                          ...node,
-                          children: updateNode(node.children)
-                        };
-                      }
-                      return node;
-                    });
-                  };
-                  return updateNode(prev);
-                });
+                // If this is a JSON response (follow-up questions)
+                try {
+                  const questions = JSON.parse(content);
+                  if (Array.isArray(questions)) {
+                    // Process each follow-up question
+                    for (const followUpQuestion of questions) {
+                      await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
+                    }
+                  }
+                } catch (e) {
+                  // If not valid JSON, treat as regular content
+                  accumulatedContent += cleanStreamContent(content);
+                  setStreamingContent(prev => ({
+                    ...prev,
+                    [nodeId]: accumulatedContent
+                  }));
+                }
               }
             } catch (e) {
-              // If parsing as JSON fails, it's likely the raw Perplexity response
-              const content = jsonStr;
+              // If parsing as JSON fails, it's the raw Perplexity response
+              const content = cleanStreamContent(jsonStr);
               if (content && content !== '[DONE]') {
                 accumulatedContent += content;
-                
                 setStreamingContent(prev => ({
                   ...prev,
                   [nodeId]: accumulatedContent
                 }));
-
-                setQaData(prev => {
-                  const updateNode = (nodes: QANode[]): QANode[] => {
-                    return nodes.map(node => {
-                      if (node.id === nodeId) {
-                        return {
-                          ...node,
-                          analysis: accumulatedContent
-                        };
-                      }
-                      if (node.children.length > 0) {
-                        return {
-                          ...node,
-                          children: updateNode(node.children)
-                        };
-                      }
-                      return node;
-                    });
-                  };
-                  return updateNode(prev);
-                });
               }
             }
           }
         }
+
+        // Update node in tree with current analysis
+        setQaData(prev => {
+          const updateNode = (nodes: QANode[]): QANode[] => {
+            return nodes.map(node => {
+              if (node.id === nodeId) {
+                return {
+                  ...node,
+                  analysis: accumulatedContent
+                };
+              }
+              if (node.children.length > 0) {
+                return {
+                  ...node,
+                  children: updateNode(node.children)
+                };
+              }
+              return node;
+            });
+          };
+          return updateNode(prev);
+        });
       }
 
       // After analysis is complete, get follow-up questions if this isn't from Gemini
       if (!parentContent) {
-        // Call analyzeQuestion again with the accumulated content to get follow-up questions
         await analyzeQuestion(question, nodeId, depth + 1, accumulatedContent);
       }
 

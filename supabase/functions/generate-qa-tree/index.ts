@@ -24,7 +24,48 @@ serve(async (req) => {
     console.log('Market ID:', marketId)
     console.log('Parent content:', parentContent)
 
-    // Get analysis from Perplexity (no JSON formatting)
+    // If we have parent content, we're generating follow-up questions
+    if (parentContent) {
+      const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:5173',
+          'X-Title': 'Market Analysis App',
+        },
+        body: JSON.stringify({
+          model: "google/gemini-flash-1.5",
+          messages: [
+            {
+              role: "system",
+              content: "Based on the provided question and analysis, generate exactly three analytical follow-up questions. Return ONLY a JSON array of three questions. Each follow-up question must be able to COMPLETELY PORTRAY the ENTIRE context in EACH QUESTION ALONE."
+            },
+            {
+              role: "user",
+              content: `Question: ${question}\n\nAnalysis: ${parentContent}`
+            }
+          ],
+          response_format: { type: "json_object" },
+          stream: true
+        })
+      })
+
+      if (!geminiResponse.ok) {
+        throw new Error(`Gemini API error: ${geminiResponse.status}`)
+      }
+
+      return new Response(geminiResponse.body, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        }
+      })
+    }
+
+    // For initial analysis, use Perplexity without JSON formatting
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -53,50 +94,6 @@ serve(async (req) => {
       throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
     }
 
-    // If we have parent content, get follow-up questions from Gemini
-    let followupQuestions: string[] = []
-    if (parentContent) {
-      const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'http://localhost:5173',
-          'X-Title': 'Market Analysis App',
-        },
-        body: JSON.stringify({
-          model: "google/gemini-flash-1.5-8b",
-          messages: [
-            {
-              role: "system",
-              content: "Based on the provided question and analysis, generate exactly three analytical follow-up questions. Return ONLY a JSON array of three questions. Each follow-up question must be able to COMPLETELY PORTRAY the ENTIRE context in EACH QUESTION ALONE."
-            },
-            {
-              role: "user",
-              content: `Question: ${question}\n\nAnalysis: ${parentContent}`
-            }
-          ],
-          response_format: { type: "json_object" },
-          stream: true
-        })
-      })
-
-      if (!geminiResponse.ok) {
-        throw new Error(`Gemini API error: ${geminiResponse.status}`)
-      }
-
-      // Stream the Gemini response for follow-up questions
-      return new Response(geminiResponse.body, {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive'
-        }
-      })
-    }
-
-    // Stream the Perplexity response for initial analysis
     return new Response(perplexityResponse.body, {
       headers: {
         ...corsHeaders,
