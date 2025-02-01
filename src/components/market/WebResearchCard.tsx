@@ -100,8 +100,11 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                         }
                       })
                     } else if (parsed.message) {
-                      // Update progress message format
-                      const message = parsed.message.replace(/processing query \d+\/\d+/i, `Searching "${description}"`)
+                      // Update progress message format - use the actual query instead of description
+                      const message = parsed.message.replace(
+                        /processing query \d+\/\d+: (.*)/i, 
+                        'Searching "$1"'
+                      )
                       setProgress(prev => [...prev, message])
                     }
                   } catch (e) {

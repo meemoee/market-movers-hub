@@ -21,7 +21,7 @@ export function InsightsDisplay({ streamingState }: InsightsDisplayProps) {
 
   if (!streamingState.parsedData) {
     return (
-      <div className="space-y-4 rounded-md border p-4 bg-accent/5">
+      <div className="space-y-4 bg-accent/5 rounded-md p-4">
         <div className="text-sm text-muted-foreground animate-pulse">
           Analyzing insights...
         </div>
@@ -33,7 +33,7 @@ export function InsightsDisplay({ streamingState }: InsightsDisplayProps) {
   }
 
   return (
-    <div className="space-y-4 rounded-md border p-4 bg-accent/5">
+    <div className="space-y-4 bg-accent/5 rounded-md p-4">
       <div className={`space-y-4 p-3 rounded-lg ${getProbabilityColor(streamingState.parsedData.probability)}`}>
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-primary" />
