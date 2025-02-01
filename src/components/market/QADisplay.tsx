@@ -40,22 +40,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       .trim();
   };
 
-  const parseStreamChunk = (chunk: string): string | string[] => {
-    try {
-      const parsed = JSON.parse(chunk);
-      if (Array.isArray(parsed)) {
-        return parsed.filter(q => typeof q === 'string' && q.trim());
-      }
-      if (parsed.choices?.[0]?.delta?.content) {
-        return cleanStreamContent(parsed.choices[0].delta.content);
-      }
-      return '';
-    } catch (e) {
-      return cleanStreamContent(chunk);
-    }
-  };
-
-  const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string, isFollowUp: boolean = false) => {
+  const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
 
     while (true) {
@@ -70,43 +55,45 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           const jsonStr = line.slice(6).trim();
           if (jsonStr === '[DONE]') continue;
 
-          const parsedContent = parseStreamChunk(jsonStr);
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            if (content) {
+              accumulatedContent += content;
+              setStreamingContent(prev => ({
+                ...prev,
+                [nodeId]: accumulatedContent
+              }));
 
-          if (Array.isArray(parsedContent) && isFollowUp) {
-            return parsedContent;
-          } else if (typeof parsedContent === 'string' && !isFollowUp) {
-            accumulatedContent += parsedContent;
-            setStreamingContent(prev => ({
-              ...prev,
-              [nodeId]: accumulatedContent
-            }));
-
-            setQaData(prev => {
-              const updateNode = (nodes: QANode[]): QANode[] => {
-                return nodes.map(node => {
-                  if (node.id === nodeId) {
-                    return {
-                      ...node,
-                      analysis: accumulatedContent
-                    };
-                  }
-                  if (node.children.length > 0) {
-                    return {
-                      ...node,
-                      children: updateNode(node.children)
-                    };
-                  }
-                  return node;
-                });
-              };
-              return updateNode(prev);
-            });
+              setQaData(prev => {
+                const updateNode = (nodes: QANode[]): QANode[] => {
+                  return nodes.map(node => {
+                    if (node.id === nodeId) {
+                      return {
+                        ...node,
+                        analysis: accumulatedContent
+                      };
+                    }
+                    if (node.children.length > 0) {
+                      return {
+                        ...node,
+                        children: updateNode(node.children)
+                      };
+                    }
+                    return node;
+                  });
+                };
+                return updateNode(prev);
+              });
+            }
+          } catch (error) {
+            console.error('Error processing stream chunk:', error);
           }
         }
       }
     }
 
-    return isFollowUp ? [] : accumulatedContent;
+    return accumulatedContent;
   };
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
@@ -169,9 +156,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (analysisError) throw analysisError;
 
       const reader = new Response(analysisData.body).body?.getReader();
-      if (!reader) throw new Error('Failed to create reader');
+      if (!reader) throw new Error('Failed to create analysis reader');
 
-      const analysis = await processStream(reader, nodeId);
+      const analysis = await processAnalysisStream(reader, nodeId);
 
       // If this is the root question, get follow-up questions
       if (!parentId) {
@@ -186,15 +173,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
         if (followUpError) throw followUpError;
 
-        const followUpReader = new Response(followUpData.body).body?.getReader();
-        if (!followUpReader) throw new Error('Failed to create follow-up reader');
-
-        const followUpQuestions = await processStream(followUpReader, nodeId, true);
-        
-        if (Array.isArray(followUpQuestions)) {
+        try {
+          const content = JSON.parse(followUpData.choices[0].message.content);
+          const followUpQuestions = content.map(item => item.question);
+          
+          // Process each follow-up question
           for (const followUpQuestion of followUpQuestions) {
             await analyzeQuestion(followUpQuestion, nodeId, depth + 1);
           }
+        } catch (error) {
+          console.error('Error parsing follow-up questions:', error);
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to process follow-up questions."
+          });
         }
       }
 
