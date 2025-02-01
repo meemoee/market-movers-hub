@@ -51,10 +51,6 @@ serve(async (req) => {
         })
       })
 
-      if (!geminiResponse.ok) {
-        throw new Error(`Gemini API error: ${geminiResponse.status}`)
-      }
-
       return new Response(geminiResponse.body, {
         headers: {
           ...corsHeaders,
@@ -65,7 +61,7 @@ serve(async (req) => {
       })
     }
 
-    // For initial analysis, use Perplexity with raw text output
+    // For initial analysis, use Perplexity
     console.log('Generating initial analysis using Perplexity')
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -90,10 +86,6 @@ serve(async (req) => {
         stream: true
       })
     })
-
-    if (!perplexityResponse.ok) {
-      throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
-    }
 
     return new Response(perplexityResponse.body, {
       headers: {

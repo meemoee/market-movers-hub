@@ -27,9 +27,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [streamingContent, setStreamingContent] = useState<{[key: string]: string}>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  const [jsonBuffer, setJsonBuffer] = useState<string>('');
 
   const cleanStreamContent = (content: string): string => {
-    // Remove any metadata or formatting markers
     return content
       .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
       .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
@@ -41,20 +41,43 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       .trim();
   };
 
-  const parseStreamChunk = (chunk: string): string | string[] => {
+  const parseStreamChunk = (chunk: string, isFollowUp: boolean): string | string[] | null => {
     try {
-      // Try parsing as JSON (for follow-up questions)
-      const parsed = JSON.parse(chunk);
-      if (Array.isArray(parsed)) {
-        return parsed;
-      }
-      // If it's a content delta
-      if (parsed.choices?.[0]?.delta?.content) {
-        return cleanStreamContent(parsed.choices[0].delta.content);
+      if (isFollowUp) {
+        // For follow-up questions, accumulate chunks until we have valid JSON
+        const updatedBuffer = jsonBuffer + chunk;
+        try {
+          const parsed = JSON.parse(updatedBuffer);
+          setJsonBuffer(''); // Reset buffer after successful parse
+          if (Array.isArray(parsed)) {
+            return parsed;
+          }
+          if (parsed.choices?.[0]?.delta?.content) {
+            try {
+              const content = JSON.parse(parsed.choices[0].delta.content);
+              if (Array.isArray(content)) {
+                return content;
+              }
+            } catch {
+              // If inner content isn't valid JSON yet, keep accumulating
+              setJsonBuffer(updatedBuffer);
+              return null;
+            }
+          }
+        } catch {
+          // If not valid JSON yet, keep accumulating
+          setJsonBuffer(updatedBuffer);
+          return null;
+        }
+      } else {
+        // For regular content
+        const parsed = JSON.parse(chunk);
+        if (parsed.choices?.[0]?.delta?.content) {
+          return cleanStreamContent(parsed.choices[0].delta.content);
+        }
       }
       return '';
     } catch (e) {
-      // If not valid JSON, treat as regular content
       return cleanStreamContent(chunk);
     }
   };
@@ -67,7 +90,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setExpandedNodes(prev => new Set([...prev, nodeId]));
     
     try {
-      // Create new node in the tree
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
@@ -101,7 +123,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateChildren(prev);
       });
 
-      // Initialize streaming content for this node
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
@@ -133,8 +154,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
 
-            const parsedContent = parseStreamChunk(jsonStr);
-
+            const parsedContent = parseStreamChunk(jsonStr, !!parentContent);
+            
             if (Array.isArray(parsedContent)) {
               // Handle follow-up questions
               for (const followUpQuestion of parsedContent) {
@@ -148,7 +169,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                 [nodeId]: accumulatedContent
               }));
 
-              // Update node in tree with current analysis
               setQaData(prev => {
                 const updateNode = (nodes: QANode[]): QANode[] => {
                   return nodes.map(node => {
@@ -174,7 +194,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         }
       }
 
-      // After analysis is complete, get follow-up questions if this isn't from Gemini
       if (!parentContent) {
         await analyzeQuestion(question, nodeId, depth + 1, accumulatedContent);
       }
@@ -290,4 +309,4 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       </ScrollArea>
     </Card>
   );
-}
+});
