@@ -41,21 +41,38 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       .trim();
   };
 
-  const parseStreamChunk = (chunk: string): string | string[] => {
+  const parseStreamChunk = (chunk: string, isFollowUp: boolean): string | string[] => {
     try {
-      // Try parsing as JSON (for follow-up questions)
       const parsed = JSON.parse(chunk);
-      if (Array.isArray(parsed)) {
-        return parsed;
+      
+      // Handle follow-up questions (Gemini response)
+      if (isFollowUp) {
+        if (Array.isArray(parsed)) {
+          return parsed;
+        }
+        // If it's a content delta containing a JSON string
+        if (parsed.choices?.[0]?.delta?.content) {
+          try {
+            const content = parsed.choices[0].delta.content;
+            // Try to parse the content as JSON if it looks like an array
+            if (content.trim().startsWith('[') && content.trim().endsWith(']')) {
+              return JSON.parse(content);
+            }
+          } catch (e) {
+            console.error('Error parsing follow-up content as JSON:', e);
+          }
+        }
+        return [];
       }
-      // If it's a content delta
+      
+      // Handle analysis content (Perplexity response)
       if (parsed.choices?.[0]?.delta?.content) {
         return cleanStreamContent(parsed.choices[0].delta.content);
       }
       return '';
     } catch (e) {
-      // If not valid JSON, treat as regular content
-      return cleanStreamContent(chunk);
+      console.error('Error parsing stream chunk:', e);
+      return isFollowUp ? [] : '';
     }
   };
 
@@ -133,7 +150,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
 
-            const parsedContent = parseStreamChunk(jsonStr);
+            const parsedContent = parseStreamChunk(jsonStr, !!parentContent);
 
             if (Array.isArray(parsedContent)) {
               // Handle follow-up questions
