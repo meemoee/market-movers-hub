@@ -26,7 +26,7 @@ serve(async (req) => {
     console.log('Is follow-up:', isFollowUp)
 
     // If this is a request for follow-up questions
-    if (parentContent && !isFollowUp) {
+    if (isFollowUp && parentContent) {
       console.log('Generating follow-up questions using Gemini')
       const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
