@@ -5,13 +5,14 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from "@/integrations/supabase/client";
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronUp, MessageSquare } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface QANode {
   id: string;
   question: string;
   analysis: string;
+  citations?: string[];
   children: QANode[];
 }
 
@@ -20,17 +21,27 @@ interface QADisplayProps {
   marketQuestion: string;
 }
 
+interface StreamChunk {
+  choices?: [{
+    delta?: {
+      content?: string;
+    };
+    finish_reason?: string | null;
+  }];
+  citations?: string[];
+}
+
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
-  const [streamingContent, setStreamingContent] = useState<{[key: string]: string}>({});
+  const [streamingContent, setStreamingContent] = useState<{[key: string]: { content: string; citations: string[] }}>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  const cleanStreamContent = (chunk: string): string => {
+  const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
     try {
-      const parsed = JSON.parse(chunk);
+      const parsed = JSON.parse(chunk) as StreamChunk;
       
       // Handle Perplexity streaming format
       if (parsed.choices?.[0]?.delta?.content) {
@@ -38,30 +49,27 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         
         // Skip empty content or completion messages
         if (!content || parsed.choices[0].finish_reason) {
-          return '';
+          return { content: '', citations: [] };
         }
         
-        // Return only the content, ignoring citations and metadata
-        return content;
+        // Return content and citations if available
+        return {
+          content: content.replace(/\{"id":".*"\}$/, '').trim(), // Remove trailing metadata
+          citations: parsed.citations || []
+        };
       }
       
-      // Fallback for other formats
-      return chunk
-        .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
-        .replace(/"\}\}\]}/g, '')
-        .replace(/\\n/g, '\n')
-        .replace(/\\/g, '')
-        .replace(/\{"id":".*"\}$/, '') // Remove trailing metadata
-        .trim();
+      // Return empty if no valid content
+      return { content: '', citations: [] };
     } catch (e) {
-      // If JSON parsing fails, return empty string and log error
       console.error('Error parsing stream chunk:', e);
-      return '';
+      return { content: '', citations: [] };
     }
   };
 
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
+    let accumulatedCitations: string[] = [];
 
     try {
       while (true) {
@@ -73,12 +81,19 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const content = cleanStreamContent(line.slice(6).trim());
+            const { content, citations } = cleanStreamContent(line.slice(6).trim());
             if (content) {
               accumulatedContent += content;
+              if (citations) {
+                accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+              }
+              
               setStreamingContent(prev => ({
                 ...prev,
-                [nodeId]: accumulatedContent
+                [nodeId]: {
+                  content: accumulatedContent,
+                  citations: accumulatedCitations
+                }
               }));
 
               setQaData(prev => {
@@ -87,7 +102,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     if (node.id === nodeId) {
                       return {
                         ...node,
-                        analysis: accumulatedContent
+                        analysis: accumulatedContent,
+                        citations: accumulatedCitations
                       };
                     }
                     if (node.children.length > 0) {
@@ -238,11 +254,36 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     });
   };
 
+  const renderCitations = (citations?: string[]) => {
+    if (!citations?.length) return null;
+
+    return (
+      <div className="mt-2 space-y-1">
+        <div className="text-xs text-muted-foreground font-medium">Sources:</div>
+        <div className="flex flex-wrap gap-2">
+          {citations.map((citation, index) => (
+            <a
+              key={index}
+              href={citation}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <LinkIcon className="h-3 w-3" />
+              {`[${index + 1}]`}
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   const renderQANode = (node: QANode, depth: number = 0) => {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
-    const analysisContent = isStreaming ? streamContent : node.analysis;
+    const analysisContent = isStreaming ? streamContent?.content : node.analysis;
+    const citations = isStreaming ? streamContent?.citations : node.citations;
 
     return (
       <div key={node.id} className="relative flex flex-col">
@@ -282,6 +323,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   </button>
                   <div className="flex-1">
                     <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                    {renderCitations(citations)}
                   </div>
                 </div>
               </div>
