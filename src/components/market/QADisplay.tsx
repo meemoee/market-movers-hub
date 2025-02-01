@@ -177,19 +177,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
         if (followUpError) throw followUpError;
 
-        try {
-          // Parse the raw JSON string directly
-          const followUpQuestions = JSON.parse(followUpData);
-          console.log('Parsed follow-up questions:', followUpQuestions);
+        // The followUpData is already an array of objects, no need to parse
+        const followUpQuestions = followUpData;
+        console.log('Follow-up questions:', followUpQuestions);
 
-          for (const item of followUpQuestions) {
-            if (item?.question) {
-              await analyzeQuestion(item.question, nodeId, depth + 1);
-            }
+        for (const item of followUpQuestions) {
+          if (item?.question) {
+            await analyzeQuestion(item.question, nodeId, depth + 1);
           }
-        } catch (error) {
-          console.error('Error parsing follow-ups:', error, 'Raw data:', followUpData);
-          throw new Error('Failed to parse follow-up questions');
         }
       }
 
