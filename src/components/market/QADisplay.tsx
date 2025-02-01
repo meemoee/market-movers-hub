@@ -47,7 +47,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       
       // Handle array of follow-up questions
       if (Array.isArray(parsed)) {
-        return parsed.filter(q => typeof q === 'string');
+        return parsed.filter(q => typeof q === 'string' && q.trim() !== '');
       }
 
       // Handle streaming delta content
@@ -69,12 +69,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       return '';
     } catch (e) {
+      console.error('Error parsing stream chunk:', e);
       return cleanStreamContent(chunk);
     }
   };
 
   const getGeminiFollowups = async (question: string, analysis: string): Promise<string[]> => {
     try {
+      console.log('Getting follow-ups for:', question);
       const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({
           marketId,
@@ -95,18 +97,24 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        jsonContent += new TextDecoder().decode(value);
+        const chunk = new TextDecoder().decode(value);
+        jsonContent += chunk;
       }
+
+      console.log('Raw follow-up response:', jsonContent);
 
       // Extract array from response
       const matches = jsonContent.match(/\[.*\]/);
       if (matches) {
         try {
           const parsedQuestions = JSON.parse(matches[0]);
-          return Array.isArray(parsedQuestions) ? parsedQuestions.filter(q => typeof q === 'string') : [];
+          if (Array.isArray(parsedQuestions)) {
+            const validQuestions = parsedQuestions.filter(q => typeof q === 'string' && q.trim() !== '');
+            console.log('Parsed follow-up questions:', validQuestions);
+            return validQuestions;
+          }
         } catch (e) {
           console.error('Error parsing follow-up questions:', e);
-          return [];
         }
       }
       return [];
