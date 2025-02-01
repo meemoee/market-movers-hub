@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -52,12 +52,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       // Handle streaming delta content
       if (parsed.choices?.[0]?.delta?.content) {
-        return cleanStreamContent(parsed.choices[0].delta.content);
+        const content = parsed.choices[0].delta.content;
+        return typeof content === 'string' ? cleanStreamContent(content) : '';
       }
 
       // Handle complete message content
       if (parsed.choices?.[0]?.message?.content) {
-        return cleanStreamContent(parsed.choices[0].message.content);
+        const content = parsed.choices[0].message.content;
+        return typeof content === 'string' ? cleanStreamContent(content) : '';
       }
 
       // Handle direct content
@@ -65,6 +67,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return cleanStreamContent(parsed);
       }
 
+      // If none of the above, ensure we return a string
       return '';
     } catch (e) {
       // If parsing fails, treat as raw content
@@ -191,7 +194,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             
             if (Array.isArray(parsedContent)) {
               for (const followUpQuestion of parsedContent) {
-                await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
+                if (typeof followUpQuestion === 'string') {
+                  await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
+                }
               }
             } else if (typeof parsedContent === 'string' && parsedContent) {
               streamContent += parsedContent;
@@ -228,7 +233,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (!parentContent) {
         const followUpQuestions = await getGeminiFollowups(question, streamContent);
         for (const followUpQuestion of followUpQuestions) {
-          await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
+          if (typeof followUpQuestion === 'string') {
+            await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
+          }
         }
       }
 
