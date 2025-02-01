@@ -309,4 +309,4 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       </ScrollArea>
     </Card>
   );
-});
+}
