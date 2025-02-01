@@ -47,7 +47,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       
       // Handle array of follow-up questions
       if (Array.isArray(parsed)) {
-        return parsed;
+        return parsed.filter(q => typeof q === 'string');
       }
 
       // Handle streaming delta content
@@ -67,10 +67,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return cleanStreamContent(parsed);
       }
 
-      // If none of the above, ensure we return a string
       return '';
     } catch (e) {
-      // If parsing fails, treat as raw content
       return cleanStreamContent(chunk);
     }
   };
@@ -105,7 +103,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (matches) {
         try {
           const parsedQuestions = JSON.parse(matches[0]);
-          return Array.isArray(parsedQuestions) ? parsedQuestions : [];
+          return Array.isArray(parsedQuestions) ? parsedQuestions.filter(q => typeof q === 'string') : [];
         } catch (e) {
           console.error('Error parsing follow-up questions:', e);
           return [];
@@ -230,8 +228,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         }
       }
 
+      // Only get follow-up questions for the initial analysis
       if (!parentContent) {
         const followUpQuestions = await getGeminiFollowups(question, streamContent);
+        console.log('Follow-up questions:', followUpQuestions);
         for (const followUpQuestion of followUpQuestions) {
           if (typeof followUpQuestion === 'string') {
             await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
