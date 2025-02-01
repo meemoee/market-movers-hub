@@ -16,24 +16,14 @@ interface QANode {
   children: QANode[];
 }
 
-interface QADisplayProps {
-  marketId: string;
-  marketQuestion: string;
-}
-
-interface StreamChunk {
-  choices?: [{
-    delta?: {
-      content?: string;
-    };
-    finish_reason?: string | null;
-  }];
-  citations?: string[];
-}
-
 interface StreamingContent {
   content: string;
   citations: string[];
+}
+
+interface QADisplayProps {
+  marketId: string;
+  marketQuestion: string;
 }
 
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
@@ -46,25 +36,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
     try {
-      const parsed = JSON.parse(chunk) as StreamChunk;
+      const parsed = JSON.parse(chunk);
       
-      // Handle Perplexity streaming format
       if (parsed.choices?.[0]?.delta?.content) {
         const content = parsed.choices[0].delta.content;
         
-        // Skip empty content or completion messages
         if (!content || parsed.choices[0].finish_reason) {
           return { content: '', citations: [] };
         }
         
-        // Return content and citations if available
         return {
-          content: content.replace(/\{"id":".*"\}$/, '').trim(), // Remove trailing metadata
+          content: content.replace(/\{"id":".*"\}$/, '').trim(),
           citations: parsed.citations || []
         };
       }
       
-      // Return empty if no valid content
       return { content: '', citations: [] };
     } catch (e) {
       console.error('Error parsing stream chunk:', e);
@@ -142,7 +128,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setExpandedNodes(prev => new Set([...prev, nodeId]));
     
     try {
-      // Create new node in the tree
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
@@ -176,13 +161,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateChildren(prev);
       });
 
-      // Initialize streaming content
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
       }));
 
-      // Get analysis
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({
           marketId,
@@ -198,9 +181,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       const analysis = await processStream(reader, nodeId);
 
-      // Get follow-up questions for root question
       if (!parentId) {
-        console.log('Getting follow-up questions...');
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({
             marketId,
@@ -212,9 +193,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
         if (followUpError) throw followUpError;
 
-        // The followUpData is already an array of objects, no need to parse
         const followUpQuestions = followUpData;
-        console.log('Follow-up questions:', followUpQuestions);
 
         for (const item of followUpQuestions) {
           if (item?.question) {
