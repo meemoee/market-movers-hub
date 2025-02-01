@@ -49,6 +49,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (parsed.choices?.[0]?.delta?.content) {
         return cleanStreamContent(parsed.choices[0].delta.content);
       }
+      // Handle the case where we get a complete message object
+      if (parsed.choices?.[0]?.message?.content) {
+        return cleanStreamContent(parsed.choices[0].message.content);
+      }
       return '';
     } catch (e) {
       return cleanStreamContent(chunk);
@@ -56,20 +60,20 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const getGeminiFollowups = async (question: string, analysis: string): Promise<string[]> => {
-    const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
-      body: JSON.stringify({
-        marketId,
-        question,
-        parentContent: analysis,
-      })
-    });
-
-    if (error) {
-      console.error('Error getting follow-up questions:', error);
-      return [];
-    }
-
     try {
+      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
+        body: JSON.stringify({
+          marketId,
+          question,
+          parentContent: analysis,
+        })
+      });
+
+      if (error) {
+        console.error('Error getting follow-up questions:', error);
+        return [];
+      }
+
       const reader = new Response(data.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
@@ -80,6 +84,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         jsonContent += new TextDecoder().decode(value);
       }
 
+      // Look for array pattern in the content
       const matches = jsonContent.match(/\[.*\]/);
       if (matches) {
         const parsedQuestions = JSON.parse(matches[0]);
@@ -165,12 +170,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             if (jsonStr === '[DONE]') continue;
 
             const parsedContent = parseStreamChunk(jsonStr);
-
+            
             if (Array.isArray(parsedContent)) {
               for (const followUpQuestion of parsedContent) {
                 await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
               }
-            } else if (parsedContent) {
+            } else if (typeof parsedContent === 'string' && parsedContent) {
               streamContent += parsedContent;
               setStreamingContent(prev => ({
                 ...prev,
