@@ -34,26 +34,32 @@ export function InsightsDisplay({ streamingState }: InsightsDisplayProps) {
 
   return (
     <div className="space-y-4 rounded-md border p-4 bg-accent/5">
-      <div className="flex items-center gap-2">
-        <Target className="h-4 w-4 text-primary" />
-        <span className="text-sm font-medium">
-          Probability: {streamingState.parsedData.probability}
-        </span>
-      </div>
-      {Array.isArray(streamingState.parsedData.areasForResearch) && 
-       streamingState.parsedData.areasForResearch.length > 0 && (
-        <div className={`space-y-2 p-3 rounded-lg ${getProbabilityColor(streamingState.parsedData.probability)}`}>
-          <div className="text-sm font-medium">Areas Needing Research:</div>
-          <ul className="space-y-1">
-            {streamingState.parsedData.areasForResearch.map((area, index) => (
-              <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
-                <ArrowDown className="h-3 w-3" />
-                {area}
-              </li>
-            ))}
-          </ul>
+      <div className={`space-y-4 p-3 rounded-lg ${getProbabilityColor(streamingState.parsedData.probability)}`}>
+        <div className="flex items-center gap-2">
+          <Target className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium">
+            Probability: {streamingState.parsedData.probability}
+          </span>
         </div>
-      )}
+        
+        {Array.isArray(streamingState.parsedData.areasForResearch) && 
+         streamingState.parsedData.areasForResearch.length > 0 && (
+          <>
+            <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
+            <div>
+              <div className="text-sm font-medium mb-2">Areas Needing Research:</div>
+              <ul className="space-y-1">
+                {streamingState.parsedData.areasForResearch.map((area, index) => (
+                  <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
+                    <ArrowDown className="h-3 w-3" />
+                    {area}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
+      </div>
       <div className="flex justify-center pt-2">
         <ArrowDown className="h-5 w-5 text-muted-foreground animate-bounce" />
       </div>

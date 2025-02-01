@@ -77,6 +77,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
           function push() {
             reader?.read().then(({done, value}) => {
               if (done) {
+                setProgress(prev => [...prev, "Search Completed"])
                 controller.close()
                 return
               }
@@ -99,7 +100,9 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                         }
                       })
                     } else if (parsed.message) {
-                      setProgress(prev => [...prev, parsed.message])
+                      // Update progress message format
+                      const message = parsed.message.replace(/processing query \d+\/\d+/i, `Searching "${description}"`)
+                      setProgress(prev => [...prev, message])
                     }
                   } catch (e) {
                     console.error('Error parsing SSE data:', e)
