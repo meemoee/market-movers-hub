@@ -107,16 +107,17 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               if (content) {
                 accumulatedContent += content;
                 
+                // Update streaming content immediately for live display
+                setStreamingContent(prev => ({
+                  ...prev,
+                  [nodeId]: accumulatedContent
+                }));
+                
                 try {
+                  // Try to parse the accumulated content as JSON
                   const parsedJson = JSON.parse(accumulatedContent);
                   
-                  if (parsedJson && typeof parsedJson === 'object' && parsedJson.analysis) {
-                    // Update streaming content immediately
-                    setStreamingContent(prev => ({
-                      ...prev,
-                      [nodeId]: parsedJson.analysis
-                    }));
-                    
+                  if (parsedJson && typeof parsedJson === 'object') {
                     // Update node in tree with current analysis
                     setQaData(prev => {
                       const updateNode = (nodes: QANode[]): QANode[] => {
@@ -124,7 +125,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                           if (node.id === nodeId) {
                             return {
                               ...node,
-                              analysis: parsedJson.analysis
+                              analysis: parsedJson.analysis || ''
                             };
                           }
                           if (node.children.length > 0) {
@@ -140,7 +141,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     });
 
                     // Process follow-up questions after analysis is complete
-                    if (parsedJson.questions) {
+                    if (parsedJson.questions && Array.isArray(parsedJson.questions)) {
                       for (const childQuestion of parsedJson.questions) {
                         await analyzeQuestion(childQuestion, nodeId, depth + 1);
                       }
