@@ -1,5 +1,7 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import "https://deno.land/x/xhr@0.1.0/mod.ts"
+
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,8 +14,14 @@ serve(async (req) => {
   }
 
   try {
-    const { marketId, question, parentContent } = await req.json()
+    const { question, marketId, parentContent } = await req.json()
+    
+    if (!question) {
+      throw new Error('Question is required')
+    }
+    
     console.log('Analyzing question:', question)
+    console.log('Market ID:', marketId)
     console.log('Parent content:', parentContent)
 
     // If we have parent content, we're generating follow-up questions with Gemini
@@ -22,7 +30,7 @@ serve(async (req) => {
       const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'http://localhost:5173',
           'X-Title': 'Market Analysis App',
@@ -32,17 +40,20 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: "Based on the provided question and analysis, generate exactly three analytical follow-up questions. Return ONLY a JSON array of three strings, with no additional text or formatting."
+              content: "Based on the provided question and analysis, generate exactly three analytical follow-up questions. Return ONLY a JSON array of three questions, with no additional text or formatting."
             },
             {
               role: "user",
               content: `Question: ${question}\n\nAnalysis: ${parentContent}`
             }
           ],
-          stream: true,
-          response_format: { type: "json_object" }
+          stream: true
         })
       })
+
+      if (!geminiResponse.ok) {
+        throw new Error(`Gemini API error: ${geminiResponse.status}`)
+      }
 
       return new Response(geminiResponse.body, {
         headers: {
@@ -54,12 +65,12 @@ serve(async (req) => {
       })
     }
 
-    // For initial analysis, use Perplexity
+    // For initial analysis, use Perplexity with raw text output
     console.log('Generating initial analysis using Perplexity')
     const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'http://localhost:5173',
         'X-Title': 'Market Analysis App',
@@ -79,6 +90,10 @@ serve(async (req) => {
         stream: true
       })
     })
+
+    if (!perplexityResponse.ok) {
+      throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
+    }
 
     return new Response(perplexityResponse.body, {
       headers: {
