@@ -12,7 +12,7 @@ const cleanGeminiResponse = (content: string): string => {
   // Remove code fences and extra whitespace
   return content
     .replace(/```json\n/g, '')
-    .replace(/\n```/g, '')
+    .replace(/```\n?/g, '')
     .replace(/^\s+|\s+$/g, '');
 };
 
