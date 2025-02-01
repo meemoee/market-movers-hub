@@ -175,9 +175,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       }
 
       // After analysis is complete, get follow-up questions if this isn't from Gemini
-      if (!parentContent) {
-        await analyzeQuestion(question, nodeId, depth + 1, accumulatedContent);
+      // Get analysis regardless of parentContent
+    const accumulatedContent = await getPerplexityAnalysis(question);
+    
+    // Only generate follow-up questions if this isn't a follow-up itself
+    if (!parentContent) {
+      const followUpQuestions = await getGeminiFollowups(question, accumulatedContent);
+      for (const followUpQuestion of followUpQuestions) {
+        await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
       }
+    }
 
     } catch (error) {
       console.error('Error in analysis:', error);
