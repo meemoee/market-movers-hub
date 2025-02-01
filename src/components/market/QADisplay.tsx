@@ -163,7 +163,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       setStreamingContent(prev => ({
         ...prev,
-        [nodeId]: ''
+        [nodeId]: {
+          content: '',
+          citations: []
+        }
       }));
 
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
