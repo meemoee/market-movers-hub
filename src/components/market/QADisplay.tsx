@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -28,10 +28,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  const cleanStreamContent = (content: string | undefined): string => {
-    if (!content) return '';
+  const cleanStreamContent = (content: string): string => {
+    // Remove any metadata or formatting markers
     return content
-      .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"\}/g, '')
+      .replace(/\{"id":"[^"]+","provider":"[^"]+","model":"[^"]+","object":"[^"]+"}/g, '')
       .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
       .replace(/"\}\}\]}/g, '')
       .replace(/\{"analysis":/g, '')
@@ -43,84 +43,19 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   const parseStreamChunk = (chunk: string): string | string[] => {
     try {
+      // Try parsing as JSON (for follow-up questions)
       const parsed = JSON.parse(chunk);
-      
-      // Handle array of follow-up questions
       if (Array.isArray(parsed)) {
-        return parsed.filter(q => typeof q === 'string' && q.trim() !== '');
+        return parsed;
       }
-
-      // Handle streaming delta content
+      // If it's a content delta
       if (parsed.choices?.[0]?.delta?.content) {
-        const content = parsed.choices[0].delta.content;
-        return typeof content === 'string' ? cleanStreamContent(content) : '';
+        return cleanStreamContent(parsed.choices[0].delta.content);
       }
-
-      // Handle complete message content
-      if (parsed.choices?.[0]?.message?.content) {
-        const content = parsed.choices[0].message.content;
-        return typeof content === 'string' ? cleanStreamContent(content) : '';
-      }
-
-      // Handle direct content
-      if (typeof parsed === 'string') {
-        return cleanStreamContent(parsed);
-      }
-
       return '';
     } catch (e) {
-      console.error('Error parsing stream chunk:', e);
+      // If not valid JSON, treat as regular content
       return cleanStreamContent(chunk);
-    }
-  };
-
-  const getGeminiFollowups = async (question: string, analysis: string): Promise<string[]> => {
-    try {
-      console.log('Getting follow-ups for:', question);
-      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
-        body: JSON.stringify({
-          marketId,
-          question,
-          parentContent: analysis,
-        })
-      });
-
-      if (error) {
-        console.error('Error getting follow-up questions:', error);
-        return [];
-      }
-
-      const reader = new Response(data.body).body?.getReader();
-      if (!reader) throw new Error('Failed to create reader');
-
-      let jsonContent = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = new TextDecoder().decode(value);
-        jsonContent += chunk;
-      }
-
-      console.log('Raw follow-up response:', jsonContent);
-
-      // Extract array from response
-      const matches = jsonContent.match(/\[.*\]/);
-      if (matches) {
-        try {
-          const parsedQuestions = JSON.parse(matches[0]);
-          if (Array.isArray(parsedQuestions)) {
-            const validQuestions = parsedQuestions.filter(q => typeof q === 'string' && q.trim() !== '');
-            console.log('Parsed follow-up questions:', validQuestions);
-            return validQuestions;
-          }
-        } catch (e) {
-          console.error('Error parsing follow-up questions:', e);
-        }
-      }
-      return [];
-    } catch (e) {
-      console.error('Error in getGeminiFollowups:', e);
-      return [];
     }
   };
 
@@ -132,6 +67,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setExpandedNodes(prev => new Set([...prev, nodeId]));
     
     try {
+      // Create new node in the tree
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
@@ -165,6 +101,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateChildren(prev);
       });
 
+      // Initialize streaming content for this node
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
@@ -180,7 +117,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
 
-      let streamContent = '';
+      let accumulatedContent = '';
       const reader = new Response(streamData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
@@ -197,27 +134,28 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             if (jsonStr === '[DONE]') continue;
 
             const parsedContent = parseStreamChunk(jsonStr);
-            
+
             if (Array.isArray(parsedContent)) {
+              // Handle follow-up questions
               for (const followUpQuestion of parsedContent) {
-                if (typeof followUpQuestion === 'string') {
-                  await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
-                }
+                await analyzeQuestion(followUpQuestion, nodeId, depth + 1, accumulatedContent);
               }
-            } else if (typeof parsedContent === 'string' && parsedContent) {
-              streamContent += parsedContent;
+            } else if (parsedContent) {
+              // Handle regular content
+              accumulatedContent += parsedContent;
               setStreamingContent(prev => ({
                 ...prev,
-                [nodeId]: streamContent
+                [nodeId]: accumulatedContent
               }));
 
+              // Update node in tree with current analysis
               setQaData(prev => {
                 const updateNode = (nodes: QANode[]): QANode[] => {
                   return nodes.map(node => {
                     if (node.id === nodeId) {
                       return {
                         ...node,
-                        analysis: streamContent
+                        analysis: accumulatedContent
                       };
                     }
                     if (node.children.length > 0) {
@@ -236,15 +174,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         }
       }
 
-      // Only get follow-up questions for the initial analysis
+      // After analysis is complete, get follow-up questions if this isn't from Gemini
       if (!parentContent) {
-        const followUpQuestions = await getGeminiFollowups(question, streamContent);
-        console.log('Follow-up questions:', followUpQuestions);
-        for (const followUpQuestion of followUpQuestions) {
-          if (typeof followUpQuestion === 'string') {
-            await analyzeQuestion(followUpQuestion, nodeId, depth + 1, streamContent);
-          }
-        }
+        await analyzeQuestion(question, nodeId, depth + 1, accumulatedContent);
       }
 
     } catch (error) {
@@ -326,7 +258,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     )}
                   </button>
                   <div className="flex-1">
-                    <ReactMarkdown>{analysisContent || ''}</ReactMarkdown>
+                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
                   </div>
                 </div>
               </div>
