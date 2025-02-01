@@ -31,19 +31,25 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const cleanStreamContent = (chunk: string): string => {
     try {
       const parsed = JSON.parse(chunk);
+      
+      // Handle Perplexity streaming format
       if (parsed.choices?.[0]?.delta?.content) {
+        // Extract just the content from the delta, ignoring citations
         return parsed.choices[0].delta.content;
       }
-    } catch (e) {
-      // If JSON parsing fails, clean the raw chunk
+      
+      // Fallback for other formats
       return chunk
         .replace(/\{"choices":\[\{"delta":\{"content":"/g, '')
         .replace(/"\}\}\]}/g, '')
         .replace(/\\n/g, '\n')
         .replace(/\\/g, '')
         .trim();
+    } catch (e) {
+      // If JSON parsing fails, return empty string and log error
+      console.error('Error parsing stream chunk:', e);
+      return '';
     }
-    return '';
   };
 
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
