@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Search, Target, ArrowDown } from "lucide-react"
+import { Loader2, Search, Target, ArrowDown, Globe, FileText } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 
@@ -37,11 +37,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     rawText: '',
     parsedData: null
   })
-
-  const getProbabilityColor = (probability: string) => {
-    const numericProb = parseInt(probability.replace('%', ''))
-    return numericProb >= 50 ? 'text-green-500' : 'text-red-500'
-  }
 
   const handleResearch = async () => {
     setIsLoading(true)
@@ -280,6 +275,11 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     }
   }
 
+  const getProbabilityColor = (probability: string) => {
+    const numericProb = parseInt(probability.replace('%', ''))
+    return numericProb >= 50 ? 'bg-green-500/10' : 'bg-red-500/10'
+  }
+
   return (
     <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -320,36 +320,38 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </ScrollArea>
       )}
 
+      {Array.isArray(results) && results.length > 0 && (
+        <ScrollArea className="h-[200px] rounded-md border p-4">
+          {results.map((result, index) => (
+            <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
+              <div className="flex items-center gap-2">
+                {result.title ? (
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <Globe className="h-4 w-4 text-muted-foreground" />
+                )}
+                <h4 className="text-sm font-medium">
+                  {result.title || new URL(result.url).hostname}
+                </h4>
+              </div>
+              <a 
+                href={result.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-xs text-blue-500 hover:underline block mt-1"
+              >
+                {result.url}
+              </a>
+            </div>
+          ))}
+        </ScrollArea>
+      )}
+
       {analysis && (
         <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
             {analysis}
           </ReactMarkdown>
-        </ScrollArea>
-      )}
-
-      {Array.isArray(results) && results.length > 0 && (
-        <ScrollArea className="h-[400px] rounded-md border p-4">
-          {results.map((result, index) => (
-            <div key={index} className="mb-6 last:mb-0 p-3 bg-accent/5 rounded-lg">
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium">
-                  {result.title || new URL(result.url).hostname}
-                </h4>
-                <p className="text-sm text-muted-foreground line-clamp-3">
-                  {result.content}
-                </p>
-                <a 
-                  href={result.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-500 hover:underline block"
-                >
-                  {result.url}
-                </a>
-              </div>
-            </div>
-          ))}
         </ScrollArea>
       )}
 
@@ -368,12 +370,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         <div className="space-y-4 rounded-md border p-4 bg-accent/5">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-primary" />
-            <span className={`text-sm font-medium ${getProbabilityColor(streamingState.parsedData.probability)}`}>
+            <span className="text-sm font-medium">
               Probability: {streamingState.parsedData.probability}
             </span>
           </div>
-          {Array.isArray(streamingState.parsedData.areasForResearch) && streamingState.parsedData.areasForResearch.length > 0 && (
-            <div className="space-y-2">
+          {Array.isArray(streamingState.parsedData.areasForResearch) && 
+           streamingState.parsedData.areasForResearch.length > 0 && (
+            <div className={`space-y-2 p-3 rounded-lg ${getProbabilityColor(streamingState.parsedData.probability)}`}>
               <div className="text-sm font-medium">Areas Needing Research:</div>
               <ul className="space-y-1">
                 {streamingState.parsedData.areasForResearch.map((area, index) => (
