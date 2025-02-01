@@ -20,7 +20,7 @@ serve(async (req) => {
       throw new Error('Question is required')
     }
     
-    console.log('Request params:', {
+    console.log('Processing request:', {
       question,
       marketId,
       hasParentContent: !!parentContent,
@@ -29,8 +29,8 @@ serve(async (req) => {
 
     // Handle follow-up questions generation
     if (isFollowUp && parentContent) {
-      console.log('Generating follow-up questions using Gemini')
-      const geminiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      console.log('Generating follow-up questions')
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -43,40 +43,45 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: "You are generating follow-up questions. Return ONLY a JSON array containing exactly three analytical questions. No explanations or additional text."
+              content: "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Return only the JSON array, nothing else."
             },
             {
               role: "user",
-              content: `Based on this context, generate three focused analytical follow-up questions:\n\nOriginal Question: ${question}\n\nAnalysis: ${parentContent}`
+              content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${parentContent}`
             }
-          ],
-          response_format: { type: "json_object" }
+          ]
         })
       })
 
-      if (!geminiResponse.ok) {
-        console.error('Gemini API error:', geminiResponse.status)
-        throw new Error(`Gemini API error: ${geminiResponse.status}`)
+      if (!response.ok) {
+        throw new Error(`Follow-up generation failed: ${response.status}`)
       }
 
-      const geminiData = await geminiResponse.json()
-      console.log('Gemini response:', geminiData)
+      const data = await response.json()
+      console.log('Raw follow-up response:', data)
 
-      // Return the follow-up questions directly (not streamed)
-      return new Response(
-        JSON.stringify(geminiData.choices[0].message.content),
-        { 
+      // Extract and clean the content
+      let content = data.choices[0].message.content
+      content = content.replace(/^`+|`+$/g, '') // Remove backticks
+      
+      try {
+        // Validate that it's parseable JSON
+        JSON.parse(content)
+        return new Response(content, { 
           headers: { 
             ...corsHeaders, 
             'Content-Type': 'application/json'
           }
-        }
-      )
+        })
+      } catch (e) {
+        console.error('Invalid JSON in follow-up response:', content)
+        throw new Error('Invalid follow-up question format')
+      }
     }
 
-    // Handle question analysis
-    console.log('Generating analysis using Perplexity')
-    const perplexityResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // Handle initial analysis
+    console.log('Generating analysis')
+    const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -100,13 +105,11 @@ serve(async (req) => {
       })
     })
 
-    if (!perplexityResponse.ok) {
-      console.error('Perplexity API error:', perplexityResponse.status)
-      throw new Error(`Perplexity API error: ${perplexityResponse.status}`)
+    if (!analysisResponse.ok) {
+      throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
 
-    // Stream the analysis response
-    return new Response(perplexityResponse.body, {
+    return new Response(analysisResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
@@ -116,7 +119,7 @@ serve(async (req) => {
     })
 
   } catch (error) {
-    console.error('Error in generate-qa-tree function:', error)
+    console.error('Function error:', error)
     return new Response(
       JSON.stringify({ 
         error: error.message,
