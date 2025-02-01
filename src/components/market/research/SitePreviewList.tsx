@@ -22,8 +22,12 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
               alt=""
               className="w-4 h-4"
               onError={(e) => {
-                e.currentTarget.src = result.title ? 
-                  FileText : Globe;
+                // If favicon fails to load, render the appropriate icon component
+                const IconComponent = result.title ? FileText : Globe;
+                const svgString = `data:image/svg+xml,${encodeURIComponent(
+                  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IconComponent({}).props.children}</svg>`
+                )}`;
+                e.currentTarget.src = svgString;
               }}
             />
             <h4 className="text-sm font-medium">
