@@ -31,11 +31,16 @@ interface StreamChunk {
   citations?: string[];
 }
 
+interface StreamingContent {
+  content: string;
+  citations: string[];
+}
+
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
-  const [streamingContent, setStreamingContent] = useState<{[key: string]: { content: string; citations: string[] }}>({});
+  const [streamingContent, setStreamingContent] = useState<{[key: string]: StreamingContent}>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
