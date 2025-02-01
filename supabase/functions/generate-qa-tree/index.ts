@@ -8,6 +8,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const cleanGeminiResponse = (content: string): string => {
+  // Remove code fences and extra whitespace
+  return content
+    .replace(/```json\n/g, '')
+    .replace(/\n```/g, '')
+    .replace(/^\s+|\s+$/g, '');
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -60,22 +68,30 @@ serve(async (req) => {
       const data = await response.json()
       console.log('Raw follow-up response:', data)
 
-      // Extract and clean the content
-      let content = data.choices[0].message.content
-      content = content.replace(/^`+|`+$/g, '') // Remove backticks
-      
       try {
-        // Validate that it's parseable JSON
-        JSON.parse(content)
-        return new Response(content, { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json'
+        // Extract and clean the content from Gemini response
+        const rawContent = data.choices[0].message.content;
+        const cleanContent = cleanGeminiResponse(rawContent);
+        
+        // Validate the cleaned JSON
+        const parsedContent = JSON.parse(cleanContent);
+        if (!Array.isArray(parsedContent)) {
+          throw new Error('Response is not an array');
+        }
+        
+        // Return the cleaned and validated JSON
+        return new Response(
+          JSON.stringify(parsedContent), 
+          { 
+            headers: { 
+              ...corsHeaders, 
+              'Content-Type': 'application/json'
+            }
           }
-        })
+        )
       } catch (e) {
-        console.error('Invalid JSON in follow-up response:', content)
-        throw new Error('Invalid follow-up question format')
+        console.error('Invalid JSON in follow-up response:', rawContent)
+        throw new Error('Failed to parse follow-up questions')
       }
     }
 
