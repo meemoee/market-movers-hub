@@ -28,25 +28,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  const cleanStreamContent = (content: string) => {
-    // Remove JSON tags that might appear at the start
-    return content.replace(/^{[\s\n]*"analysis"[\s\n]*:[\s\n]*/, '')
-                 // Remove trailing JSON syntax if present
-                 .replace(/[\s\n]*}[\s\n]*$/, '')
-                 // Remove any quotes that might be wrapping the entire content
-                 .replace(/^"(.*)"$/, '$1')
-                 // Unescape any escaped quotes within the content
-                 .replace(/\\"/g, '"')
-                 // Remove any trailing commas before the end of the JSON
-                 .replace(/,[\s\n]*$/, '');
-  };
-
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
     
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
-    setExpandedNodes(prev => new Set([...prev, nodeId]));
+    setExpandedNodes(prev => new Set([...prev, nodeId])); // Auto-expand new nodes
     
     try {
       const { data: streamData, error } = await supabase.functions.invoke('generate-qa-tree', {
@@ -58,11 +45,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
 
+      // Initialize streaming content for this node
       setStreamingContent(prev => ({
         ...prev,
         [nodeId]: ''
       }));
 
+      // Create new node in the tree
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
@@ -118,17 +107,19 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               
               if (content) {
                 accumulatedContent += content;
-                const cleanedContent = cleanStreamContent(accumulatedContent);
                 
+                // Update streaming content immediately for live display
                 setStreamingContent(prev => ({
                   ...prev,
-                  [nodeId]: cleanedContent
+                  [nodeId]: accumulatedContent
                 }));
                 
                 try {
+                  // Try to parse the accumulated content as JSON
                   const parsedJson = JSON.parse(accumulatedContent);
                   
                   if (parsedJson && typeof parsedJson === 'object') {
+                    // Update node in tree with current analysis
                     setQaData(prev => {
                       const updateNode = (nodes: QANode[]): QANode[] => {
                         return nodes.map(node => {
@@ -150,6 +141,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return updateNode(prev);
                     });
 
+                    // Process follow-up questions after analysis is complete
                     if (parsedJson.questions && Array.isArray(parsedJson.questions)) {
                       for (const childQuestion of parsedJson.questions) {
                         await analyzeQuestion(childQuestion, nodeId, depth + 1);
@@ -157,6 +149,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     }
                   }
                 } catch (parseError) {
+                  // Continue accumulating if not valid JSON yet
                   continue;
                 }
               }
