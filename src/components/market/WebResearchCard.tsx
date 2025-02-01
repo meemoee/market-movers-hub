@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Search, Target, ArrowDown, Globe, FileText } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client"
-import ReactMarkdown from 'react-markdown'
+import { ResearchHeader } from "./research/ResearchHeader"
+import { ProgressDisplay } from "./research/ProgressDisplay"
+import { SitePreviewList } from "./research/SitePreviewList"
+import { AnalysisDisplay } from "./research/AnalysisDisplay"
+import { InsightsDisplay } from "./research/InsightsDisplay"
 
 interface WebResearchCardProps {
   description: string
@@ -16,14 +17,12 @@ interface ResearchResult {
   title?: string
 }
 
-interface ExtractedInsights {
-  probability: string
-  areasForResearch: string[]
-}
-
 interface StreamingState {
   rawText: string
-  parsedData: ExtractedInsights | null
+  parsedData: {
+    probability: string
+    areasForResearch: string[]
+  } | null
 }
 
 export function WebResearchCard({ description }: WebResearchCardProps) {
@@ -275,34 +274,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     }
   }
 
-  const getProbabilityColor = (probability: string) => {
-    const numericProb = parseInt(probability.replace('%', ''))
-    return numericProb >= 50 ? 'bg-green-500/10' : 'bg-red-500/10'
-  }
-
   return (
     <Card className="p-4 space-y-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Web Research</h3>
-        <Button 
-          onClick={handleResearch} 
-          disabled={isLoading || isAnalyzing}
-          variant="outline"
-          size="sm"
-        >
-          {isLoading || isAnalyzing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {isAnalyzing ? 'Analyzing...' : 'Researching...'}
-            </>
-          ) : (
-            <>
-              <Search className="mr-2 h-4 w-4" />
-              Research
-            </>
-          )}
-        </Button>
-      </div>
+      <ResearchHeader 
+        isLoading={isLoading}
+        isAnalyzing={isAnalyzing}
+        onResearch={handleResearch}
+      />
 
       {error && (
         <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
@@ -310,89 +288,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         </div>
       )}
 
-      {progress.length > 0 && (
-        <ScrollArea className="h-[100px] rounded-md border p-4">
-          {progress.map((message, index) => (
-            <div key={index} className="text-sm text-muted-foreground">
-              {message}
-            </div>
-          ))}
-        </ScrollArea>
-      )}
-
-      {Array.isArray(results) && results.length > 0 && (
-        <ScrollArea className="h-[200px] rounded-md border p-4">
-          {results.map((result, index) => (
-            <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
-              <div className="flex items-center gap-2">
-                {result.title ? (
-                  <FileText className="h-4 w-4 text-muted-foreground" />
-                ) : (
-                  <Globe className="h-4 w-4 text-muted-foreground" />
-                )}
-                <h4 className="text-sm font-medium">
-                  {result.title || new URL(result.url).hostname}
-                </h4>
-              </div>
-              <a 
-                href={result.url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-xs text-blue-500 hover:underline block mt-1"
-              >
-                {result.url}
-              </a>
-            </div>
-          ))}
-        </ScrollArea>
-      )}
-
-      {analysis && (
-        <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
-            {analysis}
-          </ReactMarkdown>
-        </ScrollArea>
-      )}
-
-      {streamingState.rawText && !streamingState.parsedData && (
-        <div className="space-y-4 rounded-md border p-4 bg-accent/5">
-          <div className="text-sm text-muted-foreground animate-pulse">
-            Analyzing insights...
-          </div>
-          <pre className="text-xs overflow-x-auto">
-            {streamingState.rawText}
-          </pre>
-        </div>
-      )}
-
-      {streamingState.parsedData && (
-        <div className="space-y-4 rounded-md border p-4 bg-accent/5">
-          <div className="flex items-center gap-2">
-            <Target className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">
-              Probability: {streamingState.parsedData.probability}
-            </span>
-          </div>
-          {Array.isArray(streamingState.parsedData.areasForResearch) && 
-           streamingState.parsedData.areasForResearch.length > 0 && (
-            <div className={`space-y-2 p-3 rounded-lg ${getProbabilityColor(streamingState.parsedData.probability)}`}>
-              <div className="text-sm font-medium">Areas Needing Research:</div>
-              <ul className="space-y-1">
-                {streamingState.parsedData.areasForResearch.map((area, index) => (
-                  <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
-                    <ArrowDown className="h-3 w-3" />
-                    {area}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div className="flex justify-center pt-2">
-            <ArrowDown className="h-5 w-5 text-muted-foreground animate-bounce" />
-          </div>
-        </div>
-      )}
+      <ProgressDisplay messages={progress} />
+      
+      <SitePreviewList results={results} />
+      
+      <AnalysisDisplay content={analysis} />
+      
+      <InsightsDisplay streamingState={streamingState} />
     </Card>
   )
 }
