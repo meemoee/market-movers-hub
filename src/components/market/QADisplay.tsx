@@ -38,27 +38,25 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     try {
       const parsed = JSON.parse(chunk);
       
-      if (parsed.choices?.[0]?.delta?.content) {
-        const content = parsed.choices[0].delta.content;
-        
-        if (!content || parsed.choices[0].finish_reason) {
-          return { content: '', citations: [] };
-        }
-        
-        // Remove any trailing metadata and clean up markdown headers
-        const cleanedContent = content
-          .replace(/\{"id":".*"\}$/, '')
-          .replace(/^###\s*/, ''); // Remove markdown headers at the start
-        
-        return {
-          content: cleanedContent,
-          citations: parsed.citations || []
-        };
+      // Handle both delta content and complete message formats
+      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
+      const citations = parsed.citations || [];
+      
+      if (!content) {
+        return { content: '', citations: [] };
       }
       
-      return { content: '', citations: [] };
+      // Remove any trailing metadata and clean up markdown headers
+      const cleanedContent = content
+        .replace(/\{"id":".*"\}$/, '')
+        .replace(/^###\s*/, ''); // Remove markdown headers at the start
+      
+      return {
+        content: cleanedContent,
+        citations: citations
+      };
     } catch (e) {
-      console.error('Error parsing stream chunk:', e);
+      console.error('Error parsing stream chunk:', e, 'Raw chunk:', chunk);
       return { content: '', citations: [] };
     }
   };
@@ -77,7 +75,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const { content, citations } = cleanStreamContent(line.slice(6).trim());
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
+
+            const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
               accumulatedContent += content;
               
@@ -93,6 +94,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                 }
               }));
 
+              // Update the QA data in real-time
               setQaData(prev => {
                 const updateNode = (nodes: QANode[]): QANode[] => {
                   return nodes.map(node => {
