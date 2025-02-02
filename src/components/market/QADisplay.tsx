@@ -46,14 +46,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Clean up mathematical expressions
+      // Clean up mathematical expressions while preserving citation numbers
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
         .replace(/^###\s*/, '') // Remove markdown headers at the start
         .replace(/\[ \\text\{([^}]+)\} \]/g, '$1') // Replace \text{} with just the text
         .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions to division
-        .replace(/\[|\]/g, '') // Remove square brackets around math expressions
-        .replace(/\\(?!n)/g, ''); // Remove backslashes except for \n
+        .replace(/\\\[|\\\]/g, '') // Remove LaTeX brackets
+        .replace(/\\(?!n)/g, '') // Remove backslashes except for \n
+        .replace(/\[(\d+)\]/g, '[$1]'); // Preserve citation numbers in square brackets
       
       return {
         content: cleanedContent,
