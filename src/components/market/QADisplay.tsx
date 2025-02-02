@@ -26,6 +26,13 @@ interface QADisplayProps {
   marketQuestion: string;
 }
 
+// Helper function to determine if a space should be added
+const shouldAddSpace = (prevContent: string, newContent: string) => {
+  if (!prevContent) return false;
+  const punctuation = /^[.,!?;:)]|^'s/;
+  return !punctuation.test(newContent.trim());
+};
+
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -44,13 +51,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (!content || parsed.choices[0].finish_reason) {
           return { content: '', citations: [] };
         }
-        
-        // Add a space before the content if it doesn't start with punctuation
-        const shouldAddSpace = (prevContent: string, newContent: string) => {
-          if (!prevContent) return false;
-          const punctuation = /^[.,!?;:)]|^'s/;
-          return !punctuation.test(newContent.trim());
-        };
         
         const cleanedContent = content.replace(/\{"id":".*"\}$/, '').trim();
         return {
