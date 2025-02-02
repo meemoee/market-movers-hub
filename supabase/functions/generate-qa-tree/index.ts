@@ -8,6 +8,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+const cleanGeminiResponse = (content: string): string => {
+  // Remove code fences and extra whitespace
+  return content
+    .replace(/```json\n/g, '')
+    .replace(/```\n?/g, '')
+    .replace(/^\s+|\s+$/g, '');
+};
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -61,13 +69,17 @@ serve(async (req) => {
       console.log('Raw follow-up response:', data)
 
       try {
-        const content = data.choices[0].message.content;
-        const parsedContent = JSON.parse(content);
+        // Extract and clean the content from Gemini response
+        const rawContent = data.choices[0].message.content;
+        const cleanContent = cleanGeminiResponse(rawContent);
         
+        // Validate the cleaned JSON
+        const parsedContent = JSON.parse(cleanContent);
         if (!Array.isArray(parsedContent)) {
           throw new Error('Response is not an array');
         }
         
+        // Return the cleaned and validated JSON
         return new Response(
           JSON.stringify(parsedContent), 
           { 
@@ -78,12 +90,12 @@ serve(async (req) => {
           }
         )
       } catch (e) {
-        console.error('Invalid JSON in follow-up response:', e)
+        console.error('Invalid JSON in follow-up response:', rawContent)
         throw new Error('Failed to parse follow-up questions')
       }
     }
 
-    // Handle initial analysis with proper streaming
+    // Handle initial analysis
     console.log('Generating analysis')
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -98,7 +110,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "Analyze the given question and provide a detailed analysis. Focus on facts and specific details. Format your response in clear paragraphs. Do not start with headers. Include citations in the format [1], [2], etc."
+            content: "Analyze the given question and provide a detailed analysis. Focus on facts and specific details. Format your response in clear paragraphs."
           },
           {
             role: "user",
@@ -113,42 +125,7 @@ serve(async (req) => {
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
 
-    // Create a TransformStream to properly handle the streaming chunks
-    const transformStream = new TransformStream({
-      async transform(chunk, controller) {
-        try {
-          const text = new TextDecoder().decode(chunk);
-          const lines = text.split('\n').filter(line => line.trim());
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') continue;
-              
-              try {
-                const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content;
-                if (content) {
-                  // Format as SSE data and include citations if present
-                  controller.enqueue(`data: ${JSON.stringify({
-                    choices: [{
-                      delta: { content },
-                      citations: parsed.citations || []
-                    }]
-                  })}\n\n`);
-                }
-              } catch (e) {
-                console.error('Error parsing chunk:', e);
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Error in transform:', e);
-        }
-      }
-    });
-
-    return new Response(analysisResponse.body?.pipeThrough(transformStream), {
+    return new Response(analysisResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
