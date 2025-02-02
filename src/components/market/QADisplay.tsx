@@ -45,7 +45,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Clean up mathematical expressions while preserving citation numbers
+      // Clean up mathematical expressions while preserving citation numbers and spaces
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
         .replace(/^###\s*/, '') // Remove markdown headers
@@ -55,6 +55,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         .replace(/\\approx/g, '≈') // Replace approx with symbol
         .replace(/\\(?!n)/g, '') // Remove remaining backslashes except \n
         .replace(/\[(\d+)\]/g, '[$1]') // Preserve citation numbers
+        .replace(/([a-zA-Z])([a-zA-Z])/g, '$1 $2') // Add space between consecutive letters
+        .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
         .trim();
       
       return {
