@@ -45,7 +45,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           return { content: '', citations: [] };
         }
         
-        const cleanedContent = content.replace(/\{"id":".*"\}$/, '');
+        // Remove any trailing metadata and clean up markdown headers
+        const cleanedContent = content
+          .replace(/\{"id":".*"\}$/, '')
+          .replace(/^###\s*/, ''); // Remove markdown headers at the start
+        
         return {
           content: cleanedContent,
           citations: parsed.citations || []
