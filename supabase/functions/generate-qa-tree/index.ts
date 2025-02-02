@@ -98,7 +98,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "Analyze the given question and provide a detailed analysis. Focus on facts and specific details. Format your response in clear paragraphs. Do not start with headers."
+            content: "Analyze the given question and provide a detailed analysis. Focus on facts and specific details. Format your response in clear paragraphs. Do not start with headers. Include citations in the format [1], [2], etc."
           },
           {
             role: "user",
@@ -129,10 +129,11 @@ serve(async (req) => {
                 const parsed = JSON.parse(data);
                 const content = parsed.choices?.[0]?.delta?.content;
                 if (content) {
-                  // Format as SSE data
+                  // Format as SSE data and include citations if present
                   controller.enqueue(`data: ${JSON.stringify({
                     choices: [{
-                      delta: { content }
+                      delta: { content },
+                      citations: parsed.citations || []
                     }]
                   })}\n\n`);
                 }
