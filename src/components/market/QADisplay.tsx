@@ -26,13 +26,6 @@ interface QADisplayProps {
   marketQuestion: string;
 }
 
-// Helper function to determine if a space should be added
-const shouldAddSpace = (prevContent: string, newContent: string) => {
-  if (!prevContent) return false;
-  const punctuation = /^[.,!?;:)]|^'s/;
-  return !punctuation.test(newContent.trim());
-};
-
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -52,7 +45,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           return { content: '', citations: [] };
         }
         
-        const cleanedContent = content.replace(/\{"id":".*"\}$/, '').trim();
+        const cleanedContent = content.replace(/\{"id":".*"\}$/, '');
         return {
           content: cleanedContent,
           citations: parsed.citations || []
@@ -82,9 +75,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           if (line.startsWith('data: ')) {
             const { content, citations } = cleanStreamContent(line.slice(6).trim());
             if (content) {
-              // Add space if needed before appending new content
-              const needsSpace = shouldAddSpace(accumulatedContent, content);
-              accumulatedContent += (needsSpace ? ' ' : '') + content;
+              accumulatedContent += content;
               
               if (citations) {
                 accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
