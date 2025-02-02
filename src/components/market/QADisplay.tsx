@@ -45,7 +45,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Simple cleanup: handle math expressions and add spaces between words
+      // Basic cleanup: remove metadata, handle math expressions, and normalize spaces
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
         .replace(/^###\s*/, '')
