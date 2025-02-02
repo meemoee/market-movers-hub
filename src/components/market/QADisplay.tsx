@@ -45,18 +45,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Clean up mathematical expressions while preserving citation numbers and spaces
+      // Clean up mathematical expressions and preserve citations
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
-        .replace(/^###\s*/, '') // Remove markdown headers
-        .replace(/\\text\{([^}]+)\}/g, '$1') // Replace \text{} with just the text
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions to division
-        .replace(/\\\[|\\\]/g, '') // Remove LaTeX equation delimiters
-        .replace(/\\approx/g, '≈') // Replace approx with symbol
-        .replace(/\\(?!n)/g, '') // Remove remaining backslashes except \n
-        .replace(/\[(\d+)\]/g, '[$1]') // Preserve citation numbers
-        .replace(/([a-zA-Z])([a-zA-Z])/g, '$1 $2') // Add space between consecutive letters
-        .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+        .replace(/^###\s*/, '')
+        .replace(/\\text\{([^}]+)\}/g, '$1')
+        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2')
+        .replace(/\\\[|\\\]/g, '')
+        .replace(/\\approx/g, '≈')
+        .replace(/\\(?!n)/g, '')
+        .replace(/\[(\d+)\]/g, '[$1]')
         .trim();
       
       return {
