@@ -45,16 +45,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Basic cleanup: remove metadata, handle math expressions, and normalize spaces
+      // Remove metadata and normalize spaces
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
         .replace(/^###\s*/, '')
-        .replace(/\\text\{([^}]+)\}/g, '$1')
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2')
-        .replace(/\\\[|\\\]/g, '')
-        .replace(/\\approx/g, '≈')
-        .replace(/\\(?!n)/g, '')
-        .replace(/([a-zA-Z])([a-zA-Z])/g, '$1 $2')
         .replace(/\s+/g, ' ')
         .trim();
       
@@ -358,3 +352,4 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     </Card>
   );
 }
+
