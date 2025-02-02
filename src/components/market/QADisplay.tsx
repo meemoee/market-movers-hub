@@ -45,8 +45,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           return { content: '', citations: [] };
         }
         
+        // Add a space before the content if it doesn't start with punctuation
+        const shouldAddSpace = (prevContent: string, newContent: string) => {
+          if (!prevContent) return false;
+          const punctuation = /^[.,!?;:)]|^'s/;
+          return !punctuation.test(newContent.trim());
+        };
+        
+        const cleanedContent = content.replace(/\{"id":".*"\}$/, '').trim();
         return {
-          content: content.replace(/\{"id":".*"\}$/, '').trim(),
+          content: cleanedContent,
           citations: parsed.citations || []
         };
       }
@@ -74,7 +82,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           if (line.startsWith('data: ')) {
             const { content, citations } = cleanStreamContent(line.slice(6).trim());
             if (content) {
-              accumulatedContent += content;
+              // Add space if needed before appending new content
+              const needsSpace = shouldAddSpace(accumulatedContent, content);
+              accumulatedContent += (needsSpace ? ' ' : '') + content;
+              
               if (citations) {
                 accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
               }
