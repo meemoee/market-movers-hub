@@ -38,7 +38,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     try {
       const parsed = JSON.parse(chunk);
       
-      // Handle both delta content and complete message formats
       const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
       const citations = parsed.citations || [];
       
@@ -49,16 +48,18 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       // Clean up mathematical expressions while preserving citation numbers
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
-        .replace(/^###\s*/, '') // Remove markdown headers at the start
-        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1') // Replace \text{} with just the text
+        .replace(/^###\s*/, '') // Remove markdown headers
+        .replace(/\\text\{([^}]+)\}/g, '$1') // Replace \text{} with just the text
         .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions to division
-        .replace(/\\\[|\\\]/g, '') // Remove LaTeX brackets
-        .replace(/\\(?!n)/g, '') // Remove backslashes except for \n
-        .replace(/\[(\d+)\]/g, '[$1]'); // Preserve citation numbers in square brackets
+        .replace(/\\\[|\\\]/g, '') // Remove LaTeX equation delimiters
+        .replace(/\\approx/g, '≈') // Replace approx with symbol
+        .replace(/\\(?!n)/g, '') // Remove remaining backslashes except \n
+        .replace(/\[(\d+)\]/g, '[$1]') // Preserve citation numbers
+        .trim();
       
       return {
         content: cleanedContent,
-        citations: citations
+        citations
       };
     } catch (e) {
       console.error('Error parsing stream chunk:', e, 'Raw chunk:', chunk);
