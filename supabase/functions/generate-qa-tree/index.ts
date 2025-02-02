@@ -87,7 +87,7 @@ serve(async (req) => {
       }
     }
 
-    // Handle initial analysis with proper chunk handling
+    // Handle initial analysis with Perplexity model
     console.log('Generating analysis')
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -117,7 +117,7 @@ serve(async (req) => {
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
 
-    // Create a transform stream to properly handle chunks
+    // Create a transform stream to properly handle Perplexity chunks
     const transformStream = new TransformStream({
       transform(chunk, controller) {
         try {
@@ -133,11 +133,9 @@ serve(async (req) => {
               
               try {
                 const parsed = JSON.parse(data);
-                const content = parsed.choices?.[0]?.delta?.content || '';
-                
-                if (content) {
-                  // Format as SSE data
-                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ content })}\n\n`));
+                if (parsed.choices?.[0]?.delta?.content) {
+                  // Pass through the original SSE format
+                  controller.enqueue(new TextEncoder().encode(line + '\n\n'));
                 }
               } catch (e) {
                 console.error('Error parsing chunk:', e);
