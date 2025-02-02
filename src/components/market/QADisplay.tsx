@@ -45,7 +45,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Clean up mathematical expressions and preserve citations while maintaining spaces
+      // Simple cleanup: handle math expressions and add spaces between words
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
         .replace(/^###\s*/, '')
@@ -54,9 +54,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         .replace(/\\\[|\\\]/g, '')
         .replace(/\\approx/g, '≈')
         .replace(/\\(?!n)/g, '')
-        .replace(/\[(\d+)\]/g, '[$1]')
-        .replace(/([a-zA-Z])([a-zA-Z])([a-zA-Z])/g, '$1$2$3 ') // Add space after every third character
-        .replace(/\s{2,}/g, ' ') // Normalize multiple spaces to single space
+        .replace(/([a-zA-Z])([a-zA-Z])/g, '$1 $2')
+        .replace(/\s+/g, ' ')
         .trim();
       
       return {
