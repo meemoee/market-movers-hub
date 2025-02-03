@@ -113,36 +113,67 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
-    try {
-      const parsed = JSON.parse(chunk);
-      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
-      const citations = parsed.citations || [];
-      
-      if (!content) {
-        return { content: '', citations: [] };
-      }
-      
-      // Clean content while preserving math and markdown
-      const cleanedContent = content
-        .replace(/\{"id":".*"\}$/, '')
-        // Keep LaTeX expressions intact - will be formatted by components
-        .replace(/(\*\*|\*|__|_|\`|\~\~)/g, '$1') // Preserve markdown formatting
-        .replace(/^(\s*[-*+]\s)/gm, '$1') // Preserve list markers
-        .replace(/^(\s*\d+\.\s)/gm, '$1') // Preserve numbered lists
-        .replace(/^(\s*>\s)/gm, '$1') // Preserve blockquotes
-        .replace(/^(\s*```\w*\n[\s\S]*?\n\s*```)/gm, '$1') // Preserve code blocks
-        .replace(/\[(\d+)\]/g, '[$1]') // Preserve citation numbers
-        .replace(/\s{3,}/g, '  '); // Clean up extra whitespace
-      
-      return {
-        content: cleanedContent,
-        citations: citations
-      };
-    } catch (e) {
-      console.error('Error parsing stream chunk:', e);
+  try {
+    const parsed = JSON.parse(chunk);
+    const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
+    const citations = parsed.citations || [];
+    
+    if (!content) {
       return { content: '', citations: [] };
     }
-  };
+    
+    // First, clean up any escaped characters in the JSON
+    const unescapedContent = content.replace(/\\([\\/*_`~[\]])/g, '$1');
+    
+    // Then process markdown and LaTeX
+    const cleanedContent = unescapedContent
+      // Remove any metadata
+      .replace(/\{"id":".*"\}$/, '')
+      
+      // Handle markdown elements carefully
+      .replace(/\*\*(.*?)\*\*/g, '**$1**')  // Bold
+      .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '*$1*')  // Italic
+      .replace(/__(.+?)__/g, '__$1__')  // Underline
+      .replace(/`(.+?)`/g, '`$1`')  // Code
+      .replace(/~~(.+?)~~/g, '~~$1~~')  // Strikethrough
+      
+      // Handle lists and blockquotes
+      .replace(/^(\s*[-*+]\s)/gm, '$1')  // Unordered lists
+      .replace(/^(\s*\d+\.\s)/gm, '$1')  // Ordered lists
+      .replace(/^(\s*>\s)/gm, '$1')      // Blockquotes
+      
+      // Preserve LaTeX expressions
+      .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '\\frac{$1}{$2}')
+      .replace(/\\text\{([^}]+)\}/g, '\\text{$1}')
+      .replace(/\\[a-zA-Z]+/g, (match) => match)
+      
+      // Clean up whitespace without breaking formatting
+      .replace(/\s{3,}/g, '  ')
+      .trim();
+
+    return {
+      content: cleanedContent,
+      citations: citations
+    };
+  } catch (e) {
+    console.error('Error parsing stream chunk:', e);
+    // If parsing fails, try to salvage the content
+    try {
+      // Extract content between quotes if JSON parsing failed
+      const match = chunk.match(/"content":"(.*?)(?<!\\)"/);
+      if (match && match[1]) {
+        return {
+          content: match[1].replace(/\\"/g, '"'),
+          citations: []
+        };
+      }
+    } catch {
+      // If all else fails, return empty
+      return { content: '', citations: [] };
+    }
+    return { content: '', citations: [] };
+  }
+};
 
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
