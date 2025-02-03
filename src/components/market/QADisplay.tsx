@@ -46,16 +46,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Clean up content while preserving markdown formatting
+      // Clean up mathematical expressions while preserving citation numbers
       const cleanedContent = content
-        .replace(/\{"id":".*"\}$/, '') // Remove trailing JSON
-        .replace(/^###\s*/, '') // Remove markdown headers at start
-        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1') // Clean LaTeX text
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions
+        .replace(/\{"id":".*"\}$/, '')
+        .replace(/^###\s*/, '') // Remove markdown headers at the start
+        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1') // Replace \text{} with just the text
+        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions to division
         .replace(/\\\[|\\\]/g, '') // Remove LaTeX brackets
-        .replace(/\\(?!n)/g, '') // Remove backslashes except \n
-        .replace(/\[(\d+)\]/g, '[$1]') // Preserve citation numbers
-        .trim(); // Remove extra whitespace
+        .replace(/\\(?!n)/g, '') // Remove backslashes except for \n
+        .replace(/\[(\d+)\]/g, '[$1]'); // Preserve citation numbers in square brackets
       
       return {
         content: cleanedContent,
@@ -323,9 +322,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     )}
                   </button>
                   <div className="flex-1">
-                    <ReactMarkdown className="prose prose-invert prose-sm max-w-none">
-                      {analysisContent}
-                    </ReactMarkdown>
+                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
                     {renderCitations(citations)}
                   </div>
                 </div>
