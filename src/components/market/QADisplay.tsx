@@ -113,7 +113,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
-    console.log('Cleaning stream chunk:', chunk);
+    console.log('Raw chunk before cleaning:', chunk);
     try {
       const parsed = JSON.parse(chunk);
       console.log('Parsed JSON:', parsed);
@@ -126,30 +126,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      console.log('Raw content before cleaning:', content);
-      
-      // First unescape any escaped characters
-      const unescapedContent = content
-        .replace(/\\([\\/*_`~[\]])/g, '$1')
-        .replace(/\\n/g, '\n')
-        .replace(/\\s/g, ' ');
-      
-      console.log('Unescaped content:', unescapedContent);
-      
-      // Process the content
-      const cleanedContent = unescapedContent
-        // Remove metadata
-        .replace(/\{"id":".*"\}$/, '')
-        // Remove markdown headers
+      // Remove markdown headers and normalize spaces
+      const cleanedContent = content
         .replace(/^###\s*/gm, '')
         .replace(/^##\s*/gm, '')
         .replace(/^#\s*/gm, '')
-        // Normalize spaces
-        .replace(/[ \t]+/g, ' ')
-        .replace(/^\s+/gm, '')
-        .replace(/\s+$/gm, ' ')
-        .replace(/\n\s*\n/g, '\n\n')
-        .replace(/([.!?])\s*(?=\S)/g, '$1 ');
+        .trim();
       
       console.log('Cleaned content:', cleanedContent);
       
@@ -159,20 +141,17 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       };
     } catch (e) {
       console.error('Error parsing stream chunk:', e);
-      try {
-        const match = chunk.match(/"content":"(.*?)(?<!\\)"/);
-        if (match && match[1]) {
-          console.log('Fallback content extraction:', match[1]);
-          return {
-            content: match[1].replace(/\\"/g, '"').replace(/\\s/g, ' '),
-            citations: []
-          };
-        }
-      } catch (fallbackError) {
-        console.error('Error in fallback parsing:', fallbackError);
-      }
       return { content: '', citations: [] };
     }
+  };
+
+  const ensureProperSpacing = (current: string, newContent: string): string => {
+    // If current content ends with a word character and new content starts with a word character
+    // add a space between them
+    if (/\w$/.test(current) && /^\w/.test(newContent)) {
+      return current + ' ' + newContent;
+    }
+    return current + newContent;
   };
 
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
@@ -185,7 +164,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (done) break;
 
         const chunk = new TextDecoder().decode(value);
+        console.log('Processing chunk:', chunk);
+        
         const lines = chunk.split('\n').filter(line => line.trim());
+        console.log('Processing lines:', lines);
 
         for (const line of lines) {
           if (line.startsWith('data: ')) {
@@ -194,7 +176,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
             const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
-              accumulatedContent += content;
+              // Use the new spacing function when accumulating content
+              accumulatedContent = ensureProperSpacing(accumulatedContent, content);
               
               if (citations) {
                 accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
