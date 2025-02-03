@@ -9,27 +9,41 @@ import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
+// Function to format LaTeX-style math
 const formatMath = (text: string): string => {
   return text
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2')
+    // Handle fractions
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (_, num, den) => `(${num})/(${den})`)
+    // Handle approximate symbols
     .replace(/\\approx/g, '≈')
+    // Handle text blocks in math
+    .replace(/\\text\{([^}]+)\}/g, '$1')
+    // Handle basic math operations
     .replace(/\\times/g, '×')
     .replace(/\\div/g, '÷')
-    .replace(/\\text\{([^}]+)\}/g, '$1')
-    .replace(/\\[a-zA-Z]+/g, match => match)
-    .trim();
+    .replace(/\\pm/g, '±')
+    // Handle subscripts and superscripts
+    .replace(/\_\{([^}]+)\}/g, '_$1')
+    .replace(/\^\{([^}]+)\}/g, '^$1')
+    // Clean up remaining LaTeX commands
+    .replace(/\\[a-zA-Z]+/g, '')
+    // Clean up extra spaces
+    .replace(/\s+/g, ' ').trim();
 };
 
+// Custom components for ReactMarkdown
 const MarkdownComponents = {
-  p: ({ children }) => <p className="mb-3 last:mb-0">{formatMath(String(children))}</p>,
-  ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-  ),
+  p: ({ children }) => {
+    // Special handling for paragraphs that might contain math
+    const content = typeof children === 'string' 
+      ? formatMath(children)
+      : children;
+    
+    return <p className="mb-3 last:mb-0">{content}</p>;
+  },
   code: ({ inline, children }) => {
-    const content = inline && typeof children === 'string' && children.includes('\\')
+    // Handle inline math if it's wrapped in backticks and contains LaTeX
+    const content = typeof children === 'string' && children.includes('\\')
       ? formatMath(children)
       : children;
 
@@ -41,11 +55,35 @@ const MarkdownComponents = {
       </code>
     );
   },
+  // Regular markdown components
+  ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
+  ),
   a: ({ href, children }) => (
     <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
       {children}
     </a>
   ),
+  em: ({ children }) => <em className="italic">{children}</em>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
+  hr: () => <hr className="my-4 border-muted" />,
+  table: ({ children }) => (
+    <div className="overflow-x-auto my-4">
+      <table className="min-w-full divide-y divide-border">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
 interface QANode {
@@ -83,53 +121,67 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (!content) {
         return { content: '', citations: [] };
       }
-
-      // First pass: Basic cleanup and normalization
-      const preprocessed = content
+      
+      // First unescape any escaped characters while preserving spaces
+      const unescapedContent = content
         .replace(/\\([\\/*_`~[\]])/g, '$1')
-        .replace(/\\n/g, '\n')
-        .replace(/\\s/g, ' ')
-        .replace(/[ \t]+/g, ' ');
-
-      // Second pass: Handle markdown and spacing
-      const processedContent = preprocessed
-        // Handle metadata
+        .replace(/\\n/g, '\n')  // Preserve newlines
+        .replace(/\\s/g, ' ');  // Preserve escaped spaces
+      
+      // Process the content while carefully preserving spaces
+      const cleanedContent = unescapedContent
+        // Remove metadata without affecting spaces
         .replace(/\{"id":".*"\}$/, '')
         
-        // Handle markdown with space preservation
-        .replace(/(\s*)\*\*(.+?)\*\*(\s*)/g, '$1**$2**$3')
-        .replace(/(\s*)_(.+?)_(\s*)/g, '$1_$2_$3')
-        .replace(/(\s*)`(.+?)`(\s*)/g, '$1`$2`$3')
+        // Handle markdown elements while preserving surrounding spaces
+        .replace(/(\s*)\*\*(.*?)\*\*(\s*)/g, '$1**$2**$3')  // Bold
+        .replace(/(\s*)(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)(\s*)/g, '$1*$3*$4')  // Italic
+        .replace(/(\s*)__(.+?)__(\s*)/g, '$1__$2__$3')  // Underline
+        .replace(/(\s*)`(.+?)`(\s*)/g, '$1`$2`$3')  // Code
+        .replace(/(\s*)~~(.+?)~~(\s*)/g, '$1~~$2~~$3')  // Strikethrough
         
-        // Handle lists and quotes
-        .replace(/^(\s*[-*+]\s)/gm, '$1')
-        .replace(/^(\s*\d+\.\s)/gm, '$1')
-        .replace(/^(\s*>\s)/gm, '$1')
+        // Handle lists and blockquotes while preserving indentation
+        .replace(/^(\s*[-*+]\s+)/gm, '$1')  // Unordered lists
+        .replace(/^(\s*\d+\.\s+)/gm, '$1')  // Ordered lists
+        .replace(/^(\s*>\s+)/gm, '$1')      // Blockquotes
         
-        // Math expressions
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '\\frac{$1}{$2}')
-        .replace(/\\text\{([^}]+)\}/g, '\\text{$1}')
+        // Preserve LaTeX expressions with their spaces
+        .replace(/(\s*)\\frac\{([^}]+)\}\{([^}]+)\}(\s*)/g, '$1\\frac{$2}{$3}$4')
+        .replace(/(\s*)\\text\{([^}]+)\}(\s*)/g, '$1\\text{$2}$3')
+        
+        // Special handling for math expressions
         .replace(/\\approx/g, '≈')
         .replace(/\\times/g, '×')
         .replace(/\\div/g, '÷')
         
-        // Space cleanup
-        .replace(/([.!?])\s*/g, '$1 ');
-
-      // Final pass: Word boundary handling
-      const finalContent = processedContent
-        .split(/\b/)
-        .map(part => part.trim())
-        .filter(Boolean)
-        .join(' ')
-        .trim();
-
+        // Normalize spaces without removing them:
+        // - Replace multiple spaces with single space
+        // - Preserve intended multiple spaces (e.g., indentation)
+        // - Keep spaces around punctuation
+        .replace(/[ \t]+/g, ' ')          // Normalize regular spaces
+        .replace(/^\s+/gm, (match) => match)  // Preserve leading spaces
+        .replace(/\s+$/gm, ' ')           // Normalize trailing spaces
+        .replace(/\n\s*\n/g, '\n\n')      // Normalize paragraph breaks
+        .replace(/([.!?])\s*(?=\S)/g, '$1 '); // Ensure space after punctuation
+  
       return {
-        content: finalContent,
+        content: cleanedContent,
         citations: citations
       };
     } catch (e) {
-      console.error('Error parsing chunk:', e);
+      console.error('Error parsing stream chunk:', e);
+      try {
+        // Fallback content extraction with space preservation
+        const match = chunk.match(/"content":"(.*?)(?<!\\)"/);
+        if (match && match[1]) {
+          return {
+            content: match[1].replace(/\\"/g, '"').replace(/\\s/g, ' '),
+            citations: []
+          };
+        }
+      } catch {
+        return { content: '', citations: [] };
+      }
       return { content: '', citations: [] };
     }
   };
@@ -137,30 +189,23 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
-    let partialChunk = '';
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const chunk = new TextDecoder().decode(value, { stream: true });
-        const fullChunk = partialChunk + chunk;
-        const lines = fullChunk.split(/(\n)/).filter(Boolean);
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim());
 
-        for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i];
+        for (const line of lines) {
           if (line.startsWith('data: ')) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
 
             const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
-              const needsSpace = accumulatedContent.length > 0 && 
-                !accumulatedContent.endsWith(' ') && 
-                !content.startsWith(' ');
-              
-              accumulatedContent += (needsSpace ? ' ' : '') + content;
+              accumulatedContent += content;
               
               if (citations) {
                 accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
@@ -198,8 +243,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             }
           }
         }
-        
-        partialChunk = lines[lines.length - 1] || '';
       }
     } catch (error) {
       console.error('Error processing stream:', error);
