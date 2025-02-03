@@ -46,15 +46,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Clean up mathematical expressions while preserving citation numbers
+      // Clean up content while preserving markdown formatting
       const cleanedContent = content
-        .replace(/\{"id":".*"\}$/, '')
-        .replace(/^###\s*/, '') // Remove markdown headers at the start
-        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1') // Replace \text{} with just the text
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions to division
+        .replace(/\{"id":".*"\}$/, '') // Remove trailing JSON
+        .replace(/^###\s*/, '') // Remove markdown headers at start
+        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1') // Clean LaTeX text
+        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions
         .replace(/\\\[|\\\]/g, '') // Remove LaTeX brackets
-        .replace(/\\(?!n)/g, '') // Remove backslashes except for \n
-        .replace(/\[(\d+)\]/g, '[$1]'); // Preserve citation numbers in square brackets
+        .replace(/\\(?!n)/g, '') // Remove backslashes except \n
+        .replace(/\[(\d+)\]/g, '[$1]') // Preserve citation numbers
+        .trim(); // Remove extra whitespace
       
       return {
         content: cleanedContent,
@@ -322,7 +323,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     )}
                   </button>
                   <div className="flex-1">
-                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                    <ReactMarkdown className="prose prose-invert prose-sm max-w-none">
+                      {analysisContent}
+                    </ReactMarkdown>
                     {renderCitations(citations)}
                   </div>
                 </div>
