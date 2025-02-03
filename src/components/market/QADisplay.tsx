@@ -113,67 +113,78 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
-  try {
-    const parsed = JSON.parse(chunk);
-    const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
-    const citations = parsed.citations || [];
-    
-    if (!content) {
-      return { content: '', citations: [] };
-    }
-    
-    // First, clean up any escaped characters in the JSON
-    const unescapedContent = content.replace(/\\([\\/*_`~[\]])/g, '$1');
-    
-    // Then process markdown and LaTeX
-    const cleanedContent = unescapedContent
-      // Remove any metadata
-      .replace(/\{"id":".*"\}$/, '')
-      
-      // Handle markdown elements carefully
-      .replace(/\*\*(.*?)\*\*/g, '**$1**')  // Bold
-      .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '*$1*')  // Italic
-      .replace(/__(.+?)__/g, '__$1__')  // Underline
-      .replace(/`(.+?)`/g, '`$1`')  // Code
-      .replace(/~~(.+?)~~/g, '~~$1~~')  // Strikethrough
-      
-      // Handle lists and blockquotes
-      .replace(/^(\s*[-*+]\s)/gm, '$1')  // Unordered lists
-      .replace(/^(\s*\d+\.\s)/gm, '$1')  // Ordered lists
-      .replace(/^(\s*>\s)/gm, '$1')      // Blockquotes
-      
-      // Preserve LaTeX expressions
-      .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '\\frac{$1}{$2}')
-      .replace(/\\text\{([^}]+)\}/g, '\\text{$1}')
-      .replace(/\\[a-zA-Z]+/g, (match) => match)
-      
-      // Clean up whitespace without breaking formatting
-      .replace(/\s{3,}/g, '  ')
-      .trim();
-
-    return {
-      content: cleanedContent,
-      citations: citations
-    };
-  } catch (e) {
-    console.error('Error parsing stream chunk:', e);
-    // If parsing fails, try to salvage the content
     try {
-      // Extract content between quotes if JSON parsing failed
-      const match = chunk.match(/"content":"(.*?)(?<!\\)"/);
-      if (match && match[1]) {
-        return {
-          content: match[1].replace(/\\"/g, '"'),
-          citations: []
-        };
+      const parsed = JSON.parse(chunk);
+      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
+      const citations = parsed.citations || [];
+      
+      if (!content) {
+        return { content: '', citations: [] };
       }
-    } catch {
-      // If all else fails, return empty
+      
+      // First unescape any escaped characters while preserving spaces
+      const unescapedContent = content
+        .replace(/\\([\\/*_`~[\]])/g, '$1')
+        .replace(/\\n/g, '\n')  // Preserve newlines
+        .replace(/\\s/g, ' ');  // Preserve escaped spaces
+      
+      // Process the content while carefully preserving spaces
+      const cleanedContent = unescapedContent
+        // Remove metadata without affecting spaces
+        .replace(/\{"id":".*"\}$/, '')
+        
+        // Handle markdown elements while preserving surrounding spaces
+        .replace(/(\s*)\*\*(.*?)\*\*(\s*)/g, '$1**$2**$3')  // Bold
+        .replace(/(\s*)(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)(\s*)/g, '$1*$3*$4')  // Italic
+        .replace(/(\s*)__(.+?)__(\s*)/g, '$1__$2__$3')  // Underline
+        .replace(/(\s*)`(.+?)`(\s*)/g, '$1`$2`$3')  // Code
+        .replace(/(\s*)~~(.+?)~~(\s*)/g, '$1~~$2~~$3')  // Strikethrough
+        
+        // Handle lists and blockquotes while preserving indentation
+        .replace(/^(\s*[-*+]\s+)/gm, '$1')  // Unordered lists
+        .replace(/^(\s*\d+\.\s+)/gm, '$1')  // Ordered lists
+        .replace(/^(\s*>\s+)/gm, '$1')      // Blockquotes
+        
+        // Preserve LaTeX expressions with their spaces
+        .replace(/(\s*)\\frac\{([^}]+)\}\{([^}]+)\}(\s*)/g, '$1\\frac{$2}{$3}$4')
+        .replace(/(\s*)\\text\{([^}]+)\}(\s*)/g, '$1\\text{$2}$3')
+        
+        // Special handling for math expressions
+        .replace(/\\approx/g, '≈')
+        .replace(/\\times/g, '×')
+        .replace(/\\div/g, '÷')
+        
+        // Normalize spaces without removing them:
+        // - Replace multiple spaces with single space
+        // - Preserve intended multiple spaces (e.g., indentation)
+        // - Keep spaces around punctuation
+        .replace(/[ \t]+/g, ' ')          // Normalize regular spaces
+        .replace(/^\s+/gm, (match) => match)  // Preserve leading spaces
+        .replace(/\s+$/gm, ' ')           // Normalize trailing spaces
+        .replace(/\n\s*\n/g, '\n\n')      // Normalize paragraph breaks
+        .replace(/([.!?])\s*(?=\S)/g, '$1 '); // Ensure space after punctuation
+  
+      return {
+        content: cleanedContent,
+        citations: citations
+      };
+    } catch (e) {
+      console.error('Error parsing stream chunk:', e);
+      try {
+        // Fallback content extraction with space preservation
+        const match = chunk.match(/"content":"(.*?)(?<!\\)"/);
+        if (match && match[1]) {
+          return {
+            content: match[1].replace(/\\"/g, '"').replace(/\\s/g, ' '),
+            citations: []
+          };
+        }
+      } catch {
+        return { content: '', citations: [] };
+      }
       return { content: '', citations: [] };
     }
-    return { content: '', citations: [] };
-  }
-};
+  };
 
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
