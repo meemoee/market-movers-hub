@@ -1,12 +1,50 @@
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useToast } from '@/hooks/use-toast';
-import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+
+// Custom components for ReactMarkdown
+const MarkdownComponents = {
+  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+  ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
+  ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
+  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
+  ),
+  code: ({ inline, children }) => (
+    inline ? 
+      <code className="bg-muted/30 rounded px-1 py-0.5 text-sm">{children}</code> :
+      <code className="block bg-muted/30 rounded p-3 my-3 text-sm whitespace-pre-wrap">{children}</code>
+  ),
+  a: ({ href, children }) => (
+    <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+      {children}
+    </a>
+  ),
+  em: ({ children }) => <em className="italic">{children}</em>,
+  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  hr: () => <hr className="my-4 border-muted" />,
+  table: ({ children }) => (
+    <div className="overflow-x-auto my-4">
+      <table className="min-w-full divide-y divide-border">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => (
+    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>
+  ),
+};
 
 interface QANode {
   id: string;
@@ -37,8 +75,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
     try {
       const parsed = JSON.parse(chunk);
-      
-      // Handle both delta content and complete message formats
       const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
       const citations = parsed.citations || [];
       
@@ -46,22 +82,27 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
-      // Clean up mathematical expressions while preserving citation numbers
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
-        .replace(/^###\s*/, '') // Remove markdown headers at the start
-        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1') // Replace \text{} with just the text
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2') // Convert fractions to division
-        .replace(/\\\[|\\\]/g, '') // Remove LaTeX brackets
-        .replace(/\\(?!n)/g, '') // Remove backslashes except for \n
-        .replace(/\[(\d+)\]/g, '[$1]'); // Preserve citation numbers in square brackets
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1')
+        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2')
+        .replace(/\\\[|\\\]/g, '')
+        .replace(/\\(?!n)/g, '')
+        .replace(/\[(\d+)\]/g, '[$1]')
+        .replace(/(\*\*|\*|__|_|\`|\~\~)/g, '$1')
+        .replace(/^(\s*[-*+]\s)/gm, '$1')
+        .replace(/^(\s*\d+\.\s)/gm, '$1')
+        .replace(/^(\s*>\s)/gm, '$1')
+        .replace(/^(\s*```\w*\n[\s\S]*?\n\s*```)/gm, '$1')
+        .replace(/\s{3,}/g, '  ');
       
       return {
         content: cleanedContent,
         citations: citations
       };
     } catch (e) {
-      console.error('Error parsing stream chunk:', e, 'Raw chunk:', chunk);
+      console.error('Error parsing stream chunk:', e);
       return { content: '', citations: [] };
     }
   };
@@ -99,7 +140,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                 }
               }));
 
-              // Update the QA data in real-time
               setQaData(prev => {
                 const updateNode = (nodes: QANode[]): QANode[] => {
                   return nodes.map(node => {
@@ -322,7 +362,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     )}
                   </button>
                   <div className="flex-1">
-                    <ReactMarkdown>{analysisContent}</ReactMarkdown>
+                    <ReactMarkdown 
+                      components={MarkdownComponents}
+                      className="prose prose-sm prose-invert max-w-none"
+                    >
+                      {analysisContent}
+                    </ReactMarkdown>
                     {renderCitations(citations)}
                   </div>
                 </div>
