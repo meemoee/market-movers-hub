@@ -9,19 +9,58 @@ import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
+// Function to format LaTeX-style math
+const formatMath = (text: string): string => {
+  return text
+    // Handle fractions
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (_, num, den) => `(${num})/(${den})`)
+    // Handle approximate symbols
+    .replace(/\\approx/g, '≈')
+    // Handle text blocks in math
+    .replace(/\\text\{([^}]+)\}/g, '$1')
+    // Handle basic math operations
+    .replace(/\\times/g, '×')
+    .replace(/\\div/g, '÷')
+    .replace(/\\pm/g, '±')
+    // Handle subscripts and superscripts
+    .replace(/\_\{([^}]+)\}/g, '_$1')
+    .replace(/\^\{([^}]+)\}/g, '^$1')
+    // Clean up remaining LaTeX commands
+    .replace(/\\[a-zA-Z]+/g, '')
+    // Clean up extra spaces
+    .replace(/\s+/g, ' ').trim();
+};
+
 // Custom components for ReactMarkdown
 const MarkdownComponents = {
-  p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+  p: ({ children }) => {
+    // Special handling for paragraphs that might contain math
+    const content = typeof children === 'string' 
+      ? formatMath(children)
+      : children;
+    
+    return <p className="mb-3 last:mb-0">{content}</p>;
+  },
+  code: ({ inline, children }) => {
+    // Handle inline math if it's wrapped in backticks and contains LaTeX
+    const content = typeof children === 'string' && children.includes('\\')
+      ? formatMath(children)
+      : children;
+
+    return inline ? (
+      <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{content}</code>
+    ) : (
+      <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
+        {content}
+      </code>
+    );
+  },
+  // Regular markdown components
   ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
   ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
   li: ({ children }) => <li className="leading-relaxed">{children}</li>,
   blockquote: ({ children }) => (
     <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-  ),
-  code: ({ inline, children }) => (
-    inline ? 
-      <code className="bg-muted/30 rounded px-1 py-0.5 text-sm">{children}</code> :
-      <code className="block bg-muted/30 rounded p-3 my-3 text-sm whitespace-pre-wrap">{children}</code>
   ),
   a: ({ href, children }) => (
     <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
@@ -30,6 +69,9 @@ const MarkdownComponents = {
   ),
   em: ({ children }) => <em className="italic">{children}</em>,
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+  h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+  h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+  h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
   hr: () => <hr className="my-4 border-muted" />,
   table: ({ children }) => (
     <div className="overflow-x-auto my-4">
@@ -41,9 +83,7 @@ const MarkdownComponents = {
       {children}
     </th>
   ),
-  td: ({ children }) => (
-    <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>
-  ),
+  td: ({ children }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
 interface QANode {
@@ -82,20 +122,17 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return { content: '', citations: [] };
       }
       
+      // Clean content while preserving math and markdown
       const cleanedContent = content
         .replace(/\{"id":".*"\}$/, '')
-        .replace(/^#{1,6}\s+/, '')
-        .replace(/\[ \\text\{([^}]+)\} \]/g, '$1')
-        .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '$1/$2')
-        .replace(/\\\[|\\\]/g, '')
-        .replace(/\\(?!n)/g, '')
-        .replace(/\[(\d+)\]/g, '[$1]')
-        .replace(/(\*\*|\*|__|_|\`|\~\~)/g, '$1')
-        .replace(/^(\s*[-*+]\s)/gm, '$1')
-        .replace(/^(\s*\d+\.\s)/gm, '$1')
-        .replace(/^(\s*>\s)/gm, '$1')
-        .replace(/^(\s*```\w*\n[\s\S]*?\n\s*```)/gm, '$1')
-        .replace(/\s{3,}/g, '  ');
+        // Keep LaTeX expressions intact - will be formatted by components
+        .replace(/(\*\*|\*|__|_|\`|\~\~)/g, '$1') // Preserve markdown formatting
+        .replace(/^(\s*[-*+]\s)/gm, '$1') // Preserve list markers
+        .replace(/^(\s*\d+\.\s)/gm, '$1') // Preserve numbered lists
+        .replace(/^(\s*>\s)/gm, '$1') // Preserve blockquotes
+        .replace(/^(\s*```\w*\n[\s\S]*?\n\s*```)/gm, '$1') // Preserve code blocks
+        .replace(/\[(\d+)\]/g, '[$1]') // Preserve citation numbers
+        .replace(/\s{3,}/g, '  '); // Clean up extra whitespace
       
       return {
         content: cleanedContent,
@@ -364,7 +401,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   <div className="flex-1">
                     <ReactMarkdown 
                       components={MarkdownComponents}
-                      className="prose prose-sm prose-invert max-w-none"
+                      className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                     >
                       {analysisContent}
                     </ReactMarkdown>
