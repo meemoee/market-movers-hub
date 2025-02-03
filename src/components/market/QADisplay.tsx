@@ -113,57 +113,46 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
+    console.log('Cleaning stream chunk:', chunk);
     try {
       const parsed = JSON.parse(chunk);
+      console.log('Parsed JSON:', parsed);
+      
       const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
       const citations = parsed.citations || [];
       
       if (!content) {
+        console.log('No content found in chunk');
         return { content: '', citations: [] };
       }
       
-      // First unescape any escaped characters while preserving spaces
+      console.log('Raw content before cleaning:', content);
+      
+      // First unescape any escaped characters
       const unescapedContent = content
         .replace(/\\([\\/*_`~[\]])/g, '$1')
-        .replace(/\\n/g, '\n')  // Preserve newlines
-        .replace(/\\s/g, ' ');  // Preserve escaped spaces
+        .replace(/\\n/g, '\n')
+        .replace(/\\s/g, ' ');
       
-      // Process the content while carefully preserving spaces
+      console.log('Unescaped content:', unescapedContent);
+      
+      // Process the content
       const cleanedContent = unescapedContent
-        // Remove metadata without affecting spaces
+        // Remove metadata
         .replace(/\{"id":".*"\}$/, '')
-        
-        // Handle markdown elements while preserving surrounding spaces
-        .replace(/(\s*)\*\*(.*?)\*\*(\s*)/g, '$1**$2**$3')  // Bold
-        .replace(/(\s*)(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)(\s*)/g, '$1*$3*$4')  // Italic
-        .replace(/(\s*)__(.+?)__(\s*)/g, '$1__$2__$3')  // Underline
-        .replace(/(\s*)`(.+?)`(\s*)/g, '$1`$2`$3')  // Code
-        .replace(/(\s*)~~(.+?)~~(\s*)/g, '$1~~$2~~$3')  // Strikethrough
-        
-        // Handle lists and blockquotes while preserving indentation
-        .replace(/^(\s*[-*+]\s+)/gm, '$1')  // Unordered lists
-        .replace(/^(\s*\d+\.\s+)/gm, '$1')  // Ordered lists
-        .replace(/^(\s*>\s+)/gm, '$1')      // Blockquotes
-        
-        // Preserve LaTeX expressions with their spaces
-        .replace(/(\s*)\\frac\{([^}]+)\}\{([^}]+)\}(\s*)/g, '$1\\frac{$2}{$3}$4')
-        .replace(/(\s*)\\text\{([^}]+)\}(\s*)/g, '$1\\text{$2}$3')
-        
-        // Special handling for math expressions
-        .replace(/\\approx/g, '≈')
-        .replace(/\\times/g, '×')
-        .replace(/\\div/g, '÷')
-        
-        // Normalize spaces without removing them:
-        // - Replace multiple spaces with single space
-        // - Preserve intended multiple spaces (e.g., indentation)
-        // - Keep spaces around punctuation
-        .replace(/[ \t]+/g, ' ')          // Normalize regular spaces
-        .replace(/^\s+/gm, (match) => match)  // Preserve leading spaces
-        .replace(/\s+$/gm, ' ')           // Normalize trailing spaces
-        .replace(/\n\s*\n/g, '\n\n')      // Normalize paragraph breaks
-        .replace(/([.!?])\s*(?=\S)/g, '$1 '); // Ensure space after punctuation
-  
+        // Remove markdown headers
+        .replace(/^###\s*/gm, '')
+        .replace(/^##\s*/gm, '')
+        .replace(/^#\s*/gm, '')
+        // Normalize spaces
+        .replace(/[ \t]+/g, ' ')
+        .replace(/^\s+/gm, '')
+        .replace(/\s+$/gm, ' ')
+        .replace(/\n\s*\n/g, '\n\n')
+        .replace(/([.!?])\s*(?=\S)/g, '$1 ');
+      
+      console.log('Cleaned content:', cleanedContent);
+      
       return {
         content: cleanedContent,
         citations: citations
@@ -171,16 +160,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     } catch (e) {
       console.error('Error parsing stream chunk:', e);
       try {
-        // Fallback content extraction with space preservation
         const match = chunk.match(/"content":"(.*?)(?<!\\)"/);
         if (match && match[1]) {
+          console.log('Fallback content extraction:', match[1]);
           return {
             content: match[1].replace(/\\"/g, '"').replace(/\\s/g, ' '),
             citations: []
           };
         }
-      } catch {
-        return { content: '', citations: [] };
+      } catch (fallbackError) {
+        console.error('Error in fallback parsing:', fallbackError);
       }
       return { content: '', citations: [] };
     }
