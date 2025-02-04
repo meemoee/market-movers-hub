@@ -318,7 +318,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         <div className="text-xs text-muted-foreground font-medium">Sources:</div>
         <div className="flex flex-wrap gap-2">
           {citations.map((citation, index) => (
-            
+            <a
               key={index}
               href={citation}
               target="_blank"
