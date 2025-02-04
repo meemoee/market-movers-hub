@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,7 +32,7 @@ serve(async (req) => {
     // Handle follow-up questions generation
     if (isFollowUp && parentContent) {
       console.log('Generating follow-up questions')
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const response = await fetch(OPENROUTER_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -55,6 +56,7 @@ serve(async (req) => {
       })
 
       if (!response.ok) {
+        console.error('Follow-up generation failed:', await response.text())
         throw new Error(`Follow-up generation failed: ${response.status}`)
       }
 
@@ -90,7 +92,7 @@ serve(async (req) => {
 
     // Handle initial analysis with streaming
     console.log('Generating analysis')
-    const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    const analysisResponse = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -115,6 +117,7 @@ serve(async (req) => {
     })
 
     if (!analysisResponse.ok) {
+      console.error('Analysis generation failed:', await analysisResponse.text())
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
 
