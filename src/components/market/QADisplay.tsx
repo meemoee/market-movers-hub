@@ -27,6 +27,21 @@ interface QADisplayProps {
   marketQuestion: string;
 }
 
+const MarkdownComponents = {
+  p: ({ children }: { children: React.ReactNode }) => (
+    <p className="mb-4 last:mb-0">{children}</p>
+  ),
+  ul: ({ children }: { children: React.ReactNode }) => (
+    <ul className="list-disc pl-4 mb-4 last:mb-0">{children}</ul>
+  ),
+  ol: ({ children }: { children: React.ReactNode }) => (
+    <ol className="list-decimal pl-4 mb-4 last:mb-0">{children}</ol>
+  ),
+  li: ({ children }: { children: React.ReactNode }) => (
+    <li className="mb-1 last:mb-0">{children}</li>
+  ),
+};
+
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -34,6 +49,18 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [streamingContent, setStreamingContent] = useState<{[key: string]: StreamingContent}>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      return newSet;
+    });
+  };
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
     console.log('Raw chunk before cleaning:', chunk);
@@ -149,6 +176,22 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return accumulatedContent;
   };
 
+  const handleAnalyze = async () => {
+    setIsAnalyzing(true);
+    try {
+      await analyzeQuestion(marketQuestion);
+    } catch (error) {
+      console.error('Analysis error:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to analyze the question. Please try again.",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
     
@@ -232,8 +275,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
         if (followUpError) throw followUpError;
 
-        if (Array.isArray(followUpData)) {
-          for (const item of followUpQuestions) {
+        if (followUpData && Array.isArray(followUpData)) {
+          for (const item of followUpData) {
             if (item?.question) {
               await analyzeQuestion(item.question, nodeId, depth + 1);
             }
