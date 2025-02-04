@@ -53,27 +53,19 @@ serve(async (req) => {
         })
       })
 
-      console.log('Follow-up response status:', response.status);
-      const responseText = await response.clone().text();
-      console.log('Raw follow-up response:', responseText);
-
       if (!response.ok) {
         throw new Error(`Follow-up generation failed: ${response.status}`)
       }
 
+      const data = await response.json()
+      console.log('Raw follow-up response:', data)
+
       try {
-        const data = await response.json()
-        console.log('Parsed follow-up data:', data);
-        
         const rawContent = data.choices[0].message.content;
-        console.log('Raw content before cleaning:', rawContent);
-        
         const cleanContent = rawContent
           .replace(/```json\n?/g, '')
           .replace(/```\n?/g, '')
           .trim();
-        
-        console.log('Cleaned content:', cleanContent);
         
         const parsedContent = JSON.parse(cleanContent);
         if (!Array.isArray(parsedContent)) {
@@ -110,7 +102,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant providing detailed analysis. Avoid using markdown headers or formatting. Start responses with complete sentences and use natural paragraph breaks. Include citations in square brackets [1] where relevant."
+            content: "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid using markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant."
           },
           {
             role: "user",
@@ -121,11 +113,6 @@ serve(async (req) => {
       })
     })
 
-    console.log('Analysis response status:', analysisResponse.status);
-    const clonedResponse = analysisResponse.clone();
-    const rawText = await clonedResponse.text();
-    console.log('Raw analysis response:', rawText);
-
     if (!analysisResponse.ok) {
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
@@ -135,28 +122,19 @@ serve(async (req) => {
       transform(chunk, controller) {
         try {
           const text = new TextDecoder().decode(chunk);
-          console.log('Raw chunk before processing:', text);
-          
           const lines = text.split('\n').filter(line => line.trim() !== '');
-          console.log('Processing lines:', lines);
           
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
-              console.log('Extracted data:', data);
-              
               if (data === '[DONE]') {
-                console.log('Stream complete');
                 return;
               }
               
               try {
                 const parsed = JSON.parse(data);
-                console.log('Parsed chunk data:', parsed);
-                
                 if (parsed.choices?.[0]?.delta?.content) {
-                  const content = parsed.choices[0].delta.content;
-                  console.log('Content to be sent:', content);
+                  // Pass through the original SSE format
                   controller.enqueue(new TextEncoder().encode(line + '\n\n'));
                 }
               } catch (e) {
