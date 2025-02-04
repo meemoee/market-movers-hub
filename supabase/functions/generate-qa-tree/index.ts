@@ -36,7 +36,7 @@ serve(async (req) => {
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'http://localhost:5173',
+          'HTTP-Referer': 'https://localhost:5173',
           'X-Title': 'Market Analysis App',
         },
         body: JSON.stringify({
@@ -95,7 +95,7 @@ serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
+        'HTTP-Referer': 'https://localhost:5173',
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
