@@ -9,83 +9,6 @@ import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-// Function to format LaTeX-style math
-const formatMath = (text: string): string => {
-  return text
-    // Handle fractions
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (_, num, den) => `(${num})/(${den})`)
-    // Handle approximate symbols
-    .replace(/\\approx/g, '≈')
-    // Handle text blocks in math
-    .replace(/\\text\{([^}]+)\}/g, '$1')
-    // Handle basic math operations
-    .replace(/\\times/g, '×')
-    .replace(/\\div/g, '÷')
-    .replace(/\\pm/g, '±')
-    // Handle subscripts and superscripts
-    .replace(/\_\{([^}]+)\}/g, '_$1')
-    .replace(/\^\{([^}]+)\}/g, '^$1')
-    // Clean up remaining LaTeX commands
-    .replace(/\\[a-zA-Z]+/g, '')
-    // Clean up extra spaces
-    .replace(/\s+/g, ' ').trim();
-};
-
-// Custom components for ReactMarkdown
-const MarkdownComponents = {
-  p: ({ children }) => {
-    // Special handling for paragraphs that might contain math
-    const content = typeof children === 'string' 
-      ? formatMath(children)
-      : children;
-    
-    return <p className="mb-3 last:mb-0">{content}</p>;
-  },
-  code: ({ inline, children }) => {
-    // Handle inline math if it's wrapped in backticks and contains LaTeX
-    const content = typeof children === 'string' && children.includes('\\')
-      ? formatMath(children)
-      : children;
-
-    return inline ? (
-      <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{content}</code>
-    ) : (
-      <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
-        {content}
-      </code>
-    );
-  },
-  // Regular markdown components
-  ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-  ),
-  a: ({ href, children }) => (
-    <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ),
-  em: ({ children }) => <em className="italic">{children}</em>,
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-  hr: () => <hr className="my-4 border-muted" />,
-  table: ({ children }) => (
-    <div className="overflow-x-auto my-4">
-      <table className="min-w-full divide-y divide-border">{children}</table>
-    </div>
-  ),
-  th: ({ children }) => (
-    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
-};
-
 interface QANode {
   id: string;
   question: string;
@@ -118,8 +41,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const parsed = JSON.parse(chunk);
       console.log('Parsed JSON:', parsed);
       
-      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
-      const citations = parsed.citations || [];
+      const content = parsed.choices?.[0]?.delta?.content || 
+                     parsed.choices?.[0]?.message?.content || '';
       
       if (!content) {
         console.log('No content found in chunk');
@@ -137,7 +60,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       
       return {
         content: cleanedContent,
-        citations: citations
+        citations: parsed.citations || []
       };
     } catch (e) {
       console.error('Error parsing stream chunk:', e);
@@ -146,8 +69,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const ensureProperSpacing = (current: string, newContent: string): string => {
-    // If current content ends with a word character and new content starts with a word character
-    // add a space between them
     if (/\w$/.test(current) && /^\w/.test(newContent)) {
       return current + ' ' + newContent;
     }
@@ -176,7 +97,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
             const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
-              // Use the new spacing function when accumulating content
               accumulatedContent = ensureProperSpacing(accumulatedContent, content);
               
               if (citations) {
@@ -218,6 +138,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       }
     } catch (error) {
       console.error('Error processing stream:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to process the analysis stream. Please try again.",
+      });
       throw error;
     }
 
@@ -274,14 +199,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       }));
 
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
-        body: JSON.stringify({
+        body: {
           marketId,
           question,
           isFollowUp: false
-        })
+        }
       });
 
-      if (analysisError) throw analysisError;
+      if (analysisError) {
+        console.error('Analysis error:', analysisError);
+        throw analysisError;
+      }
+
+      if (!analysisData?.body) {
+        throw new Error('No response data received from analysis');
+      }
 
       const reader = new Response(analysisData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
@@ -290,21 +222,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
-          body: JSON.stringify({
+          body: {
             marketId,
             question,
             parentContent: analysis,
             isFollowUp: true
-          })
+          }
         });
 
         if (followUpError) throw followUpError;
 
-        const followUpQuestions = followUpData;
-
-        for (const item of followUpQuestions) {
-          if (item?.question) {
-            await analyzeQuestion(item.question, nodeId, depth + 1);
+        if (Array.isArray(followUpData)) {
+          for (const item of followUpQuestions) {
+            if (item?.question) {
+              await analyzeQuestion(item.question, nodeId, depth + 1);
+            }
           }
         }
       }
@@ -317,32 +249,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         description: error instanceof Error ? error.message : "Failed to analyze the question",
       });
     }
-  };
-
-  const handleAnalyze = async () => {
-    setIsAnalyzing(true);
-    setQaData([]);
-    setStreamingContent({});
-    setExpandedNodes(new Set());
-    
-    try {
-      await analyzeQuestion(marketQuestion);
-    } finally {
-      setIsAnalyzing(false);
-      setCurrentNodeId(null);
-    }
-  };
-
-  const toggleNode = (nodeId: string) => {
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
-      }
-      return newSet;
-    });
   };
 
   const renderCitations = (citations?: string[]) => {
