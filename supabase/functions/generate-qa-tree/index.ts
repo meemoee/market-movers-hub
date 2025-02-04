@@ -16,13 +16,18 @@ serve(async (req) => {
   }
 
   try {
+    console.log('Starting generate-qa-tree function')
+    
     if (!OPENROUTER_API_KEY) {
+      console.error('OPENROUTER_API_KEY is not configured')
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
+    console.log('OPENROUTER_API_KEY is configured')
 
     const { question, marketId, parentContent, isFollowUp } = await req.json()
     
     if (!question) {
+      console.error('Question is required but was not provided')
       throw new Error('Question is required')
     }
     
@@ -37,6 +42,7 @@ serve(async (req) => {
     if (isFollowUp && parentContent) {
       console.log('Generating follow-up questions')
       try {
+        console.log('Making request to OpenRouter API for follow-up questions')
         const response = await fetch("https://api.openrouter.ai/api/v1/chat/completions", {
           method: 'POST',
           headers: {
@@ -61,8 +67,13 @@ serve(async (req) => {
         })
 
         if (!response.ok) {
-          console.error('Follow-up OpenRouter API error:', await response.text())
-          throw new Error(`Follow-up generation failed: ${response.status}`)
+          const errorText = await response.text()
+          console.error('Follow-up OpenRouter API error response:', {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText
+          })
+          throw new Error(`Follow-up generation failed: ${response.status} - ${errorText}`)
         }
 
         const data = await response.json()
@@ -75,10 +86,15 @@ serve(async (req) => {
             .replace(/```\n?/g, '')
             .trim();
           
+          console.log('Cleaned content:', cleanContent)
+          
           const parsedContent = JSON.parse(cleanContent);
           if (!Array.isArray(parsedContent)) {
+            console.error('Response is not an array:', parsedContent)
             throw new Error('Response is not an array');
           }
+          
+          console.log('Successfully parsed follow-up questions:', parsedContent)
           
           return new Response(
             JSON.stringify(parsedContent),
@@ -100,8 +116,9 @@ serve(async (req) => {
     }
 
     // Handle initial analysis
-    console.log('Generating analysis')
+    console.log('Generating initial analysis')
     try {
+      console.log('Making request to OpenRouter API for initial analysis')
       const analysisResponse = await fetch("https://api.openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -127,20 +144,27 @@ serve(async (req) => {
       })
 
       if (!analysisResponse.ok) {
-        console.error('Analysis OpenRouter API error:', await analysisResponse.text())
-        throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
+        const errorText = await analysisResponse.text()
+        console.error('Analysis OpenRouter API error response:', {
+          status: analysisResponse.status,
+          statusText: analysisResponse.statusText,
+          body: errorText
+        })
+        throw new Error(`Analysis generation failed: ${analysisResponse.status} - ${errorText}`)
       }
 
       const transformStream = new TransformStream({
         transform(chunk, controller) {
           try {
             const text = new TextDecoder().decode(chunk)
+            console.log('Received chunk:', text)
             const lines = text.split('\n').filter(line => line.trim() !== '')
             
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 const data = line.slice(6)
                 if (data === '[DONE]') {
+                  console.log('Stream complete')
                   return
                 }
                 
@@ -150,7 +174,7 @@ serve(async (req) => {
                     controller.enqueue(new TextEncoder().encode(line + '\n\n'))
                   }
                 } catch (e) {
-                  console.error('Error parsing chunk:', e)
+                  console.error('Error parsing chunk:', e, 'Raw chunk:', data)
                 }
               }
             }
