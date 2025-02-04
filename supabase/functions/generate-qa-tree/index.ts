@@ -1,9 +1,7 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -32,7 +30,7 @@ serve(async (req) => {
     // Handle follow-up questions generation
     if (isFollowUp && parentContent) {
       console.log('Generating follow-up questions')
-      const response = await fetch(OPENROUTER_URL, {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -56,7 +54,6 @@ serve(async (req) => {
       })
 
       if (!response.ok) {
-        console.error('Follow-up generation failed:', await response.text())
         throw new Error(`Follow-up generation failed: ${response.status}`)
       }
 
@@ -90,9 +87,9 @@ serve(async (req) => {
       }
     }
 
-    // Handle initial analysis with streaming
+    // Handle initial analysis with Perplexity model
     console.log('Generating analysis')
-    const analysisResponse = await fetch(OPENROUTER_URL, {
+    const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -117,11 +114,41 @@ serve(async (req) => {
     })
 
     if (!analysisResponse.ok) {
-      console.error('Analysis generation failed:', await analysisResponse.text())
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
 
-    return new Response(analysisResponse.body, {
+    // Create a transform stream to properly handle Perplexity chunks
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        try {
+          const text = new TextDecoder().decode(chunk);
+          const lines = text.split('\n').filter(line => line.trim() !== '');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                return;
+              }
+              
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.choices?.[0]?.delta?.content) {
+                  // Pass through the original SSE format
+                  controller.enqueue(new TextEncoder().encode(line + '\n\n'));
+                }
+              } catch (e) {
+                console.error('Error parsing chunk:', e);
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error in transform stream:', error);
+        }
+      }
+    });
+
+    return new Response(analysisResponse.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
