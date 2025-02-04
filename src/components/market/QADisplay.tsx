@@ -55,7 +55,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
             buffer += jsonStr;
             
-            if (buffer.endsWith('}}]}')) { // Check for complete JSON object
+            if (buffer.endsWith('}}]}')) {
               try {
                 const parsed = JSON.parse(buffer);
                 const content = parsed.choices?.[0]?.delta?.content;
@@ -97,9 +97,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     return updateNode(prev);
                   });
                 }
-                buffer = ''; // Reset buffer after successful parse
+                buffer = '';
               } catch (e) {
-                // If parse fails, keep accumulating
                 console.debug('Chunk parse error (expected):', e);
               }
             }
@@ -190,10 +189,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
         if (followUpError) throw followUpError;
 
-        const followUpQuestions = followUpData;
+        const followUpQuestions = Array.isArray(followUpData) ? followUpData : [];
 
         for (const item of followUpQuestions) {
-          if (item?.question) {
+          if (item && typeof item.question === 'string') {
             await analyzeQuestion(item.question, nodeId, depth + 1);
           }
         }
@@ -243,7 +242,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         <div className="text-xs text-muted-foreground font-medium">Sources:</div>
         <div className="flex flex-wrap gap-2">
           {citations.map((citation, index) => (
-            <a
+            
               key={index}
               href={citation}
               target="_blank"
