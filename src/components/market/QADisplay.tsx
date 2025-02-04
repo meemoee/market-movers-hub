@@ -1,4 +1,3 @@
-```typescript
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -136,7 +135,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         
         // Handle markdown elements while preserving surrounding spaces
         .replace(/(\s*)\*\*(.*?)\*\*(\s*)/g, '$1**$2**$3')  // Bold
-        .replace(/(\s*)(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)(\s*)/g, '$1*$3*$4')  // Italic
+        .replace(/(\s*)(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\\*)(\s*)/g, '$1*$3*$4')  // Italic
         .replace(/(\s*)__(.+?)__(\s*)/g, '$1__$2__$3')  // Underline
         .replace(/(\s*)`(.+?)`(\s*)/g, '$1`$2`$3')  // Code
         .replace(/(\s*)~~(.+?)~~(\s*)/g, '$1~~$2~~$3')  // Strikethrough
@@ -483,4 +482,3 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     </Card>
   );
 }
-```
