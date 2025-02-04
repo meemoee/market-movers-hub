@@ -1,4 +1,3 @@
-```typescript
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -14,7 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 const formatMath = (text: string): string => {
   return text
     // Handle fractions
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (_, num, den) => `(${num})/(${den})`)
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, function(_, num, den) { return '(' + num + ')/(' + den + ')'; })
     // Handle approximate symbols
     .replace(/\\approx/g, '≈')
     // Handle text blocks in math
@@ -155,7 +154,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         .replace(/\\times/g, '×')
         .replace(/\\div/g, '÷')
         
-        // Normalize spaces without removing them:
+        // Normalize spaces without removing them:\
         // - Replace multiple spaces with single space
         // - Preserve intended multiple spaces (e.g., indentation)
         // - Keep spaces around punctuation
@@ -481,4 +480,3 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     </Card>
   );
 }
-```
