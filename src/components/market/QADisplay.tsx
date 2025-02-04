@@ -9,83 +9,6 @@ import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-// Function to format LaTeX-style math
-const formatMath = (text: string): string => {
-  return text
-    // Handle fractions
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, (_, num, den) => `(${num})/(${den})`)
-    // Handle approximate symbols
-    .replace(/\\approx/g, '≈')
-    // Handle text blocks in math
-    .replace(/\\text\{([^}]+)\}/g, '$1')
-    // Handle basic math operations
-    .replace(/\\times/g, '×')
-    .replace(/\\div/g, '÷')
-    .replace(/\\pm/g, '±')
-    // Handle subscripts and superscripts
-    .replace(/\_\{([^}]+)\}/g, '_$1')
-    .replace(/\^\{([^}]+)\}/g, '^$1')
-    // Clean up remaining LaTeX commands
-    .replace(/\\[a-zA-Z]+/g, '')
-    // Clean up extra spaces
-    .replace(/\s+/g, ' ').trim();
-};
-
-// Custom components for ReactMarkdown
-const MarkdownComponents = {
-  p: ({ children }) => {
-    // Special handling for paragraphs that might contain math
-    const content = typeof children === 'string' 
-      ? formatMath(children)
-      : children;
-    
-    return <p className="mb-3 last:mb-0">{content}</p>;
-  },
-  code: ({ inline, children }) => {
-    // Handle inline math if it's wrapped in backticks and contains LaTeX
-    const content = typeof children === 'string' && children.includes('\\')
-      ? formatMath(children)
-      : children;
-
-    return inline ? (
-      <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{content}</code>
-    ) : (
-      <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
-        {content}
-      </code>
-    );
-  },
-  // Regular markdown components
-  ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-  ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-  ),
-  a: ({ href, children }) => (
-    <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ),
-  em: ({ children }) => <em className="italic">{children}</em>,
-  strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-  h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-  h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-  hr: () => <hr className="my-4 border-muted" />,
-  table: ({ children }) => (
-    <div className="overflow-x-auto my-4">
-      <table className="min-w-full divide-y divide-border">{children}</table>
-    </div>
-  ),
-  th: ({ children }) => (
-    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-      {children}
-    </th>
-  ),
-  td: ({ children }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
-};
-
 interface QANode {
   id: string;
   question: string;
@@ -112,83 +35,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
-    try {
-      const parsed = JSON.parse(chunk);
-      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
-      const citations = parsed.citations || [];
-      
-      if (!content) {
-        return { content: '', citations: [] };
-      }
-      
-      // First unescape any escaped characters while preserving spaces
-      const unescapedContent = content
-        .replace(/\\([\\/*_`~[\]])/g, '$1')
-        .replace(/\\n/g, '\n')  // Preserve newlines
-        .replace(/\\s/g, ' ');  // Preserve escaped spaces
-      
-      // Process the content while carefully preserving spaces
-      const cleanedContent = unescapedContent
-        // Remove metadata without affecting spaces
-        .replace(/\{"id":".*"\}$/, '')
-        
-        // Handle markdown elements while preserving surrounding spaces
-        .replace(/(\s*)\*\*(.*?)\*\*(\s*)/g, '$1**$2**$3')  // Bold
-        .replace(/(\s*)(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)(\s*)/g, '$1*$3*$4')  // Italic
-        .replace(/(\s*)__(.+?)__(\s*)/g, '$1__$2__$3')  // Underline
-        .replace(/(\s*)`(.+?)`(\s*)/g, '$1`$2`$3')  // Code
-        .replace(/(\s*)~~(.+?)~~(\s*)/g, '$1~~$2~~$3')  // Strikethrough
-        
-        // Handle lists and blockquotes while preserving indentation
-        .replace(/^(\s*[-*+]\s+)/gm, '$1')  // Unordered lists
-        .replace(/^(\s*\d+\.\s+)/gm, '$1')  // Ordered lists
-        .replace(/^(\s*>\s+)/gm, '$1')      // Blockquotes
-        
-        // Preserve LaTeX expressions with their spaces
-        .replace(/(\s*)\\frac\{([^}]+)\}\{([^}]+)\}(\s*)/g, '$1\\frac{$2}{$3}$4')
-        .replace(/(\s*)\\text\{([^}]+)\}(\s*)/g, '$1\\text{$2}$3')
-        
-        // Special handling for math expressions
-        .replace(/\\approx/g, '≈')
-        .replace(/\\times/g, '×')
-        .replace(/\\div/g, '÷')
-        
-        // Normalize spaces without removing them:
-        // - Replace multiple spaces with single space
-        // - Preserve intended multiple spaces (e.g., indentation)
-        // - Keep spaces around punctuation
-        .replace(/[ \t]+/g, ' ')          // Normalize regular spaces
-        .replace(/^\s+/gm, (match) => match)  // Preserve leading spaces
-        .replace(/\s+$/gm, ' ')           // Normalize trailing spaces
-        .replace(/\n\s*\n/g, '\n\n')      // Normalize paragraph breaks
-        .replace(/([.!?])\s*(?=\S)/g, '$1 '); // Ensure space after punctuation
-  
-      return {
-        content: cleanedContent,
-        citations: citations
-      };
-    } catch (e) {
-      console.error('Error parsing stream chunk:', e);
-      try {
-        // Fallback content extraction with space preservation
-        const match = chunk.match(/"content":"(.*?)(?<!\\)"/);
-        if (match && match[1]) {
-          return {
-            content: match[1].replace(/\\"/g, '"').replace(/\\s/g, ' '),
-            citations: []
-          };
-        }
-      } catch {
-        return { content: '', citations: [] };
-      }
-      return { content: '', citations: [] };
-    }
-  };
-
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
+    let buffer = '';
 
     try {
       while (true) {
@@ -203,43 +53,55 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
 
-            const { content, citations } = cleanStreamContent(jsonStr);
-            if (content) {
-              accumulatedContent += content;
-              
-              if (citations) {
-                accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-              }
-              
-              setStreamingContent(prev => ({
-                ...prev,
-                [nodeId]: {
-                  content: accumulatedContent,
-                  citations: accumulatedCitations
-                }
-              }));
+            buffer += jsonStr;
+            
+            if (buffer.endsWith('}}]}')) { // Check for complete JSON object
+              try {
+                const parsed = JSON.parse(buffer);
+                const content = parsed.choices?.[0]?.delta?.content;
+                
+                if (content) {
+                  accumulatedContent += content;
+                  
+                  if (parsed.citations) {
+                    accumulatedCitations = [...new Set([...accumulatedCitations, ...parsed.citations])];
+                  }
+                  
+                  setStreamingContent(prev => ({
+                    ...prev,
+                    [nodeId]: {
+                      content: accumulatedContent,
+                      citations: accumulatedCitations
+                    }
+                  }));
 
-              setQaData(prev => {
-                const updateNode = (nodes: QANode[]): QANode[] => {
-                  return nodes.map(node => {
-                    if (node.id === nodeId) {
-                      return {
-                        ...node,
-                        analysis: accumulatedContent,
-                        citations: accumulatedCitations
-                      };
-                    }
-                    if (node.children.length > 0) {
-                      return {
-                        ...node,
-                        children: updateNode(node.children)
-                      };
-                    }
-                    return node;
+                  setQaData(prev => {
+                    const updateNode = (nodes: QANode[]): QANode[] => {
+                      return nodes.map(node => {
+                        if (node.id === nodeId) {
+                          return {
+                            ...node,
+                            analysis: accumulatedContent,
+                            citations: accumulatedCitations
+                          };
+                        }
+                        if (node.children.length > 0) {
+                          return {
+                            ...node,
+                            children: updateNode(node.children)
+                          };
+                        }
+                        return node;
+                      });
+                    };
+                    return updateNode(prev);
                   });
-                };
-                return updateNode(prev);
-              });
+                }
+                buffer = ''; // Reset buffer after successful parse
+              } catch (e) {
+                // If parse fails, keep accumulating
+                console.debug('Chunk parse error (expected):', e);
+              }
             }
           }
         }
@@ -381,7 +243,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         <div className="text-xs text-muted-foreground font-medium">Sources:</div>
         <div className="flex flex-wrap gap-2">
           {citations.map((citation, index) => (
-            <a
+            
               key={index}
               href={citation}
               target="_blank"
@@ -442,7 +304,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   </button>
                   <div className="flex-1">
                     <ReactMarkdown 
-                      components={MarkdownComponents}
                       className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                     >
                       {analysisContent}
