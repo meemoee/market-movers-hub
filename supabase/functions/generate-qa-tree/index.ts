@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -87,7 +88,7 @@ serve(async (req) => {
       }
     }
 
-    // Handle initial analysis with Perplexity model
+    // Handle initial analysis with streaming
     console.log('Generating analysis')
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -117,38 +118,7 @@ serve(async (req) => {
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
 
-    // Create a transform stream to properly handle Perplexity chunks
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        try {
-          const text = new TextDecoder().decode(chunk);
-          const lines = text.split('\n').filter(line => line.trim() !== '');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                return;
-              }
-              
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.choices?.[0]?.delta?.content) {
-                  // Pass through the original SSE format
-                  controller.enqueue(new TextEncoder().encode(line + '\n\n'));
-                }
-              } catch (e) {
-                console.error('Error parsing chunk:', e);
-              }
-            }
-          }
-        } catch (error) {
-          console.error('Error in transform stream:', error);
-        }
-      }
-    });
-
-    return new Response(analysisResponse.body?.pipeThrough(transformStream), {
+    return new Response(analysisResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
