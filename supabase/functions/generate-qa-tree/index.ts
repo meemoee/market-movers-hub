@@ -10,7 +10,6 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -38,7 +37,6 @@ serve(async (req) => {
       isFollowUp
     })
 
-    // Handle follow-up questions generation
     if (isFollowUp && parentContent) {
       console.log('Generating follow-up questions')
       try {
@@ -48,7 +46,7 @@ serve(async (req) => {
           headers: {
             'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
             'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://localhost:5173', // Update with your domain
+            'HTTP-Referer': 'https://7a32a005-4c37-4201-8355-f3890603b655.lovableproject.com:443',
             'X-Title': 'Market Analysis App',
           },
           body: JSON.stringify({
@@ -115,7 +113,6 @@ serve(async (req) => {
       }
     }
 
-    // Handle initial analysis
     console.log('Generating initial analysis')
     try {
       console.log('Making request to OpenRouter API for initial analysis')
@@ -124,7 +121,7 @@ serve(async (req) => {
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://localhost:5173', // Update with your domain
+          'HTTP-Referer': 'https://7a32a005-4c37-4201-8355-f3890603b655.lovableproject.com:443',
           'X-Title': 'Market Analysis App',
         },
         body: JSON.stringify({
@@ -214,3 +211,4 @@ serve(async (req) => {
     )
   }
 })
+
