@@ -102,16 +102,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const isCompleteMarkdown = (text: string): boolean => {
+    // Stack to track nested formatting
     const stack: string[] = [];
     let inNumberedList = false;
     let currentNumber = '';
-    let lastChar = '';
     
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
       const nextChar = text[i + 1];
-      const prevChar = text[i - 1];
       
+      // Handle numbered lists
       if (/^\d$/.test(char)) {
         currentNumber += char;
         continue;
@@ -122,40 +122,34 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         continue;
       }
       
+      // Reset numbered list state on newline
       if (char === '\n') {
         inNumberedList = false;
         currentNumber = '';
       }
       
+      // Check for markdown patterns
       if (char === '*' && nextChar === '*') {
         const pattern = '**';
-        if (i + 2 < text.length && /[:.,-]/.test(text[i + 2])) {
-          continue;
-        }
         if (stack.length > 0 && stack[stack.length - 1] === pattern) {
           stack.pop();
         } else {
-          if (prevChar && /\w/.test(prevChar)) {
-            continue;
-          }
           stack.push(pattern);
         }
-        i++;
+        i++; // Skip next asterisk
         continue;
       }
       
-      if ((char === '*' || char === '`' || char === '_') && 
-          !(prevChar && nextChar && /\w/.test(prevChar) && /\w/.test(nextChar))) {
+      if (char === '*' || char === '`' || char === '_') {
         if (stack.length > 0 && stack[stack.length - 1] === char) {
           stack.pop();
         } else {
           stack.push(char);
         }
       }
-      
-      lastChar = char;
     }
     
+    // Content is complete if there are no unclosed patterns
     return stack.length === 0;
   };
 
