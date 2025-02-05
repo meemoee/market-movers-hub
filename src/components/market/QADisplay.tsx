@@ -6,11 +6,13 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import 'katex/dist/katex.min.css';
+
+// Removed math plugins and KaTeX CSS imports since we no longer process LaTeX.
+// import remarkMath from 'remark-math';
+// import rehypeKatex from 'rehype-katex';
+// import 'katex/dist/katex.min.css';
 
 interface QANode {
   id: string;
@@ -86,6 +88,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const content = parsed.choices?.[0]?.delta?.content ||
                       parsed.choices?.[0]?.message?.content || '';
       const citations = parsed.citations || [];
+      console.log('Parsed stream chunk:', { content, citations });
       return { content, citations };
     } catch (e) {
       console.error('Error parsing stream chunk:', e);
@@ -110,14 +113,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buffer += new TextDecoder().decode(value);
+        const decoded = new TextDecoder().decode(value);
+        buffer += decoded;
 
         // Split by double newline (paragraph breaks)
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
         for (const part of parts) {
+          // If the last line is incomplete, skip it until we have more data.
           const lines = part.split('\n');
-          // If the last line is incomplete, reattach it.
           if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
             buffer = lines.pop() + '\n\n' + buffer;
             const completePart = lines.join('\n');
@@ -148,26 +152,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          // Protect math blocks from being altered by our regex.
-          // Using a unique placeholder format unlikely to occur in normal text.
-          const mathRegex = /(\${1,2})([\s\S]+?)\1/g;
-          let mathBlocks: string[] = [];
-          const placeholderPrefix = "%%MATH_";
-          const protectedContent = accumulatedContent.replace(mathRegex, (match) => {
-            mathBlocks.push(match);
-            return `${placeholderPrefix}${mathBlocks.length - 1}%%`;
-          });
+          // Apply a simple newline fix: replace newlines between word characters with a space.
+          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g, '$1 ');
 
-          // Apply newline/header fixes on non-math content.
-          // 1. Replace newlines between word characters with a space (unless a header/list follows).
-          // 2. Force headers (lines starting with one or more "#") onto their own line.
-          const fixedContentProtected = protectedContent
-            .replace(/([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g, '$1 ')
-            .replace(/(?<!\n)\s*(#+\s)/g, '\n$1');
-
-          // Reinsert math blocks from their placeholders.
-          const fixedContent = fixedContentProtected.replace(new RegExp(`${placeholderPrefix}(\\d+)%%`, 'g'), (_, index) => {
-            return mathBlocks[parseInt(index)];
+          // Log the processed content
+          console.log('Updated chunk for node', nodeId, ':', {
+            newContent: content,
+            fixedContent,
+            citations,
           });
 
           // Update state with the fixed content.
@@ -238,6 +230,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (!reader) throw new Error('Failed to create reader');
 
       const analysis = await processStream(reader, nodeId);
+      console.log('Completed analysis for node', nodeId, ':', analysis);
 
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
@@ -341,8 +334,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   <div className="flex-1">
                     <ReactMarkdown
                       components={MarkdownComponents}
-                      remarkPlugins={[remarkMath]}
-                      rehypePlugins={[rehypeKatex]}
                       className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                     >
                       {analysisContent}
