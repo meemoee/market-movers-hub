@@ -78,7 +78,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
 
       if (error) throw error
       
-      // Transform the data to match our frontend types
       return (data as any[]).map(item => ({
         ...item,
         sources: item.sources as ResearchResult[],
@@ -90,8 +89,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const loadSavedResearch = (research: SavedResearch) => {
     setResults(research.sources)
     setAnalysis(research.analysis)
+    
+    // Convert saved data to the correct StreamingState format
     setStreamingState({
-      rawText: '', // We don't need to restore the raw text
+      rawText: JSON.stringify({
+        probability: research.probability,
+        areasForResearch: research.areas_for_research
+      }, null, 2),
       parsedData: {
         probability: research.probability,
         areasForResearch: research.areas_for_research
@@ -162,7 +166,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     return stack.length === 0 && !inCode && !inList;
   };
 
-  // Helper function to clean stream content
   const cleanStreamContent = (chunk: string): { content: string } => {
     try {
       const parsed = JSON.parse(chunk);
