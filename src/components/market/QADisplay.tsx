@@ -1,3 +1,4 @@
+```tsx
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -102,14 +103,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const isCompleteMarkdown = (text: string): boolean => {
-    // Stack to track nested formatting
     const stack: string[] = [];
     let inNumberedList = false;
     let currentNumber = '';
+    let lastChar = '';
     
     for (let i = 0; i < text.length; i++) {
       const char = text[i];
       const nextChar = text[i + 1];
+      const prevChar = text[i - 1];
       
       // Handle numbered lists
       if (/^\d$/.test(char)) {
@@ -128,28 +130,39 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         currentNumber = '';
       }
       
-      // Check for markdown patterns
+      // Check for markdown patterns with improved boundary checks
       if (char === '*' && nextChar === '*') {
         const pattern = '**';
+        // Don't split bold markers if they're followed by punctuation
+        if (i + 2 < text.length && /[:.,-]/.test(text[i + 2])) {
+          continue;
+        }
         if (stack.length > 0 && stack[stack.length - 1] === pattern) {
           stack.pop();
         } else {
+          // Don't start bold if it's in the middle of a word
+          if (prevChar && /\w/.test(prevChar)) {
+            continue;
+          }
           stack.push(pattern);
         }
         i++; // Skip next asterisk
         continue;
       }
       
-      if (char === '*' || char === '`' || char === '_') {
+      if ((char === '*' || char === '`' || char === '_') && 
+          // Don't treat as markdown if it's between word characters
+          !(prevChar && nextChar && /\w/.test(prevChar) && /\w/.test(nextChar))) {
         if (stack.length > 0 && stack[stack.length - 1] === char) {
           stack.pop();
         } else {
           stack.push(char);
         }
       }
+      
+      lastChar = char;
     }
     
-    // Content is complete if there are no unclosed patterns
     return stack.length === 0;
   };
 
@@ -461,3 +474,4 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     </Card>
   );
 }
+```
