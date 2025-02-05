@@ -38,20 +38,19 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     parsedData: null
   })
 
-  // Helper function to clean stream content - exactly matching QADisplay
-  const cleanStreamContent = (chunk: string): { content: string; citations?: string[] } => {
+  // New helper function to clean stream content
+  const cleanStreamContent = (chunk: string): { content: string } => {
     try {
       const parsed = JSON.parse(chunk);
       const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
-      const citations = parsed.citations || [];
-      return { content, citations };
+      return { content };
     } catch (e) {
       console.error('Error parsing stream chunk:', e);
-      return { content: '', citations: [] };
+      return { content: '' };
     }
   };
 
-  // Helper function to check markdown completeness - exactly matching QADisplay
+  // New helper function to check markdown completeness
   const isCompleteMarkdown = (text: string): boolean => {
     const stack: string[] = [];
     let inNumberedList = false;
@@ -138,7 +137,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       if (response.error) throw response.error
 
       const allContent: string[] = []
-      let incompleteMarkdown = ''
 
       const stream = new ReadableStream({
         start(controller) {
@@ -212,7 +210,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       if (analysisResponse.error) throw analysisResponse.error
 
       let accumulatedContent = ''
-      let incompleteContent = ''
+      let incompleteMarkdown = ''
       
       const analysisStream = new ReadableStream({
         start(controller) {
@@ -239,16 +237,16 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                     const { content } = cleanStreamContent(jsonStr)
                     if (content) {
                       // Combine incomplete markdown with new content
-                      let updatedContent = incompleteContent + content
+                      let updatedContent = incompleteMarkdown + content
                       
                       if (!isCompleteMarkdown(updatedContent)) {
                         // Store incomplete chunk and wait for next one
-                        incompleteContent = updatedContent
+                        incompleteMarkdown = updatedContent
                         continue
                       }
                       
-                      // Reset incomplete content and update the accumulated content
-                      incompleteContent = ''
+                      // Reset incomplete markdown and update content
+                      incompleteMarkdown = ''
                       accumulatedContent += updatedContent
                       
                       // Update analysis state with properly formatted content
