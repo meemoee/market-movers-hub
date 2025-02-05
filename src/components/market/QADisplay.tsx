@@ -1,3 +1,4 @@
+// src/components/market/QADisplay.tsx
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -146,9 +147,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (content) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-          // Replace unwanted newlines between word characters with a space.
-          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?!#)/g, '$1 ');
-
+          // Replace unwanted newlines between word characters with a space,
+          // but preserve newlines if the following line starts with markdown block indicators
+          // such as "#", a numbered list (e.g. "1."), or bullet markers ("-" or "*").
+          const fixedContent = accumulatedContent.replace(
+            /([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g,
+            '$1 '
+          );
           // Update state with the latest streaming content.
           setStreamingContent(prev => ({
             ...prev,
