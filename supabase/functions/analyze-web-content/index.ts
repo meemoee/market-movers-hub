@@ -47,78 +47,7 @@ serve(async (req) => {
       })
     })
 
-    // A TransformStream that buffers incoming text until full SSE events are available
-    let buffer = ""
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        buffer += text
-        
-        const parts = buffer.split("\n\n")
-        // Keep the last (possibly incomplete) part in the buffer
-        buffer = parts.pop() || ""
-
-        for (const part of parts) {
-          if (part.startsWith("data: ")) {
-            const dataStr = part.slice(6).trim()
-            if (dataStr === "[DONE]") continue
-
-            try {
-              const parsed = JSON.parse(dataStr)
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || ''
-
-              // Only emit if we have content
-              if (content) {
-                // Format markdown consistently
-                const formattedContent = content
-                  // Ensure proper spacing after punctuation
-                  .replace(/([.!?])([A-Z])/g, '$1 $2')
-                  // Normalize spaces
-                  .replace(/\s+/g, ' ')
-                  // Proper spacing around punctuation
-                  .replace(/\s*([.,!?:])\s*/g, '$1 ')
-                  // Handle markdown headers
-                  .replace(/^(#+)([^\s])/gm, '$1 $2')
-                  // Handle list items
-                  .replace(/^(-|\d+\.)([^\s])/gm, '$1 $2')
-                  // Handle emphasis and bold
-                  .replace(/\*\*\s*(\w)/g, '**$1')
-                  .replace(/\*\s*(\w)/g, '*$1')
-                  .trim()
-
-                // Re-emit the formatted SSE event
-                controller.enqueue(new TextEncoder().encode(
-                  `data: ${JSON.stringify({
-                    ...parsed,
-                    choices: [{
-                      ...parsed.choices[0],
-                      delta: { content: formattedContent }
-                    }]
-                  })}\n\n`
-                ))
-              }
-            } catch (err) {
-              console.error("Error parsing SSE chunk:", err)
-            }
-          }
-        }
-      },
-      flush(controller) {
-        // Process any remaining content in the buffer
-        if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer.trim())
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`))
-          } catch (err) {
-            console.error("Error parsing final SSE chunk:", err)
-          }
-        }
-        buffer = ""
-      }
-    })
-
-    return new Response(response.body?.pipeThrough(transformStream), {
+    return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
