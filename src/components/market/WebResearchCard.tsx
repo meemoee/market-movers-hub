@@ -38,22 +38,11 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     parsedData: null
   })
 
-  // New helper function to clean stream content
-  const cleanStreamContent = (chunk: string): { content: string } => {
-    try {
-      const parsed = JSON.parse(chunk);
-      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
-      return { content };
-    } catch (e) {
-      console.error('Error parsing stream chunk:', e);
-      return { content: '' };
-    }
-  };
-
-  // New helper function to check markdown completeness
+  // Helper function to check markdown formatting completeness
   const isCompleteMarkdown = (text: string): boolean => {
     const stack: string[] = [];
-    let inNumberedList = false;
+    let inCode = false;
+    let inList = false;
     let currentNumber = '';
     
     for (let i = 0; i < text.length; i++) {
@@ -61,38 +50,44 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       const nextChar = text[i + 1];
       const prevChar = text[i - 1];
       
+      // Handle code blocks
+      if (char === '`' && nextChar === '`' && text[i + 2] === '`') {
+        inCode = !inCode;
+        i += 2;
+        continue;
+      }
+      
+      if (inCode) continue;
+      
+      // Handle numbered lists
       if (/^\d$/.test(char)) {
         currentNumber += char;
         continue;
       }
       if (char === '.' && currentNumber !== '') {
-        inNumberedList = true;
+        inList = true;
         currentNumber = '';
         continue;
       }
       
       if (char === '\n') {
-        inNumberedList = false;
+        inList = false;
         currentNumber = '';
       }
       
+      // Handle bold
       if (char === '*' && nextChar === '*') {
         const pattern = '**';
-        if (i + 2 < text.length && /[:.,-]/.test(text[i + 2])) {
-          continue;
-        }
         if (stack.length > 0 && stack[stack.length - 1] === pattern) {
           stack.pop();
         } else {
-          if (prevChar && /\w/.test(prevChar)) {
-            continue;
-          }
           stack.push(pattern);
         }
         i++;
         continue;
       }
       
+      // Handle single markers
       if ((char === '*' || char === '`' || char === '_') && 
           !(prevChar && nextChar && /\w/.test(prevChar) && /\w/.test(nextChar))) {
         if (stack.length > 0 && stack[stack.length - 1] === char) {
@@ -103,7 +98,19 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       }
     }
     
-    return stack.length === 0;
+    return stack.length === 0 && !inCode && !inList;
+  };
+
+  // Helper function to clean stream content
+  const cleanStreamContent = (chunk: string): { content: string } => {
+    try {
+      const parsed = JSON.parse(chunk);
+      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
+      return { content };
+    } catch (e) {
+      console.error('Error parsing stream chunk:', e);
+      return { content: '' };
+    }
   };
 
   const handleResearch = async () => {
@@ -209,8 +216,8 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
 
       if (analysisResponse.error) throw analysisResponse.error
 
-      let accumulatedContent = ''
-      let incompleteMarkdown = ''
+      let accumulatedContent = '';
+      let incompleteMarkdown = '';
       
       const analysisStream = new ReadableStream({
         start(controller) {
@@ -220,6 +227,10 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
           function push() {
             reader?.read().then(({done, value}) => {
               if (done) {
+                if (incompleteMarkdown) {
+                  accumulatedContent += incompleteMarkdown;
+                  setAnalysis(accumulatedContent);
+                }
                 controller.close()
                 return
               }
@@ -230,7 +241,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   const jsonStr = line.slice(6).trim()
-                  
                   if (jsonStr === '[DONE]') continue
                   
                   try {
@@ -239,18 +249,16 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                       // Combine incomplete markdown with new content
                       let updatedContent = incompleteMarkdown + content
                       
+                      // If we don't have complete markdown formatting
                       if (!isCompleteMarkdown(updatedContent)) {
-                        // Store incomplete chunk and wait for next one
-                        incompleteMarkdown = updatedContent
-                        continue
+                        incompleteMarkdown = updatedContent;
+                        continue;
                       }
                       
                       // Reset incomplete markdown and update content
-                      incompleteMarkdown = ''
-                      accumulatedContent += updatedContent
-                      
-                      // Update analysis state with properly formatted content
-                      setAnalysis(accumulatedContent)
+                      incompleteMarkdown = '';
+                      accumulatedContent += updatedContent;
+                      setAnalysis(accumulatedContent);
                     }
                   } catch (e) {
                     console.error('Error parsing analysis SSE data:', e)
@@ -391,3 +399,4 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     </Card>
   )
 }
+
