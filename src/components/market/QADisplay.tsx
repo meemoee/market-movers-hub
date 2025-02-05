@@ -150,10 +150,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           // Replace unwanted newlines between word characters with a space,
           // but preserve newlines if the following line starts with markdown block indicators
           // such as "#", a numbered list (e.g. "1."), or bullet markers ("-" or "*").
-          const fixedContent = accumulatedContent.replace(
-            /([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g,
-            '$1 '
-          );
+          const fixedContent = accumulatedContent
+            .replace(
+              /([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g,
+              '$1 '
+            )
+            // Insert a newline before header tokens if not already on a new line.
+            .replace(/(?<!\n)\s*(#+\s)/g, '\n$1');
           // Update state with the latest streaming content.
           setStreamingContent(prev => ({
             ...prev,
