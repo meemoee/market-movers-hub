@@ -70,48 +70,58 @@ const MarkdownComponents = {
   td: ({ children }: { children: React.ReactNode }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
+/*
+ * Convert the arrow function to a standard function declaration.
+ * This ensures that cleanStreamContent is hoisted and available
+ * in any nested scope.
+ */
+function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
+  try {
+    const parsed = JSON.parse(chunk);
+    const content = parsed.choices?.[0]?.delta?.content ||
+                    parsed.choices?.[0]?.message?.content || '';
+    const citations = parsed.citations || [];
+    return { content, citations };
+  } catch (e) {
+    console.error('Error parsing stream chunk:', e);
+    return { content: '', citations: [] };
+  }
+}
+
 /**
- * Checks whether a given line (from a buffered paragraph) is complete.
- * Incomplete lines often occur when a header or list marker (like "3." or "##")
- * is cut off without a trailing space.
+ * Checks whether a given line is complete.
+ * Incomplete lines (e.g., headers or list markers) often lack a trailing space.
  */
 function isLineComplete(line: string): boolean {
-  // If a line starts with digits+dot or one or more '#' characters
-  // and the character following the marker is not a space, consider it incomplete.
   if (/^(\d+\.)\S/.test(line)) return false;
   if (/^(#+)\S/.test(line)) return false;
   return true;
 }
 
 /**
- * Processes the stream of incoming text chunks.
- * Instead of processing every line individually, we accumulate text into paragraphs
- * (separated by double newlines) and flush only complete paragraphs.
+ * Process incoming stream chunks.
+ * Accumulates text into paragraphs (split by double newlines)
+ * and flushes complete paragraphs.
  */
-const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
+async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
   let accumulatedContent = '';
   let accumulatedCitations: string[] = [];
-  let buffer = ''; // Buffer for incomplete text
+  let buffer = '';
 
   try {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      // Decode the new chunk and add it to the buffer.
       buffer += new TextDecoder().decode(value);
-      
-      // Process complete paragraphs (split by double newline)
+
+      // Split by double newline to extract paragraphs.
       const parts = buffer.split('\n\n');
-      // Keep the last part (potentially incomplete) in the buffer.
       buffer = parts.pop() || '';
-      
       for (const part of parts) {
-        // Split part into individual lines.
         const lines = part.split('\n');
-        // Check if the last line is complete; if not, reattach it to the buffer.
+        // If the last line appears incomplete, save it for later.
         if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
           buffer = lines.pop() + '\n\n' + buffer;
-          // Reassemble the complete portion.
           const completePart = lines.join('\n');
           processPart(completePart);
         } else {
@@ -119,7 +129,6 @@ const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, no
         }
       }
     }
-    // Process any remaining buffer if it's nonempty and complete.
     if (buffer.trim() && isLineComplete(buffer.trim())) {
       processPart(buffer);
       buffer = '';
@@ -128,12 +137,9 @@ const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, no
     console.error('Error processing stream:', error);
     throw error;
   }
-
   return accumulatedContent;
 
-  // Helper function to process a complete paragraph.
   function processPart(text: string) {
-    // Attempt to parse the text as SSE events (assumes each event starts with "data: ")
     const lines = text.split('\n').filter(line => line.startsWith('data: '));
     for (const line of lines) {
       const jsonStr = line.slice(6).trim();
@@ -142,10 +148,8 @@ const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, no
       if (content) {
         accumulatedContent += content;
         accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-        // Here, we replace newlines between word characters (and punctuation) with a space.
-        // This helps avoid breaking tokens while preserving intentional newlines (like paragraph breaks).
+        // Replace newlines between word characters and punctuation with a space.
         const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?=[\w])/g, '$1 ');
-        // Update the streaming content state.
         setStreamingContent(prev => ({
           ...prev,
           [nodeId]: {
@@ -153,7 +157,6 @@ const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, no
             citations: accumulatedCitations,
           },
         }));
-        // Also update the QA node analysis text.
         setQaData(prev => {
           const updateNode = (nodes: QANode[]): QANode[] => {
             return nodes.map(node => {
@@ -175,7 +178,7 @@ const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, no
       }
     }
   }
-};
+}
 
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
