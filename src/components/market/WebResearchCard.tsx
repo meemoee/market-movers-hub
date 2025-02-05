@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -92,7 +91,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setResults(research.sources)
     setAnalysis(research.analysis)
     setStreamingState({
-      rawText: '',
+      rawText: '', // We don't need to restore the raw text
       parsedData: {
         probability: research.probability,
         areasForResearch: research.areas_for_research
