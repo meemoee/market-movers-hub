@@ -70,116 +70,6 @@ const MarkdownComponents = {
   td: ({ children }: { children: React.ReactNode }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
-/*
- * Convert the arrow function to a standard function declaration.
- * This ensures that cleanStreamContent is hoisted and available
- * in any nested scope.
- */
-function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
-  try {
-    const parsed = JSON.parse(chunk);
-    const content = parsed.choices?.[0]?.delta?.content ||
-                    parsed.choices?.[0]?.message?.content || '';
-    const citations = parsed.citations || [];
-    return { content, citations };
-  } catch (e) {
-    console.error('Error parsing stream chunk:', e);
-    return { content: '', citations: [] };
-  }
-}
-
-/**
- * Checks whether a given line is complete.
- * Incomplete lines (e.g., headers or list markers) often lack a trailing space.
- */
-function isLineComplete(line: string): boolean {
-  if (/^(\d+\.)\S/.test(line)) return false;
-  if (/^(#+)\S/.test(line)) return false;
-  return true;
-}
-
-/**
- * Process incoming stream chunks.
- * Accumulates text into paragraphs (split by double newlines)
- * and flushes complete paragraphs.
- */
-async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
-  let accumulatedContent = '';
-  let accumulatedCitations: string[] = [];
-  let buffer = '';
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += new TextDecoder().decode(value);
-
-      // Split by double newline to extract paragraphs.
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop() || '';
-      for (const part of parts) {
-        const lines = part.split('\n');
-        // If the last line appears incomplete, save it for later.
-        if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
-          buffer = lines.pop() + '\n\n' + buffer;
-          const completePart = lines.join('\n');
-          processPart(completePart);
-        } else {
-          processPart(part);
-        }
-      }
-    }
-    if (buffer.trim() && isLineComplete(buffer.trim())) {
-      processPart(buffer);
-      buffer = '';
-    }
-  } catch (error) {
-    console.error('Error processing stream:', error);
-    throw error;
-  }
-  return accumulatedContent;
-
-  function processPart(text: string) {
-    const lines = text.split('\n').filter(line => line.startsWith('data: '));
-    for (const line of lines) {
-      const jsonStr = line.slice(6).trim();
-      if (jsonStr === '[DONE]') continue;
-      const { content, citations } = cleanStreamContent(jsonStr);
-      if (content) {
-        accumulatedContent += content;
-        accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-        // Replace newlines between word characters and punctuation with a space.
-        const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?=[\w])/g, '$1 ');
-        setStreamingContent(prev => ({
-          ...prev,
-          [nodeId]: {
-            content: fixedContent,
-            citations: accumulatedCitations,
-          },
-        }));
-        setQaData(prev => {
-          const updateNode = (nodes: QANode[]): QANode[] => {
-            return nodes.map(node => {
-              if (node.id === nodeId) {
-                return {
-                  ...node,
-                  analysis: fixedContent,
-                  citations: accumulatedCitations,
-                };
-              }
-              if (node.children.length > 0) {
-                return { ...node, children: updateNode(node.children) };
-              }
-              return node;
-            });
-          };
-          return updateNode(prev);
-        });
-      }
-    }
-  }
-}
-
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -188,12 +78,112 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
+  // Helper function: Parses a JSON chunk and returns content and citations.
+  function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
+    try {
+      const parsed = JSON.parse(chunk);
+      const content = parsed.choices?.[0]?.delta?.content ||
+                      parsed.choices?.[0]?.message?.content || '';
+      const citations = parsed.citations || [];
+      return { content, citations };
+    } catch (e) {
+      console.error('Error parsing stream chunk:', e);
+      return { content: '', citations: [] };
+    }
+  }
+
+  // Helper function: Checks if a line is complete (e.g. headers or list markers end with a space).
+  function isLineComplete(line: string): boolean {
+    if (/^(\d+\.)\S/.test(line)) return false;
+    if (/^(#+)\S/.test(line)) return false;
+    return true;
+  }
+
+  // Processes incoming stream chunks.
+  async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
+    let accumulatedContent = '';
+    let accumulatedCitations: string[] = [];
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += new TextDecoder().decode(value);
+
+        // Split by double newline to get paragraphs.
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const lines = part.split('\n');
+          // If the last line seems incomplete, reattach it.
+          if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
+            buffer = lines.pop() + '\n\n' + buffer;
+            const completePart = lines.join('\n');
+            processPart(completePart);
+          } else {
+            processPart(part);
+          }
+        }
+      }
+      if (buffer.trim() && isLineComplete(buffer.trim())) {
+        processPart(buffer);
+        buffer = '';
+      }
+    } catch (error) {
+      console.error('Error processing stream:', error);
+      throw error;
+    }
+    return accumulatedContent;
+
+    function processPart(text: string) {
+      // Process only lines starting with "data: "
+      const lines = text.split('\n').filter(line => line.startsWith('data: '));
+      for (const line of lines) {
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === '[DONE]') continue;
+        const { content, citations } = cleanStreamContent(jsonStr);
+        if (content) {
+          accumulatedContent += content;
+          accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+          // Replace unwanted newlines between word characters with a space.
+          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?=[\w])/g, '$1 ');
+          // Update state with the latest streaming content.
+          setStreamingContent(prev => ({
+            ...prev,
+            [nodeId]: {
+              content: fixedContent,
+              citations: accumulatedCitations,
+            },
+          }));
+          setQaData(prev => {
+            const updateNode = (nodes: QANode[]): QANode[] =>
+              nodes.map(node => {
+                if (node.id === nodeId) {
+                  return {
+                    ...node,
+                    analysis: fixedContent,
+                    citations: accumulatedCitations,
+                  };
+                }
+                if (node.children.length > 0) {
+                  return { ...node, children: updateNode(node.children) };
+                }
+                return node;
+              });
+            return updateNode(prev);
+          });
+        }
+      }
+    }
+  }
+
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
     setExpandedNodes(prev => new Set([...prev, nodeId]));
-    
+
     try {
       setQaData(prev => {
         const newNode: QANode = {
@@ -203,11 +193,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           children: [],
         };
         if (!parentId) return [newNode];
-        const updateChildren = (nodes: QANode[]): QANode[] => nodes.map(node => {
-          if (node.id === parentId) return { ...node, children: [...node.children, newNode] };
-          if (node.children.length > 0) return { ...node, children: updateChildren(node.children) };
-          return node;
-        });
+        const updateChildren = (nodes: QANode[]): QANode[] =>
+          nodes.map(node => {
+            if (node.id === parentId) return { ...node, children: [...node.children, newNode] };
+            if (node.children.length > 0) return { ...node, children: updateChildren(node.children) };
+            return node;
+          });
         return updateChildren(prev);
       });
 
@@ -270,14 +261,19 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const renderCitations = (citations?: string[]) => {
-    if (!citations?.length) return null;
+    if (!citations || citations.length === 0) return null;
     return (
       <div className="mt-2 space-y-1">
         <div className="text-xs text-muted-foreground font-medium">Sources:</div>
         <div className="flex flex-wrap gap-2">
           {citations.map((citation, index) => (
-            <a key={index} href={citation} target="_blank" rel="noopener noreferrer"
-               className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
+            <a
+              key={index}
+              href={citation}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
               <LinkIcon className="h-3 w-3" />
               {`[${index + 1}]`}
             </a>
