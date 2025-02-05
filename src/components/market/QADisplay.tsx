@@ -147,7 +147,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
           // Replace unwanted newlines between word characters with a space.
-          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?=[\w])/g, '$1 ');
+          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?!#)/g, '$1 ');
+
           // Update state with the latest streaming content.
           setStreamingContent(prev => ({
             ...prev,
