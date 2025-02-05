@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,20 +11,35 @@ import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import 'katex/dist/katex.min.css';
 
-//
+interface QANode {
+  id: string;
+  question: string;
+  analysis: string;
+  citations?: string[];
+  children: QANode[];
+}
+
+interface StreamingContent {
+  content: string;
+  citations: string[];
+}
+
+interface QADisplayProps {
+  marketId: string;
+  marketQuestion: string;
+}
+
 // Custom components for ReactMarkdown
-//
 const MarkdownComponents = {
   p: ({ children }: { children: React.ReactNode }) => <p className="mb-3 last:mb-0">{children}</p>,
-  code: ({ inline, children }: { inline: boolean; children: React.ReactNode }) => {
-    return inline ? (
+  code: ({ inline, children }: { inline: boolean; children: React.ReactNode }) =>
+    inline ? (
       <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
     ) : (
       <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
         {children}
       </code>
-    );
-  },
+    ),
   ul: ({ children }: { children: React.ReactNode }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
   ol: ({ children }: { children: React.ReactNode }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
   li: ({ children }: { children: React.ReactNode }) => <li className="leading-relaxed">{children}</li>,
@@ -56,34 +70,12 @@ const MarkdownComponents = {
   td: ({ children }: { children: React.ReactNode }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
-interface QANode {
-  id: string;
-  question: string;
-  analysis: string;
-  citations?: string[];
-  children: QANode[];
-}
-
-interface StreamingContent {
-  content: string;
-  citations: string[];
-}
-
-interface QADisplayProps {
-  marketId: string;
-  marketQuestion: string;
-}
-
-//
-// Helper: Cleans a streamed JSON chunk
-//
+// Buffer and parse each incoming stream chunk into a complete JSON object.
 const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
   try {
     const parsed = JSON.parse(chunk);
-    const content =
-      parsed.choices?.[0]?.delta?.content ||
-      parsed.choices?.[0]?.message?.content ||
-      '';
+    const content = parsed.choices?.[0]?.delta?.content ||
+                    parsed.choices?.[0]?.message?.content || '';
     const citations = parsed.citations || [];
     return { content, citations };
   } catch (e) {
@@ -92,9 +84,6 @@ const cleanStreamContent = (chunk: string): { content: string; citations: string
   }
 };
 
-//
-// Main QADisplay Component
-//
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -103,11 +92,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  //
-  // Process the streaming response by simply appending each content chunk.
-  // Then collapse any accidental newline characters that occur between letters
-  // so that a word like "600 million" isn’t split into one letter per line.
-  //
+  // Process the stream and accumulate content.
+  // This improved implementation uses a regex that captures alphanumerics plus common punctuation
+  // so that newlines within words or after punctuation (e.g., "3." in "3. Partnerships") are replaced with a space.
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
@@ -118,31 +105,25 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (done) break;
 
         const chunk = new TextDecoder().decode(value);
+        // Split the chunk into lines and process only those starting with "data: "
         const lines = chunk.split('\n').filter(line => line.trim());
-
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
-
             const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
               accumulatedContent += content;
-              if (citations) {
-                accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-              }
-              // Replace newlines that occur between alphanumerical characters with a space.
-              // This avoids accidental math-mode rendering (e.g. "600\nm\ni\nl\nl\ni\no\nn" becomes "600 million")
-              const fixedContent = accumulatedContent.replace(/([A-Za-z0-9.])\n(?=[A-Za-z0-9])/g, '$1 ');
-
+              accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+              // Replace newlines occurring between word characters or common punctuation with a space.
+              const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?=[\w])/g, '$1 ');
               setStreamingContent(prev => ({
                 ...prev,
                 [nodeId]: {
                   content: fixedContent,
-                  citations: accumulatedCitations
-                }
+                  citations: accumulatedCitations,
+                },
               }));
-
               setQaData(prev => {
                 const updateNode = (nodes: QANode[]): QANode[] => {
                   return nodes.map(node => {
@@ -150,14 +131,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       return {
                         ...node,
                         analysis: fixedContent,
-                        citations: accumulatedCitations
+                        citations: accumulatedCitations,
                       };
                     }
                     if (node.children.length > 0) {
-                      return {
-                        ...node,
-                        children: updateNode(node.children)
-                      };
+                      return { ...node, children: updateNode(node.children) };
                     }
                     return node;
                   });
@@ -176,23 +154,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return accumulatedContent;
   };
 
-  //
-  // Recursively analyzes a question and any follow-ups.
-  //
+  // Recursively analyze questions and process follow-ups.
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
-    
+
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
     setExpandedNodes(prev => new Set([...prev, nodeId]));
-    
+
     try {
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
           question,
           analysis: '',
-          children: []
+          children: [],
         };
         if (!parentId) {
           return [newNode];
@@ -213,15 +189,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       setStreamingContent(prev => ({
         ...prev,
-        [nodeId]: { content: '', citations: [] }
+        [nodeId]: { content: '', citations: [] },
       }));
 
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({
           marketId,
           question,
-          isFollowUp: false
-        })
+          isFollowUp: false,
+        }),
       });
       if (analysisError) throw analysisError;
 
@@ -230,15 +206,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       const analysis = await processStream(reader, nodeId);
 
-      // If this is not a follow-up, then request follow-up questions.
+      // If this is the initial question (not a follow-up), then request follow-up questions.
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({
             marketId,
             question,
             parentContent: analysis,
-            isFollowUp: true
-          })
+            isFollowUp: true,
+          }),
         });
         if (followUpError) throw followUpError;
 
@@ -264,7 +240,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setQaData([]);
     setStreamingContent({});
     setExpandedNodes(new Set());
-    
     try {
       await analyzeQuestion(marketQuestion);
     } finally {
@@ -276,13 +251,17 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const toggleNode = (nodeId: string) => {
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
-      newSet.has(nodeId) ? newSet.delete(nodeId) : newSet.add(nodeId);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
       return newSet;
     });
   };
 
   const renderCitations = (citations?: string[]) => {
-    if (!citations?.length) return null;
+    if (!citations || citations.length === 0) return null;
     return (
       <div className="mt-2 space-y-1">
         <div className="text-xs text-muted-foreground font-medium">Sources:</div>
@@ -332,16 +311,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             </div>
             <div className="space-y-2">
               <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
-              <div 
-                className="text-sm text-muted-foreground cursor-pointer"
-                onClick={() => toggleNode(node.id)}
-              >
+              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
                 <div className="flex items-start gap-2">
                   <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
                   <div className="flex-1">
-                    <ReactMarkdown 
+                    <ReactMarkdown
                       components={MarkdownComponents}
                       remarkPlugins={[remarkMath]}
                       rehypePlugins={[rehypeKatex]}
@@ -367,11 +343,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
-      <Button
-        onClick={handleAnalyze}
-        disabled={isAnalyzing}
-        className="absolute top-2 right-2 z-10"
-      >
+      <Button onClick={handleAnalyze} disabled={isAnalyzing} className="absolute top-2 right-2 z-10">
         {isAnalyzing ? 'Analyzing...' : 'Analyze'}
       </Button>
       <ScrollArea className="h-[500px] mt-8 pr-4">
