@@ -1,89 +1,13 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { StreamProcessor } from './streamProcessor.ts'
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-class MarkdownStreamProcessor {
-  private buffer: string = '';
-  private pendingTokens: Map<string, number> = new Map();
-  private readonly tokenPairs = {
-    '**': '**',  // bold
-    '_': '_',    // italic
-    '`': '`',    // code
-    '[': ']',    // links
-  };
-
-  processChunk(text: string): string {
-    this.buffer += text;
-    return this.processBuffer();
-  }
-
-  private processBuffer(): string {
-    let processedText = '';
-    let currentPos = 0;
-
-    while (currentPos < this.buffer.length) {
-      const nextToken = this.findNextToken(currentPos);
-      
-      if (!nextToken) {
-        // No more tokens found, keep last 2 chars in case they're start of a token
-        if (this.buffer.length - currentPos > 2) {
-          processedText += this.buffer.slice(currentPos, this.buffer.length - 2);
-          this.buffer = this.buffer.slice(this.buffer.length - 2);
-        }
-        break;
-      }
-
-      const { token, position } = nextToken;
-      
-      if (this.pendingTokens.has(token)) {
-        // Found matching end token
-        const startPos = this.pendingTokens.get(token)!;
-        // Include the complete token pair and its content
-        processedText += this.buffer.slice(startPos, position + token.length);
-        this.pendingTokens.delete(token);
-        currentPos = position + token.length;
-      } else {
-        // Start of new token pair
-        this.pendingTokens.set(token, position);
-        currentPos = position + token.length;
-      }
-    }
-
-    // Reset buffer if no pending tokens
-    if (this.pendingTokens.size === 0) {
-      processedText += this.buffer;
-      this.buffer = '';
-    }
-
-    return processedText;
-  }
-
-  private findNextToken(startPos: number): { token: string, position: number } | null {
-    let earliestToken = null;
-    let earliestPos = this.buffer.length;
-
-    // Find the earliest occurring token
-    for (const [startToken, endToken] of Object.entries(this.tokenPairs)) {
-      const pos = this.buffer.indexOf(this.pendingTokens.has(startToken) ? endToken : startToken, startPos);
-      if (pos !== -1 && pos < earliestPos) {
-        earliestPos = pos;
-        earliestToken = startToken;
-      }
-    }
-
-    return earliestToken ? { token: earliestToken, position: earliestPos } : null;
-  }
-
-  clear() {
-    this.buffer = '';
-    this.pendingTokens.clear();
-  }
 }
 
 serve(async (req) => {
@@ -193,7 +117,7 @@ serve(async (req) => {
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
     }
 
-    const markdownProcessor = new MarkdownStreamProcessor();
+    const markdownProcessor = new StreamProcessor();
 
     // Create a transform stream to properly handle markdown chunks
     const transformStream = new TransformStream({
