@@ -1,4 +1,4 @@
-// src/components/market/WebResearchCard.tsx
+
 import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { supabase } from "@/integrations/supabase/client"
@@ -333,6 +333,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                           rawText: accumulatedJson,
                           parsedData: prev.parsedData
                         }
+
                         try {
                           const parsedJson = JSON.parse(accumulatedJson)
                           if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
@@ -341,6 +342,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                         } catch {
                           // Continue accumulating if not valid JSON yet
                         }
+
                         return newState
                       })
                     }
@@ -364,35 +366,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         if (done) break
       }
 
-      // ===============================
-      // INSERT RESEARCH DATA INTO DB
-      // ===============================
-      // At this point:
-      // - `results` holds the list of scraped website results
-      // - `analysis` holds the fully accumulated analysis text
-      // - `streamingState.parsedData` (if valid) contains the probability and areas for research
-
-      const researchData = {
-        url_sources: results.map((r) => r.url),
-        analysis,
-        probability: streamingState.parsedData?.probability || null,
-        areas_for_research: streamingState.parsedData?.areasForResearch || []
-        // Optionally include a user_id if you are using authentication:
-        // user_id: currentUser?.id,
-      };
-
-      const { error: insertError } = await supabase
-        .from('web_research')
-        .insert(researchData);
-
-      if (insertError) {
-        console.error('Error saving research data:', insertError);
-        // Optionally update UI error state here
-      } else {
-        console.log('Research data saved successfully');
-      }
-      
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error in web research:', error)
       setError('Error occurred during research')
     } finally {
@@ -425,3 +399,4 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     </Card>
   )
 }
+
