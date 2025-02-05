@@ -69,6 +69,9 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
     queryKey: ['saved-research'],
     queryFn: async () => {
+      const { data: user } = await supabase.auth.getUser()
+      if (!user.user) throw new Error('Not authenticated')
+
       const { data, error } = await supabase
         .from('web_research')
         .select('*')
@@ -174,12 +177,18 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
 
   const saveResearch = async () => {
     try {
+      const { data: user } = await supabase.auth.getUser()
+      if (!user.user) {
+        throw new Error('Not authenticated')
+      }
+
       const { error } = await supabase.from('web_research').insert({
+        user_id: user.user.id,
         query: description,
-        sources: results as Json,
+        sources: results as unknown as Json,
         analysis,
         probability: streamingState.parsedData?.probability || '',
-        areas_for_research: streamingState.parsedData?.areasForResearch || []
+        areas_for_research: streamingState.parsedData?.areasForResearch as unknown as Json
       })
 
       if (error) throw error
