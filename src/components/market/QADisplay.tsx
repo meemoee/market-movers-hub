@@ -1,4 +1,4 @@
-
+```typescript
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -102,6 +102,58 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   };
 
+  const isCompleteMarkdown = (text: string): boolean => {
+    // Stack to track nested formatting
+    const stack: string[] = [];
+    let inNumberedList = false;
+    let currentNumber = '';
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      
+      // Handle numbered lists
+      if (/^\d$/.test(char)) {
+        currentNumber += char;
+        continue;
+      }
+      if (char === '.' && currentNumber !== '') {
+        inNumberedList = true;
+        currentNumber = '';
+        continue;
+      }
+      
+      // Reset numbered list state on newline
+      if (char === '\n') {
+        inNumberedList = false;
+        currentNumber = '';
+      }
+      
+      // Check for markdown patterns
+      if (char === '*' && nextChar === '*') {
+        const pattern = '**';
+        if (stack.length > 0 && stack[stack.length - 1] === pattern) {
+          stack.pop();
+        } else {
+          stack.push(pattern);
+        }
+        i++; // Skip next asterisk
+        continue;
+      }
+      
+      if (char === '*' || char === '`' || char === '_') {
+        if (stack.length > 0 && stack[stack.length - 1] === char) {
+          stack.pop();
+        } else {
+          stack.push(char);
+        }
+      }
+    }
+    
+    // Content is complete if there are no unclosed patterns
+    return stack.length === 0;
+  };
+
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
@@ -122,70 +174,52 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
             const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
-              // Handle incomplete markdown formatting
+              // Combine incomplete markdown with new content
               let updatedContent = incompleteMarkdown + content;
               
-              // Check for incomplete markdown patterns
-              const patterns = [
-                { start: '**', end: '**' },
-                { start: '*', end: '*' },
-                { start: '`', end: '`' },
-                { start: '__', end: '__' },
-                { start: '~~', end: '~~' }
-              ];
-
-              let hasIncompleteFormatting = false;
-              for (const pattern of patterns) {
-                const occurrences = updatedContent.split(pattern.start).length - 1;
-                if (occurrences % 2 !== 0) {
-                  hasIncompleteFormatting = true;
-                  break;
-                }
-              }
-
-              if (hasIncompleteFormatting) {
+              if (!isCompleteMarkdown(updatedContent)) {
                 // Store the incomplete chunk and wait for the next one
                 incompleteMarkdown = updatedContent;
                 continue;
-              } else {
-                // Reset incomplete markdown and update content
-                incompleteMarkdown = '';
-                accumulatedContent += updatedContent;
-                
-                if (citations) {
-                  accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-                }
-                
-                setStreamingContent(prev => ({
-                  ...prev,
-                  [nodeId]: {
-                    content: accumulatedContent,
-                    citations: accumulatedCitations
-                  }
-                }));
-
-                setQaData(prev => {
-                  const updateNode = (nodes: QANode[]): QANode[] => {
-                    return nodes.map(node => {
-                      if (node.id === nodeId) {
-                        return {
-                          ...node,
-                          analysis: accumulatedContent,
-                          citations: accumulatedCitations
-                        };
-                      }
-                      if (node.children.length > 0) {
-                        return {
-                          ...node,
-                          children: updateNode(node.children)
-                        };
-                      }
-                      return node;
-                    });
-                  };
-                  return updateNode(prev);
-                });
               }
+              
+              // Reset incomplete markdown and update content
+              incompleteMarkdown = '';
+              accumulatedContent += updatedContent;
+              
+              if (citations) {
+                accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+              }
+              
+              setStreamingContent(prev => ({
+                ...prev,
+                [nodeId]: {
+                  content: accumulatedContent,
+                  citations: accumulatedCitations
+                }
+              }));
+
+              setQaData(prev => {
+                const updateNode = (nodes: QANode[]): QANode[] => {
+                  return nodes.map(node => {
+                    if (node.id === nodeId) {
+                      return {
+                        ...node,
+                        analysis: accumulatedContent,
+                        citations: accumulatedCitations
+                      };
+                    }
+                    if (node.children.length > 0) {
+                      return {
+                        ...node,
+                        children: updateNode(node.children)
+                      };
+                    }
+                    return node;
+                  });
+                };
+                return updateNode(prev);
+              });
             }
           }
         }
@@ -428,3 +462,4 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     </Card>
   );
 }
+```
