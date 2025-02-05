@@ -71,23 +71,6 @@ const MarkdownComponents = {
   td: ({ children }: { children: React.ReactNode }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
-/**
- * This helper function splits the content into segments that are inside math blocks
- * (either inline using $...$ or display using $$...$$) and segments that are not.
- * It applies the newline-joining regex only to non-math segments.
- */
-function fixNewlinesPreservingMath(content: string): string {
-  // This regex matches either a display math block ($$ ... $$) or an inline math block ($...$).
-  const mathRegex = /(\$\$[\s\S]+?\$\$|\$[^$]+\$)/g;
-  return content.split(mathRegex).map((part) => {
-    // If the part starts with a $ we assume it’s a math block and return it unchanged.
-    if (part.startsWith('$')) return part;
-    // Otherwise, replace unwanted newlines between word characters with a space,
-    // but preserve newlines when the following text starts with markdown block indicators.
-    return part.replace(/([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g, '$1 ');
-  }).join('');
-}
-
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -164,8 +147,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (content) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-          // Apply the fixNewlinesPreservingMath function to prevent math blocks from being altered.
-          const fixedContent = fixNewlinesPreservingMath(accumulatedContent);
+          // Replace unwanted newlines between word characters with a space,
+          // but preserve newlines if the following line starts with markdown block indicators
+          // such as "#", a numbered list (e.g. "1."), or bullet markers ("-" or "*").
+          const fixedContent = accumulatedContent.replace(
+            /([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g,
+            '$1 '
+          );
           // Update state with the latest streaming content.
           setStreamingContent(prev => ({
             ...prev,
@@ -184,7 +172,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     citations: accumulatedCitations,
                   };
                 }
-                if (node.children.length > 0) return { ...node, children: updateNode(node.children) };
+                if (node.children.length > 0) {
+                  return { ...node, children: updateNode(node.children) };
+                }
                 return node;
               });
             return updateNode(prev);
