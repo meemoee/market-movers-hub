@@ -137,7 +137,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
     return accumulatedContent;
 
-    // Here we split the content into math and non‑math parts and apply fixes only on non‑math parts.
     function processPart(text: string) {
       // Process only lines starting with "data: "
       const lines = text.split('\n').filter(line => line.startsWith('data: '));
@@ -149,21 +148,27 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          // Split the accumulated content on math blocks.
-          // This regex will capture blocks delimited by $...$ or $$...$$.
-          const mathBlockRegex = /(\${1,2}[\s\S]+?\${1,2})/g;
-          const parts = accumulatedContent.split(mathBlockRegex);
-          const processedParts = parts.map(part => {
-            // If the part is a math block (it starts and ends with $ or $$), leave it as-is.
-            if (/^(\${1,2}).+?\1$/s.test(part)) {
-              return part;
-            }
-            // Otherwise, apply newline/header fixes.
-            return part
-              .replace(/([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g, '$1 ')
-              .replace(/(?<!\n)\s*(#+\s)/g, '\n$1');
+          // Protect math blocks from being altered by our regex.
+          // Using a unique placeholder format unlikely to occur in normal text.
+          const mathRegex = /(\${1,2})([\s\S]+?)\1/g;
+          let mathBlocks: string[] = [];
+          const placeholderPrefix = "%%MATH_";
+          const protectedContent = accumulatedContent.replace(mathRegex, (match) => {
+            mathBlocks.push(match);
+            return `${placeholderPrefix}${mathBlocks.length - 1}%%`;
           });
-          const fixedContent = processedParts.join('');
+
+          // Apply newline/header fixes on non-math content.
+          // 1. Replace newlines between word characters with a space (unless a header/list follows).
+          // 2. Force headers (lines starting with one or more "#") onto their own line.
+          const fixedContentProtected = protectedContent
+            .replace(/([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g, '$1 ')
+            .replace(/(?<!\n)\s*(#+\s)/g, '\n$1');
+
+          // Reinsert math blocks from their placeholders.
+          const fixedContent = fixedContentProtected.replace(new RegExp(`${placeholderPrefix}(\\d+)%%`, 'g'), (_, index) => {
+            return mathBlocks[parseInt(index)];
+          });
 
           // Update state with the fixed content.
           setStreamingContent(prev => ({
