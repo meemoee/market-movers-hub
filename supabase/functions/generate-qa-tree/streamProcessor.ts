@@ -1,15 +1,13 @@
-// streamProcessor.ts
 interface ContentState {
   buffer: string;
-  listItemNumber: number | null;
-  markdownStack: string[];
-  sentenceComplete: boolean;
-  lastProcessedListItem: number;
+  currentListNumber: number;
+  inList: boolean;
+  inSection: boolean;
+  markdownTokens: Set<string>;
 }
 
 export class StreamProcessor {
   private state: ContentState;
-  private readonly sentenceEndMarkers = new Set(['.', '!', '?']);
   private readonly markdownPairs = new Map([
     ['**', '**'],
     ['*', '*'],
@@ -20,87 +18,57 @@ export class StreamProcessor {
   constructor() {
     this.state = {
       buffer: '',
-      listItemNumber: null,
-      markdownStack: [],
-      sentenceComplete: true,
-      lastProcessedListItem: 0
+      currentListNumber: 0,
+      inList: false,
+      inSection: false,
+      markdownTokens: new Set()
     };
   }
 
   processChunk(text: string): string {
-    // Add new text to buffer
     this.state.buffer += text;
-    
-    // Process the buffer
-    const result = this.processBuffer();
-    return result;
+    return this.processBuffer();
   }
 
   private processBuffer(): string {
     let output = '';
     let currentPosition = 0;
     let segmentStart = 0;
+    let lastProcessedPosition = 0;
 
-    while (currentPosition < this.state.buffer.length) {
-      // Check for list items
-      if (this.state.buffer[currentPosition] === '\n' && 
-          currentPosition + 1 < this.state.buffer.length) {
-        const listMatch = this.state.buffer.slice(currentPosition + 1)
-          .match(/^(\d+)\.\s/);
-        
-        if (listMatch) {
-          const number = parseInt(listMatch[1]);
-          if (number === this.state.lastProcessedListItem + 1) {
-            // Process previous content
-            output += this.state.buffer.slice(segmentStart, currentPosition);
-            
-            // Move past list marker
-            currentPosition += listMatch[0].length + 1;
-            segmentStart = currentPosition;
-            this.state.lastProcessedListItem = number;
-            continue;
-          }
-        }
-      }
+    const buffer = this.state.buffer;
 
-      // Check for sentence boundaries
-      if (this.sentenceEndMarkers.has(this.state.buffer[currentPosition])) {
-        let isEndOfSentence = false;
-        
-        // Look ahead for space or newline
-        if (currentPosition + 1 < this.state.buffer.length) {
-          const nextChar = this.state.buffer[currentPosition + 1];
-          if (nextChar === ' ' || nextChar === '\n') {
-            isEndOfSentence = true;
-          }
+    while (currentPosition < buffer.length) {
+      // Check for content boundaries
+      if (this.isContentBoundary(buffer, currentPosition)) {
+        // Process the content up to this point
+        if (currentPosition > segmentStart) {
+          const segment = buffer.slice(segmentStart, currentPosition);
+          output += this.formatSegment(segment);
+          lastProcessedPosition = currentPosition;
         }
 
-        if (isEndOfSentence) {
-          // Process content up to sentence end
-          const sentenceContent = this.state.buffer.slice(segmentStart, 
-            currentPosition + 1);
-          
-          // Handle markdown in the sentence
-          output += this.processMarkdown(sentenceContent);
-          
-          currentPosition += 1;
-          segmentStart = currentPosition;
-          this.state.sentenceComplete = true;
-          continue;
+        // Add appropriate spacing based on context
+        if (this.shouldAddDoubleLineBreak(buffer, currentPosition)) {
+          output += '\n\n';
+        } else if (this.shouldAddSingleLineBreak(buffer, currentPosition)) {
+          output += '\n';
         }
+
+        segmentStart = currentPosition;
       }
 
       currentPosition++;
     }
 
-    // Keep unprocessed content in buffer
-    if (segmentStart < this.state.buffer.length) {
-      const remainingContent = this.state.buffer.slice(segmentStart);
-      
-      // Only keep if it's not just whitespace
-      if (remainingContent.trim().length > 0) {
+    // Process any remaining content
+    if (segmentStart < buffer.length) {
+      const remainingContent = buffer.slice(segmentStart);
+      // Only keep unprocessed content that might be incomplete
+      if (this.mightBeIncomplete(remainingContent)) {
         this.state.buffer = remainingContent;
       } else {
+        output += this.formatSegment(remainingContent);
         this.state.buffer = '';
       }
     } else {
@@ -110,66 +78,133 @@ export class StreamProcessor {
     return output;
   }
 
-  private processMarkdown(text: string): string {
-    let result = text;
-    let hasUnclosedTokens = false;
+  private isContentBoundary(text: string, position: number): boolean {
+    // Check for list items
+    if (this.isListItem(text, position)) return true;
 
-    // Process markdown tokens
-    for (const [startToken, endToken] of this.markdownPairs) {
-      // Find all occurrences of the token
-      let startIndex = 0;
-      while ((startIndex = result.indexOf(startToken, startIndex)) !== -1) {
-        // Look for matching end token
-        const endIndex = result.indexOf(endToken, startIndex + startToken.length);
-        
-        if (endIndex === -1) {
-          hasUnclosedTokens = true;
-          break;
-        }
+    // Check for section headers
+    if (this.isSectionHeader(text, position)) return true;
 
-        // Replace the tokens with their content
-        const content = result.slice(startIndex + startToken.length, endIndex);
-        result = result.slice(0, startIndex) + content + 
-          result.slice(endIndex + endToken.length);
+    // Check for colon introductions
+    if (this.isColonIntroduction(text, position)) return true;
+
+    // Check for sentence boundaries before new content
+    if (this.isSentenceBoundary(text, position)) return true;
+
+    return false;
+  }
+
+  private isListItem(text: string, position: number): boolean {
+    if (position > 0 && text[position - 1] !== '\n') return false;
+
+    const match = text.slice(position).match(/^(\d+)\.\s/);
+    if (match) {
+      const number = parseInt(match[1]);
+      if (number === this.state.currentListNumber + 1) {
+        this.state.currentListNumber = number;
+        this.state.inList = true;
+        return true;
       }
+    }
+    return false;
+  }
 
-      if (hasUnclosedTokens) {
-        break;
+  private isSectionHeader(text: string, position: number): boolean {
+    if (position > 0 && text[position - 1] !== '\n') return false;
+
+    const headerPattern = /^[A-Z][a-z]+(?:\s+(?:and|or|of|in|to|for|by|the|a)\s+[A-Z][a-z]+)*:/;
+    const match = text.slice(position).match(headerPattern);
+    return !!match;
+  }
+
+  private isColonIntroduction(text: string, position: number): boolean {
+    if (text[position] !== ':') return false;
+    
+    // Check if colon is followed by content that should start on new line
+    const nextChar = text[position + 1];
+    return nextChar === '\n' || this.isListItem(text, position + 1);
+  }
+
+  private isSentenceBoundary(text: string, position: number): boolean {
+    if (position === 0) return false;
+
+    const currentChar = text[position];
+    const prevChar = text[position - 1];
+    const nextChar = text[position + 1];
+
+    // Check for sentence ending punctuation
+    if (['.', '!', '?'].includes(prevChar)) {
+      // Ensure it's not part of an abbreviation or number
+      if (!/[A-Z0-9]/.test(currentChar)) {
+        return true;
       }
     }
 
-    return hasUnclosedTokens ? text : result;
+    return false;
+  }
+
+  private shouldAddDoubleLineBreak(text: string, position: number): boolean {
+    // Add double line break before new sections or lists
+    return this.isListItem(text, position) || this.isSectionHeader(text, position);
+  }
+
+  private shouldAddSingleLineBreak(text: string, position: number): boolean {
+    // Add single line break after colons or between list items
+    return this.isColonIntroduction(text, position) || 
+           (this.state.inList && this.isSentenceBoundary(text, position));
+  }
+
+  private formatSegment(text: string): string {
+    let formatted = text;
+
+    // Process markdown tokens
+    formatted = this.processMarkdown(formatted);
+
+    // Clean up extra whitespace
+    formatted = formatted.replace(/\s+/g, ' ').trim();
+
+    return formatted;
+  }
+
+  private processMarkdown(text: string): string {
+    let result = text;
+
+    for (const [startToken, endToken] of this.markdownPairs) {
+      const regex = new RegExp(`\\${startToken}(.*?)\\${endToken}`, 'g');
+      result = result.replace(regex, '$1');
+    }
+
+    return result;
+  }
+
+  private mightBeIncomplete(text: string): boolean {
+    // Check if text might be part of an incomplete sentence or list item
+    if (text.trim().length === 0) return false;
+
+    // Check for incomplete markdown
+    for (const [startToken] of this.markdownPairs) {
+      if (text.includes(startToken) && 
+          text.indexOf(startToken) === text.lastIndexOf(startToken)) {
+        return true;
+      }
+    }
+
+    // Check for incomplete sentences
+    const lastChar = text.trim().slice(-1);
+    if (!['.', '!', '?'].includes(lastChar)) {
+      return true;
+    }
+
+    return false;
   }
 
   clear(): void {
     this.state = {
       buffer: '',
-      listItemNumber: null,
-      markdownStack: [],
-      sentenceComplete: true,
-      lastProcessedListItem: 0
+      currentListNumber: 0,
+      inList: false,
+      inSection: false,
+      markdownTokens: new Set()
     };
-  }
-
-  private isListContinuation(text: string): boolean {
-    return /^\d+\.\s/.test(text);
-  }
-
-  private findNextSentenceBoundary(text: string, startPos: number): number {
-    for (let i = startPos; i < text.length - 1; i++) {
-      if (this.sentenceEndMarkers.has(text[i])) {
-        const nextChar = text[i + 1];
-        if (nextChar === ' ' || nextChar === '\n') {
-          return i;
-        }
-      }
-    }
-    return -1;
-  }
-
-  private getCompleteContent(): string {
-    const content = this.state.buffer;
-    this.state.buffer = '';
-    return content;
   }
 }
