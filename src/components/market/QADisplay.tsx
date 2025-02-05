@@ -70,17 +70,110 @@ const MarkdownComponents = {
   td: ({ children }: { children: React.ReactNode }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
-// Buffer and parse each incoming stream chunk into a complete JSON object.
-const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
+/**
+ * Checks whether a given line (from a buffered paragraph) is complete.
+ * Incomplete lines often occur when a header or list marker (like "3." or "##")
+ * is cut off without a trailing space.
+ */
+function isLineComplete(line: string): boolean {
+  // If a line starts with digits+dot or one or more '#' characters
+  // and the character following the marker is not a space, consider it incomplete.
+  if (/^(\d+\.)\S/.test(line)) return false;
+  if (/^(#+)\S/.test(line)) return false;
+  return true;
+}
+
+/**
+ * Processes the stream of incoming text chunks.
+ * Instead of processing every line individually, we accumulate text into paragraphs
+ * (separated by double newlines) and flush only complete paragraphs.
+ */
+const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
+  let accumulatedContent = '';
+  let accumulatedCitations: string[] = [];
+  let buffer = ''; // Buffer for incomplete text
+
   try {
-    const parsed = JSON.parse(chunk);
-    const content = parsed.choices?.[0]?.delta?.content ||
-                    parsed.choices?.[0]?.message?.content || '';
-    const citations = parsed.citations || [];
-    return { content, citations };
-  } catch (e) {
-    console.error('Error parsing stream chunk:', e);
-    return { content: '', citations: [] };
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // Decode the new chunk and add it to the buffer.
+      buffer += new TextDecoder().decode(value);
+      
+      // Process complete paragraphs (split by double newline)
+      const parts = buffer.split('\n\n');
+      // Keep the last part (potentially incomplete) in the buffer.
+      buffer = parts.pop() || '';
+      
+      for (const part of parts) {
+        // Split part into individual lines.
+        const lines = part.split('\n');
+        // Check if the last line is complete; if not, reattach it to the buffer.
+        if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
+          buffer = lines.pop() + '\n\n' + buffer;
+          // Reassemble the complete portion.
+          const completePart = lines.join('\n');
+          processPart(completePart);
+        } else {
+          processPart(part);
+        }
+      }
+    }
+    // Process any remaining buffer if it's nonempty and complete.
+    if (buffer.trim() && isLineComplete(buffer.trim())) {
+      processPart(buffer);
+      buffer = '';
+    }
+  } catch (error) {
+    console.error('Error processing stream:', error);
+    throw error;
+  }
+
+  return accumulatedContent;
+
+  // Helper function to process a complete paragraph.
+  function processPart(text: string) {
+    // Attempt to parse the text as SSE events (assumes each event starts with "data: ")
+    const lines = text.split('\n').filter(line => line.startsWith('data: '));
+    for (const line of lines) {
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === '[DONE]') continue;
+      const { content, citations } = cleanStreamContent(jsonStr);
+      if (content) {
+        accumulatedContent += content;
+        accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+        // Here, we replace newlines between word characters (and punctuation) with a space.
+        // This helps avoid breaking tokens while preserving intentional newlines (like paragraph breaks).
+        const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?=[\w])/g, '$1 ');
+        // Update the streaming content state.
+        setStreamingContent(prev => ({
+          ...prev,
+          [nodeId]: {
+            content: fixedContent,
+            citations: accumulatedCitations,
+          },
+        }));
+        // Also update the QA node analysis text.
+        setQaData(prev => {
+          const updateNode = (nodes: QANode[]): QANode[] => {
+            return nodes.map(node => {
+              if (node.id === nodeId) {
+                return {
+                  ...node,
+                  analysis: fixedContent,
+                  citations: accumulatedCitations,
+                };
+              }
+              if (node.children.length > 0) {
+                return { ...node, children: updateNode(node.children) };
+              }
+              return node;
+            });
+          };
+          return updateNode(prev);
+        });
+      }
+    }
   }
 };
 
@@ -92,76 +185,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  // Process the stream and accumulate content.
-  // This improved implementation uses a regex that captures alphanumerics plus common punctuation
-  // so that newlines within words or after punctuation (e.g., "3." in "3. Partnerships") are replaced with a space.
-  const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
-    let accumulatedContent = '';
-    let accumulatedCitations: string[] = [];
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = new TextDecoder().decode(value);
-        // Split the chunk into lines and process only those starting with "data: "
-        const lines = chunk.split('\n').filter(line => line.trim());
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === '[DONE]') continue;
-            const { content, citations } = cleanStreamContent(jsonStr);
-            if (content) {
-              accumulatedContent += content;
-              accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-              // Replace newlines occurring between word characters or common punctuation with a space.
-              const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?=[\w])/g, '$1 ');
-              setStreamingContent(prev => ({
-                ...prev,
-                [nodeId]: {
-                  content: fixedContent,
-                  citations: accumulatedCitations,
-                },
-              }));
-              setQaData(prev => {
-                const updateNode = (nodes: QANode[]): QANode[] => {
-                  return nodes.map(node => {
-                    if (node.id === nodeId) {
-                      return {
-                        ...node,
-                        analysis: fixedContent,
-                        citations: accumulatedCitations,
-                      };
-                    }
-                    if (node.children.length > 0) {
-                      return { ...node, children: updateNode(node.children) };
-                    }
-                    return node;
-                  });
-                };
-                return updateNode(prev);
-              });
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.error('Error processing stream:', error);
-      throw error;
-    }
-
-    return accumulatedContent;
-  };
-
-  // Recursively analyze questions and process follow-ups.
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
-
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
     setExpandedNodes(prev => new Set([...prev, nodeId]));
-
+    
     try {
       setQaData(prev => {
         const newNode: QANode = {
@@ -170,20 +199,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           analysis: '',
           children: [],
         };
-        if (!parentId) {
-          return [newNode];
-        }
-        const updateChildren = (nodes: QANode[]): QANode[] => {
-          return nodes.map(node => {
-            if (node.id === parentId) {
-              return { ...node, children: [...node.children, newNode] };
-            }
-            if (node.children.length > 0) {
-              return { ...node, children: updateChildren(node.children) };
-            }
-            return node;
-          });
-        };
+        if (!parentId) return [newNode];
+        const updateChildren = (nodes: QANode[]): QANode[] => nodes.map(node => {
+          if (node.id === parentId) return { ...node, children: [...node.children, newNode] };
+          if (node.children.length > 0) return { ...node, children: updateChildren(node.children) };
+          return node;
+        });
         return updateChildren(prev);
       });
 
@@ -193,11 +214,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       }));
 
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
-        body: JSON.stringify({
-          marketId,
-          question,
-          isFollowUp: false,
-        }),
+        body: JSON.stringify({ marketId, question, isFollowUp: false }),
       });
       if (analysisError) throw analysisError;
 
@@ -206,18 +223,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       const analysis = await processStream(reader, nodeId);
 
-      // If this is the initial question (not a follow-up), then request follow-up questions.
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
-          body: JSON.stringify({
-            marketId,
-            question,
-            parentContent: analysis,
-            isFollowUp: true,
-          }),
+          body: JSON.stringify({ marketId, question, parentContent: analysis, isFollowUp: true }),
         });
         if (followUpError) throw followUpError;
-
         const followUpQuestions = followUpData;
         for (const item of followUpQuestions) {
           if (item?.question) {
@@ -251,29 +261,20 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const toggleNode = (nodeId: string) => {
     setExpandedNodes(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
-      }
+      newSet.has(nodeId) ? newSet.delete(nodeId) : newSet.add(nodeId);
       return newSet;
     });
   };
 
   const renderCitations = (citations?: string[]) => {
-    if (!citations || citations.length === 0) return null;
+    if (!citations?.length) return null;
     return (
       <div className="mt-2 space-y-1">
         <div className="text-xs text-muted-foreground font-medium">Sources:</div>
         <div className="flex flex-wrap gap-2">
           {citations.map((citation, index) => (
-            <a
-              key={index}
-              href={citation}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
+            <a key={index} href={citation} target="_blank" rel="noopener noreferrer"
+               className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
               <LinkIcon className="h-3 w-3" />
               {`[${index + 1}]`}
             </a>
@@ -289,7 +290,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const isExpanded = expandedNodes.has(node.id);
     const analysisContent = isStreaming ? streamContent?.content : node.analysis;
     const citations = isStreaming ? streamContent?.citations : node.citations;
-
+    
     return (
       <div key={node.id} className="relative flex flex-col">
         <div className="flex items-stretch">
