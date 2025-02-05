@@ -133,7 +133,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               }
               // Replace newlines that occur between alphanumerical characters with a space.
               // This avoids accidental math-mode rendering (e.g. "600\nm\ni\nl\nl\ni\no\nn" becomes "600 million")
-              const fixedContent = accumulatedContent.replace(/([A-Za-z0-9])\n(?=[A-Za-z0-9])/g, '$1 ');
+              const fixedContent = accumulatedContent.replace(/([A-Za-z0-9.])\n(?=[A-Za-z0-9])/g, '$1 ');
 
               setStreamingContent(prev => ({
                 ...prev,
