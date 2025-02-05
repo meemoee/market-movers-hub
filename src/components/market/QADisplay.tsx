@@ -113,7 +113,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const nextChar = text[i + 1];
       const prevChar = text[i - 1];
       
-      // Handle numbered lists
       if (/^\d$/.test(char)) {
         currentNumber += char;
         continue;
@@ -124,34 +123,29 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         continue;
       }
       
-      // Reset numbered list state on newline
       if (char === '\n') {
         inNumberedList = false;
         currentNumber = '';
       }
       
-      // Check for markdown patterns with improved boundary checks
       if (char === '*' && nextChar === '*') {
         const pattern = '**';
-        // Don't split bold markers if they're followed by punctuation
         if (i + 2 < text.length && /[:.,-]/.test(text[i + 2])) {
           continue;
         }
         if (stack.length > 0 && stack[stack.length - 1] === pattern) {
           stack.pop();
         } else {
-          // Don't start bold if it's in the middle of a word
           if (prevChar && /\w/.test(prevChar)) {
             continue;
           }
           stack.push(pattern);
         }
-        i++; // Skip next asterisk
+        i++;
         continue;
       }
       
       if ((char === '*' || char === '`' || char === '_') && 
-          // Don't treat as markdown if it's between word characters
           !(prevChar && nextChar && /\w/.test(prevChar) && /\w/.test(nextChar))) {
         if (stack.length > 0 && stack[stack.length - 1] === char) {
           stack.pop();
