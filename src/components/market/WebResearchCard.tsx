@@ -1,3 +1,4 @@
+
 import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { supabase } from "@/integrations/supabase/client"
@@ -36,6 +37,74 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     rawText: '',
     parsedData: null
   })
+
+  // New helper function to clean stream content
+  const cleanStreamContent = (chunk: string): { content: string } => {
+    try {
+      const parsed = JSON.parse(chunk);
+      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
+      return { content };
+    } catch (e) {
+      console.error('Error parsing stream chunk:', e);
+      return { content: '' };
+    }
+  };
+
+  // New helper function to check markdown completeness
+  const isCompleteMarkdown = (text: string): boolean => {
+    const stack: string[] = [];
+    let inNumberedList = false;
+    let currentNumber = '';
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      const prevChar = text[i - 1];
+      
+      if (/^\d$/.test(char)) {
+        currentNumber += char;
+        continue;
+      }
+      if (char === '.' && currentNumber !== '') {
+        inNumberedList = true;
+        currentNumber = '';
+        continue;
+      }
+      
+      if (char === '\n') {
+        inNumberedList = false;
+        currentNumber = '';
+      }
+      
+      if (char === '*' && nextChar === '*') {
+        const pattern = '**';
+        if (i + 2 < text.length && /[:.,-]/.test(text[i + 2])) {
+          continue;
+        }
+        if (stack.length > 0 && stack[stack.length - 1] === pattern) {
+          stack.pop();
+        } else {
+          if (prevChar && /\w/.test(prevChar)) {
+            continue;
+          }
+          stack.push(pattern);
+        }
+        i++;
+        continue;
+      }
+      
+      if ((char === '*' || char === '`' || char === '_') && 
+          !(prevChar && nextChar && /\w/.test(prevChar) && /\w/.test(nextChar))) {
+        if (stack.length > 0 && stack[stack.length - 1] === char) {
+          stack.pop();
+        } else {
+          stack.push(char);
+        }
+      }
+    }
+    
+    return stack.length === 0;
+  };
 
   const handleResearch = async () => {
     setIsLoading(true)
@@ -93,14 +162,12 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                     const parsed = JSON.parse(jsonStr)
                     if (parsed.type === 'results' && Array.isArray(parsed.data)) {
                       setResults(prev => [...prev, ...parsed.data])
-                      // Collect content for analysis
                       parsed.data.forEach((result: ResearchResult) => {
                         if (result?.content) {
                           allContent.push(result.content)
                         }
                       })
                     } else if (parsed.message) {
-                      // Update progress message format - use the actual query instead of description
                       const message = parsed.message.replace(
                         /processing query \d+\/\d+: (.*)/i, 
                         'Searching "$1"'
@@ -131,7 +198,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         throw new Error('No content collected from web scraping')
       }
 
-      // After collecting all content, start the analysis
+      // After collecting all content, start the analysis with improved streaming
       setIsAnalyzing(true)
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: { 
@@ -143,6 +210,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       if (analysisResponse.error) throw analysisResponse.error
 
       let accumulatedContent = ''
+      let incompleteMarkdown = ''
       
       const analysisStream = new ReadableStream({
         start(controller) {
@@ -166,10 +234,22 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                   if (jsonStr === '[DONE]') continue
                   
                   try {
-                    const parsed = JSON.parse(jsonStr)
-                    const content = parsed.choices?.[0]?.delta?.content
+                    const { content } = cleanStreamContent(jsonStr)
                     if (content) {
-                      accumulatedContent += content
+                      // Combine incomplete markdown with new content
+                      let updatedContent = incompleteMarkdown + content
+                      
+                      if (!isCompleteMarkdown(updatedContent)) {
+                        // Store incomplete chunk and wait for next one
+                        incompleteMarkdown = updatedContent
+                        continue
+                      }
+                      
+                      // Reset incomplete markdown and update content
+                      incompleteMarkdown = ''
+                      accumulatedContent += updatedContent
+                      
+                      // Update analysis state with properly formatted content
                       setAnalysis(accumulatedContent)
                     }
                   } catch (e) {
@@ -192,7 +272,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         if (done) break
       }
 
-      // Extract insights using streaming
+      // Extract insights using streaming with the same markdown formatting
       const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
         body: {
           webContent: allContent.join('\n\n'),
@@ -203,6 +283,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       if (insightsResponse.error) throw insightsResponse.error
 
       let accumulatedJson = ''
+      let incompleteInsightsMarkdown = ''
       
       const insightsStream = new ReadableStream({
         start(controller) {
@@ -225,20 +306,26 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
                   if (jsonStr === '[DONE]') continue
                   
                   try {
-                    const parsed = JSON.parse(jsonStr)
-                    const content = parsed.choices?.[0]?.delta?.content
+                    const { content } = cleanStreamContent(jsonStr)
                     
                     if (content) {
-                      // Accumulate JSON text
-                      accumulatedJson += content
+                      // Handle markdown formatting for insights
+                      let updatedContent = incompleteInsightsMarkdown + content
+                      
+                      if (!isCompleteMarkdown(updatedContent)) {
+                        incompleteInsightsMarkdown = updatedContent
+                        continue
+                      }
+                      
+                      incompleteInsightsMarkdown = ''
+                      accumulatedJson += updatedContent
                       
                       setStreamingState(prev => {
                         const newState = {
-                          rawText: prev.rawText + content,
+                          rawText: accumulatedJson,
                           parsedData: prev.parsedData
                         }
 
-                        // Try parsing accumulated JSON
                         try {
                           const parsedJson = JSON.parse(accumulatedJson)
                           if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
