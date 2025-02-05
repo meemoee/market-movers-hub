@@ -80,6 +80,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [streamingContent, setStreamingContent] = useState<{[key: string]: StreamingContent}>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  const [incompleteChunks, setIncompleteChunks] = useState<{[key: string]: string}>({});
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
     try {
@@ -104,6 +105,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
+    let incompleteMarkdown = '';
 
     try {
       while (true) {
@@ -120,41 +122,70 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
             const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
-              accumulatedContent += content;
+              // Handle incomplete markdown formatting
+              let updatedContent = incompleteMarkdown + content;
               
-              if (citations) {
-                accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-              }
-              
-              setStreamingContent(prev => ({
-                ...prev,
-                [nodeId]: {
-                  content: accumulatedContent,
-                  citations: accumulatedCitations
-                }
-              }));
+              // Check for incomplete markdown patterns
+              const patterns = [
+                { start: '**', end: '**' },
+                { start: '*', end: '*' },
+                { start: '`', end: '`' },
+                { start: '__', end: '__' },
+                { start: '~~', end: '~~' }
+              ];
 
-              setQaData(prev => {
-                const updateNode = (nodes: QANode[]): QANode[] => {
-                  return nodes.map(node => {
-                    if (node.id === nodeId) {
-                      return {
-                        ...node,
-                        analysis: accumulatedContent,
-                        citations: accumulatedCitations
-                      };
-                    }
-                    if (node.children.length > 0) {
-                      return {
-                        ...node,
-                        children: updateNode(node.children)
-                      };
-                    }
-                    return node;
-                  });
-                };
-                return updateNode(prev);
-              });
+              let hasIncompleteFormatting = false;
+              for (const pattern of patterns) {
+                const occurrences = updatedContent.split(pattern.start).length - 1;
+                if (occurrences % 2 !== 0) {
+                  hasIncompleteFormatting = true;
+                  break;
+                }
+              }
+
+              if (hasIncompleteFormatting) {
+                // Store the incomplete chunk and wait for the next one
+                incompleteMarkdown = updatedContent;
+                continue;
+              } else {
+                // Reset incomplete markdown and update content
+                incompleteMarkdown = '';
+                accumulatedContent += updatedContent;
+                
+                if (citations) {
+                  accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+                }
+                
+                setStreamingContent(prev => ({
+                  ...prev,
+                  [nodeId]: {
+                    content: accumulatedContent,
+                    citations: accumulatedCitations
+                  }
+                }));
+
+                setQaData(prev => {
+                  const updateNode = (nodes: QANode[]): QANode[] => {
+                    return nodes.map(node => {
+                      if (node.id === nodeId) {
+                        return {
+                          ...node,
+                          analysis: accumulatedContent,
+                          citations: accumulatedCitations
+                        };
+                      }
+                      if (node.children.length > 0) {
+                        return {
+                          ...node,
+                          children: updateNode(node.children)
+                        };
+                      }
+                      return node;
+                    });
+                  };
+                  return updateNode(prev);
+                });
+              }
             }
           }
         }
