@@ -147,16 +147,28 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (content) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-          // Replace unwanted newlines between word characters with a space,
-          // but preserve newlines if the following line starts with markdown block indicators
-          // such as "#", a numbered list (e.g. "1."), or bullet markers ("-" or "*").
-          const fixedContent = accumulatedContent
+
+          // Protect math blocks from being modified by temporarily replacing them with placeholders.
+          const mathRegex = /(\${1,2})([\s\S]+?)\1/g;
+          let mathBlocks: string[] = [];
+          const protectedContent = accumulatedContent.replace(mathRegex, (match) => {
+            mathBlocks.push(match);
+            return `@@MATH${mathBlocks.length - 1}@@`;
+          });
+
+          // Apply newline fixes on non-math parts:
+          //   - Replace newlines between word characters with a space unless a header/list marker follows.
+          //   - Ensure headers start on a new line.
+          const fixedContentProtected = protectedContent
             .replace(
               /([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g,
               '$1 '
             )
-            // Insert a newline before header tokens if not already on a new line.
             .replace(/(?<!\n)\s*(#+\s)/g, '\n$1');
+
+          // Reinsert math blocks from their placeholders.
+          const fixedContent = fixedContentProtected.replace(/@@MATH(\d+)@@/g, (_, index) => mathBlocks[parseInt(index)]);
+
           // Update state with the latest streaming content.
           setStreamingContent(prev => ({
             ...prev,
