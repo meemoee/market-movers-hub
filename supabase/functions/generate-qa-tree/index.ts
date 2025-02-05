@@ -1,37 +1,25 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { StreamProcessor } from './streamProcessor.ts'
-
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { question, marketId, parentContent, isFollowUp } = await req.json()
-    
-    if (!question) {
-      throw new Error('Question is required')
-    }
-    
-    console.log('Processing request:', {
-      question,
-      marketId,
-      hasParentContent: !!parentContent,
-      isFollowUp
-    })
+    const { question, marketId, parentContent, isFollowUp } = await req.json();
+    if (!question) throw new Error('Question is required');
 
+    // If this is a follow-up question, process it and return JSON.
     if (isFollowUp && parentContent) {
-      console.log('Generating follow-up questions')
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      const followUpResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
@@ -44,7 +32,8 @@ serve(async (req) => {
           messages: [
             {
               role: "system",
-              content: "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Return only the JSON array, nothing else."
+              content:
+                "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Return only the JSON array, nothing else."
             },
             {
               role: "user",
@@ -52,43 +41,27 @@ serve(async (req) => {
             }
           ]
         })
-      })
-
-      if (!response.ok) {
-        throw new Error(`Follow-up generation failed: ${response.status}`)
+      });
+      if (!followUpResponse.ok) {
+        throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
       }
-
-      const data = await response.json()
-      console.log('Raw follow-up response:', data)
-
+      const data = await followUpResponse.json();
+      let rawContent = data.choices[0].message.content;
+      // Clean up any JSON markdown formatting
+      rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      let parsed;
       try {
-        const rawContent = data.choices[0].message.content;
-        const cleanContent = rawContent
-          .replace(/```json\n?/g, '')
-          .replace(/```\n?/g, '')
-          .trim();
-        
-        const parsedContent = JSON.parse(cleanContent);
-        if (!Array.isArray(parsedContent)) {
-          throw new Error('Response is not an array');
-        }
-        
-        return new Response(
-          JSON.stringify(parsedContent), 
-          { 
-            headers: { 
-              ...corsHeaders, 
-              'Content-Type': 'application/json'
-            }
-          }
-        )
-      } catch (e) {
-        console.error('Invalid JSON in follow-up response:', e)
-        throw new Error('Failed to parse follow-up questions')
+        parsed = JSON.parse(rawContent);
+      } catch (err) {
+        throw new Error('Failed to parse follow-up questions');
       }
+      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
+      return new Response(JSON.stringify(parsed), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
-    console.log('Generating analysis')
+    // For analysis, stream the response from OpenRouter.
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -102,7 +75,8 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid using markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use bold text (**) sparingly and ensure proper markdown formatting."
+            content:
+              "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting."
           },
           {
             role: "user",
@@ -111,70 +85,44 @@ serve(async (req) => {
         ],
         stream: true
       })
-    })
-
+    });
     if (!analysisResponse.ok) {
-      throw new Error(`Analysis generation failed: ${analysisResponse.status}`)
+      throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
     }
 
-    const markdownProcessor = new StreamProcessor();
-
-    // Create a transform stream to properly handle markdown chunks
+    // A simple TransformStream that buffers incoming text until full SSE events are available.
+    let buffer = "";
     const transformStream = new TransformStream({
       transform(chunk, controller) {
-        try {
-          const text = new TextDecoder().decode(chunk);
-          const lines = text.split('\n').filter(line => line.trim() !== '');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') continue;
-              
-              try {
-                const parsed = JSON.parse(data);
-                if (parsed.choices?.[0]?.delta?.content) {
-                  const content = parsed.choices[0].delta.content;
-                  const processedContent = markdownProcessor.processChunk(content);
-                  
-                  if (processedContent) {
-                    const newData = {
-                      ...parsed,
-                      choices: [{
-                        ...parsed.choices[0],
-                        delta: {
-                          ...parsed.choices[0].delta,
-                          content: processedContent
-                        }
-                      }]
-                    };
-                    
-                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(newData)}\n\n`));
-                  }
-                }
-              } catch (e) {
-                console.error('Error parsing chunk:', e);
-              }
+        const text = new TextDecoder().decode(chunk);
+        buffer += text;
+        const parts = buffer.split("\n\n");
+        // Keep the last (possibly incomplete) part in the buffer.
+        buffer = parts.pop() || "";
+        for (const part of parts) {
+          if (part.startsWith("data: ")) {
+            const dataStr = part.slice(6).trim();
+            if (dataStr === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(dataStr);
+              // Re-emit the SSE event unmodified.
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+            } catch (err) {
+              console.error("Error parsing SSE chunk:", err);
             }
           }
-        } catch (error) {
-          console.error('Error in transform stream:', error);
         }
       },
       flush(controller) {
-        // Process any remaining content in the buffer
-        const finalContent = markdownProcessor.processChunk('');
-        if (finalContent) {
-          const finalData = {
-            choices: [{
-              delta: {
-                content: finalContent
-              }
-            }]
-          };
-          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(finalData)}\n\n`));
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer.trim());
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+          } catch (err) {
+            console.error("Error parsing final SSE chunk:", err);
+          }
         }
-        markdownProcessor.clear();
+        buffer = "";
       }
     });
 
@@ -185,22 +133,18 @@ serve(async (req) => {
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
       }
-    })
-
+    });
   } catch (error) {
-    console.error('Function error:', error)
+    console.error("Function error:", error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error.message,
-        details: error instanceof Error ? error.stack : 'Unknown error'
+        details: error instanceof Error ? error.stack : "Unknown error"
       }),
-      { 
+      {
         status: 500,
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
-    )
+    );
   }
-})
+});
