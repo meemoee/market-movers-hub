@@ -79,7 +79,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
 
-  // Helper function: Parses a JSON chunk and returns content and citations.
+  // Helper: Parse JSON stream chunk.
   function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
     try {
       const parsed = JSON.parse(chunk);
@@ -93,7 +93,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   }
 
-  // Helper function: Checks if a line is complete (e.g. headers or list markers end with a space).
+  // Helper: Check if a line is complete (headers or list markers ending without a space are incomplete).
   function isLineComplete(line: string): boolean {
     if (/^(\d+\.)\S/.test(line)) return false;
     if (/^(#+)\S/.test(line)) return false;
@@ -112,12 +112,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (done) break;
         buffer += new TextDecoder().decode(value);
 
-        // Split by double newline to get paragraphs.
+        // Split by double newline (paragraph breaks)
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
         for (const part of parts) {
           const lines = part.split('\n');
-          // If the last line seems incomplete, reattach it.
+          // If the last line is incomplete, reattach it.
           if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
             buffer = lines.pop() + '\n\n' + buffer;
             const completePart = lines.join('\n');
@@ -148,28 +148,29 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          // Protect math blocks from being modified by temporarily replacing them with placeholders.
+          // Protect math blocks from being altered by our regex.
+          // Using a unique placeholder format unlikely to occur in normal text.
           const mathRegex = /(\${1,2})([\s\S]+?)\1/g;
           let mathBlocks: string[] = [];
+          const placeholderPrefix = "%%MATH_";
           const protectedContent = accumulatedContent.replace(mathRegex, (match) => {
             mathBlocks.push(match);
-            return `@@MATH${mathBlocks.length - 1}@@`;
+            return `${placeholderPrefix}${mathBlocks.length - 1}%%`;
           });
 
-          // Apply newline fixes on non-math parts:
-          //   - Replace newlines between word characters with a space unless a header/list marker follows.
-          //   - Ensure headers start on a new line.
+          // Apply newline/header fixes on non-math content.
+          // 1. Replace newlines between word characters with a space (unless a header/list follows).
+          // 2. Force headers (lines starting with one or more "#") onto their own line.
           const fixedContentProtected = protectedContent
-            .replace(
-              /([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g,
-              '$1 '
-            )
+            .replace(/([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g, '$1 ')
             .replace(/(?<!\n)\s*(#+\s)/g, '\n$1');
 
           // Reinsert math blocks from their placeholders.
-          const fixedContent = fixedContentProtected.replace(/@@MATH(\d+)@@/g, (_, index) => mathBlocks[parseInt(index)]);
+          const fixedContent = fixedContentProtected.replace(new RegExp(`${placeholderPrefix}(\\d+)%%`, 'g'), (_, index) => {
+            return mathBlocks[parseInt(index)];
+          });
 
-          // Update state with the latest streaming content.
+          // Update state with the fixed content.
           setStreamingContent(prev => ({
             ...prev,
             [nodeId]: {
