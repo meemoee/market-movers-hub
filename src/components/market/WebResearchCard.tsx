@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ import { ChevronDown } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useToast } from "@/components/ui/use-toast"
+import { Json } from '@/integrations/supabase/types'
 
 interface WebResearchCardProps {
   description: string
@@ -40,12 +42,14 @@ interface StreamingState {
 
 interface SavedResearch {
   id: string
+  user_id: string
   query: string
   sources: ResearchResult[]
   analysis: string
   probability: string
   areas_for_research: string[]
   created_at: string
+  updated_at: string
 }
 
 export function WebResearchCard({ description }: WebResearchCardProps) {
@@ -71,7 +75,13 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      return data as SavedResearch[]
+      
+      // Transform the data to match our frontend types
+      return (data as any[]).map(item => ({
+        ...item,
+        sources: item.sources as ResearchResult[],
+        areas_for_research: item.areas_for_research as string[]
+      })) as SavedResearch[]
     }
   })
 
@@ -166,7 +176,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     try {
       const { error } = await supabase.from('web_research').insert({
         query: description,
-        sources: results,
+        sources: results as Json,
         analysis,
         probability: streamingState.parsedData?.probability || '',
         areas_for_research: streamingState.parsedData?.areasForResearch || []
