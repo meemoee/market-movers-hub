@@ -1,12 +1,24 @@
-
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { supabase } from "@/integrations/supabase/client"
 import { ResearchHeader } from "./research/ResearchHeader"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./research/InsightsDisplay"
+import { ChevronDown } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { format } from 'date-fns'
+import { useToast } from "@/components/ui/use-toast"
 
 interface WebResearchCardProps {
   description: string
@@ -26,6 +38,16 @@ interface StreamingState {
   } | null
 }
 
+interface SavedResearch {
+  id: string
+  query: string
+  sources: ResearchResult[]
+  analysis: string
+  probability: string
+  areas_for_research: string[]
+  created_at: string
+}
+
 export function WebResearchCard({ description }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -37,6 +59,33 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     rawText: '',
     parsedData: null
   })
+  const { toast } = useToast()
+
+  // Query saved research
+  const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
+    queryKey: ['saved-research'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('web_research')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data as SavedResearch[]
+    }
+  })
+
+  const loadSavedResearch = (research: SavedResearch) => {
+    setResults(research.sources)
+    setAnalysis(research.analysis)
+    setStreamingState({
+      rawText: '',
+      parsedData: {
+        probability: research.probability,
+        areasForResearch: research.areas_for_research
+      }
+    })
+  }
 
   // Helper function to check markdown formatting completeness
   const isCompleteMarkdown = (text: string): boolean => {
@@ -112,6 +161,34 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       return { content: '' };
     }
   };
+
+  const saveResearch = async () => {
+    try {
+      const { error } = await supabase.from('web_research').insert({
+        query: description,
+        sources: results,
+        analysis,
+        probability: streamingState.parsedData?.probability || '',
+        areas_for_research: streamingState.parsedData?.areasForResearch || []
+      })
+
+      if (error) throw error
+
+      toast({
+        title: "Research saved",
+        description: "Your research has been saved successfully.",
+      })
+
+      refetchSavedResearch()
+    } catch (error) {
+      console.error('Error saving research:', error)
+      toast({
+        title: "Error",
+        description: "Failed to save research. Please try again.",
+        variant: "destructive"
+      })
+    }
+  }
 
   const handleResearch = async () => {
     setIsLoading(true)
@@ -375,13 +452,53 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     }
   }
 
+  const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
+
   return (
     <Card className="p-4 space-y-4">
-      <ResearchHeader 
-        isLoading={isLoading}
-        isAnalyzing={isAnalyzing}
-        onResearch={handleResearch}
-      />
+      <div className="flex items-center justify-between">
+        <ResearchHeader 
+          isLoading={isLoading}
+          isAnalyzing={isAnalyzing}
+          onResearch={handleResearch}
+        />
+        
+        <div className="flex gap-2">
+          {canSave && (
+            <Button onClick={saveResearch} variant="outline">
+              Save Research
+            </Button>
+          )}
+          
+          {savedResearch && savedResearch.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[300px]">
+                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {savedResearch.map((research) => (
+                  <DropdownMenuItem 
+                    key={research.id}
+                    onClick={() => loadSavedResearch(research)}
+                    className="flex flex-col items-start"
+                  >
+                    <div className="font-medium truncate w-full">
+                      {research.query}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
 
       {error && (
         <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
@@ -399,4 +516,3 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     </Card>
   )
 }
-

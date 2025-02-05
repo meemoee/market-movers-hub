@@ -474,6 +474,50 @@ export type Database = {
           },
         ]
       }
+      web_research: {
+        Row: {
+          analysis: string
+          areas_for_research: Json
+          created_at: string
+          id: string
+          probability: string
+          query: string
+          sources: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          analysis: string
+          areas_for_research: Json
+          created_at?: string
+          id?: string
+          probability: string
+          query: string
+          sources: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          analysis?: string
+          areas_for_research?: Json
+          created_at?: string
+          id?: string
+          probability?: string
+          query?: string
+          sources?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "web_research_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
