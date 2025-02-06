@@ -156,25 +156,27 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
             const preceding = string.slice(0, offset);
             const lastLine = preceding.split('\n').pop() || '';
-            // If the previous line is a markdown header (starts with "###"), preserve the newline.
             if (lastLine.trim().startsWith('###')) {
               return '\n';
             }
             return ' ';
           });
 
+          // Force a double newline after any header line if not present.
+          const finalContent = fixedContent.replace(/^(#{1,6} .+)(?!\n\n)/gm, '$1\n\n');
+
           // Log the processed content
           console.log('Updated chunk for node', nodeId, ':', {
             newContent: content,
-            fixedContent,
+            fixedContent: finalContent,
             citations,
           });
 
-          // Update state with the fixed content.
+          // Update state with the final content.
           setStreamingContent(prev => ({
             ...prev,
             [nodeId]: {
-              content: fixedContent,
+              content: finalContent,
               citations: accumulatedCitations,
             },
           }));
@@ -184,7 +186,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                 if (node.id === nodeId) {
                   return {
                     ...node,
-                    analysis: fixedContent,
+                    analysis: finalContent,
                     citations: accumulatedCitations,
                   };
                 }
