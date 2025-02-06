@@ -152,8 +152,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          // Apply a simple newline fix: replace newlines between word characters with a space.
-          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?!\s*(?:#|\d+\.|[-*]))/g, '$1 ');
+          // Only replace newlines that are not preceded by a header indicator (###) or other markdown markers.
+          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?!\s*(?:[#]|\d+\.|[-*]))/g, '$1 ');
+
 
           // Log the processed content
           console.log('Updated chunk for node', nodeId, ':', {
