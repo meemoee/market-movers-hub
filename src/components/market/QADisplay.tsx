@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -182,7 +183,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       });
 
       // Refetch the saved QA trees to update the dropdown
-      void queryClient.invalidateQueries(['saved-qa-trees', marketId]);
+      await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
 
     } catch (error) {
       console.error('Error saving QA tree:', error);
@@ -499,7 +500,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-wrap items-center gap-4 mb-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
         <div className="flex-1 min-w-[200px] max-w-[300px]">
           <Select
             value={selectedResearch}
@@ -544,7 +545,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
           <Button onClick={handleAnalyze} disabled={isAnalyzing}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze'}
           </Button>
