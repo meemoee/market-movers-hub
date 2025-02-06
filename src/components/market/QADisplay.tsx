@@ -16,11 +16,6 @@ import {
 } from "@/components/ui/select"
 import { useQuery } from '@tanstack/react-query';
 
-// Removed math plugins and KaTeX CSS imports since we no longer process LaTeX.
-// import remarkMath from 'remark-math';
-// import rehypeKatex from 'rehype-katex';
-// import 'katex/dist/katex.min.css';
-
 interface QANode {
   id: string;
   question: string;
@@ -112,7 +107,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     },
   });
 
-  // Helper: Parse JSON stream chunk.
+  // Helper: Parse JSON stream chunk
   function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
     try {
       const parsed = JSON.parse(chunk);
@@ -127,14 +122,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   }
 
-  // Helper: Check if a line is complete (headers or list markers ending without a space are incomplete).
+  // Helper: Check if a line is complete
   function isLineComplete(line: string): boolean {
     if (/^(\d+\.)\S/.test(line)) return false;
     if (/^(#+)\S/.test(line)) return false;
     return true;
   }
 
-  // Processes incoming stream chunks.
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
@@ -434,12 +428,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <div className="flex items-center justify-between mb-4">
-        <div className="w-[200px]">
+        <div className="w-[300px]">
           <Select
             value={selectedResearch}
             onValueChange={setSelectedResearch}
           >
-            <SelectTrigger>
+            <SelectTrigger className="w-full">
               <SelectValue placeholder="Select saved research" />
             </SelectTrigger>
             <SelectContent>
