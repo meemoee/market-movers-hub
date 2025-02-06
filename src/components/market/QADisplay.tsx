@@ -495,9 +495,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex gap-4">
-          <div className="w-[300px]">
+      <div className="flex flex-col gap-4 mb-4">
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-[200px] max-w-[300px]">
             <Select
               value={selectedResearch}
               onValueChange={setSelectedResearch}
@@ -515,7 +515,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </SelectContent>
             </Select>
           </div>
-          <div className="w-[300px]">
+          <div className="flex-1 min-w-[200px] max-w-[300px]">
             <Select
               value={selectedQATree}
               onValueChange={(value) => {
@@ -541,16 +541,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </SelectContent>
             </Select>
           </div>
-        </div>
-        <div className="flex gap-2">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
+          <div className="flex gap-2 ml-auto">
+            <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+              {isAnalyzing ? 'Analyzing...' : 'Analyze'}
             </Button>
-          )}
+            {qaData.length > 0 && !isAnalyzing && (
+              <Button onClick={saveQATree} variant="outline">
+                Save Analysis
+              </Button>
+            )}
+          </div>
         </div>
       </div>
       <ScrollArea className="h-[500px] pr-4">
