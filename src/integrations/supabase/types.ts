@@ -480,6 +480,7 @@ export type Database = {
           areas_for_research: Json
           created_at: string
           id: string
+          market_id: string | null
           probability: string
           query: string
           sources: Json
@@ -491,6 +492,7 @@ export type Database = {
           areas_for_research: Json
           created_at?: string
           id?: string
+          market_id?: string | null
           probability: string
           query: string
           sources: Json
@@ -502,6 +504,7 @@ export type Database = {
           areas_for_research?: Json
           created_at?: string
           id?: string
+          market_id?: string | null
           probability?: string
           query?: string
           sources?: Json
@@ -509,6 +512,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "web_research_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "web_research_user_id_fkey"
             columns: ["user_id"]
