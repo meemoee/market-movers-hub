@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
+import "katex/dist/katex.min.css";  // Import KaTeX CSS
 
 interface QANode {
   id: string;
@@ -503,6 +506,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     {isExpanded ? (
                       <ReactMarkdown
                         components={MarkdownComponents}
+                        remarkPlugins={[remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
                         className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                       >
                         {analysisContent}
