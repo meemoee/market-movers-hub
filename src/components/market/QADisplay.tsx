@@ -40,6 +40,15 @@ interface SavedResearch {
   market_id: string;
 }
 
+interface SavedQATree {
+  id: string;
+  title: string;
+  tree_data: QANode[];
+  created_at: string;
+  market_id: string | null;
+  user_id: string | null;
+}
+
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
@@ -94,8 +103,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
+  const [selectedQATree, setSelectedQATree] = useState<string>('none');
 
-  // Query to fetch saved research, now filtering by market_id
+  // Query to fetch saved research
   const { data: savedResearch } = useQuery<SavedResearch[]>({
     queryKey: ['saved-research', marketId],
     queryFn: async () => {
@@ -109,11 +119,29 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as SavedResearch[];
+      return data;
     },
   });
 
-  // Helper: Parse JSON stream chunk
+  // Query to fetch saved QA trees
+  const { data: savedQATrees } = useQuery<SavedQATree[]>({
+    queryKey: ['saved-qa-trees', marketId],
+    queryFn: async () => {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('qa_trees')
+        .select('*')
+        .eq('market_id', marketId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data as SavedQATree[];
+    },
+  });
+
+  // Helper functions for parsing stream content
   function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
     try {
       const parsed = JSON.parse(chunk);
@@ -128,11 +156,43 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   }
 
-  // Helper: Check if a line is complete
   function isLineComplete(line: string): boolean {
     if (/^(\d+\.)\S/.test(line)) return false;
     if (/^(#+)\S/.test(line)) return false;
     return true;
+  }
+
+  async function saveQATree() {
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('qa_trees')
+        .insert({
+          user_id: user.user.id,
+          market_id: marketId,
+          title: marketQuestion,
+          tree_data: qaData,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Analysis saved",
+        description: "Your QA tree has been saved successfully.",
+      });
+
+    } catch (error) {
+      console.error('Error saving QA tree:', error);
+      toast({
+        variant: "destructive",
+        title: "Save Error",
+        description: error instanceof Error ? error.message : "Failed to save the QA tree",
+      });
+    }
   }
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
@@ -375,6 +435,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     );
   };
 
+  const loadSavedQATree = (treeData: QANode[]) => {
+    setQaData(treeData);
+    setStreamingContent({});
+    setExpandedNodes(new Set());
+    setCurrentNodeId(null);
+  };
+
   const renderQANode = (node: QANode, depth: number = 0) => {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -434,27 +501,62 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <div className="flex items-center justify-between mb-4">
-        <div className="w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex gap-4">
+          <div className="w-[300px]">
+            <Select
+              value={selectedResearch}
+              onValueChange={setSelectedResearch}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select saved research" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No saved research</SelectItem>
+                {savedResearch?.map((research) => (
+                  <SelectItem key={research.id} value={research.id}>
+                    {research.query.substring(0, 50)}...
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="w-[300px]">
+            <Select
+              value={selectedQATree}
+              onValueChange={(value) => {
+                setSelectedQATree(value);
+                if (value !== 'none') {
+                  const tree = savedQATrees?.find(t => t.id === value);
+                  if (tree) {
+                    loadSavedQATree(tree.tree_data);
+                  }
+                }
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select saved QA tree" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No saved QA tree</SelectItem>
+                {savedQATrees?.map((tree) => (
+                  <SelectItem key={tree.id} value={tree.id}>
+                    {tree.title.substring(0, 50)}...
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-          {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </Button>
+          {qaData.length > 0 && !isAnalyzing && (
+            <Button onClick={saveQATree} variant="outline">
+              Save Analysis
+            </Button>
+          )}
+        </div>
       </div>
       <ScrollArea className="h-[500px] pr-4">
         {qaData.map(node => renderQANode(node))}
