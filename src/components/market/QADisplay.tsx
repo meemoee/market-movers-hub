@@ -162,8 +162,20 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             return ' ';
           });
 
-          // Force a double newline after any header line if not present.
-          const finalContent = fixedContent.replace(/^(#{1,6} .+)(?!\n\n)/gm, '$1\n\n');
+          // Instead of using a regex that might misplace newlines, split the content into lines,
+          // then force a double newline after any line that starts with a header.
+          const finalContent = fixedContent
+            .split('\n')
+            .map((line) => {
+              if (/^(#{1,6}\s.*)/.test(line)) {
+                // If the line is a header, ensure it ends with a blank line.
+                return line.trim() + '\n';
+              }
+              return line;
+            })
+            .join('\n')
+            // Now, ensure that header lines are separated by a blank line.
+            .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
 
           // Log the processed content
           console.log('Updated chunk for node', nodeId, ':', {
