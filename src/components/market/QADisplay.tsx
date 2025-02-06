@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -91,7 +92,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-  const [selectedResearch, setSelectedResearch] = useState<string>('');
+  const [selectedResearch, setSelectedResearch] = useState<string>('none');
 
   // Query to fetch saved research
   const { data: savedResearch } = useQuery({
@@ -437,7 +438,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               <SelectValue placeholder="Select saved research" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">No saved research</SelectItem>
+              <SelectItem value="none">No saved research</SelectItem>
               {savedResearch?.map((research) => (
                 <SelectItem key={research.id} value={research.id}>
                   {research.query.substring(0, 50)}...
