@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -94,13 +93,17 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
 
-  // Query to fetch saved research
+  // Query to fetch saved research, now filtering by market_id
   const { data: savedResearch } = useQuery({
-    queryKey: ['saved-research'],
+    queryKey: ['saved-research', marketId],
     queryFn: async () => {
+      const { data: user } = await supabase.auth.getUser()
+      if (!user.user) throw new Error('Not authenticated')
+
       const { data, error } = await supabase
         .from('web_research')
         .select('*')
+        .eq('market_id', marketId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
