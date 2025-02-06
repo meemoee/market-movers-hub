@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
 
 interface QANode {
@@ -94,6 +94,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
+  const queryClient = useQueryClient();
 
   // Query to fetch saved research
   const { data: savedResearch } = useQuery<SavedResearch[]>({
@@ -179,6 +180,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         title: "Analysis saved",
         description: "Your QA tree has been saved successfully.",
       });
+
+      // Refetch the saved QA trees to update the dropdown
+      void queryClient.invalidateQueries(['saved-qa-trees', marketId]);
 
     } catch (error) {
       console.error('Error saving QA tree:', error);
@@ -495,62 +499,60 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col gap-4 mb-4">
-        <div className="flex flex-wrap gap-4">
-          <div className="flex-1 min-w-[200px] max-w-[300px]">
-            <Select
-              value={selectedResearch}
-              onValueChange={setSelectedResearch}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select saved research" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No saved research</SelectItem>
-                {savedResearch?.map((research) => (
-                  <SelectItem key={research.id} value={research.id}>
-                    {research.query.substring(0, 50)}...
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex-1 min-w-[200px] max-w-[300px]">
-            <Select
-              value={selectedQATree}
-              onValueChange={(value) => {
-                setSelectedQATree(value);
-                if (value !== 'none') {
-                  const tree = savedQATrees?.find(t => t.id === value);
-                  if (tree) {
-                    loadSavedQATree(tree.tree_data);
-                  }
+      <div className="flex flex-wrap items-center gap-4 mb-4">
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedResearch}
+            onValueChange={setSelectedResearch}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved research" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved research</SelectItem>
+              {savedResearch?.map((research) => (
+                <SelectItem key={research.id} value={research.id}>
+                  {research.query.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedQATree}
+            onValueChange={(value) => {
+              setSelectedQATree(value);
+              if (value !== 'none') {
+                const tree = savedQATrees?.find(t => t.id === value);
+                if (tree) {
+                  loadSavedQATree(tree.tree_data);
                 }
-              }}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select saved QA tree" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No saved QA tree</SelectItem>
-                {savedQATrees?.map((tree) => (
-                  <SelectItem key={tree.id} value={tree.id}>
-                    {tree.title.substring(0, 50)}...
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="flex gap-2 ml-auto">
-            <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-              {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+              }
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved QA tree" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved QA tree</SelectItem>
+              {savedQATrees?.map((tree) => (
+                <SelectItem key={tree.id} value={tree.id}>
+                  {tree.title.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </Button>
+          {qaData.length > 0 && !isAnalyzing && (
+            <Button onClick={saveQATree} variant="outline">
+              Save Analysis
             </Button>
-            {qaData.length > 0 && !isAnalyzing && (
-              <Button onClick={saveQATree} variant="outline">
-                Save Analysis
-              </Button>
-            )}
-          </div>
+          )}
         </div>
       </div>
       <ScrollArea className="h-[500px] pr-4">
