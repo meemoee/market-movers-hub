@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -86,6 +85,14 @@ const MarkdownComponents = {
   td: ({ children }: { children: React.ReactNode }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
 };
 
+// Add type for saved QA trees
+interface SavedQATree {
+  id: string;
+  title: string;
+  tree_data: QANode[];
+  created_at: string;
+}
+
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -94,6 +101,24 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
+
+  // Query to fetch saved QA trees
+  const { data: savedQATrees } = useQuery<SavedQATree[]>({
+    queryKey: ['saved-qa-trees', marketId],
+    queryFn: async () => {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('qa_trees')
+        .select('*')
+        .eq('market_id', marketId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data;
+    },
+  });
 
   // Query to fetch saved research, now filtering by market_id
   const { data: savedResearch } = useQuery<SavedResearch[]>({
@@ -112,6 +137,61 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       return data as SavedResearch[];
     },
   });
+
+  // Add function to save QA tree
+  const saveQATree = async () => {
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to save QA trees",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (qaData.length === 0) {
+        toast({
+          title: "No data to save",
+          description: "Please analyze the question first",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const { error } = await supabase
+        .from('qa_trees')
+        .insert({
+          user_id: user.user.id,
+          market_id: marketId,
+          title: marketQuestion,
+          tree_data: qaData,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "QA tree saved successfully",
+      });
+    } catch (error) {
+      console.error('Error saving QA tree:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save QA tree",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Add function to load saved QA tree
+  const loadQATree = (treeData: QANode[]) => {
+    setQaData(treeData);
+    setStreamingContent({});
+    setExpandedNodes(new Set());
+    setCurrentNodeId(null);
+  };
 
   // Helper: Parse JSON stream chunk
   function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
@@ -431,31 +511,161 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     );
   };
 
+  const handleAnalyze = async () => {
+    setIsAnalyzing(true);
+    setQaData([]);
+    setStreamingContent({});
+    setExpandedNodes(new Set());
+    try {
+      await analyzeQuestion(marketQuestion);
+    } finally {
+      setIsAnalyzing(false);
+      setCurrentNodeId(null);
+    }
+  };
+
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      newSet.has(nodeId) ? newSet.delete(nodeId) : newSet.add(nodeId);
+      return newSet;
+    });
+  };
+
+  const renderCitations = (citations?: string[]) => {
+    if (!citations || citations.length === 0) return null;
+    return (
+      <div className="mt-2 space-y-1">
+        <div className="text-xs text-muted-foreground font-medium">Sources:</div>
+        <div className="flex flex-wrap gap-2">
+          {citations.map((citation, index) => (
+            <a
+              key={index}
+              href={citation}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <LinkIcon className="h-3 w-3" />
+              {`[${index + 1}]`}
+            </a>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderQANode = (node: QANode, depth: number = 0) => {
+    const isStreaming = currentNodeId === node.id;
+    const streamContent = streamingContent[node.id];
+    const isExpanded = expandedNodes.has(node.id);
+    const analysisContent = isStreaming ? streamContent?.content : node.analysis;
+    const citations = isStreaming ? streamContent?.citations : node.citations;
+    
+    return (
+      <div key={node.id} className="relative flex flex-col">
+        <div className="flex items-stretch">
+          {depth > 0 && (
+            <div className="relative w-6 sm:w-9 flex-shrink-0">
+              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
+            </div>
+          )}
+          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
+            {depth > 0 && (
+              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
+            )}
+            <div className="absolute left-[12px] sm:left-[24px] top-0">
+              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
+                <AvatarFallback className="bg-primary/10">
+                  <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
+                </AvatarFallback>
+              </Avatar>
+            </div>
+            <div className="space-y-2">
+              <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
+              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
+                <div className="flex items-start gap-2">
+                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  <div className="flex-1">
+                    <ReactMarkdown
+                      components={MarkdownComponents}
+                      className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                    >
+                      {analysisContent}
+                    </ReactMarkdown>
+                    {renderCitations(citations)}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {node.children.length > 0 && isExpanded && (
+              <div className="mt-6">
+                {node.children.map(child => renderQANode(child, depth + 1))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <div className="flex items-center justify-between mb-4">
-        <div className="w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex items-center gap-4">
+          <div className="w-[300px]">
+            <Select
+              value={selectedResearch}
+              onValueChange={setSelectedResearch}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select saved research" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No saved research</SelectItem>
+                {savedResearch?.map((research) => (
+                  <SelectItem key={research.id} value={research.id}>
+                    {research.query.substring(0, 50)}...
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {qaData.length > 0 && (
+            <Button 
+              variant="outline" 
+              onClick={saveQATree}
+              disabled={isAnalyzing}
+            >
+              Save Analysis
+            </Button>
+          )}
         </div>
         <Button onClick={handleAnalyze} disabled={isAnalyzing}>
           {isAnalyzing ? 'Analyzing...' : 'Analyze'}
         </Button>
       </div>
+
+      {savedQATrees && savedQATrees.length > 0 && (
+        <div className="mb-4 border-b border-border pb-4">
+          <h3 className="text-sm font-medium mb-2">Saved Analyses</h3>
+          <div className="flex flex-wrap gap-2">
+            {savedQATrees.map((tree) => (
+              <Button
+                key={tree.id}
+                variant="outline"
+                size="sm"
+                onClick={() => loadQATree(tree.tree_data)}
+              >
+                {tree.title.substring(0, 30)}{tree.title.length > 30 ? '...' : ''}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <ScrollArea className="h-[500px] pr-4">
         {qaData.map(node => renderQANode(node))}
       </ScrollArea>
