@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,36 +23,38 @@ import { useToast } from "@/components/ui/use-toast"
 import { Json } from '@/integrations/supabase/types'
 
 interface WebResearchCardProps {
-  description: string
+  description: string;
+  marketId: string;
 }
 
 interface ResearchResult {
-  url: string
-  content: string
-  title?: string
+  url: string;
+  content: string;
+  title?: string;
 }
 
 interface StreamingState {
-  rawText: string
+  rawText: string;
   parsedData: {
-    probability: string
-    areasForResearch: string[]
-  } | null
+    probability: string;
+    areasForResearch: string[];
+  } | null;
 }
 
 interface SavedResearch {
-  id: string
-  user_id: string
-  query: string
-  sources: ResearchResult[]
-  analysis: string
-  probability: string
-  areas_for_research: string[]
-  created_at: string
-  updated_at: string
+  id: string;
+  user_id: string;
+  query: string;
+  sources: ResearchResult[];
+  analysis: string;
+  probability: string;
+  areas_for_research: string[];
+  created_at: string;
+  updated_at: string;
+  market_id: string;
 }
 
-export function WebResearchCard({ description }: WebResearchCardProps) {
+export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
@@ -64,9 +67,9 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
   })
   const { toast } = useToast()
 
-  // Query saved research
+  // Query saved research with market_id filter
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
-    queryKey: ['saved-research'],
+    queryKey: ['saved-research', marketId],
     queryFn: async () => {
       const { data: user } = await supabase.auth.getUser()
       if (!user.user) throw new Error('Not authenticated')
@@ -74,6 +77,7 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
       const { data, error } = await supabase
         .from('web_research')
         .select('*')
+        .eq('market_id', marketId)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -90,7 +94,6 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     setResults(research.sources)
     setAnalysis(research.analysis)
     
-    // Convert saved data to the correct StreamingState format
     setStreamingState({
       rawText: JSON.stringify({
         probability: research.probability,
@@ -190,7 +193,8 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
         sources: results as unknown as Json,
         analysis,
         probability: streamingState.parsedData?.probability || '',
-        areas_for_research: streamingState.parsedData?.areasForResearch as unknown as Json
+        areas_for_research: streamingState.parsedData?.areasForResearch as unknown as Json,
+        market_id: marketId
       })
 
       if (error) throw error
@@ -537,3 +541,4 @@ export function WebResearchCard({ description }: WebResearchCardProps) {
     </Card>
   )
 }
+
