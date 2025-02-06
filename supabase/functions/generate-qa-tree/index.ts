@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -14,11 +15,21 @@ serve(async (req) => {
   }
 
   try {
-    const { question, marketId, parentContent, isFollowUp } = await req.json();
+    const { question, marketId, parentContent, isFollowUp, researchContext } = await req.json();
     if (!question) throw new Error('Question is required');
 
     // If this is a follow-up question, process it and return JSON.
     if (isFollowUp && parentContent) {
+      const researchPrompt = researchContext ? `
+Consider this previous research:
+Analysis: ${researchContext.analysis}
+Probability Assessment: ${researchContext.probability}
+Areas Needing Research: ${researchContext.areasForResearch.join(', ')}
+
+Based on this research and the following analysis, generate follow-up questions:
+${parentContent}
+` : parentContent;
+
       const followUpResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -37,7 +48,7 @@ serve(async (req) => {
             },
             {
               role: "user",
-              content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${parentContent}`
+              content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${researchPrompt}`
             }
           ]
         })
@@ -47,7 +58,6 @@ serve(async (req) => {
       }
       const data = await followUpResponse.json();
       let rawContent = data.choices[0].message.content;
-      // Clean up any JSON markdown formatting
       rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       let parsed;
       try {
@@ -60,6 +70,16 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
+
+    const systemPrompt = researchContext 
+      ? `You are a helpful assistant providing detailed analysis. Consider this previous research when forming your response:
+
+Previous Analysis: ${researchContext.analysis}
+Probability Assessment: ${researchContext.probability}
+Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}
+
+Start your response with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.`
+      : "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.";
 
     // For analysis, stream the response from OpenRouter.
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -75,8 +95,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content:
-              "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting."
+            content: systemPrompt
           },
           {
             role: "user",

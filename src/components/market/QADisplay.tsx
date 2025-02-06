@@ -1,4 +1,3 @@
-// src/components/market/QADisplay.tsx
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -8,6 +7,14 @@ import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { useQuery } from '@tanstack/react-query';
 
 // Removed math plugins and KaTeX CSS imports since we no longer process LaTeX.
 // import remarkMath from 'remark-math';
@@ -25,6 +32,15 @@ interface QANode {
 interface StreamingContent {
   content: string;
   citations: string[];
+}
+
+interface SavedResearch {
+  id: string;
+  query: string;
+  analysis: string;
+  probability: string;
+  areas_for_research: string[];
+  created_at: string;
 }
 
 interface QADisplayProps {
@@ -80,6 +96,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  const [selectedResearch, setSelectedResearch] = useState<string>('');
+
+  // Query to fetch saved research
+  const { data: savedResearch } = useQuery({
+    queryKey: ['saved-research'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('web_research')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return data as SavedResearch[];
+    },
+  });
 
   // Helper: Parse JSON stream chunk.
   function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
@@ -243,9 +274,22 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         [nodeId]: { content: '', citations: [] },
       }));
 
+      // Get the selected research if any
+      const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
+      
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
-        body: JSON.stringify({ marketId, question, isFollowUp: false }),
+        body: JSON.stringify({ 
+          marketId, 
+          question, 
+          isFollowUp: false,
+          researchContext: selectedResearchData ? {
+            analysis: selectedResearchData.analysis,
+            probability: selectedResearchData.probability,
+            areasForResearch: selectedResearchData.areas_for_research
+          } : null
+        }),
       });
+      
       if (analysisError) throw analysisError;
 
       const reader = new Response(analysisData.body).body?.getReader();
@@ -256,8 +300,19 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
-          body: JSON.stringify({ marketId, question, parentContent: analysis, isFollowUp: true }),
+          body: JSON.stringify({ 
+            marketId, 
+            question, 
+            parentContent: analysis, 
+            isFollowUp: true,
+            researchContext: selectedResearchData ? {
+              analysis: selectedResearchData.analysis,
+              probability: selectedResearchData.probability,
+              areasForResearch: selectedResearchData.areas_for_research
+            } : null
+          }),
         });
+        
         if (followUpError) throw followUpError;
         const followUpQuestions = followUpData;
         for (const item of followUpQuestions) {
@@ -378,10 +433,30 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
-      <Button onClick={handleAnalyze} disabled={isAnalyzing} className="absolute top-2 right-2 z-10">
-        {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-      </Button>
-      <ScrollArea className="h-[500px] mt-8 pr-4">
+      <div className="flex items-center justify-between mb-4">
+        <div className="w-[200px]">
+          <Select
+            value={selectedResearch}
+            onValueChange={setSelectedResearch}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select saved research" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">No saved research</SelectItem>
+              {savedResearch?.map((research) => (
+                <SelectItem key={research.id} value={research.id}>
+                  {research.query.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+          {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+        </Button>
+      </div>
+      <ScrollArea className="h-[500px] pr-4">
         {qaData.map(node => renderQANode(node))}
       </ScrollArea>
     </Card>
