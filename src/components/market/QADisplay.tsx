@@ -457,6 +457,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setCurrentNodeId(null);
   };
 
+  const getPreviewText = (text: string) => {
+    // First, strip out any markdown formatting
+    const strippedText = text.replace(/[#*`_]/g, '');
+    // Get first 150 characters
+    const preview = strippedText.slice(0, 150);
+    // If we truncated the text, add ellipsis
+    return preview.length < strippedText.length ? `${preview}...` : preview;
+  };
+
   const renderQANode = (node: QANode, depth: number = 0) => {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -491,13 +500,17 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
                   <div className="flex-1">
-                    <ReactMarkdown
-                      components={MarkdownComponents}
-                      className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                    >
-                      {analysisContent}
-                    </ReactMarkdown>
-                    {renderCitations(citations)}
+                    {isExpanded ? (
+                      <ReactMarkdown
+                        components={MarkdownComponents}
+                        className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                      >
+                        {analysisContent}
+                      </ReactMarkdown>
+                    ) : (
+                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
+                    )}
+                    {isExpanded && renderCitations(citations)}
                   </div>
                 </div>
               </div>
