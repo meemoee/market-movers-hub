@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -56,20 +57,27 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
 
     const result = await response.json()
     const content = result.choices[0].message.content.trim()
-    const queriesData = JSON.parse(content)
-    const queries = queriesData.queries || []
     
-    console.log('Generated queries:', queries)
+    try {
+      const queriesData = JSON.parse(content)
+      const queries = queriesData.queries || []
+      console.log('Generated queries:', queries)
 
-    return new Response(
-      JSON.stringify({ queries }),
-      { 
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        } 
-      }
-    )
+      return new Response(
+        JSON.stringify({ queries }),
+        { 
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          } 
+        }
+      )
+    } catch (parseError) {
+      console.error('Error parsing LLM response:', parseError)
+      console.log('Raw content:', content)
+      throw new Error('Invalid response format from LLM')
+    }
+
   } catch (error) {
     console.error('Error generating queries:', error)
     return new Response(

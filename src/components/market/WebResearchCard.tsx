@@ -78,6 +78,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         .from('web_research')
         .select('*')
         .eq('market_id', marketId)
+        .eq('user_id', user.user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
