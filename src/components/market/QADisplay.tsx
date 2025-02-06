@@ -152,9 +152,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          // Only replace newlines that are not preceded by a header indicator (###) or other markdown markers.
-          const fixedContent = accumulatedContent.replace(/([\w.,!?])\n(?!\s*(?:[#]|\d+\.|[-*]))/g, '$1 ');
-
+          // Use a function replacement to only join lines that are not header lines.
+          const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
+            const preceding = string.slice(0, offset);
+            const lastLine = preceding.split('\n').pop() || '';
+            // If the previous line is a markdown header (starts with "###"), preserve the newline.
+            if (lastLine.trim().startsWith('###')) {
+              return '\n';
+            }
+            return ' ';
+          });
 
           // Log the processed content
           console.log('Updated chunk for node', nodeId, ':', {
