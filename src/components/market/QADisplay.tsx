@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -16,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useQuery } from '@tanstack/react-query';
+import { Database } from '@/integrations/supabase/types';
 
 interface QANode {
   id: string;
@@ -30,24 +30,14 @@ interface StreamingContent {
   citations: string[];
 }
 
-interface SavedResearch {
-  id: string;
-  query: string;
-  analysis: string;
-  probability: string;
+type SavedResearch = Database['public']['Tables']['web_research']['Row'] & {
   areas_for_research: string[];
-  created_at: string;
-  market_id: string;
-}
+  sources: string[];
+};
 
-interface SavedQATree {
-  id: string;
-  title: string;
+type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
   tree_data: QANode[];
-  created_at: string;
-  market_id: string | null;
-  user_id: string | null;
-}
+};
 
 interface QADisplayProps {
   marketId: string;
@@ -119,7 +109,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return (data as SavedResearch[]) || [];
     },
   });
 
@@ -137,7 +127,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      return data as SavedQATree[];
+      
+      // Convert database Json type to QANode[] type
+      return (data?.map(tree => ({
+        ...tree,
+        tree_data: tree.tree_data as unknown as QANode[]
+      })) || []) as SavedQATree[];
     },
   });
 
@@ -173,7 +168,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           user_id: user.user.id,
           market_id: marketId,
           title: marketQuestion,
-          tree_data: qaData,
+          tree_data: qaData as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
         })
         .select()
         .single();
