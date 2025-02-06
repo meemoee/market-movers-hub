@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -435,10 +434,26 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     );
   };
 
+  const populateStreamingContent = (nodes: QANode[]) => {
+    nodes.forEach(node => {
+      setStreamingContent(prev => ({
+        ...prev,
+        [node.id]: {
+          content: node.analysis,
+          citations: node.citations || [],
+        },
+      }));
+      if (node.children.length > 0) {
+        populateStreamingContent(node.children);
+      }
+    });
+  };
+
   const loadSavedQATree = (treeData: QANode[]) => {
     setQaData(treeData);
-    setStreamingContent({});
-    setExpandedNodes(new Set());
+    setStreamingContent({});  // Reset first
+    populateStreamingContent(treeData);  // Then populate with all nodes
+    setExpandedNodes(new Set());  // Reset expanded state
     setCurrentNodeId(null);
   };
 
