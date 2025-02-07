@@ -226,24 +226,91 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         const decoded = new TextDecoder().decode(value);
         buffer += decoded;
 
-        // Split by double newline (paragraph breaks)
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
         for (const part of parts) {
-          // If the last line is incomplete, skip it until we have more data.
-          const lines = part.split('\n');
-          if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
-            buffer = lines.pop() + '\n\n' + buffer;
-            const completePart = lines.join('\n');
-            processPart(completePart);
-          } else {
-            processPart(part);
+          const lines = part.split('\n').filter(line => line.startsWith('data: '));
+          for (const line of lines) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
+            const { content, citations } = cleanStreamContent(jsonStr);
+            if (content) {
+              accumulatedContent += content;
+              accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+
+              const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
+                const preceding = string.slice(0, offset);
+                const lastLine = preceding.split('\n').pop() || '';
+                if (lastLine.trim().startsWith('###')) {
+                  return '\n';
+                }
+                return ' ';
+              });
+
+              const finalContent = fixedContent
+                .split('\n')
+                .map((line) => {
+                  if (/^(#{1,6}\s.*)/.test(line)) {
+                    return line.trim() + '\n';
+                  }
+                  return line;
+                })
+                .join('\n')
+                .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
+
+              console.log('Updated chunk for node', nodeId, ':', {
+                newContent: content,
+                fixedContent: finalContent,
+                citations,
+              });
+
+              setStreamingContent(prev => ({
+                ...prev,
+                [nodeId]: {
+                  content: finalContent,
+                  citations: accumulatedCitations,
+                },
+              }));
+
+              // Update qaData in a way that preserves the entire tree structure
+              setQaData(prev => {
+                const updateNode = (nodes: QANode[]): QANode[] =>
+                  nodes.map(node => {
+                    if (node.id === nodeId) {
+                      console.log('Updating node in qaData:', nodeId, {
+                        content: finalContent,
+                        citations: accumulatedCitations
+                      });
+                      return {
+                        ...node,
+                        analysis: finalContent,
+                        citations: accumulatedCitations,
+                      };
+                    }
+                    if (node.children.length > 0) {
+                      return { ...node, children: updateNode(node.children) };
+                    }
+                    return node;
+                  });
+                const updatedData = updateNode(prev);
+                console.log('Updated qaData:', updatedData);
+                return updatedData;
+              });
+            }
           }
         }
       }
-      if (buffer.trim() && isLineComplete(buffer.trim())) {
-        processPart(buffer);
-        buffer = '';
+      if (buffer.trim()) {
+        const lines = buffer.trim().split('\n').filter(line => line.startsWith('data: '));
+        for (const line of lines) {
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') continue;
+          const { content, citations } = cleanStreamContent(jsonStr);
+          if (content) {
+            accumulatedContent += content;
+            accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+          }
+        }
       }
     } catch (error) {
       console.error('Error processing stream:', error);
@@ -253,104 +320,36 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       setPendingNodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
-        console.log('State before auto-save check:', {
+        
+        // Log the current state of qaData before deciding to save
+        const currentQaData = qaData;
+        console.log('Final state before auto-save check:', {
           removedNode: nodeId,
           remainingNodes: Array.from(newSet),
-          hasQAData: qaData.length > 0,
-          qaDataContent: qaData
+          hasQAData: currentQaData.length > 0,
+          qaDataContent: currentQaData
         });
         
         // Only save if this was the last pending node and we have data
-        if (newSet.size === 0 && qaData.length > 0) {
-          console.log('All nodes completed, preparing to save QA tree with data:', qaData);
-          // Add a small delay to ensure all state updates are complete
+        if (newSet.size === 0 && currentQaData.length > 0) {
+          console.log('All nodes completed, preparing to save QA tree with data:', currentQaData);
+          // Increased delay to ensure all state updates are complete
           setTimeout(() => {
-            console.log('Executing delayed save with final qaData:', qaData);
+            // Get the latest qaData state right before saving
+            console.log('Executing delayed save with final qaData:', currentQaData);
             saveQATree();
-          }, 2000); // Increased delay to 2 seconds
+          }, 3000); // Increased delay to 3 seconds
         } else {
           console.log('Skipping auto-save:', {
             reason: newSet.size > 0 ? 'Still has pending nodes' : 'No QA data available',
             pendingNodesCount: newSet.size,
-            hasQAData: qaData.length > 0
+            hasQAData: currentQaData.length > 0
           });
         }
         return newSet;
       });
     }
     return accumulatedContent;
-
-    function processPart(text: string) {
-      // Process only lines starting with "data: "
-      const lines = text.split('\n').filter(line => line.startsWith('data: '));
-      for (const line of lines) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        const { content, citations } = cleanStreamContent(jsonStr);
-        if (content) {
-          accumulatedContent += content;
-          accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-
-          // Use a function replacement to only join lines that are not header lines.
-          const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
-            const preceding = string.slice(0, offset);
-            const lastLine = preceding.split('\n').pop() || '';
-            if (lastLine.trim().startsWith('###')) {
-              return '\n';
-            }
-            return ' ';
-          });
-
-          // Instead of using a regex that might misplace newlines, split the content into lines,
-          // then force a double newline after any line that starts with a header.
-          const finalContent = fixedContent
-            .split('\n')
-            .map((line) => {
-              if (/^(#{1,6}\s.*)/.test(line)) {
-                // If the line is a header, ensure it ends with a blank line.
-                return line.trim() + '\n';
-              }
-              return line;
-            })
-            .join('\n')
-            // Now, ensure that header lines are separated by a blank line.
-            .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
-
-          // Log the processed content
-          console.log('Updated chunk for node', nodeId, ':', {
-            newContent: content,
-            fixedContent: finalContent,
-            citations,
-          });
-
-          // Update state with the final content.
-          setStreamingContent(prev => ({
-            ...prev,
-            [nodeId]: {
-              content: finalContent,
-              citations: accumulatedCitations,
-            },
-          }));
-          setQaData(prev => {
-            const updateNode = (nodes: QANode[]): QANode[] =>
-              nodes.map(node => {
-                if (node.id === nodeId) {
-                  return {
-                    ...node,
-                    analysis: finalContent,
-                    citations: accumulatedCitations,
-                  };
-                }
-                if (node.children.length > 0) {
-                  return { ...node, children: updateNode(node.children) };
-                }
-                return node;
-              });
-            return updateNode(prev);
-          });
-        }
-      }
-    }
   }
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
