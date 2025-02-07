@@ -164,10 +164,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   async function saveQATree() {
     console.log('Attempting to save QA tree with data:', qaData);
+    if (!qaData || qaData.length === 0) {
+      console.log('No QA data to save, skipping save operation');
+      return;
+    }
+
     try {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
+      console.log('Saving QA tree to database...');
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
@@ -181,6 +187,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
 
+      console.log('QA tree saved successfully:', data);
       toast({
         title: "Analysis saved",
         description: "Your QA tree has been saved successfully.",
@@ -200,6 +207,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
+    console.log('Starting to process stream for node:', nodeId);
     setPendingNodes(prev => {
       const newSet = new Set(prev);
       newSet.add(nodeId);
@@ -241,19 +249,31 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       console.error('Error processing stream:', error);
       throw error;
     } finally {
+      console.log('Stream processing completed for node:', nodeId);
       setPendingNodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
-        console.log('Removed pending node:', nodeId, 'Remaining nodes:', Array.from(newSet));
+        console.log('State before auto-save check:', {
+          removedNode: nodeId,
+          remainingNodes: Array.from(newSet),
+          hasQAData: qaData.length > 0,
+          qaDataContent: qaData
+        });
         
         // Only save if this was the last pending node and we have data
         if (newSet.size === 0 && qaData.length > 0) {
-          console.log('All nodes completed, current qaData:', qaData);
+          console.log('All nodes completed, preparing to save QA tree with data:', qaData);
           // Add a small delay to ensure all state updates are complete
           setTimeout(() => {
             console.log('Executing delayed save with final qaData:', qaData);
             saveQATree();
-          }, 1500);
+          }, 2000); // Increased delay to 2 seconds
+        } else {
+          console.log('Skipping auto-save:', {
+            reason: newSet.size > 0 ? 'Still has pending nodes' : 'No QA data available',
+            pendingNodesCount: newSet.size,
+            hasQAData: qaData.length > 0
+          });
         }
         return newSet;
       });
