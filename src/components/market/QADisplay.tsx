@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import {
 } from "@/components/ui/select"
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
-import "katex/dist/katex.min.css";  // Import KaTeX CSS
+import "katex/dist/katex.min.css";
 
 interface QANode {
   id: string;
@@ -173,14 +174,17 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      console.log('Saving QA tree to database with data:', qaData);
+      // Convert QANode[] to Json type expected by Supabase
+      const treeDataJson = JSON.parse(JSON.stringify(qaData)) as Database['public']['Tables']['qa_trees']['Insert']['tree_data'];
+
+      console.log('Saving QA tree to database with data:', treeDataJson);
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
           user_id: user.user.id,
           market_id: marketId,
           title: marketQuestion,
-          tree_data: qaData,
+          tree_data: treeDataJson,
         })
         .select()
         .single();
