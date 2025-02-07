@@ -469,7 +469,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
 
       // Automatically save research once complete
-      if (results.length > 0 && analysis && streamingState.parsedData) {
+      if (results.length > 0 && analysis) {
         await saveResearch();
       }
 
