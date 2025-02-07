@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -164,6 +163,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   async function saveQATree() {
+    console.log('Saving QA tree with data:', qaData);
     try {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
@@ -200,7 +200,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
-    setPendingNodes(prev => new Set([...prev, nodeId]));
+    setPendingNodes(prev => {
+      const newSet = new Set(prev);
+      newSet.add(nodeId);
+      console.log('Added pending node:', nodeId, 'Total pending:', newSet.size);
+      return newSet;
+    });
+
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
     let buffer = '';
@@ -238,9 +244,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       setPendingNodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
-        // If this was the last pending node, auto-save the QA tree
-        if (newSet.size === 0 && qaData.length > 0) {
-          saveQATree();
+        console.log('Removed pending node:', nodeId, 'Remaining pending:', newSet.size - 1);
+        // Only save if this was the last pending node and we have data
+        if (newSet.size === 1 && qaData.length > 0) {
+          console.log('Last node completed, saving QA tree...');
+          setTimeout(saveQATree, 1000); // Add a small delay to ensure all state updates are complete
         }
         return newSet;
       });
