@@ -163,7 +163,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   async function saveQATree() {
-    console.log('Saving QA tree with data:', qaData);
+    console.log('Attempting to save QA tree with data:', qaData);
     try {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
@@ -203,7 +203,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     setPendingNodes(prev => {
       const newSet = new Set(prev);
       newSet.add(nodeId);
-      console.log('Added pending node:', nodeId, 'Total pending:', newSet.size);
+      console.log('Added pending node:', nodeId, 'Current pending nodes:', Array.from(newSet));
       return newSet;
     });
 
@@ -244,11 +244,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       setPendingNodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
-        console.log('Removed pending node:', nodeId, 'Remaining pending:', newSet.size - 1);
+        console.log('Removed pending node:', nodeId, 'Remaining nodes:', Array.from(newSet));
+        
         // Only save if this was the last pending node and we have data
-        if (newSet.size === 1 && qaData.length > 0) {
-          console.log('Last node completed, saving QA tree...');
-          setTimeout(saveQATree, 1000); // Add a small delay to ensure all state updates are complete
+        if (newSet.size === 0 && qaData.length > 0) {
+          console.log('All nodes completed, current qaData:', qaData);
+          // Add a small delay to ensure all state updates are complete
+          setTimeout(() => {
+            console.log('Executing delayed save with final qaData:', qaData);
+            saveQATree();
+          }, 1500);
         }
         return newSet;
       });
