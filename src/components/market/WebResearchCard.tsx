@@ -240,7 +240,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       // Then, perform web scraping with the generated queries
       const response = await supabase.functions.invoke('web-scrape', {
-        body: { query: description }
+        body: { queries: queriesData.queries }
       })
 
       if (response.error) throw response.error
