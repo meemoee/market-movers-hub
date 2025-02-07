@@ -321,29 +321,28 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
         
-        // Log the current state of qaData before deciding to save
-        const currentQaData = qaData;
-        console.log('Final state before auto-save check:', {
+        // Get current qaData state for logging
+        console.log('Final state check:', {
           removedNode: nodeId,
-          remainingNodes: Array.from(newSet),
-          hasQAData: currentQaData.length > 0,
-          qaDataContent: currentQaData
+          remainingPendingNodes: Array.from(newSet),
+          qaData,
+          hasQAData: qaData.length > 0,
         });
         
         // Only save if this was the last pending node and we have data
-        if (newSet.size === 0 && currentQaData.length > 0) {
-          console.log('All nodes completed, preparing to save QA tree with data:', currentQaData);
+        if (newSet.size === 0 && qaData.length > 0) {
+          console.log('All nodes completed and qaData exists, preparing to save:', qaData);
           // Increased delay to ensure all state updates are complete
           setTimeout(() => {
-            // Get the latest qaData state right before saving
-            console.log('Executing delayed save with final qaData:', currentQaData);
+            console.log('Executing delayed save with qaData:', qaData);
             saveQATree();
-          }, 3000); // Increased delay to 3 seconds
+          }, 3000);
         } else {
           console.log('Skipping auto-save:', {
             reason: newSet.size > 0 ? 'Still has pending nodes' : 'No QA data available',
             pendingNodesCount: newSet.size,
-            hasQAData: currentQaData.length > 0
+            hasQAData: qaData.length > 0,
+            qaDataContent: qaData
           });
         }
         return newSet;
