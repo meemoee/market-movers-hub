@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -241,7 +240,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       // Then, perform web scraping with the generated queries
       const response = await supabase.functions.invoke('web-scrape', {
-        body: { queries: queriesData.queries }
+        body: { query: description }
       })
 
       if (response.error) throw response.error
@@ -469,6 +468,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         if (done) break
       }
 
+      // Automatically save research once complete
+      if (results.length > 0 && analysis && streamingState.parsedData) {
+        await saveResearch();
+      }
+
     } catch (error) {
       console.error('Error in web research:', error)
       setError('Error occurred during research')
@@ -478,7 +482,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
+  // Note: The manual "Save Research" button has been removed because research is now auto-saved.
 
   return (
     <Card className="p-4 space-y-4">
@@ -490,12 +494,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         />
         
         <div className="flex gap-2">
-          {canSave && (
-            <Button onClick={saveResearch} variant="outline">
-              Save Research
-            </Button>
-          )}
-          
           {savedResearch && savedResearch.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -542,4 +540,3 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   )
 }
-
