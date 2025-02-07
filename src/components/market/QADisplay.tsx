@@ -173,14 +173,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      console.log('Saving QA tree to database...');
+      console.log('Saving QA tree to database with data:', qaData);
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
           user_id: user.user.id,
           market_id: marketId,
           title: marketQuestion,
-          tree_data: qaData as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
+          tree_data: qaData,
         })
         .select()
         .single();
@@ -193,7 +193,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         description: "Your QA tree has been saved successfully.",
       });
 
-      // Refetch the saved QA trees to update the dropdown
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
 
     } catch (error) {
@@ -208,12 +207,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
     console.log('Starting to process stream for node:', nodeId);
-    setPendingNodes(prev => {
-      const newSet = new Set(prev);
-      newSet.add(nodeId);
-      console.log('Added pending node:', nodeId, 'Current pending nodes:', Array.from(newSet));
-      return newSet;
-    });
+    setPendingNodes(prev => new Set(prev).add(nodeId));
 
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
@@ -223,78 +217,62 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        const decoded = new TextDecoder().decode(value);
-        buffer += decoded;
-
+        
+        buffer += new TextDecoder().decode(value);
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
+
         for (const part of parts) {
           const lines = part.split('\n').filter(line => line.startsWith('data: '));
           for (const line of lines) {
             const jsonStr = line.slice(6).trim();
             if (jsonStr === '[DONE]') continue;
+            
             const { content, citations } = cleanStreamContent(jsonStr);
             if (content) {
               accumulatedContent += content;
               accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-              const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
-                const preceding = string.slice(0, offset);
-                const lastLine = preceding.split('\n').pop() || '';
-                if (lastLine.trim().startsWith('###')) {
-                  return '\n';
-                }
-                return ' ';
-              });
-
-              const finalContent = fixedContent
-                .split('\n')
-                .map((line) => {
-                  if (/^(#{1,6}\s.*)/.test(line)) {
-                    return line.trim() + '\n';
-                  }
-                  return line;
+              const fixedContent = accumulatedContent
+                .replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
+                  const preceding = string.slice(0, offset);
+                  const lastLine = preceding.split('\n').pop() || '';
+                  return lastLine.trim().startsWith('###') ? '\n' : ' ';
                 })
+                .split('\n')
+                .map(line => /^(#{1,6}\s.*)/.test(line) ? line.trim() + '\n' : line)
                 .join('\n')
                 .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
-
-              console.log('Updated chunk for node', nodeId, ':', {
-                newContent: content,
-                fixedContent: finalContent,
-                citations,
-              });
 
               setStreamingContent(prev => ({
                 ...prev,
                 [nodeId]: {
-                  content: finalContent,
+                  content: fixedContent,
                   citations: accumulatedCitations,
                 },
               }));
 
-              // Create a new reference for qaData to ensure React detects the change
+              // Important: Create a new reference AND update the node
               setQaData(prevData => {
-                const updateNode = (nodes: QANode[]): QANode[] =>
-                  nodes.map(node => {
-                    if (node.id === nodeId) {
-                      console.log('Updating node in qaData:', nodeId, {
-                        content: finalContent,
-                        citations: accumulatedCitations
-                      });
-                      return {
-                        ...node,
-                        analysis: finalContent,
-                        citations: accumulatedCitations,
-                      };
-                    }
-                    if (node.children.length > 0) {
-                      return { ...node, children: updateNode(node.children) };
-                    }
-                    return node;
-                  });
+                const newData = prevData.map(node => {
+                  if (node.id === nodeId) {
+                    return {
+                      ...node,
+                      analysis: fixedContent,
+                      citations: accumulatedCitations,
+                    };
+                  }
+                  return {
+                    ...node,
+                    children: node.children.map(child => 
+                      child.id === nodeId 
+                        ? { ...child, analysis: fixedContent, citations: accumulatedCitations }
+                        : child
+                    ),
+                  };
+                });
                 
-                const newData = updateNode([...prevData]);
-                console.log('Updated qaData reference:', newData);
+                console.log('Updated qaData:', newData);
                 return newData;
               });
             }
@@ -305,41 +283,26 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       console.error('Error processing stream:', error);
       throw error;
     } finally {
-      console.log('Stream processing completed for node:', nodeId);
-      
-      // Ensure we have the latest qaData state
       setPendingNodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
         
-        // Get CURRENT qaData state when making the decision
-        setQaData(currentQaData => {
-          console.log('Final state check:', {
-            removedNode: nodeId,
-            remainingPendingNodes: Array.from(newSet),
-            currentQaData,
-          });
-          
-          // Save only if this was the last pending node and we have data
-          if (newSet.size === 0 && currentQaData.length > 0) {
-            console.log('All nodes completed and qaData exists, preparing to save:', currentQaData);
+        if (newSet.size === 0) {
+          console.log('All nodes completed, scheduling save with current qaData:', qaData);
+          // Use a ref to capture the current qaData
+          const currentQaData = qaData;
+          if (currentQaData.length > 0) {
             setTimeout(() => {
+              console.log('Executing save with qaData:', currentQaData);
               saveQATree();
             }, 3000);
-          } else {
-            console.log('Skipping auto-save:', {
-              reason: newSet.size > 0 ? 'Still has pending nodes' : 'No QA data available',
-              pendingNodesCount: newSet.size,
-              hasQaData: currentQaData.length > 0,
-              qaDataContent: currentQaData
-            });
           }
-          return currentQaData;
-        });
+        }
         
         return newSet;
       });
     }
+    
     return accumulatedContent;
   }
 
