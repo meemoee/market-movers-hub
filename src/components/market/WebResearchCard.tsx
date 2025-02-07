@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -107,7 +108,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   // Helper function to check markdown formatting completeness
-  // (Retained here in case it is needed elsewhere)
   const isCompleteMarkdown = (text: string): boolean => {
     const stack: string[] = [];
     let inCode = false;
@@ -254,7 +254,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const reader = new Response(response.data.body).body?.getReader()
           
           function push() {
-            reader?.read().then(({ done, value }) => {
+            reader?.read().then(({done, value}) => {
               if (done) {
                 setProgress(prev => [...prev, "Search Completed"])
                 controller.close()
@@ -279,7 +279,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       })
                     } else if (parsed.message) {
                       const message = parsed.message.replace(
-                        /processing query \d+\/\d+: (.*)/i,
+                        /processing query \d+\/\d+: (.*)/i, 
                         'Searching "$1"'
                       )
                       setProgress(prev => [...prev, message])
@@ -317,7 +317,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       })
 
+      if (analysisResponse.error) throw analysisResponse.error
+
       let accumulatedContent = '';
+      let incompleteMarkdown = '';
       
       const analysisStream = new ReadableStream({
         start(controller) {
@@ -325,8 +328,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const reader = new Response(analysisResponse.data.body).body?.getReader()
           
           function push() {
-            reader?.read().then(({ done, value }) => {
+            reader?.read().then(({done, value}) => {
               if (done) {
+                if (incompleteMarkdown) {
+                  accumulatedContent += incompleteMarkdown;
+                  setAnalysis(accumulatedContent);
+                }
                 controller.close()
                 return
               }
@@ -342,7 +349,18 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   try {
                     const { content } = cleanStreamContent(jsonStr)
                     if (content) {
-                      accumulatedContent += content;
+                      // Combine incomplete markdown with new content
+                      let updatedContent = incompleteMarkdown + content
+                      
+                      // If we don't have complete markdown formatting
+                      if (!isCompleteMarkdown(updatedContent)) {
+                        incompleteMarkdown = updatedContent;
+                        continue;
+                      }
+                      
+                      // Reset incomplete markdown and update content
+                      incompleteMarkdown = '';
+                      accumulatedContent += updatedContent;
                       setAnalysis(accumulatedContent);
                     }
                   } catch (e) {
@@ -384,7 +402,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const reader = new Response(insightsResponse.data.body).body?.getReader()
           
           function push() {
-            reader?.read().then(({ done, value }) => {
+            reader?.read().then(({done, value}) => {
               if (done) {
                 controller.close()
                 return
@@ -402,9 +420,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     const { content } = cleanStreamContent(jsonStr)
                     
                     if (content) {
+                      // Handle markdown formatting for insights
                       let updatedContent = incompleteInsightsMarkdown + content
                       
-                      // If markdown is not complete, accumulate partial content
                       if (!isCompleteMarkdown(updatedContent)) {
                         incompleteInsightsMarkdown = updatedContent
                         continue
@@ -451,11 +469,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         if (done) break
       }
 
-      // Automatically save research once complete
-      if (results.length > 0 && analysis) {
-        await saveResearch();
-      }
-
     } catch (error) {
       console.error('Error in web research:', error)
       setError('Error occurred during research')
@@ -465,7 +478,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  // Note: The manual "Save Research" button has been removed because research is now auto-saved.
+  const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
 
   return (
     <Card className="p-4 space-y-4">
@@ -477,6 +490,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         />
         
         <div className="flex gap-2">
+          {canSave && (
+            <Button onClick={saveResearch} variant="outline">
+              Save Research
+            </Button>
+          )}
+          
           {savedResearch && savedResearch.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -523,3 +542,4 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   )
 }
+
