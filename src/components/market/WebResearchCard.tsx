@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -202,7 +201,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       toast({
         title: "Research saved",
-        description: "Your research has been saved successfully.",
+        description: "Your research has been saved automatically.",
       })
 
       refetchSavedResearch()
@@ -210,7 +209,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.error('Error saving research:', error)
       toast({
         title: "Error",
-        description: "Failed to save research. Please try again.",
+        description: "Failed to save research automatically. Please try again.",
         variant: "destructive"
       })
     }
@@ -330,10 +329,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           function push() {
             reader?.read().then(({done, value}) => {
               if (done) {
-                if (incompleteMarkdown) {
-                  accumulatedContent += incompleteMarkdown;
-                  setAnalysis(accumulatedContent);
-                }
                 controller.close()
                 return
               }
@@ -480,6 +475,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
   const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
 
+  useEffect(() => {
+    // Auto-save when all content is ready
+    const shouldAutoSave = !isLoading && 
+                          !isAnalyzing && 
+                          results.length > 0 && 
+                          analysis && 
+                          streamingState.parsedData &&
+                          !error;
+
+    if (shouldAutoSave) {
+      saveResearch();
+    }
+  }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error]);
+
   return (
     <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -489,41 +498,33 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           onResearch={handleResearch}
         />
         
-        <div className="flex gap-2">
-          {canSave && (
-            <Button onClick={saveResearch} variant="outline">
-              Save Research
-            </Button>
-          )}
-          
-          {savedResearch && savedResearch.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[300px]">
-                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {savedResearch.map((research) => (
-                  <DropdownMenuItem 
-                    key={research.id}
-                    onClick={() => loadSavedResearch(research)}
-                    className="flex flex-col items-start"
-                  >
-                    <div className="font-medium truncate w-full">
-                      {research.query}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
+        {savedResearch && savedResearch.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                Saved Research <ChevronDown className="ml-2 h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[300px]">
+              <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {savedResearch.map((research) => (
+                <DropdownMenuItem 
+                  key={research.id}
+                  onClick={() => loadSavedResearch(research)}
+                  className="flex flex-col items-start"
+                >
+                  <div className="font-medium truncate w-full">
+                    {research.query}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
+                  </div>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
 
       {error && (
@@ -542,4 +543,3 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   )
 }
-

@@ -1,3 +1,4 @@
+
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileText, Globe } from "lucide-react"
 import { getFaviconUrl } from "@/utils/favicon"
@@ -14,6 +15,9 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
 
   return (
     <ScrollArea className="h-[200px] rounded-md border p-4">
+      <div className="mb-2 text-sm text-muted-foreground">
+        {results.length} {results.length === 1 ? 'source' : 'sources'} collected
+      </div>
       {results.map((result, index) => (
         <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
           <div className="flex items-center gap-2">
@@ -22,9 +26,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
               alt=""
               className="w-4 h-4"
               onError={(e) => {
-                // If favicon fails to load, render the appropriate icon component
                 const IconComponent = result.title ? FileText : Globe;
-                // Create SVG string from the icon's path data
                 const svgString = `data:image/svg+xml,${encodeURIComponent(
                   `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${
                     result.title 
