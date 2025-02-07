@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -97,6 +98,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
+  const [pendingNodes, setPendingNodes] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   // Query to fetch saved research
@@ -198,6 +200,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
+    setPendingNodes(prev => new Set([...prev, nodeId]));
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
     let buffer = '';
@@ -231,6 +234,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     } catch (error) {
       console.error('Error processing stream:', error);
       throw error;
+    } finally {
+      setPendingNodes(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(nodeId);
+        // If this was the last pending node, auto-save the QA tree
+        if (newSet.size === 0 && qaData.length > 0) {
+          saveQATree();
+        }
+        return newSet;
+      });
     }
     return accumulatedContent;
 
@@ -358,7 +371,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (!reader) throw new Error('Failed to create reader');
 
       const analysis = await processStream(reader, nodeId);
-      console.log('Completed analysis for node', nodeId, ':', analysis);
 
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
@@ -582,11 +594,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           <Button onClick={handleAnalyze} disabled={isAnalyzing}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze'}
           </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
         </div>
       </div>
       <ScrollArea className="h-[500px] pr-4">
