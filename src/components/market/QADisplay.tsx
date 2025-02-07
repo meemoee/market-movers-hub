@@ -272,8 +272,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                 },
               }));
 
-              // Update qaData in a way that preserves the entire tree structure
-              setQaData(prev => {
+              // Create a new reference for qaData to ensure React detects the change
+              setQaData(prevData => {
                 const updateNode = (nodes: QANode[]): QANode[] =>
                   nodes.map(node => {
                     if (node.id === nodeId) {
@@ -292,23 +292,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                     }
                     return node;
                   });
-                const updatedData = updateNode(prev);
-                console.log('Updated qaData:', updatedData);
-                return updatedData;
+                
+                const newData = updateNode([...prevData]);
+                console.log('Updated qaData reference:', newData);
+                return newData;
               });
             }
-          }
-        }
-      }
-      if (buffer.trim()) {
-        const lines = buffer.trim().split('\n').filter(line => line.startsWith('data: '));
-        for (const line of lines) {
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === '[DONE]') continue;
-          const { content, citations } = cleanStreamContent(jsonStr);
-          if (content) {
-            accumulatedContent += content;
-            accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
           }
         }
       }
@@ -317,34 +306,37 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       throw error;
     } finally {
       console.log('Stream processing completed for node:', nodeId);
+      
+      // Ensure we have the latest qaData state
       setPendingNodes(prev => {
         const newSet = new Set(prev);
         newSet.delete(nodeId);
         
-        // Get current qaData state for logging
-        console.log('Final state check:', {
-          removedNode: nodeId,
-          remainingPendingNodes: Array.from(newSet),
-          qaData,
-          hasQAData: qaData.length > 0,
+        // Get CURRENT qaData state when making the decision
+        setQaData(currentQaData => {
+          console.log('Final state check:', {
+            removedNode: nodeId,
+            remainingPendingNodes: Array.from(newSet),
+            currentQaData,
+          });
+          
+          // Save only if this was the last pending node and we have data
+          if (newSet.size === 0 && currentQaData.length > 0) {
+            console.log('All nodes completed and qaData exists, preparing to save:', currentQaData);
+            setTimeout(() => {
+              saveQATree();
+            }, 3000);
+          } else {
+            console.log('Skipping auto-save:', {
+              reason: newSet.size > 0 ? 'Still has pending nodes' : 'No QA data available',
+              pendingNodesCount: newSet.size,
+              hasQaData: currentQaData.length > 0,
+              qaDataContent: currentQaData
+            });
+          }
+          return currentQaData;
         });
         
-        // Only save if this was the last pending node and we have data
-        if (newSet.size === 0 && qaData.length > 0) {
-          console.log('All nodes completed and qaData exists, preparing to save:', qaData);
-          // Increased delay to ensure all state updates are complete
-          setTimeout(() => {
-            console.log('Executing delayed save with qaData:', qaData);
-            saveQATree();
-          }, 3000);
-        } else {
-          console.log('Skipping auto-save:', {
-            reason: newSet.size > 0 ? 'Still has pending nodes' : 'No QA data available',
-            pendingNodesCount: newSet.size,
-            hasQAData: qaData.length > 0,
-            qaDataContent: qaData
-          });
-        }
         return newSet;
       });
     }
