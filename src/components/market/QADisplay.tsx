@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -19,7 +18,7 @@ import {
 } from "@/components/ui/select"
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
-import "katex/dist/katex.min.css";
+import "katex/dist/katex.min.css";  // Import KaTeX CSS
 
 interface QANode {
   id: string;
@@ -98,7 +97,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
-  const [pendingNodes, setPendingNodes] = useState<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   // Query to fetch saved research
@@ -164,39 +162,29 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   async function saveQATree() {
-    console.log('Attempting to save QA tree with data:', qaData);
-    if (!qaData || qaData.length === 0) {
-      console.log('No QA data to save, skipping save operation');
-      return;
-    }
-
     try {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      // Convert QANode[] to Json type expected by Supabase
-      const treeDataJson = JSON.parse(JSON.stringify(qaData)) as Database['public']['Tables']['qa_trees']['Insert']['tree_data'];
-
-      console.log('Saving QA tree to database with data:', treeDataJson);
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
           user_id: user.user.id,
           market_id: marketId,
           title: marketQuestion,
-          tree_data: treeDataJson,
+          tree_data: qaData as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
         })
         .select()
         .single();
 
       if (error) throw error;
 
-      console.log('QA tree saved successfully:', data);
       toast({
         title: "Analysis saved",
         description: "Your QA tree has been saved successfully.",
       });
 
+      // Refetch the saved QA trees to update the dropdown
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
 
     } catch (error) {
@@ -210,9 +198,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
-    console.log('Starting to process stream for node:', nodeId);
-    setPendingNodes(prev => new Set(prev).add(nodeId));
-
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
     let buffer = '';
@@ -221,93 +206,105 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
-        buffer += new TextDecoder().decode(value);
+        const decoded = new TextDecoder().decode(value);
+        buffer += decoded;
+
+        // Split by double newline (paragraph breaks)
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
-
         for (const part of parts) {
-          const lines = part.split('\n').filter(line => line.startsWith('data: '));
-          for (const line of lines) {
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === '[DONE]') continue;
-            
-            const { content, citations } = cleanStreamContent(jsonStr);
-            if (content) {
-              accumulatedContent += content;
-              accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-
-              const fixedContent = accumulatedContent
-                .replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
-                  const preceding = string.slice(0, offset);
-                  const lastLine = preceding.split('\n').pop() || '';
-                  return lastLine.trim().startsWith('###') ? '\n' : ' ';
-                })
-                .split('\n')
-                .map(line => /^(#{1,6}\s.*)/.test(line) ? line.trim() + '\n' : line)
-                .join('\n')
-                .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
-
-              setStreamingContent(prev => ({
-                ...prev,
-                [nodeId]: {
-                  content: fixedContent,
-                  citations: accumulatedCitations,
-                },
-              }));
-
-              // Important: Create a new reference AND update the node
-              setQaData(prevData => {
-                const newData = prevData.map(node => {
-                  if (node.id === nodeId) {
-                    return {
-                      ...node,
-                      analysis: fixedContent,
-                      citations: accumulatedCitations,
-                    };
-                  }
-                  return {
-                    ...node,
-                    children: node.children.map(child => 
-                      child.id === nodeId 
-                        ? { ...child, analysis: fixedContent, citations: accumulatedCitations }
-                        : child
-                    ),
-                  };
-                });
-                
-                console.log('Updated qaData:', newData);
-                return newData;
-              });
-            }
+          // If the last line is incomplete, skip it until we have more data.
+          const lines = part.split('\n');
+          if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
+            buffer = lines.pop() + '\n\n' + buffer;
+            const completePart = lines.join('\n');
+            processPart(completePart);
+          } else {
+            processPart(part);
           }
         }
+      }
+      if (buffer.trim() && isLineComplete(buffer.trim())) {
+        processPart(buffer);
+        buffer = '';
       }
     } catch (error) {
       console.error('Error processing stream:', error);
       throw error;
-    } finally {
-      setPendingNodes(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(nodeId);
-        
-        if (newSet.size === 0) {
-          console.log('All nodes completed, scheduling save with current qaData:', qaData);
-          // Use a ref to capture the current qaData
-          const currentQaData = qaData;
-          if (currentQaData.length > 0) {
-            setTimeout(() => {
-              console.log('Executing save with qaData:', currentQaData);
-              saveQATree();
-            }, 3000);
-          }
-        }
-        
-        return newSet;
-      });
     }
-    
     return accumulatedContent;
+
+    function processPart(text: string) {
+      // Process only lines starting with "data: "
+      const lines = text.split('\n').filter(line => line.startsWith('data: '));
+      for (const line of lines) {
+        const jsonStr = line.slice(6).trim();
+        if (jsonStr === '[DONE]') continue;
+        const { content, citations } = cleanStreamContent(jsonStr);
+        if (content) {
+          accumulatedContent += content;
+          accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+
+          // Use a function replacement to only join lines that are not header lines.
+          const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
+            const preceding = string.slice(0, offset);
+            const lastLine = preceding.split('\n').pop() || '';
+            if (lastLine.trim().startsWith('###')) {
+              return '\n';
+            }
+            return ' ';
+          });
+
+          // Instead of using a regex that might misplace newlines, split the content into lines,
+          // then force a double newline after any line that starts with a header.
+          const finalContent = fixedContent
+            .split('\n')
+            .map((line) => {
+              if (/^(#{1,6}\s.*)/.test(line)) {
+                // If the line is a header, ensure it ends with a blank line.
+                return line.trim() + '\n';
+              }
+              return line;
+            })
+            .join('\n')
+            // Now, ensure that header lines are separated by a blank line.
+            .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
+
+          // Log the processed content
+          console.log('Updated chunk for node', nodeId, ':', {
+            newContent: content,
+            fixedContent: finalContent,
+            citations,
+          });
+
+          // Update state with the final content.
+          setStreamingContent(prev => ({
+            ...prev,
+            [nodeId]: {
+              content: finalContent,
+              citations: accumulatedCitations,
+            },
+          }));
+          setQaData(prev => {
+            const updateNode = (nodes: QANode[]): QANode[] =>
+              nodes.map(node => {
+                if (node.id === nodeId) {
+                  return {
+                    ...node,
+                    analysis: finalContent,
+                    citations: accumulatedCitations,
+                  };
+                }
+                if (node.children.length > 0) {
+                  return { ...node, children: updateNode(node.children) };
+                }
+                return node;
+              });
+            return updateNode(prev);
+          });
+        }
+      }
+    }
   }
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
@@ -361,6 +358,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       if (!reader) throw new Error('Failed to create reader');
 
       const analysis = await processStream(reader, nodeId);
+      console.log('Completed analysis for node', nodeId, ':', analysis);
 
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
@@ -584,6 +582,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           <Button onClick={handleAnalyze} disabled={isAnalyzing}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze'}
           </Button>
+          {qaData.length > 0 && !isAnalyzing && (
+            <Button onClick={saveQATree} variant="outline">
+              Save Analysis
+            </Button>
+          )}
         </div>
       </div>
       <ScrollArea className="h-[500px] pr-4">
