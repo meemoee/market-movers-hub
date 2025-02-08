@@ -126,7 +126,7 @@ export default function RightSidebar() {
     {
       icon: Zap,
       question: "Turn your 💬 into 💰",
-      answer: "Hunchex will find relevant markets to what you say and track their performance over time.",
+      answer: "Hunchex will find market positions that correspond to the comments you make, allowing you to track their truthfulness over time.",
       subPoints: [
         { icon: TrendingUp, text: "Track price changes in real-time" },
         { icon: DollarSign, text: "Identify profitable opportunities" }
@@ -134,8 +134,8 @@ export default function RightSidebar() {
     },
     {
       icon: TrendingUp,
-      question: "What are Top Movers?",
-      answer: "Markets with significant price changes",
+      question: "Your ability to predict depends on the data you have access to.",
+      answer: "Hunchex lets you buy and sell your unique market insights, so you can make a living from telling the truth.",
       subPoints: [
         { icon: Zap, text: "Filter by time intervals" },
         { icon: DollarSign, text: "Sort by price movement %" }
