@@ -143,8 +143,8 @@ export default function RightSidebar() {
     },
     {
       icon: DollarSign,
-      question: "How to trade?",
-      answer: "Simple steps to start trading",
+      question: "Data ownership. For real.",
+      answer: "Sell your data to those who need it to understand the future. ",
       subPoints: [
         { icon: TrendingUp, text: "Login to your account" },
         { icon: Zap, text: "Select a market and place orders" }
