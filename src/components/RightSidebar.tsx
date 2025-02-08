@@ -159,7 +159,7 @@ export default function RightSidebar() {
           <>
             <div className="mb-16">
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
-                A New Market
+                A New Kind of Market
               </h2>
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] text-transparent bg-clip-text">
                 For a New Age
