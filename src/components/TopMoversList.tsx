@@ -120,7 +120,7 @@ export default function TopMoversList({
       mover.event_title
     ].filter(Boolean).join(' ').toLowerCase();
 
-    return searchTerms.every(term => searchableText.includes(term));
+    return searchTerms.some(term => searchableText.includes(term));
   });
 
   useEffect(() => {
