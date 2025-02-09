@@ -106,13 +106,16 @@ serve(async (req) => {
           market.description,
           market.event_title
         ].filter(Boolean).join(' ').toLowerCase();
-        
-        return searchTerms.every(term => searchableText.includes(term));
+
+        return searchTerms.every(term => {
+          // Make search more flexible by looking for partial matches
+          return searchableText.includes(term);
+        });
       });
-      console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
+      console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}" with search terms:`, searchTerms);
     }
 
-    // Then sort all filtered results
+    // Then sort all filtered results by absolute price change
     allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
 
     // Finally apply pagination to the filtered and sorted results
