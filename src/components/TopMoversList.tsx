@@ -61,11 +61,11 @@ export interface TopMover {
 }
 
 interface TopMoversListProps {
-  topMovers: TopMover[];
-  error: string | null;
   timeIntervals: readonly TimeInterval[];
   selectedInterval: string;
   onIntervalChange: (interval: string) => void;
+  topMovers: TopMover[];
+  error: string | null;
   onLoadMore: () => void;
   hasMore: boolean;
   openMarketsOnly: boolean;
@@ -209,7 +209,7 @@ export default function TopMoversList({
 
       <TransactionDialog
         selectedMarket={selectedMarket}
-        topMover={selectedMarket ? filteredTopMovers.find(m => m.market_id === selectedMarket.id) : null}
+        topMover={selectedTopMover}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
         isOrderBookLoading={isOrderBookLoading}

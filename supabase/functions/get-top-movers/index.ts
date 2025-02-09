@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
@@ -30,10 +31,9 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20 } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}`);
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '' } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}`);
     
-    // The interval is now passed directly in minutes
     const redisInterval = interval;
 
     // Get latest key for this interval
@@ -91,10 +91,28 @@ serve(async (req) => {
     // Sort by absolute price change
     allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
 
-    // Apply filters if needed
+    // Apply filters
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
       console.log(`Filtered to ${allMarkets.length} open markets for interval ${redisInterval}`);
+    }
+
+    // Apply search if query exists
+    if (searchQuery) {
+      const searchTerms = searchQuery.toLowerCase().split(' ');
+      allMarkets = allMarkets.filter(market => {
+        const searchableText = [
+          market.question,
+          market.subtitle,
+          market.yes_sub_title,
+          market.no_sub_title,
+          market.description,
+          market.event_title
+        ].filter(Boolean).join(' ').toLowerCase();
+        
+        return searchTerms.some(term => searchableText.includes(term));
+      });
+      console.log(`Found ${allMarkets.length} markets matching search query`);
     }
 
     // Apply pagination

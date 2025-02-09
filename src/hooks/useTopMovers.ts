@@ -1,3 +1,4 @@
+
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -33,16 +34,17 @@ interface TopMover {
   volume_change_percentage: number;
 }
 
-export function useTopMovers(interval: string, openOnly: boolean, page: number = 1) {
+export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
   return useQuery({
-    queryKey: ['topMovers', interval, openOnly, page],
+    queryKey: ['topMovers', interval, openOnly, page, searchQuery],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
           interval,
           openOnly,
           page,
-          limit: 20
+          limit: 20,
+          searchQuery
         }
       })
 
