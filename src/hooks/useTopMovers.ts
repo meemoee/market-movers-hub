@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client'
 interface TopMoversResponse {
   data: TopMover[];
   hasMore: boolean;
+  total?: number;
 }
 
 interface TopMover {
@@ -38,6 +39,8 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
   return useQuery({
     queryKey: ['topMovers', interval, openOnly, page, searchQuery],
     queryFn: async () => {
+      console.log('Fetching top movers with:', { interval, openOnly, page, searchQuery });
+      
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
           interval,
@@ -48,17 +51,23 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         }
       })
 
-      if (error) throw error
+      if (error) {
+        console.error('Error fetching top movers:', error);
+        throw error;
+      }
       
-      // Ensure we return a valid response even if data is null
+      console.log('Received top movers response:', data);
+      
       return {
         data: data?.data || [],
-        hasMore: data?.hasMore || false
+        hasMore: data?.hasMore || false,
+        total: data?.total
       }
     },
-    // Prevent refetching while loading more
-    staleTime: 30000,
-    // Use placeholderData instead of keepPreviousData
-    placeholderData: (previousData) => previousData
+    // Remove placeholderData to ensure fresh data on search
+    staleTime: 30000, // Keep 30s stale time for normal navigation
+    // Add retry for better error handling
+    retry: 2,
+    retryDelay: 1000,
   })
 }

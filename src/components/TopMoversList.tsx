@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
@@ -7,6 +8,7 @@ import { TopMoversContent } from './market/TopMoversContent';
 import { TransactionDialog } from './market/TransactionDialog';
 import { MarketStatsBento } from './market/MarketStatsBento';
 import { InsightPostBox } from './market/InsightPostBox';
+import { useDebounce } from '@/hooks/use-debounce';
 
 interface TimeInterval {
   label: string;
@@ -105,23 +107,8 @@ export default function TopMoversList({
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const { toast } = useToast();
-
-  const filteredTopMovers = topMovers.filter(mover => {
-    if (!searchQuery.trim()) return true;
-    
-    const searchTerms = searchQuery.toLowerCase().split(' ');
-    const searchableText = [
-      mover.question,
-      mover.subtitle,
-      mover.yes_sub_title,
-      mover.no_sub_title,
-      mover.description,
-      mover.event_title
-    ].filter(Boolean).join(' ').toLowerCase();
-
-    return searchTerms.some(term => searchableText.includes(term));
-  });
 
   useEffect(() => {
     if (!selectedMarket) {
@@ -196,7 +183,7 @@ export default function TopMoversList({
           <TopMoversContent
             isLoading={isLoading || false}
             error={error}
-            topMovers={filteredTopMovers}
+            topMovers={topMovers}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
