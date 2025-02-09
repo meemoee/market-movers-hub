@@ -1,10 +1,9 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Header from "@/components/Header";
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
-import { useTopMovers } from '@/hooks/useTopMovers';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Glow } from "@/components/ui/glow";
 
@@ -31,49 +30,12 @@ const TIME_INTERVALS = [
 export default function Index() {
   const [selectedInterval, setSelectedInterval] = useState<string>("1440");
   const [openMarketsOnly, setOpenMarketsOnly] = useState(true);
-  const [page, setPage] = useState(1);
-  const [allMovers, setAllMovers] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const isMobile = useIsMobile();
-  
-  const { data, isLoading, error, isFetching } = useTopMovers(
-    selectedInterval,
-    openMarketsOnly,
-    page,
-    searchQuery
-  );
-
-  useEffect(() => {
-    setPage(1);
-    setAllMovers([]);
-  }, [selectedInterval, openMarketsOnly, searchQuery]); // Reset when search changes
-
-  useEffect(() => {
-    if (data?.data) {
-      if (page === 1) {
-        setAllMovers(data.data);
-      } else {
-        const newMovers = [...allMovers];
-        data.data.forEach(mover => {
-          if (!newMovers.some(existing => existing.market_id === mover.market_id)) {
-            newMovers.push(mover);
-          }
-        });
-        setAllMovers(newMovers);
-      }
-    }
-  }, [data?.data, page]);
 
   const handleIntervalChange = (newInterval: string) => {
     if (newInterval !== selectedInterval) {
       setSelectedInterval(newInterval);
-    }
-  };
-
-  const handleLoadMore = () => {
-    if (!isFetching) {
-      setPage(prev => prev + 1);
     }
   };
 
@@ -118,18 +80,11 @@ export default function Index() {
 
           <div className={`flex-1 min-w-0 min-h-screen`}>
             <TopMoversList
-              topMovers={allMovers}
-              error={error?.message || null}
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
               onIntervalChange={handleIntervalChange}
-              onLoadMore={handleLoadMore}
-              hasMore={data?.hasMore || false}
               openMarketsOnly={openMarketsOnly}
               onOpenMarketsChange={setOpenMarketsOnly}
-              isLoading={isLoading && page === 1}
-              isLoadingMore={isFetching && page > 1}
-              onSearch={setSearchQuery}
             />
           </div>
         </div>
