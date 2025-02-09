@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import Header from "@/components/Header";
 import RightSidebar from "@/components/RightSidebar";
@@ -33,18 +34,20 @@ export default function Index() {
   const [page, setPage] = useState(1);
   const [allMovers, setAllMovers] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const isMobile = useIsMobile();
   
   const { data, isLoading, error, isFetching } = useTopMovers(
     selectedInterval,
     openMarketsOnly,
-    page
+    page,
+    searchQuery
   );
 
   useEffect(() => {
     setPage(1);
     setAllMovers([]);
-  }, [selectedInterval, openMarketsOnly]);
+  }, [selectedInterval, openMarketsOnly, searchQuery]); // Reset when search changes
 
   useEffect(() => {
     if (data?.data) {
@@ -126,6 +129,7 @@ export default function Index() {
               onOpenMarketsChange={setOpenMarketsOnly}
               isLoading={isLoading && page === 1}
               isLoadingMore={isFetching && page > 1}
+              onSearch={setSearchQuery}
             />
           </div>
         </div>
