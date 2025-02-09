@@ -95,9 +95,10 @@ serve(async (req) => {
     }
 
     // Apply search if query exists (before sorting and pagination)
+    let searchResults = [...allMarkets];
     if (searchQuery) {
       const searchTerms = searchQuery.toLowerCase().split(' ');
-      allMarkets = allMarkets.filter(market => {
+      searchResults = allMarkets.filter(market => {
         const searchableText = [
           market.question,
           market.subtitle,
@@ -107,21 +108,38 @@ serve(async (req) => {
           market.event_title
         ].filter(Boolean).join(' ').toLowerCase();
 
-        return searchTerms.every(term => {
-          // Make search more flexible by looking for partial matches
-          return searchableText.includes(term);
-        });
+        return searchTerms.every(term => searchableText.includes(term));
       });
-      console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}" with search terms:`, searchTerms);
+
+      // If we have very few results after search, we should include markets without recent price changes
+      if (searchResults.length < limit) {
+        // Add markets that match the search but haven't had price changes
+        // They'll get a price_change of 0
+        const noChangeMarkets = searchResults.map(m => ({
+          ...m,
+          price_change: 0,
+          volume_change: 0,
+          volume_change_percentage: 0,
+          final_last_traded_price: m.final_last_traded_price || 0,
+          final_best_ask: m.final_best_ask || 0,
+          final_best_bid: m.final_best_bid || 0,
+          final_volume: m.final_volume || 0,
+          initial_last_traded_price: m.initial_last_traded_price || 0,
+          initial_volume: m.initial_volume || 0
+        }));
+        searchResults = noChangeMarkets;
+      }
+      
+      console.log(`Found ${searchResults.length} markets matching search query "${searchQuery}" with search terms:`, searchTerms);
     }
 
     // Then sort all filtered results by absolute price change
-    allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
+    searchResults.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
 
     // Finally apply pagination to the filtered and sorted results
     const start = (page - 1) * limit;
-    const paginatedMarkets = allMarkets.slice(start, start + limit);
-    const hasMore = allMarkets.length > start + limit;
+    const paginatedMarkets = searchResults.slice(start, start + limit);
+    const hasMore = searchResults.length > start + limit;
     console.log(`Returning ${paginatedMarkets.length} markets for interval ${redisInterval}, hasMore: ${hasMore}`);
 
     await redis.close();
@@ -130,7 +148,7 @@ serve(async (req) => {
       JSON.stringify({
         data: paginatedMarkets,
         hasMore,
-        total: allMarkets.length
+        total: searchResults.length
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
