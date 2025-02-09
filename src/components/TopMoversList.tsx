@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import { Search } from 'lucide-react';
+import { Input } from './ui/input';
 import { TopMoversHeader } from './market/TopMoversHeader';
 import { TopMoversContent } from './market/TopMoversContent';
 import { TransactionDialog } from './market/TransactionDialog';
@@ -102,7 +104,24 @@ export default function TopMoversList({
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
+
+  const filteredTopMovers = topMovers.filter(mover => {
+    if (!searchQuery.trim()) return true;
+    
+    const searchTerms = searchQuery.toLowerCase().split(' ');
+    const searchableText = [
+      mover.question,
+      mover.subtitle,
+      mover.yes_sub_title,
+      mover.no_sub_title,
+      mover.description,
+      mover.event_title
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return searchTerms.every(term => searchableText.includes(term));
+  });
 
   useEffect(() => {
     if (!selectedMarket) {
@@ -143,6 +162,21 @@ export default function TopMoversList({
 
   return (
     <div className="flex flex-col w-full">
+      <div className="sticky top-14 z-40 w-full">
+        <div className="flex items-center w-full px-4 py-3 bg-background/95 backdrop-blur-sm border-b">
+          <div className="relative flex-1 max-w-2xl mx-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search markets..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 bg-background"
+            />
+          </div>
+        </div>
+      </div>
+
       <TopMoversHeader
         timeIntervals={timeIntervals}
         selectedInterval={selectedInterval}
@@ -162,7 +196,7 @@ export default function TopMoversList({
           <TopMoversContent
             isLoading={isLoading || false}
             error={error}
-            topMovers={topMovers}
+            topMovers={filteredTopMovers}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
@@ -175,7 +209,7 @@ export default function TopMoversList({
 
       <TransactionDialog
         selectedMarket={selectedMarket}
-        topMover={selectedTopMover}
+        topMover={selectedMarket ? filteredTopMovers.find(m => m.market_id === selectedMarket.id) : null}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
         isOrderBookLoading={isOrderBookLoading}
