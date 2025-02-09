@@ -107,9 +107,9 @@ serve(async (req) => {
           market.event_title
         ].filter(Boolean).join(' ').toLowerCase();
         
-        return searchTerms.some(term => searchableText.includes(term));
+        return searchTerms.every(term => searchableText.includes(term));
       });
-      console.log(`Found ${allMarkets.length} markets matching search query`);
+      console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
     }
 
     // Then sort all filtered results

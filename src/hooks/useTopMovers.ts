@@ -64,9 +64,7 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         total: data?.total
       }
     },
-    // Remove placeholderData to ensure fresh data on search
-    staleTime: 30000, // Keep 30s stale time for normal navigation
-    // Add retry for better error handling
+    staleTime: 30000,
     retry: 2,
     retryDelay: 1000,
   })
