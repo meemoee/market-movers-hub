@@ -47,7 +47,7 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
           openOnly,
           page,
           limit: 20,
-          searchQuery
+          searchQuery: searchQuery.trim()  // Trim whitespace from search
         }
       })
 
@@ -64,8 +64,9 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         total: data?.total
       }
     },
-    staleTime: 30000,
+    staleTime: 0, // Set to 0 to ensure fresh data on search
     retry: 2,
     retryDelay: 1000,
+    refetchOnWindowFocus: false // Prevent refetching on window focus
   })
 }
