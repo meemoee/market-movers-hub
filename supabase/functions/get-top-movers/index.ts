@@ -88,16 +88,13 @@ serve(async (req) => {
     }
     console.log(`Retrieved ${allMarkets.length} markets total for interval ${redisInterval}`);
 
-    // Sort by absolute price change
-    allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
-
-    // Apply filters
+    // First apply filters (openOnly and search)
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
       console.log(`Filtered to ${allMarkets.length} open markets for interval ${redisInterval}`);
     }
 
-    // Apply search if query exists
+    // Apply search if query exists (before sorting and pagination)
     if (searchQuery) {
       const searchTerms = searchQuery.toLowerCase().split(' ');
       allMarkets = allMarkets.filter(market => {
@@ -115,7 +112,10 @@ serve(async (req) => {
       console.log(`Found ${allMarkets.length} markets matching search query`);
     }
 
-    // Apply pagination
+    // Then sort all filtered results
+    allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
+
+    // Finally apply pagination to the filtered and sorted results
     const start = (page - 1) * limit;
     const paginatedMarkets = allMarkets.slice(start, start + limit);
     const hasMore = allMarkets.length > start + limit;
