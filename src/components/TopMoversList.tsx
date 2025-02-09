@@ -108,12 +108,14 @@ export default function TopMoversList({
 
   // Use appropriate query based on whether we're searching or viewing top movers
   const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, page, '');
-  const searchQuery = useMarketSearch(debouncedSearch, page);
+  const marketSearchQuery = useMarketSearch(debouncedSearch, page);
   
   const isSearching = debouncedSearch.length > 0;
-  const activeQuery = isSearching ? searchQuery : topMoversQuery;
+  const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
 
-  const { data, isLoading, error } = activeQuery;
+  const data = activeQuery.data;
+  const isLoading = activeQuery.isLoading;
+  const error = activeQuery.error;
   const topMovers = data?.data || [];
   const hasMore = data?.hasMore || false;
 
