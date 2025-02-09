@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
@@ -74,6 +73,7 @@ interface TopMoversListProps {
   onOpenMarketsChange: (value: boolean) => void;
   isLoading?: boolean;
   isLoadingMore?: boolean;
+  onSearch: (query: string) => void;
 }
 
 interface OrderBookData {
@@ -96,6 +96,7 @@ export default function TopMoversList({
   onOpenMarketsChange,
   isLoading,
   isLoadingMore,
+  onSearch,
 }: TopMoversListProps) {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
@@ -109,6 +110,10 @@ export default function TopMoversList({
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const { toast } = useToast();
+
+  useEffect(() => {
+    onSearch(debouncedSearch);
+  }, [debouncedSearch, onSearch]);
 
   useEffect(() => {
     if (!selectedMarket) {
