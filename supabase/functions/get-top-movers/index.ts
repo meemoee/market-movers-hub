@@ -88,7 +88,7 @@ serve(async (req) => {
     }
     console.log(`Retrieved ${allMarkets.length} markets total for interval ${redisInterval}`);
 
-    // First apply filters (openOnly and search)
+    // First apply filters (openOnly)
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
       console.log(`Filtered to ${allMarkets.length} open markets for interval ${redisInterval}`);
@@ -126,7 +126,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({
         data: paginatedMarkets,
-        hasMore
+        hasMore,
+        total: allMarkets.length
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
