@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
@@ -8,6 +9,8 @@ import { TransactionDialog } from './market/TransactionDialog';
 import { MarketStatsBento } from './market/MarketStatsBento';
 import { InsightPostBox } from './market/InsightPostBox';
 import { useDebounce } from '@/hooks/use-debounce';
+import { useTopMovers } from '@/hooks/useTopMovers';
+import { useMarketSearch } from '@/hooks/useMarketSearch';
 
 interface TimeInterval {
   label: string;
@@ -65,15 +68,8 @@ interface TopMoversListProps {
   timeIntervals: readonly TimeInterval[];
   selectedInterval: string;
   onIntervalChange: (interval: string) => void;
-  topMovers: TopMover[];
-  error: string | null;
-  onLoadMore: () => void;
-  hasMore: boolean;
   openMarketsOnly: boolean;
   onOpenMarketsChange: (value: boolean) => void;
-  isLoading?: boolean;
-  isLoadingMore?: boolean;
-  onSearch: (query: string) => void;
 }
 
 interface OrderBookData {
@@ -88,15 +84,8 @@ export default function TopMoversList({
   timeIntervals = TIME_INTERVALS,
   selectedInterval,
   onIntervalChange,
-  topMovers,
-  error,
-  onLoadMore,
-  hasMore,
   openMarketsOnly,
   onOpenMarketsChange,
-  isLoading,
-  isLoadingMore,
-  onSearch,
 }: TopMoversListProps) {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
@@ -109,11 +98,24 @@ export default function TopMoversList({
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const [page, setPage] = useState(1);
   const { toast } = useToast();
 
+  // Reset page when search query changes
   useEffect(() => {
-    onSearch(debouncedSearch);
-  }, [debouncedSearch, onSearch]);
+    setPage(1);
+  }, [debouncedSearch]);
+
+  // Use appropriate query based on whether we're searching or viewing top movers
+  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, page, '');
+  const searchQuery = useMarketSearch(debouncedSearch, page);
+  
+  const isSearching = debouncedSearch.length > 0;
+  const activeQuery = isSearching ? searchQuery : topMoversQuery;
+
+  const { data, isLoading, error } = activeQuery;
+  const topMovers = data?.data || [];
+  const hasMore = data?.hasMore || false;
 
   useEffect(() => {
     if (!selectedMarket) {
@@ -146,6 +148,10 @@ export default function TopMoversList({
       }
       return newSet;
     });
+  };
+
+  const handleLoadMore = () => {
+    setPage(prev => prev + 1);
   };
 
   const selectedTopMover = selectedMarket 
@@ -187,14 +193,14 @@ export default function TopMoversList({
 
           <TopMoversContent
             isLoading={isLoading || false}
-            error={error}
+            error={error ? String(error) : null}
             topMovers={topMovers}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
-            onLoadMore={onLoadMore}
+            onLoadMore={handleLoadMore}
             hasMore={hasMore}
-            isLoadingMore={isLoadingMore}
+            isLoadingMore={isLoading && page > 1}
           />
         </div>
       </div>
