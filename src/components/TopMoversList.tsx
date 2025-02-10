@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
 import { Input } from './ui/input';
@@ -102,12 +101,11 @@ export default function TopMoversList({
 
   // Use infinite query for top movers
   const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
-  const marketSearchQuery = useMarketSearch(debouncedSearch, 1); // Keep simple pagination for search
-  
+  const marketSearchQuery = useMarketSearch(debouncedSearch, 1);
+
   const isSearching = debouncedSearch.length > 0;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
 
-  // For infinite query data
   const allTopMovers = isSearching 
     ? marketSearchQuery.data?.data || []
     : topMoversQuery.data?.pages.flatMap(page => page.data) || [];
