@@ -36,7 +36,7 @@ interface TopMover {
 }
 
 export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
-  return useQuery({
+  return useQuery<TopMoversResponse>({
     queryKey: ['topMovers', interval, openOnly, page, searchQuery],
     queryFn: async ({ queryKey }) => {
       console.log('Fetching top movers with:', { interval, openOnly, page, searchQuery });
@@ -58,30 +58,25 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
       
       console.log('Received top movers response:', data);
       
-      // Return new data in a way that can be merged with previous data
       return {
         data: data?.data || [],
         hasMore: data?.hasMore || false,
         total: data?.total
       }
     },
-    placeholderData: (previousData) => previousData, // Keep showing previous data while loading
-    select: (newData, { queryKey }) => {
-      const [, , , page] = queryKey;
-      // If it's the first page, return as is
-      if (page === 1) {
-        return newData;
-      }
-      // For subsequent pages, merge with previous data
+    placeholderData: (previousData) => previousData,
+    select: (data) => {
+      // Always return properly typed data
       return {
-        data: [...(previousData?.data || []), ...newData.data],
-        hasMore: newData.hasMore,
-        total: newData.total
+        data: data.data || [],
+        hasMore: data.hasMore || false,
+        total: data.total
       };
     },
-    staleTime: 0, // Set to 0 to ensure fresh data on search
+    staleTime: 0,
     retry: 2,
     retryDelay: 1000,
-    refetchOnWindowFocus: false // Prevent refetching on window focus
+    refetchOnWindowFocus: false
   })
 }
+
