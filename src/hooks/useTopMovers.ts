@@ -64,15 +64,17 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         total: data?.total
       }
     },
-    placeholderData: (previousData) => previousData,
-    select: (currentData: TopMoversResponse): TopMoversResponse => {
-      const queryKeyPage = page;
+    select: (currentData: TopMoversResponse, { queryKey }): TopMoversResponse => {
+      const [, , , queryKeyPage] = queryKey;
+      
       if (queryKeyPage === 1) {
         return currentData;
       }
 
-      // Access the previous data through placeholderData
-      const previousData = queryKeyPage > 1 ? placeholderData as TopMoversResponse : undefined;
+      const previousData = useQuery<TopMoversResponse>({
+        queryKey: ['topMovers', interval, openOnly, queryKeyPage - 1, searchQuery],
+        enabled: false
+      }).data;
 
       if (!previousData) {
         return currentData;
