@@ -1,8 +1,11 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { connect } from 'https://deno.land/x/redis@v0.29.0/mod.ts';
 
 const POLY_API_URL = 'https://clob.polymarket.com';
+const REDIS_CACHE_TTL = 60; // 1 minute cache TTL
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -20,6 +23,28 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Connect to Redis
+    const redis = await connect({
+      hostname: Deno.env.get('REDIS_HOST') || '',
+      port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
+      password: Deno.env.get('REDIS_PASSWORD'),
+    });
+
+    // Check cache first
+    const cacheKey = `price_history:${marketId}:${interval}`;
+    const cachedData = await redis.get(cacheKey);
+    
+    if (cachedData) {
+      console.log('Cache hit for:', cacheKey);
+      await redis.close();
+      return new Response(
+        cachedData,
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Cache miss for:', cacheKey);
 
     // Initialize Supabase client
     const supabaseClient = createClient(
@@ -140,6 +165,12 @@ serve(async (req) => {
       t: point.t * 1000, // Convert to milliseconds
       y: typeof point.p === 'string' ? parseFloat(point.p) : point.p
     }));
+
+    // Cache the formatted data
+    await redis.set(cacheKey, JSON.stringify(formattedData), { ex: REDIS_CACHE_TTL });
+    console.log('Cached data for:', cacheKey);
+
+    await redis.close();
 
     return new Response(
       JSON.stringify(formattedData),
