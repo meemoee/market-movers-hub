@@ -38,7 +38,7 @@ interface TopMover {
 export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
   return useQuery({
     queryKey: ['topMovers', interval, openOnly, page, searchQuery],
-    queryFn: async () => {
+    queryFn: async ({ queryKey }) => {
       console.log('Fetching top movers with:', { interval, openOnly, page, searchQuery });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
@@ -64,9 +64,11 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         total: data?.total
       }
     },
+    placeholderData: (previousData) => previousData, // Keep showing previous data while loading
     staleTime: 0, // Set to 0 to ensure fresh data on search
     retry: 2,
     retryDelay: 1000,
     refetchOnWindowFocus: false // Prevent refetching on window focus
   })
 }
+
