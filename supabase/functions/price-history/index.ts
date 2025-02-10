@@ -53,32 +53,6 @@ serve(async (req) => {
       );
     }
 
-    // Try Redis connection only after we know the market exists
-    try {
-      redis = await connect({
-        hostname: Deno.env.get('REDIS_HOST') || '',
-        port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
-        password: Deno.env.get('REDIS_PASSWORD'),
-      });
-
-      // Check cache first
-      const cacheKey = `price_history:${marketId}:${interval}`;
-      const cachedData = await redis.get(cacheKey);
-      
-      if (cachedData) {
-        console.log('Cache hit for:', cacheKey);
-        return new Response(
-          cachedData,
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log('Cache miss for:', cacheKey);
-    } catch (redisError) {
-      console.error('Redis connection error:', redisError);
-      // Continue without caching if Redis fails
-    }
-
     console.log('Market data:', market);
 
     // Parse clobtokenids with better error handling
@@ -113,6 +87,34 @@ serve(async (req) => {
         }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Try Redis connection and cache lookup before API call
+    try {
+      const redisUrl = Deno.env.get('REDIS_URL');
+      if (!redisUrl) {
+        throw new Error('REDIS_URL not configured');
+      }
+
+      redis = new Redis(redisUrl);
+
+      // Generate timestamp-based key matching top movers format
+      const timestamp = Math.floor(Date.now() / 1000);
+      const cacheKey = `priceHistory:${marketId}:${interval}:${timestamp}`;
+      const cachedData = await redis.get(cacheKey);
+      
+      if (cachedData) {
+        console.log('Cache hit for:', cacheKey);
+        return new Response(
+          cachedData,
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Cache miss for:', cacheKey);
+    } catch (redisError) {
+      console.error('Redis error:', redisError);
+      // Continue without caching if Redis fails
     }
 
     // Calculate time range based on interval
@@ -174,12 +176,18 @@ serve(async (req) => {
     // Try to cache the formatted data if Redis is connected
     if (redis) {
       try {
-        const cacheKey = `price_history:${marketId}:${interval}`;
-        await redis.set(cacheKey, JSON.stringify(formattedData), { ex: REDIS_CACHE_TTL });
+        const timestamp = Math.floor(Date.now() / 1000);
+        const cacheKey = `priceHistory:${marketId}:${interval}:${timestamp}`;
+        
+        // Store the data and set TTL
+        await redis.setex(cacheKey, REDIS_CACHE_TTL, JSON.stringify(formattedData));
+        
+        // Update latest timestamp pointer
+        await redis.set(`priceHistory:${marketId}:${interval}:latest`, timestamp);
+        
         console.log('Cached data for:', cacheKey);
       } catch (cacheError) {
         console.error('Error caching data:', cacheError);
-        // Continue even if caching fails
       }
     }
 
