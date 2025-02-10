@@ -36,7 +36,7 @@ interface TopMover {
 }
 
 export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
-  return useQuery<TopMoversResponse, Error, TopMoversResponse>({
+  return useQuery<TopMoversResponse, Error>({
     queryKey: ['topMovers', interval, openOnly, page, searchQuery],
     queryFn: async ({ queryKey }) => {
       console.log('Fetching top movers with:', { interval, openOnly, page, searchQuery });
@@ -64,26 +64,25 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         total: data?.total
       }
     },
-    select: (currentData: TopMoversResponse, { queryKey }): TopMoversResponse => {
-      const [, , , queryKeyPage] = queryKey;
-      
-      if (queryKeyPage === 1) {
-        return currentData;
+    select: (data: TopMoversResponse) => {
+      if (page === 1) {
+        return data;
       }
 
-      const previousData = useQuery<TopMoversResponse>({
-        queryKey: ['topMovers', interval, openOnly, queryKeyPage - 1, searchQuery],
+      // Get the previous data from the cache
+      const queryClient = useQuery<TopMoversResponse>({
+        queryKey: ['topMovers', interval, openOnly, page - 1, searchQuery],
         enabled: false
       }).data;
 
-      if (!previousData) {
-        return currentData;
+      if (!queryClient) {
+        return data;
       }
 
       return {
-        data: [...previousData.data, ...currentData.data],
-        hasMore: currentData.hasMore,
-        total: currentData.total
+        data: [...queryClient.data, ...data.data],
+        hasMore: data.hasMore,
+        total: data.total
       };
     },
     staleTime: 0,
