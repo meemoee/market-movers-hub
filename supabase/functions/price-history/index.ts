@@ -13,6 +13,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let redis;
   try {
     const { marketId, interval = '1d' } = await req.json();
     console.log('Request parameters:', { marketId, interval });
@@ -24,29 +25,7 @@ serve(async (req) => {
       );
     }
 
-    // Connect to Redis
-    const redis = await connect({
-      hostname: Deno.env.get('REDIS_HOST') || '',
-      port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
-      password: Deno.env.get('REDIS_PASSWORD'),
-    });
-
-    // Check cache first
-    const cacheKey = `price_history:${marketId}:${interval}`;
-    const cachedData = await redis.get(cacheKey);
-    
-    if (cachedData) {
-      console.log('Cache hit for:', cacheKey);
-      await redis.close();
-      return new Response(
-        cachedData,
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('Cache miss for:', cacheKey);
-
-    // Initialize Supabase client
+    // Initialize Supabase client first to check if market exists
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
@@ -72,6 +51,32 @@ serve(async (req) => {
         JSON.stringify({ error: 'Market not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Try Redis connection only after we know the market exists
+    try {
+      redis = await connect({
+        hostname: Deno.env.get('REDIS_HOST') || '',
+        port: parseInt(Deno.env.get('REDIS_PORT') || '6379'),
+        password: Deno.env.get('REDIS_PASSWORD'),
+      });
+
+      // Check cache first
+      const cacheKey = `price_history:${marketId}:${interval}`;
+      const cachedData = await redis.get(cacheKey);
+      
+      if (cachedData) {
+        console.log('Cache hit for:', cacheKey);
+        return new Response(
+          cachedData,
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log('Cache miss for:', cacheKey);
+    } catch (redisError) {
+      console.error('Redis connection error:', redisError);
+      // Continue without caching if Redis fails
     }
 
     console.log('Market data:', market);
@@ -166,11 +171,17 @@ serve(async (req) => {
       y: typeof point.p === 'string' ? parseFloat(point.p) : point.p
     }));
 
-    // Cache the formatted data
-    await redis.set(cacheKey, JSON.stringify(formattedData), { ex: REDIS_CACHE_TTL });
-    console.log('Cached data for:', cacheKey);
-
-    await redis.close();
+    // Try to cache the formatted data if Redis is connected
+    if (redis) {
+      try {
+        const cacheKey = `price_history:${marketId}:${interval}`;
+        await redis.set(cacheKey, JSON.stringify(formattedData), { ex: REDIS_CACHE_TTL });
+        console.log('Cached data for:', cacheKey);
+      } catch (cacheError) {
+        console.error('Error caching data:', cacheError);
+        // Continue even if caching fails
+      }
+    }
 
     return new Response(
       JSON.stringify(formattedData),
@@ -186,5 +197,14 @@ serve(async (req) => {
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // Clean up Redis connection if it exists
+    if (redis) {
+      try {
+        await redis.close();
+      } catch (closeError) {
+        console.error('Error closing Redis connection:', closeError);
+      }
+    }
   }
 });
