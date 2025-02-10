@@ -97,18 +97,40 @@ export default function TopMoversList({
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchPage, setSearchPage] = useState(1);
   const debouncedSearch = useDebounce(searchQuery, 300);
   const { toast } = useToast();
 
   // Use infinite query for top movers
   const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
-  const marketSearchQuery = useMarketSearch(debouncedSearch, 1);
+  const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
+
+  // Reset search page when search query changes
+  useEffect(() => {
+    setSearchPage(1);
+  }, [debouncedSearch]);
 
   const isSearching = debouncedSearch.length > 0;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
 
+  // For search results, we need to maintain a list of all loaded markets
+  const [loadedSearchResults, setLoadedSearchResults] = useState<TopMover[]>([]);
+
+  // Update loaded search results when we get new data
+  useEffect(() => {
+    if (isSearching && marketSearchQuery.data) {
+      if (searchPage === 1) {
+        // Reset results for new search
+        setLoadedSearchResults(marketSearchQuery.data.data);
+      } else {
+        // Append new results for pagination
+        setLoadedSearchResults(prev => [...prev, ...marketSearchQuery.data.data]);
+      }
+    }
+  }, [isSearching, marketSearchQuery.data, searchPage]);
+
   const allTopMovers = isSearching 
-    ? marketSearchQuery.data?.data || []
+    ? loadedSearchResults
     : topMoversQuery.data?.pages.flatMap(page => page.data) || [];
   
   const hasMore = isSearching 
@@ -150,10 +172,10 @@ export default function TopMoversList({
 
   const handleLoadMore = () => {
     if (isSearching) {
-      // For search, we use regular pagination by refetching with the next page
-      marketSearchQuery.refetch();
+      // For search, increment page number and fetch next page
+      setSearchPage(prev => prev + 1);
     } else {
-      // For infinite scroll, we use fetchNextPage
+      // For infinite scroll, use fetchNextPage
       topMoversQuery.fetchNextPage();
     }
   };

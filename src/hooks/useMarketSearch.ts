@@ -11,7 +11,7 @@ interface MarketSearchResponse {
 
 export function useMarketSearch(searchQuery: string = '', page: number = 1) {
   return useQuery({
-    queryKey: ['marketSearch', searchQuery, page],
+    queryKey: ['marketSearch', searchQuery, page], // Include page in queryKey
     queryFn: async () => {
       console.log('Searching markets with:', { searchQuery, page });
       
