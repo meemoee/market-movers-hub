@@ -26,8 +26,7 @@ export function TopMoversContent({
   hasMore,
   isLoadingMore,
 }: TopMoversContentProps) {
-  // Show loading state only on initial load, not when loading more
-  if (isLoading && !isLoadingMore) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin" />
@@ -103,7 +102,7 @@ export function TopMoversContent({
         ))}
       </div>
 
-      {/* Load More Button Container */}
+      {/* Fixed height container for load more button to prevent layout shifts */}
       <div className="h-16 flex items-center justify-center mt-3">
         {hasMore && (
           <button
