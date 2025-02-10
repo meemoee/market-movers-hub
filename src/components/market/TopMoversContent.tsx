@@ -26,10 +26,13 @@ export function TopMoversContent({
   hasMore,
   isLoadingMore,
 }: TopMoversContentProps) {
-  // Only show the loading spinner for initial load, not during pagination
-  if (isLoading && !isLoadingMore && topMovers.length === 0) {
+  // Check if this is the initial load with no data
+  const isInitialLoading = isLoading && !isLoadingMore && topMovers.length === 0;
+  
+  // Only show the initial loading state when we have no data
+  if (isInitialLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
+      <div className="min-h-[500px] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     );
@@ -37,15 +40,16 @@ export function TopMoversContent({
 
   if (error) {
     return (
-      <div className="text-center py-12 text-destructive">
+      <div className="min-h-[500px] flex items-center justify-center text-destructive">
         {error}
       </div>
     );
   }
 
-  if (topMovers.length === 0) {
+  // Only show no markets message if we're not loading and truly have no data
+  if (!isLoading && !isLoadingMore && topMovers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 space-y-4">
+      <div className="min-h-[500px] flex flex-col items-center justify-center space-y-4">
         <p className="text-lg text-muted-foreground">
           No market movers found for the selected time period
         </p>
@@ -57,7 +61,7 @@ export function TopMoversContent({
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full min-h-[500px]">
       <div className="space-y-3">
         {topMovers.map((mover) => (
           <div key={mover.market_id}>
@@ -103,7 +107,6 @@ export function TopMoversContent({
         ))}
       </div>
 
-      {/* Fixed height container for load more button to prevent layout shifts */}
       <div className="h-16 flex items-center justify-center mt-3">
         {hasMore && (
           <button
