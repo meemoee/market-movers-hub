@@ -111,8 +111,13 @@ serve(async (req) => {
         
         if (cachedData) {
           console.log('Cache hit for:', cacheKey);
+          const data = JSON.parse(cachedData);
+          // Add lastUpdated timestamp to the response
+          data.forEach(point => {
+            point.lastUpdated = parseInt(latestKey);
+          });
           return new Response(
-            cachedData,
+            JSON.stringify(data),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -175,15 +180,16 @@ serve(async (req) => {
     }
 
     const data = await response.json();
+    const timestamp = Math.floor(Date.now() / 1000);
     const formattedData = data.history.map((point: { t: number; p: string | number }) => ({
       t: point.t * 1000, // Convert to milliseconds
-      y: typeof point.p === 'string' ? parseFloat(point.p) : point.p
+      y: typeof point.p === 'string' ? parseFloat(point.p) : point.p,
+      lastUpdated: timestamp
     }));
 
     // Try to cache the formatted data if Redis is connected
     if (redis) {
       try {
-        const timestamp = Math.floor(Date.now() / 1000);
         const cacheKey = `priceHistory:${marketId}:${interval}:${timestamp}`;
         
         // Store the data and set TTL
@@ -223,4 +229,3 @@ serve(async (req) => {
     }
   }
 });
-

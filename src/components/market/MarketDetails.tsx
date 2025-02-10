@@ -23,7 +23,7 @@ export function MarketDetails({
     queryKey: ['priceHistory', marketId, selectedInterval],
     queryFn: async () => {
       console.log('Fetching price history for market:', marketId);
-      const response = await supabase.functions.invoke<{ t: string; y: number }[]>('price-history', {
+      const response = await supabase.functions.invoke<{ t: string; y: number; lastUpdated?: number }[]>('price-history', {
         body: JSON.stringify({ marketId, interval: selectedInterval })
       });
 
@@ -33,10 +33,13 @@ export function MarketDetails({
       }
       
       console.log('Price history response:', response.data);
-      return response.data.map(point => ({
-        time: new Date(point.t).getTime(),
-        price: point.y * 100
-      }));
+      return {
+        points: response.data.map(point => ({
+          time: new Date(point.t).getTime(),
+          price: point.y * 100
+        })),
+        lastUpdated: response.data[0]?.lastUpdated
+      };
     },
     enabled: !!marketId
   });
@@ -67,18 +70,37 @@ export function MarketDetails({
 
   const isLoading = isPriceLoading || isEventsLoading;
 
+  const formatLastUpdated = (timestamp?: number) => {
+    if (!timestamp) return null;
+    const date = new Date(timestamp * 1000);
+    return new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      month: 'short',
+      day: 'numeric'
+    }).format(date);
+  };
+
   return (
     <div className="space-y-4">
       {/* Price History Section */}
       <div>
-        <div className="text-sm text-muted-foreground mb-2">Price History</div>
+        <div className="flex flex-col gap-1">
+          <div className="text-sm text-muted-foreground">Price History</div>
+          {priceHistory?.lastUpdated && (
+            <div className="text-xs text-muted-foreground">
+              Last updated: {formatLastUpdated(priceHistory.lastUpdated)}
+            </div>
+          )}
+        </div>
         {isLoading ? (
           <div className="h-[300px] flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
-        ) : priceHistory && priceHistory.length > 0 ? (
+        ) : priceHistory?.points && priceHistory.points.length > 0 ? (
           <PriceChart
-            data={priceHistory}
+            data={priceHistory.points}
             events={marketEvents || []}
             selectedInterval={selectedInterval}
             onIntervalSelect={setSelectedInterval}
