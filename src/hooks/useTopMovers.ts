@@ -36,7 +36,7 @@ interface TopMover {
 }
 
 export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
-  return useQuery<TopMoversResponse>({
+  return useQuery<TopMoversResponse, Error, TopMoversResponse>({
     queryKey: ['topMovers', interval, openOnly, page, searchQuery],
     queryFn: async ({ queryKey }) => {
       console.log('Fetching top movers with:', { interval, openOnly, page, searchQuery });
@@ -65,32 +65,28 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
       }
     },
     placeholderData: (previousData) => previousData,
-    select: (data, { queryKey }) => {
-      const [, , , currentPage] = queryKey;
-      const previousData = queryKey.meta?.previousData as TopMoversResponse | undefined;
-
-      // If it's the first page or we don't have previous data, return as is
-      if (currentPage === 1 || !previousData) {
-        return {
-          data: data.data || [],
-          hasMore: data.hasMore || false,
-          total: data.total
-        };
+    select: (currentData: TopMoversResponse): TopMoversResponse => {
+      const queryKeyPage = page;
+      if (queryKeyPage === 1) {
+        return currentData;
       }
 
-      // For subsequent pages, merge with previous data
+      // Access the previous data through placeholderData
+      const previousData = queryKeyPage > 1 ? placeholderData as TopMoversResponse : undefined;
+
+      if (!previousData) {
+        return currentData;
+      }
+
       return {
-        data: [...(previousData.data || []), ...(data.data || [])],
-        hasMore: data.hasMore || false,
-        total: data.total
+        data: [...previousData.data, ...currentData.data],
+        hasMore: currentData.hasMore,
+        total: currentData.total
       };
     },
     staleTime: 0,
     retry: 2,
     retryDelay: 1000,
-    refetchOnWindowFocus: false,
-    meta: {
-      previousData: undefined as TopMoversResponse | undefined
-    }
+    refetchOnWindowFocus: false
   })
 }
