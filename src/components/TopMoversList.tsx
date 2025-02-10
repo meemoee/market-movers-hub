@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
@@ -115,8 +116,8 @@ export default function TopMoversList({
   const data = activeQuery.data;
   const isLoading = activeQuery.isLoading;
   const error = activeQuery.error;
-  const topMovers = data?.data ?? [];
-  const hasMore = data?.hasMore ?? false;
+  const topMovers = data?.data || [];
+  const hasMore = data?.hasMore || false;
 
   useEffect(() => {
     if (!selectedMarket) {

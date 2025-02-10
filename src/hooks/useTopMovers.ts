@@ -1,5 +1,5 @@
 
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
 interface TopMoversResponse {
@@ -36,11 +36,9 @@ interface TopMover {
 }
 
 export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
-  const queryClient = useQueryClient();
-
-  return useQuery<TopMoversResponse, Error>({
+  return useQuery({
     queryKey: ['topMovers', interval, openOnly, page, searchQuery],
-    queryFn: async ({ queryKey }) => {
+    queryFn: async () => {
       console.log('Fetching top movers with:', { interval, openOnly, page, searchQuery });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
@@ -66,29 +64,9 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         total: data?.total
       }
     },
-    select: (data) => {
-      if (page === 1) {
-        return data;
-      }
-
-      // Get the previous data from the cache using queryClient
-      const previousData = queryClient.getQueryData<TopMoversResponse>(
-        ['topMovers', interval, openOnly, page - 1, searchQuery]
-      );
-
-      if (!previousData) {
-        return data;
-      }
-
-      return {
-        data: [...previousData.data, ...data.data],
-        hasMore: data.hasMore,
-        total: data.total
-      };
-    },
-    staleTime: 0,
+    staleTime: 0, // Set to 0 to ensure fresh data on search
     retry: 2,
     retryDelay: 1000,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false // Prevent refetching on window focus
   })
 }
