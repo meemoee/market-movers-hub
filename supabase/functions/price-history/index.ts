@@ -96,22 +96,29 @@ serve(async (req) => {
         throw new Error('REDIS_URL not configured');
       }
 
-      redis = new Redis(redisUrl);
+      redis = await connect({
+        hostname: new URL(redisUrl).hostname,
+        port: parseInt(new URL(redisUrl).port),
+        password: new URL(redisUrl).password,
+        tls: redisUrl.startsWith('rediss://')
+      });
 
       // Generate timestamp-based key matching top movers format
-      const timestamp = Math.floor(Date.now() / 1000);
-      const cacheKey = `priceHistory:${marketId}:${interval}:${timestamp}`;
-      const cachedData = await redis.get(cacheKey);
-      
-      if (cachedData) {
-        console.log('Cache hit for:', cacheKey);
-        return new Response(
-          cachedData,
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      const latestKey = await redis.get(`priceHistory:${marketId}:${interval}:latest`);
+      if (latestKey) {
+        const cacheKey = `priceHistory:${marketId}:${interval}:${latestKey}`;
+        const cachedData = await redis.get(cacheKey);
+        
+        if (cachedData) {
+          console.log('Cache hit for:', cacheKey);
+          return new Response(
+            cachedData,
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
 
-      console.log('Cache miss for:', cacheKey);
+      console.log('Cache miss, fetching from Polymarket API');
     } catch (redisError) {
       console.error('Redis error:', redisError);
       // Continue without caching if Redis fails
@@ -216,3 +223,4 @@ serve(async (req) => {
     }
   }
 });
+
