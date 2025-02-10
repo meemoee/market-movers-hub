@@ -1,5 +1,5 @@
 
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
 interface TopMoversResponse {
@@ -36,6 +36,8 @@ interface TopMover {
 }
 
 export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
+  const queryClient = useQueryClient();
+
   return useQuery<TopMoversResponse, Error>({
     queryKey: ['topMovers', interval, openOnly, page, searchQuery],
     queryFn: async ({ queryKey }) => {
@@ -64,23 +66,22 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
         total: data?.total
       }
     },
-    select: (data: TopMoversResponse) => {
+    select: (data) => {
       if (page === 1) {
         return data;
       }
 
-      // Get the previous data from the cache
-      const queryClient = useQuery<TopMoversResponse>({
-        queryKey: ['topMovers', interval, openOnly, page - 1, searchQuery],
-        enabled: false
-      }).data;
+      // Get the previous data from the cache using queryClient
+      const previousData = queryClient.getQueryData<TopMoversResponse>(
+        ['topMovers', interval, openOnly, page - 1, searchQuery]
+      );
 
-      if (!queryClient) {
+      if (!previousData) {
         return data;
       }
 
       return {
-        data: [...queryClient.data, ...data.data],
+        data: [...previousData.data, ...data.data],
         hasMore: data.hasMore,
         total: data.total
       };
