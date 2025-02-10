@@ -1,3 +1,4 @@
+
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
 import { TopMover } from '../TopMoversList';
@@ -25,7 +26,8 @@ export function TopMoversContent({
   hasMore,
   isLoadingMore,
 }: TopMoversContentProps) {
-  if (isLoading) {
+  // Only show initial loading state when there's no data
+  if (isLoading && topMovers.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin" />
@@ -56,65 +58,69 @@ export function TopMoversContent({
 
   return (
     <div className="w-full">
-      {topMovers.map((mover) => (
-        <div key={mover.market_id} className="w-full mb-3 first:mt-0">
-          <MarketCard
-            market={{
-              market_id: mover.market_id,
-              question: mover.question,
-              price: mover.final_last_traded_price,
-              price_change: mover.price_change,
-              volume: mover.final_volume,
-              image: mover.image || '/placeholder.svg',
-              yes_sub_title: mover.yes_sub_title,
-              final_last_traded_price: mover.final_last_traded_price,
-              final_best_ask: mover.final_best_ask,
-              final_best_bid: mover.final_best_bid,
-              description: mover.description,
-              outcomes: mover.outcomes || ["Yes", "No"],
-            }}
-            isExpanded={expandedMarkets.has(mover.market_id)}
-            onToggleExpand={() => toggleMarket(mover.market_id)}
-            onBuy={() => {
-              const clobTokenId = mover.clobtokenids?.[0];
-              if (clobTokenId) {
-                setSelectedMarket({ 
-                  id: mover.market_id, 
-                  action: 'buy', 
-                  clobTokenId 
-                });
-              }
-            }}
-            onSell={() => {
-              const clobTokenId = mover.clobtokenids?.[1];
-              if (clobTokenId) {
-                setSelectedMarket({ 
-                  id: mover.market_id, 
-                  action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
-                  clobTokenId 
-                });
-              }
-            }}
-          />
-        </div>
-      ))}
+      <div className="w-full space-y-3">
+        {topMovers.map((mover) => (
+          <div key={mover.market_id} className="w-full first:mt-0">
+            <MarketCard
+              market={{
+                market_id: mover.market_id,
+                question: mover.question,
+                price: mover.final_last_traded_price,
+                price_change: mover.price_change,
+                volume: mover.final_volume,
+                image: mover.image || '/placeholder.svg',
+                yes_sub_title: mover.yes_sub_title,
+                final_last_traded_price: mover.final_last_traded_price,
+                final_best_ask: mover.final_best_ask,
+                final_best_bid: mover.final_best_bid,
+                description: mover.description,
+                outcomes: mover.outcomes || ["Yes", "No"],
+              }}
+              isExpanded={expandedMarkets.has(mover.market_id)}
+              onToggleExpand={() => toggleMarket(mover.market_id)}
+              onBuy={() => {
+                const clobTokenId = mover.clobtokenids?.[0];
+                if (clobTokenId) {
+                  setSelectedMarket({ 
+                    id: mover.market_id, 
+                    action: 'buy', 
+                    clobTokenId 
+                  });
+                }
+              }}
+              onSell={() => {
+                const clobTokenId = mover.clobtokenids?.[1];
+                if (clobTokenId) {
+                  setSelectedMarket({ 
+                    id: mover.market_id, 
+                    action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
+                    clobTokenId 
+                  });
+                }
+              }}
+            />
+          </div>
+        ))}
+      </div>
 
       {hasMore && (
-        <button
-          onClick={onLoadMore}
-          disabled={isLoadingMore}
-          className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
-            flex items-center justify-center gap-2 disabled:opacity-50 mt-3"
-        >
-          {isLoadingMore ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Loading more...
-            </>
-          ) : (
-            'Load More'
-          )}
-        </button>
+        <div className="mt-3 h-[52px]">
+          <button
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
+              flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isLoadingMore ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading more...
+              </>
+            ) : (
+              'Load More'
+            )}
+          </button>
+        </div>
       )}
     </div>
   );

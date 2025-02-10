@@ -1,5 +1,5 @@
 
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
 interface TopMoversResponse {
@@ -35,19 +35,19 @@ interface TopMover {
   volume_change_percentage: number;
 }
 
-export function useTopMovers(interval: string, openOnly: boolean, page: number = 1, searchQuery: string = '') {
-  return useQuery({
-    queryKey: ['topMovers', interval, openOnly, page, searchQuery],
-    queryFn: async () => {
-      console.log('Fetching top movers with:', { interval, openOnly, page, searchQuery });
+export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '') {
+  return useInfiniteQuery({
+    queryKey: ['topMovers', interval, openOnly, searchQuery],
+    queryFn: async ({ pageParam = 1 }) => {
+      console.log('Fetching top movers with:', { interval, openOnly, page: pageParam, searchQuery });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
           interval,
           openOnly,
-          page,
+          page: pageParam,
           limit: 20,
-          searchQuery: searchQuery.trim()  // Trim whitespace from search
+          searchQuery: searchQuery.trim()
         }
       })
 
@@ -61,12 +61,15 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
       return {
         data: data?.data || [],
         hasMore: data?.hasMore || false,
-        total: data?.total
+        total: data?.total,
+        nextPage: data?.hasMore ? pageParam + 1 : undefined
       }
     },
-    staleTime: 0, // Set to 0 to ensure fresh data on search
+    getNextPageParam: (lastPage) => lastPage.nextPage,
+    initialPageParam: 1,
+    staleTime: 0,
     retry: 2,
     retryDelay: 1000,
-    refetchOnWindowFocus: false // Prevent refetching on window focus
+    refetchOnWindowFocus: false
   })
 }

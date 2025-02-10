@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
 import { Input } from './ui/input';
@@ -98,26 +98,23 @@ export default function TopMoversList({
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
-  const [page, setPage] = useState(1);
   const { toast } = useToast();
 
-  // Reset page when search query changes
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch]);
-
-  // Use appropriate query based on whether we're searching or viewing top movers
-  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, page, '');
-  const marketSearchQuery = useMarketSearch(debouncedSearch, page);
+  // Use infinite query for top movers
+  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
+  const marketSearchQuery = useMarketSearch(debouncedSearch, 1); // Keep simple pagination for search
   
   const isSearching = debouncedSearch.length > 0;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
 
-  const data = activeQuery.data;
-  const isLoading = activeQuery.isLoading;
-  const error = activeQuery.error;
-  const topMovers = data?.data || [];
-  const hasMore = data?.hasMore || false;
+  // For infinite query data
+  const allTopMovers = isSearching 
+    ? marketSearchQuery.data?.data || []
+    : topMoversQuery.data?.pages.flatMap(page => page.data) || [];
+  
+  const hasMore = isSearching 
+    ? marketSearchQuery.data?.hasMore || false 
+    : topMoversQuery.hasNextPage || false;
 
   useEffect(() => {
     if (!selectedMarket) {
@@ -153,11 +150,17 @@ export default function TopMoversList({
   };
 
   const handleLoadMore = () => {
-    setPage(prev => prev + 1);
+    if (isSearching) {
+      // Handle regular pagination for search
+      marketSearchQuery.fetchNextPage();
+    } else {
+      // Handle infinite loading for top movers
+      topMoversQuery.fetchNextPage();
+    }
   };
 
   const selectedTopMover = selectedMarket 
-    ? topMovers.find(m => m.market_id === selectedMarket.id)
+    ? allTopMovers.find(m => m.market_id === selectedMarket.id)
     : null;
 
   return (
@@ -194,15 +197,19 @@ export default function TopMoversList({
           <MarketStatsBento selectedInterval={selectedInterval} />
 
           <TopMoversContent
-            isLoading={isLoading || false}
-            error={error ? String(error) : null}
-            topMovers={topMovers}
+            isLoading={!isSearching && !topMoversQuery.data && topMoversQuery.isLoading}
+            error={activeQuery.error ? String(activeQuery.error) : null}
+            topMovers={allTopMovers}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
-            isLoadingMore={isLoading && page > 1}
+            isLoadingMore={
+              isSearching 
+                ? marketSearchQuery.isFetching 
+                : topMoversQuery.isFetchingNextPage
+            }
           />
         </div>
       </div>
