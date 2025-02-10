@@ -26,11 +26,8 @@ export function TopMoversContent({
   hasMore,
   isLoadingMore,
 }: TopMoversContentProps) {
-  // Check if this is the initial load with no data
-  const isInitialLoading = isLoading && !isLoadingMore && topMovers.length === 0;
-  
-  // Only show the initial loading state when we have no data
-  if (isInitialLoading) {
+  // Only show initial loading state when we have no data
+  if (isLoading && !isLoadingMore && topMovers.length === 0) {
     return (
       <div className="min-h-[500px] flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin" />
@@ -61,7 +58,7 @@ export function TopMoversContent({
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full min-h-[500px]">
       <div className="space-y-3">
         {topMovers.map((mover) => (
           <div key={mover.market_id}>
