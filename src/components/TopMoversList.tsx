@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
@@ -149,10 +150,10 @@ export default function TopMoversList({
 
   const handleLoadMore = () => {
     if (isSearching) {
-      // Handle regular pagination for search
-      marketSearchQuery.fetchNextPage();
+      // For search, we use regular pagination by refetching with the next page
+      marketSearchQuery.refetch();
     } else {
-      // Handle infinite loading for top movers
+      // For infinite scroll, we use fetchNextPage
       topMoversQuery.fetchNextPage();
     }
   };
