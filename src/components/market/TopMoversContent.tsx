@@ -2,6 +2,7 @@
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
 import { TopMover } from '../TopMoversList';
+import { useRef, useEffect, useState } from 'react';
 
 interface TopMoversContentProps {
   isLoading: boolean;
@@ -26,13 +27,23 @@ export function TopMoversContent({
   hasMore,
   isLoadingMore,
 }: TopMoversContentProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerHeight, setContainerHeight] = useState<number>(500);
+  
+  // Update container height when content changes
+  useEffect(() => {
+    if (containerRef.current && !isLoading && !isLoadingMore) {
+      setContainerHeight(Math.max(500, containerRef.current.scrollHeight));
+    }
+  }, [topMovers, isLoading, isLoadingMore]);
+
   // Check if this is the initial load with no data
   const isInitialLoading = isLoading && !isLoadingMore && topMovers.length === 0;
   
   // Only show the initial loading state when we have no data
   if (isInitialLoading) {
     return (
-      <div className="min-h-[500px] flex items-center justify-center">
+      <div style={{ height: containerHeight }} className="flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin" />
       </div>
     );
@@ -40,7 +51,7 @@ export function TopMoversContent({
 
   if (error) {
     return (
-      <div className="min-h-[500px] flex items-center justify-center text-destructive">
+      <div style={{ height: containerHeight }} className="flex items-center justify-center text-destructive">
         {error}
       </div>
     );
@@ -49,7 +60,7 @@ export function TopMoversContent({
   // Only show no markets message if we're not loading and truly have no data
   if (!isLoading && !isLoadingMore && topMovers.length === 0) {
     return (
-      <div className="min-h-[500px] flex flex-col items-center justify-center space-y-4">
+      <div style={{ height: containerHeight }} className="flex flex-col items-center justify-center space-y-4">
         <p className="text-lg text-muted-foreground">
           No market movers found for the selected time period
         </p>
@@ -61,7 +72,7 @@ export function TopMoversContent({
   }
 
   return (
-    <div className="w-full min-h-[500px]">
+    <div ref={containerRef} style={{ height: containerHeight }} className="w-full">
       <div className="space-y-3">
         {topMovers.map((mover) => (
           <div key={mover.market_id}>
