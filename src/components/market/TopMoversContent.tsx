@@ -26,7 +26,8 @@ export function TopMoversContent({
   hasMore,
   isLoadingMore,
 }: TopMoversContentProps) {
-  if (isLoading) {
+  // Only show the loading spinner for initial load, not during pagination
+  if (isLoading && !isLoadingMore && topMovers.length === 0) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin" />
