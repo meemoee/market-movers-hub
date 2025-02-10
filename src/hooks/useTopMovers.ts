@@ -65,10 +65,22 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
       }
     },
     placeholderData: (previousData) => previousData,
-    select: (data) => {
-      // Always return properly typed data
+    select: (data, { queryKey }) => {
+      const [, , , currentPage] = queryKey;
+      const previousData = queryKey.meta?.previousData as TopMoversResponse | undefined;
+
+      // If it's the first page or we don't have previous data, return as is
+      if (currentPage === 1 || !previousData) {
+        return {
+          data: data.data || [],
+          hasMore: data.hasMore || false,
+          total: data.total
+        };
+      }
+
+      // For subsequent pages, merge with previous data
       return {
-        data: data.data || [],
+        data: [...(previousData.data || []), ...(data.data || [])],
         hasMore: data.hasMore || false,
         total: data.total
       };
@@ -76,7 +88,9 @@ export function useTopMovers(interval: string, openOnly: boolean, page: number =
     staleTime: 0,
     retry: 2,
     retryDelay: 1000,
-    refetchOnWindowFocus: false
+    refetchOnWindowFocus: false,
+    meta: {
+      previousData: undefined as TopMoversResponse | undefined
+    }
   })
 }
-
