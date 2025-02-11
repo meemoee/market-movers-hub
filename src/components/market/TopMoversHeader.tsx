@@ -30,7 +30,7 @@ export function TopMoversHeader({
   const isMobile = useIsMobile();
 
   return (
-    <Card className="rounded-none border-x-0 bg-card/95 backdrop-blur-supports-backdrop-blur:bg-card/95 backdrop-blur-supports-backdrop-blur:backdrop-blur-sm p-4 w-full relative border-t-0">
+    <Card className="rounded-t-none rounded-b-lg border-x-0 bg-card/95 backdrop-blur-supports-backdrop-blur:bg-card/95 backdrop-blur-supports-backdrop-blur:backdrop-blur-sm p-4 w-full relative border-t-0">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
         <div className="flex items-center flex-wrap">
           <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">What happened in the last</h2>
@@ -44,7 +44,7 @@ export function TopMoversHeader({
             </button>
 
             {isTimeIntervalDropdownOpen && (
-              <div className="absolute top-full left-0 mt-2 bg-transparent backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
+              <div className="absolute top-full left-0 mt-2 bg-black/80 backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
                 {timeIntervals.map((interval) => (
                   <button
                     key={interval.value}
@@ -75,3 +75,4 @@ export function TopMoversHeader({
     </Card>
   );
 }
+
