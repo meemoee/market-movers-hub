@@ -64,13 +64,18 @@ export default function Index() {
           <aside 
             className={`${
               isMobile 
-                ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background transition-transform duration-300'
+                ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background'
                 : 'w-[280px] relative'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
           >
             <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-0'}>
+              <img 
+                src="/hunchex-logo.svg" 
+                alt="Hunchex" 
+                className="h-8 mb-4 ml-6 mt-6"
+              />
               <AccountIsland />
             </div>
           </aside>
