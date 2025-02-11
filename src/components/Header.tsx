@@ -42,7 +42,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
           {/* Center section - matches top movers width */}
           <div className="flex-1 flex justify-center items-center min-w-0">
-            <div className="w-full max-w-[640px] relative">
+            <div className="w-full max-w-[720px] relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="text"
