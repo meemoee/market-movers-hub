@@ -1,5 +1,6 @@
 
 import { useState } from 'react';
+import Header from "@/components/Header";
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
@@ -38,6 +39,10 @@ export default function Index() {
     }
   };
 
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Purple Glow Effect */}
@@ -47,8 +52,10 @@ export default function Index() {
           className="opacity-30 scale-150 translate-x-1/4 -translate-y-1/4 blur-3xl"
         />
       </div>
+
+      <Header onMenuClick={toggleSidebar} />
       
-      <main className="container mx-auto xl:pr-[400px] px-4 relative z-10">
+      <main className="container mx-auto pt-14 xl:pr-[400px] px-4 relative z-10">
         <div className="relative flex max-w-[1280px] mx-auto justify-center">
           {isMobile && isSidebarOpen && (
             <div 
@@ -60,18 +67,18 @@ export default function Index() {
           <aside 
             className={`${
               isMobile 
-                ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background transition-transform duration-300'
+                ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background transition-transform duration-300 pt-14'
                 : 'w-[280px] relative'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
           >
-            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-0'}>
+            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-[118px]'}>
               <AccountIsland />
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0`}>
+          <div className={`flex-1 min-w-0 min-h-screen`}>
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
