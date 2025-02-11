@@ -1,5 +1,7 @@
+
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import { Search } from 'lucide-react';
 import { Input } from './ui/input';
 import { TopMoversHeader } from './market/TopMoversHeader';
 import { TopMoversContent } from './market/TopMoversContent';
@@ -9,7 +11,6 @@ import { InsightPostBox } from './market/InsightPostBox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
-import { useSearchParams } from 'react-router-dom';
 
 interface TimeInterval {
   label: string;
@@ -95,20 +96,19 @@ export default function TopMoversList({
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [searchPage, setSearchPage] = useState(1);
-  const { toast } = useToast();
-  const [searchParams] = useSearchParams();
-  const searchQuery = searchParams.get("search") || "";
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const { toast } = useToast();
+
+  // Use infinite query for top movers
+  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
+  const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
 
   // Reset search page when search query changes
   useEffect(() => {
     setSearchPage(1);
   }, [debouncedSearch]);
-
-  // Use infinite query for top movers
-  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
-  const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
 
   const isSearching = debouncedSearch.length > 0;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
@@ -186,6 +186,21 @@ export default function TopMoversList({
 
   return (
     <div className="flex flex-col w-full">
+      <div className="sticky top-14 z-40 w-full">
+        <div className="flex items-center w-full px-4 py-3 bg-background/95 backdrop-blur-sm border-b">
+          <div className="relative flex-1 max-w-2xl mx-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search markets..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 bg-background"
+            />
+          </div>
+        </div>
+      </div>
+
       <TopMoversHeader
         timeIntervals={timeIntervals}
         selectedInterval={selectedInterval}
