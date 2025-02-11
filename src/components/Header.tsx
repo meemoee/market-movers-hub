@@ -23,7 +23,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-white/10 z-50">
       <div className="h-full">
-        <div className="flex max-w-[1280px] mx-auto h-full items-center px-4">
+        {/* Use the same container constraints as your main content */}
+        <div className="flex container h-full items-center">
           <button 
             className="p-2 hover:bg-white/10 rounded-lg transition-colors"
             onClick={onMenuClick}
@@ -36,8 +37,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
             <span className="text-[#D946EF]">ex</span>
           </h1>
 
-          {/* Updated Search section - removed hard-coded margin */}
-          <div className="flex-1 max-w-[800px] ml-4">
+          {/* Adjust the search bar container to match container padding */}
+          <div className="flex-1 max-w-[800px] mx-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -50,7 +51,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </div>
           </div>
 
-          {/* Spacer for right side */}
+          {/* Optional: adjust or remove spacer if not needed */}
           <div className="w-[240px]" />
         </div>
       </div>
