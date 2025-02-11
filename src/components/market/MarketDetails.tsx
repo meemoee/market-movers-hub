@@ -5,26 +5,31 @@ import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
 import { QADisplay } from './QADisplay';
 import { WebResearchCard } from './WebResearchCard';
+import { RelatedMarkets } from './RelatedMarkets';
 
 interface MarketDetailsProps {
   description?: string;
   marketId: string;
   question: string;
+  selectedInterval: string;
+  eventId?: string;
 }
 
 export function MarketDetails({
   description,
   marketId,
-  question
+  question,
+  selectedInterval,
+  eventId
 }: MarketDetailsProps) {
-  const [selectedInterval, setSelectedInterval] = useState('1d');
+  const [selectedChartInterval, setSelectedChartInterval] = useState('1d');
 
   const { data: priceHistory, isLoading: isPriceLoading } = useQuery({
-    queryKey: ['priceHistory', marketId, selectedInterval],
+    queryKey: ['priceHistory', marketId, selectedChartInterval],
     queryFn: async () => {
       console.log('Fetching price history for market:', marketId);
       const response = await supabase.functions.invoke<{ t: string; y: number; lastUpdated?: number }[]>('price-history', {
-        body: JSON.stringify({ marketId, interval: selectedInterval })
+        body: JSON.stringify({ marketId, interval: selectedChartInterval })
       });
 
       if (response.error) {
@@ -102,8 +107,8 @@ export function MarketDetails({
           <PriceChart
             data={priceHistory.points}
             events={marketEvents || []}
-            selectedInterval={selectedInterval}
-            onIntervalSelect={setSelectedInterval}
+            selectedInterval={selectedChartInterval}
+            onIntervalSelect={setSelectedChartInterval}
           />
         ) : (
           <div className="h-[300px] flex items-center justify-center text-sm text-muted-foreground">
@@ -111,6 +116,15 @@ export function MarketDetails({
           </div>
         )}
       </div>
+
+      {/* Related Markets Section */}
+      {eventId && (
+        <RelatedMarkets 
+          eventId={eventId}
+          marketId={marketId}
+          selectedInterval={selectedInterval}
+        />
+      )}
 
       {/* Web Research Section */}
       {description && (

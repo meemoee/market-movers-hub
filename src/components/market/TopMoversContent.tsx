@@ -13,6 +13,7 @@ interface TopMoversContentProps {
   onLoadMore: () => void;
   hasMore: boolean;
   isLoadingMore?: boolean;
+  selectedInterval: string;
 }
 
 export function TopMoversContent({
@@ -25,6 +26,7 @@ export function TopMoversContent({
   onLoadMore,
   hasMore,
   isLoadingMore,
+  selectedInterval,
 }: TopMoversContentProps) {
   if (isLoading || (topMovers.length === 0 && isLoadingMore)) {
     return (
@@ -74,6 +76,7 @@ export function TopMoversContent({
                 final_best_bid: mover.final_best_bid,
                 description: mover.description,
                 outcomes: mover.outcomes || ["Yes", "No"],
+                event_id: mover.event_id,
               }}
               isExpanded={expandedMarkets.has(mover.market_id)}
               onToggleExpand={() => toggleMarket(mover.market_id)}
@@ -97,6 +100,7 @@ export function TopMoversContent({
                   });
                 }
               }}
+              selectedInterval={selectedInterval}
             />
           </div>
         ))}

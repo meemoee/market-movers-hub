@@ -1,3 +1,4 @@
+
 import { MarketHeader } from "./MarketHeader";
 import { MarketDetails } from "./MarketDetails";
 import { MarketStats } from "./MarketStats";
@@ -16,6 +17,7 @@ interface Market {
   final_best_bid: number;
   description?: string;
   outcomes?: string[];
+  event_id?: string;
 }
 
 interface MarketCardProps {
@@ -24,6 +26,7 @@ interface MarketCardProps {
   onToggleExpand: () => void;
   onBuy: () => void;
   onSell: () => void;
+  selectedInterval: string;
 }
 
 export function MarketCard({
@@ -32,6 +35,7 @@ export function MarketCard({
   onToggleExpand,
   onBuy,
   onSell,
+  selectedInterval,
 }: MarketCardProps) {
   return (
     <div className="w-full p-3 space-y-3">
@@ -57,6 +61,8 @@ export function MarketCard({
           description={market.description}
           marketId={market.market_id}
           question={market.question}
+          selectedInterval={selectedInterval}
+          eventId={market.event_id}
         />
       )}
       <Separator className="mt-3" />

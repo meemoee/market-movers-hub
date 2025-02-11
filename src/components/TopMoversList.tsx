@@ -231,6 +231,7 @@ export default function TopMoversList({
                 ? marketSearchQuery.isFetching 
                 : topMoversQuery.isFetchingNextPage
             }
+            selectedInterval={selectedInterval}
           />
         </div>
       </div>
