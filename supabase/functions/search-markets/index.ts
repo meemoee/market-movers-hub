@@ -53,40 +53,34 @@ serve(async (req) => {
     let allMarkets = [];
     
     // Load all markets from chunks
-    const promises = [];
     for (let i = 0; i < manifest.chunks; i++) {
       const chunkKey = `topMovers:1440:${latestKey}:chunk:${i}`;
-      promises.push(redis.get(chunkKey));
-    }
-    
-    // Load chunks in parallel
-    const chunksData = await Promise.all(promises);
-    chunksData.forEach(chunkData => {
+      const chunkData = await redis.get(chunkKey);
       if (chunkData) {
         const markets = JSON.parse(chunkData);
         allMarkets.push(...markets);
       }
-    });
+    }
 
-    // Apply search filtering - optimized for speed
+    // Apply search filtering
     let searchResults = allMarkets;
     if (searchQuery) {
       const searchTerms = searchQuery.toLowerCase().split(' ');
-      const searchableFields = ['question', 'subtitle', 'yes_sub_title', 'no_sub_title', 'description', 'event_title'];
-      
       searchResults = allMarkets.filter(market => {
-        // Pre-compute searchable text once per market
-        const searchableText = searchableFields
-          .map(field => market[field])
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-          
+        const searchableText = [
+          market.question,
+          market.subtitle,
+          market.yes_sub_title,
+          market.no_sub_title,
+          market.description,
+          market.event_title
+        ].filter(Boolean).join(' ').toLowerCase();
+
         return searchTerms.every(term => searchableText.includes(term));
       });
     }
 
-    // Sort by recency
+    // Sort by recency (latest first) instead of price change
     searchResults.sort((a, b) => {
       const dateA = a.updated_at ? new Date(a.updated_at) : new Date(0);
       const dateB = b.updated_at ? new Date(b.updated_at) : new Date(0);

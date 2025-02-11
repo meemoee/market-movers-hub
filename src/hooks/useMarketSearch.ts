@@ -11,7 +11,7 @@ interface MarketSearchResponse {
 
 export function useMarketSearch(searchQuery: string = '', page: number = 1) {
   return useQuery({
-    queryKey: ['marketSearch', searchQuery, page],
+    queryKey: ['marketSearch', searchQuery, page], // Include page in queryKey
     queryFn: async () => {
       console.log('Searching markets with:', { searchQuery, page });
       
@@ -36,10 +36,9 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1) {
         total: data?.total
       }
     },
-    enabled: searchQuery.length >= 2, // Only search when at least 2 characters are typed
-    staleTime: 30000, // Cache results for 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes (renamed from cacheTime)
-    retry: 1, // Only retry once on failure
-    retryDelay: 500 // Retry after 500ms instead of 1000ms
+    enabled: searchQuery.length > 0, // Only run query if there's a search term
+    staleTime: 0,
+    retry: 2,
+    retryDelay: 1000
   })
 }
