@@ -42,7 +42,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </h1>
 
           {/* Search section - adjusted position and width */}
-          <div className="flex-1 max-w-[800px] ml-[240px]">
+          <div className="mx-auto w-full max-w-[800px]"
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
