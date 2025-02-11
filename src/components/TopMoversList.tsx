@@ -186,7 +186,7 @@ export default function TopMoversList({
 
   return (
     <div className="flex flex-col w-full">
-      <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm">
+      <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
         <div className="flex items-center w-full px-4 py-3 border-b">
           <div className="relative flex-1 max-w-2xl mx-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
