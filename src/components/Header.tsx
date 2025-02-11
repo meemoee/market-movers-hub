@@ -1,4 +1,3 @@
-
 import { Menu, Search } from "lucide-react";
 import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
@@ -37,8 +36,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
             <span className="text-[#D946EF]">ex</span>
           </h1>
 
-          {/* Search section - adjusted position and width */}
-          <div className="flex-1 max-w-[800px] ml-[240px]">
+          {/* Updated Search section - removed hard-coded margin */}
+          <div className="flex-1 max-w-[800px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
