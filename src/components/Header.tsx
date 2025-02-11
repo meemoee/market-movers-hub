@@ -23,7 +23,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-white/10 z-50">
-      <div className="container mx-auto h-full px-4">
+      <div className="container h-full px-0 sm:px-4">
         <div className="flex max-w-[1280px] mx-auto h-full items-center">
           {/* Left section with fixed width */}
           <div className="w-[280px] flex items-center gap-4">
@@ -61,4 +61,3 @@ export default function Header({ onMenuClick }: HeaderProps) {
     </header>
   );
 }
-
