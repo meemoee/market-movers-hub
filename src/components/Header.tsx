@@ -37,8 +37,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
             <span className="text-[#D946EF]">ex</span>
           </h1>
 
-          {/* Search section - adjusted margin to align with content */}
-          <div className="flex-1 max-w-[600px] ml-[280px]">
+          {/* Search section - adjusted position and width */}
+          <div className="flex-1 max-w-[800px] ml-[240px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -52,7 +52,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </div>
 
           {/* Spacer for right side */}
-          <div className="w-[280px]" />
+          <div className="w-[240px]" />
         </div>
       </div>
     </header>
