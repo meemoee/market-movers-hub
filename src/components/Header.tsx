@@ -1,5 +1,5 @@
 
-import { Menu, Bell, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -41,8 +41,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </div>
 
           {/* Center section - matches top movers width */}
-          <div className="flex-1 min-w-0">
-            <div className="relative w-full max-w-[640px] mx-auto">
+          <div className="flex-1 flex justify-center min-w-0">
+            <div className="w-full max-w-[640px]">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="text"
@@ -54,12 +54,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </div>
           </div>
 
-          {/* Right section with fixed width */}
-          <div className="w-[280px] flex justify-end">
-            <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-              <Bell size={20} />
-            </button>
-          </div>
+          {/* Right section with fixed width - empty now that bell is removed */}
+          <div className="w-[280px]" />
         </div>
       </div>
     </header>
