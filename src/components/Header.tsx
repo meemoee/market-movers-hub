@@ -37,7 +37,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </h1>
 
           {/* Updated Search section - removed hard-coded margin */}
-          <div className="flex-1 max-w-[800px]">
+          <div className="flex-1 max-w-[800px] ml-4">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
