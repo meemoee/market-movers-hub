@@ -66,12 +66,12 @@ export default function Index() {
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
           >
-            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-4'}>
+            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-0'}>
               <AccountIsland />
             </div>
           </aside>
 
-          <div className={`flex-1 min-w-0 min-h-screen`}>
+          <div className={`flex-1 min-w-0`}>
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
