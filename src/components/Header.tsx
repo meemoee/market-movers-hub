@@ -23,26 +23,23 @@ export default function Header({ onMenuClick }: HeaderProps) {
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-white/10 z-50">
-      <div className="h-full mx-4">
-        <div className="flex max-w-[1280px] mx-auto h-full items-center">
-          {/* Left section with fixed width */}
-          <div className="w-[280px] flex items-center gap-4">
-            <button 
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-              onClick={onMenuClick}
-            >
-              <Menu size={20} />
-            </button>
+      <div className="h-full">
+        <div className="flex max-w-[1280px] mx-auto h-full items-center px-4">
+          <button 
+            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            onClick={onMenuClick}
+          >
+            <Menu size={20} />
+          </button>
 
-            <h1 className="text-xl font-bold">
-              <span className="text-[#7E69AB]">hunch</span>
-              <span className="text-[#D946EF]">ex</span>
-            </h1>
-          </div>
+          <h1 className="text-xl font-bold ml-4">
+            <span className="text-[#7E69AB]">hunch</span>
+            <span className="text-[#D946EF]">ex</span>
+          </h1>
 
-          {/* Center section - matches top movers width */}
-          <div className="flex-1 flex justify-center items-center min-w-0">
-            <div className="w-full relative">
+          {/* Search section - now positioned to align with content */}
+          <div className="flex-1 max-w-[600px] ml-8">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="text"
@@ -54,7 +51,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </div>
           </div>
 
-          {/* Right section with fixed width */}
+          {/* Spacer for right side */}
           <div className="w-[280px]" />
         </div>
       </div>
