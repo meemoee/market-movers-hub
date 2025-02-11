@@ -41,8 +41,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </div>
 
           {/* Center section - matches top movers width */}
-          <div className="flex-1 flex justify-center min-w-0">
-            <div className="w-full max-w-[640px]">
+          <div className="flex-1 flex justify-center items-center min-w-0">
+            <div className="w-full max-w-[640px] relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="text"
@@ -54,11 +54,10 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </div>
           </div>
 
-          {/* Right section with fixed width - empty now that bell is removed */}
+          {/* Right section with fixed width to balance layout */}
           <div className="w-[280px]" />
         </div>
       </div>
     </header>
   );
 }
-
