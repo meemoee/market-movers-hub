@@ -70,7 +70,7 @@ export default function Index() {
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
           >
-            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-4'}>
+            <div className={isMobile ? 'h-full overflow-y-auto' : 'sticky top-0'}>
               <AccountIsland />
             </div>
           </aside>
