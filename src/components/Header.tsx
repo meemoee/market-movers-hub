@@ -38,7 +38,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
           </h1>
         </div>
 
-        <div className="w-full max-w-md -ml-12">
+        <div className="w-full max-w-xl -ml-16">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -58,3 +58,4 @@ export default function Header({ onMenuClick }: HeaderProps) {
     </header>
   );
 }
+
