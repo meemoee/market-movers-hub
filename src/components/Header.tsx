@@ -37,8 +37,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
             <span className="text-[#D946EF]">ex</span>
           </h1>
 
-          {/* Search section - now positioned to align with content */}
-          <div className="flex-1 max-w-[600px] ml-8">
+          {/* Search section - adjusted margin to align with content */}
+          <div className="flex-1 max-w-[600px] ml-[280px]">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
