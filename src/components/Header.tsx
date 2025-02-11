@@ -25,20 +25,22 @@ export default function Header({ onMenuClick }: HeaderProps) {
     <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-white/10 z-50">
       <div className="container mx-auto h-full xl:pr-[400px] px-4">
         <div className="flex max-w-[1280px] mx-auto h-full items-center gap-4">
-          <button 
-            className="p-2 hover:bg-white/10 rounded-lg transition-colors"
-            onClick={onMenuClick}
-          >
-            <Menu size={20} />
-          </button>
+          <div className="flex items-center gap-4 w-[220px]">
+            <button 
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              onClick={onMenuClick}
+            >
+              <Menu size={20} />
+            </button>
 
-          <h1 className="text-xl font-bold">
-            <span className="text-[#7E69AB]">hunch</span>
-            <span className="text-[#D946EF]">ex</span>
-          </h1>
+            <h1 className="text-xl font-bold">
+              <span className="text-[#7E69AB]">hunch</span>
+              <span className="text-[#D946EF]">ex</span>
+            </h1>
+          </div>
 
-          <div className="flex-1">
-            <div className="relative w-full max-w-[1280px] mx-auto">
+          <div className="flex-1 px-4">
+            <div className="relative w-full max-w-[640px] mx-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="text"
@@ -50,9 +52,11 @@ export default function Header({ onMenuClick }: HeaderProps) {
             </div>
           </div>
 
-          <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-            <Bell size={20} />
-          </button>
+          <div className="w-[220px] flex justify-end">
+            <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+              <Bell size={20} />
+            </button>
+          </div>
         </div>
       </div>
     </header>
