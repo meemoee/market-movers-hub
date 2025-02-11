@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
@@ -185,8 +186,8 @@ export default function TopMoversList({
 
   return (
     <div className="flex flex-col w-full">
-      <div className="sticky top-0 z-40 w-full">
-        <div className="flex items-center w-full px-4 py-3 bg-background/95 backdrop-blur-sm border-b">
+      <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm">
+        <div className="flex items-center w-full px-4 py-3 border-b">
           <div className="relative flex-1 max-w-2xl mx-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -198,17 +199,17 @@ export default function TopMoversList({
             />
           </div>
         </div>
-      </div>
 
-      <TopMoversHeader
-        timeIntervals={timeIntervals}
-        selectedInterval={selectedInterval}
-        onIntervalChange={onIntervalChange}
-        openMarketsOnly={openMarketsOnly}
-        onOpenMarketsChange={onOpenMarketsChange}
-        isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
-        setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
-      />
+        <TopMoversHeader
+          timeIntervals={timeIntervals}
+          selectedInterval={selectedInterval}
+          onIntervalChange={onIntervalChange}
+          openMarketsOnly={openMarketsOnly}
+          onOpenMarketsChange={onOpenMarketsChange}
+          isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+          setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+        />
+      </div>
       
       <div className="w-full px-0 sm:px-4 -mt-20">
         <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
