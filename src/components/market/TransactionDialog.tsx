@@ -65,7 +65,7 @@ export function TransactionDialog({
       onOrderBookData(null);
       onClose();
       setIsClosing(false);
-    }, 200);
+    }, 100);
   };
 
   const handleConfirm = async () => {
