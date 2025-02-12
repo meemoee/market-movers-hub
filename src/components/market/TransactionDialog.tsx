@@ -59,6 +59,12 @@ export function TransactionDialog({
   const { toast } = useToast();
   const [size, setSize] = useState(1);
 
+  // Clear orderbook data when dialog closes
+  const handleClose = () => {
+    onOrderBookData(null);
+    onClose();
+  };
+
   const handleConfirm = async () => {
     if (!selectedMarket || !orderBookData) return;
 
@@ -117,7 +123,7 @@ export function TransactionDialog({
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
-      onOpenChange={onClose}
+      onOpenChange={handleClose}
     >
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -201,7 +207,7 @@ export function TransactionDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={!orderBookData || isOrderBookLoading}
