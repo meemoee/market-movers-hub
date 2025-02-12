@@ -5,11 +5,26 @@ import { supabase } from '@/integrations/supabase/client';
 import { MarketCard } from '@/components/market/MarketCard';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import RightSidebar from "@/components/RightSidebar";
+import AccountIsland from "@/components/AccountIsland";
+import { TopMoversHeader } from '@/components/market/TopMoversHeader';
+import { InsightPostBox } from '@/components/market/InsightPostBox';
+import { MarketStatsBento } from '@/components/market/MarketStatsBento';
+
+const TIME_INTERVALS = [
+  { label: '1D', value: '1d' },
+  { label: '1W', value: '1w' },
+  { label: '1M', value: '1m' },
+  { label: '3M', value: '3m' },
+  { label: 'ALL', value: 'all' }
+] as const;
 
 export function MarketPage() {
   const { marketId } = useParams();
   const [selectedInterval, setSelectedInterval] = useState('1d');
   const [expandedMarkets] = useState(new Set([marketId])); // Always expanded
+  const [openMarketsOnly, setOpenMarketsOnly] = useState(true);
+  const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
 
   const { data: market, isLoading } = useQuery({
     queryKey: ['market', marketId],
@@ -92,15 +107,60 @@ export function MarketPage() {
   }
 
   return (
-    <div className="container max-w-4xl mx-auto py-8 px-4">
-      <MarketCard
-        market={market}
-        isExpanded={expandedMarkets.has(marketId)}
-        onToggleExpand={() => {}}
-        onBuy={() => {}}
-        onSell={() => {}}
-        selectedInterval={selectedInterval}
-      />
+    <div className="min-h-screen bg-background">
+      {/* Purple Glow Effect */}
+      <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-0 right-0 w-[800px] h-[800px] rounded-full opacity-30 scale-150 translate-x-1/4 -translate-y-1/4 blur-3xl bg-gradient-to-br from-purple-500 via-violet-500 to-fuchsia-500" />
+      </div>
+      
+      <main className="container mx-auto xl:pr-[400px] px-4 relative z-10">
+        <div className="relative flex max-w-[1280px] mx-auto justify-center">
+          <aside className="w-[280px] relative">
+            <div className="sticky top-0">
+              <img 
+                src="/hunchex-logo.svg" 
+                alt="Hunchex" 
+                className="h-8 mb-4 ml-6 mt-6"
+              />
+              <AccountIsland />
+            </div>
+          </aside>
+
+          <div className="flex-1 min-w-0 min-h-screen">
+            <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
+              <TopMoversHeader
+                timeIntervals={TIME_INTERVALS}
+                selectedInterval={selectedInterval}
+                onIntervalChange={setSelectedInterval}
+                openMarketsOnly={openMarketsOnly}
+                onOpenMarketsChange={setOpenMarketsOnly}
+                isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+                setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+              />
+            </div>
+            
+            <div className="w-full px-0 sm:px-4 -mt-20">
+              <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
+                <InsightPostBox />
+                <MarketStatsBento selectedInterval={selectedInterval} />
+                
+                <div className="w-full space-y-3">
+                  <MarketCard
+                    market={market}
+                    isExpanded={expandedMarkets.has(marketId)}
+                    onToggleExpand={() => {}}
+                    onBuy={() => {}}
+                    onSell={() => {}}
+                    selectedInterval={selectedInterval}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <RightSidebar />
     </div>
   );
 }
