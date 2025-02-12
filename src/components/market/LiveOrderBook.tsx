@@ -21,13 +21,20 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Don't connect if we're closing or don't have a token ID
-    if (!clobTokenId || isClosing) {
+    // Clear any existing error when closing
+    if (isClosing) {
+      setError(null);
+      return;
+    }
+
+    // Don't connect if we don't have a token ID
+    if (!clobTokenId) {
       console.log('No CLOB token ID provided or dialog is closing');
       return;
     }
 
     let ws: WebSocket | null = null;
+    let isCleanupInitiated = false;
 
     const connectWebSocket = async () => {
       try {
@@ -37,27 +44,35 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
-          console.log('WebSocket connected');
-          setError(null);
+          if (!isCleanupInitiated) {
+            console.log('WebSocket connected');
+            setError(null);
+          }
         };
 
         ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log('Received orderbook update:', data);
-            if (data.orderbook && !isClosing) {
-              onOrderBookData(data.orderbook);
-              setError(null);
+          if (!isCleanupInitiated) {
+            try {
+              const data = JSON.parse(event.data);
+              console.log('Received orderbook update:', data);
+              if (data.orderbook) {
+                onOrderBookData(data.orderbook);
+                setError(null);
+              }
+            } catch (err) {
+              console.error('Error parsing WebSocket message:', err);
+              if (!isCleanupInitiated) {
+                setError('Failed to parse orderbook data');
+              }
             }
-          } catch (err) {
-            console.error('Error parsing WebSocket message:', err);
-            setError('Failed to parse orderbook data');
           }
         };
 
         ws.onerror = (event) => {
           console.error('WebSocket error:', event);
-          setError('WebSocket connection error');
+          if (!isCleanupInitiated) {
+            setError('WebSocket connection error');
+          }
         };
 
         ws.onclose = () => {
@@ -66,13 +81,17 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       } catch (err) {
         console.error('Error setting up WebSocket:', err);
-        setError('Failed to connect to orderbook service');
+        if (!isCleanupInitiated) {
+          setError('Failed to connect to orderbook service');
+        }
       }
     };
 
     connectWebSocket();
 
     return () => {
+      isCleanupInitiated = true;
+      setError(null);
       if (ws) {
         console.log('Closing WebSocket connection');
         ws.close();
@@ -80,7 +99,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     };
   }, [clobTokenId, onOrderBookData, isClosing]);
 
-  if (isLoading) {
+  if (isLoading && !isClosing) {
     return (
       <div className="flex items-center justify-center py-4">
         <Loader2 className="w-6 h-6 animate-spin" />
@@ -89,7 +108,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     );
   }
 
-  if (error) {
+  if (error && !isClosing) {
     return (
       <div className="text-center text-red-500">{error}</div>
     );
