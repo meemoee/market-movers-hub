@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -13,6 +14,7 @@ const App = () => (
       <TooltipProvider delayDuration={0}>
         <Routes>
           <Route path="/" element={<Index />} />
+          <Route path="/market/:marketId" element={<MarketPage />} />
         </Routes>
         <Toaster />
         <Sonner />
