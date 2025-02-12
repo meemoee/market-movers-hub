@@ -144,7 +144,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           >
             <div className="flex gap-4">
               {market.image && (
-                <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
                   <img 
                     src={market.image} 
                     alt={market.question}
@@ -152,15 +152,62 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                   />
                 </div>
               )}
-              <div className="flex-1">
-                <div className="text-base font-medium leading-snug">
-                  {market.question}
-                </div>
-                {market.yes_sub_title && (
-                  <div className="text-sm mt-2 text-muted-foreground">
-                    {market.yes_sub_title}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-base font-medium leading-snug line-clamp-2">
+                      {market.question}
+                    </div>
+                    {market.yes_sub_title && (
+                      <div className="text-sm mt-1 text-muted-foreground line-clamp-1">
+                        {market.yes_sub_title}
+                      </div>
+                    )}
                   </div>
-                )}
+                  <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <HoverButton
+                      variant="buy"
+                      onClick={() => {
+                        const clobTokenId = market.clobtokenids?.[0];
+                        if (clobTokenId) {
+                          setSelectedMarket({ 
+                            id: market.id, 
+                            action: 'buy', 
+                            clobTokenId,
+                            selectedOutcome: "Yes"
+                          });
+                        }
+                      }}
+                      className="w-[70px] h-10 flex flex-col items-center justify-center"
+                    >
+                      <span className="text-xs">Yes</span>
+                      <span className="text-[11px] font-medium opacity-90">
+                        {(market.best_ask * 100).toFixed(1)}¢
+                      </span>
+                    </HoverButton>
+                    <HoverButton
+                      variant="sell"
+                      onClick={() => {
+                        const clobTokenId = market.clobtokenids?.[1];
+                        if (clobTokenId) {
+                          setSelectedMarket({ 
+                            id: market.id, 
+                            action: 'buy',
+                            clobTokenId,
+                            selectedOutcome: "No"
+                          });
+                        }
+                      }}
+                      className="w-[70px] h-10 flex flex-col items-center justify-center"
+                    >
+                      <span className="text-xs">No</span>
+                      <span className="text-[11px] font-medium opacity-90">
+                        {((1 - market.best_bid) * 100).toFixed(1)}¢
+                      </span>
+                    </HoverButton>
+                  </div>
+                </div>
+
                 <div className="flex items-start justify-between mt-3">
                   <div className="flex flex-col">
                     <div className="text-3xl font-bold tracking-tight">
@@ -187,7 +234,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                   </div>
                 </div>
                 
-                <div className="relative h-[3px] w-full mt-3 mb-3">
+                <div className="relative h-[3px] w-full mt-3 mb-0">
                   <div 
                     className="absolute bg-white/50 h-2 top-[-4px]" 
                     style={{ 
@@ -228,49 +275,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                       />
                     </>
                   )}
-                </div>
-
-                <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
-                  <HoverButton
-                    variant="buy"
-                    onClick={() => {
-                      const clobTokenId = market.clobtokenids?.[0];
-                      if (clobTokenId) {
-                        setSelectedMarket({ 
-                          id: market.id, 
-                          action: 'buy', 
-                          clobTokenId,
-                          selectedOutcome: "Yes"
-                        });
-                      }
-                    }}
-                    className="flex-1 h-12 flex flex-col items-center justify-center"
-                  >
-                    <span className="text-xs">Yes</span>
-                    <span className="text-[11px] font-medium opacity-90">
-                      {(market.best_ask * 100).toFixed(1)}¢
-                    </span>
-                  </HoverButton>
-                  <HoverButton
-                    variant="sell"
-                    onClick={() => {
-                      const clobTokenId = market.clobtokenids?.[1];
-                      if (clobTokenId) {
-                        setSelectedMarket({ 
-                          id: market.id, 
-                          action: 'buy',
-                          clobTokenId,
-                          selectedOutcome: "No"
-                        });
-                      }
-                    }}
-                    className="flex-1 h-12 flex flex-col items-center justify-center"
-                  >
-                    <span className="text-xs">No</span>
-                    <span className="text-[11px] font-medium opacity-90">
-                      {((1 - market.best_bid) * 100).toFixed(1)}¢
-                    </span>
-                  </HoverButton>
                 </div>
               </div>
             </div>
