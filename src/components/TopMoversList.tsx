@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -210,16 +209,7 @@ export default function TopMoversList({
             topMovers={displayedMarkets}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
-            setSelectedMarket={(market) => {
-              if (market) {
-                setSelectedMarket({
-                  ...market,
-                  selectedOutcome: market.selectedOutcome || "Yes" // Ensure selectedOutcome is included
-                });
-              } else {
-                setSelectedMarket(null);
-              }
-            }}
+            setSelectedMarket={setSelectedMarket}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
             isLoadingMore={
