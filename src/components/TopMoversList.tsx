@@ -1,5 +1,6 @@
 
 import { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
 import { Input } from './ui/input';
