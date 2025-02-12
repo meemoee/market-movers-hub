@@ -1,3 +1,4 @@
+
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -36,6 +37,7 @@ interface TransactionDialogProps {
     id: string; 
     action: 'buy' | 'sell';
     clobTokenId: string;
+    selectedOutcome: string;
   } | null;
   topMover: TopMover | null;
   onClose: () => void;
@@ -58,7 +60,7 @@ export function TransactionDialog({
   const [size, setSize] = useState(1);
 
   const handleConfirm = async () => {
-    if (!selectedMarket || !orderBookData || !topMover?.outcomes) return;
+    if (!selectedMarket || !orderBookData) return;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -79,7 +81,7 @@ export function TransactionDialog({
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
-          outcome: topMover.selectedOutcome, // Use the selected outcome
+          outcome: selectedMarket.selectedOutcome,
           side: 'buy',
           size,
           price
@@ -98,7 +100,7 @@ export function TransactionDialog({
 
       toast({
         title: "Order confirmed",
-        description: `Your order to buy ${topMover.selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
+        description: `Your order to buy ${selectedMarket.selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
       });
       
       onConfirm();
@@ -129,7 +131,7 @@ export function TransactionDialog({
                 />
                 <div className="flex-1 min-w-0">
                   <AlertDialogTitle className="text-lg font-semibold mb-1">
-                    Buy {topMover.selectedOutcome}
+                    Buy {selectedMarket?.selectedOutcome}
                   </AlertDialogTitle>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {topMover.question}
@@ -211,7 +213,7 @@ export function TransactionDialog({
                 Connecting...
               </>
             ) : (
-              `Confirm purchase of ${topMover?.selectedOutcome}`
+              `Confirm purchase of ${selectedMarket?.selectedOutcome}`
             )}
           </AlertDialogAction>
         </AlertDialogFooter>
