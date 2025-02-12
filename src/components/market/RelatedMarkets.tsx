@@ -4,6 +4,7 @@ import { HoverButton } from '@/components/ui/hover-button';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { TransactionDialog } from './TransactionDialog';
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface RelatedMarketsProps {
   eventId: string;
@@ -160,19 +161,29 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                     {market.yes_sub_title}
                   </div>
                 )}
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center gap-4">
-                    <div className="text-sm text-muted-foreground">
-                      Vol: {market.totalVolume?.toFixed(2) || '0'}
+                <div className="flex items-start justify-between mt-3">
+                  <div className="flex flex-col">
+                    <div className="text-3xl font-bold tracking-tight">
+                      {(market.finalPrice * 100).toFixed(1)}%
                     </div>
-                    <div className="text-base font-medium">
-                      {(market.finalPrice * 100).toFixed(1)}¢
+                    <div className={`text-sm font-medium flex items-center gap-1
+                      ${market.priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                    >
+                      {market.priceChange >= 0 ? (
+                        <TrendingUp className="w-4 h-4" />
+                      ) : (
+                        <TrendingDown className="w-4 h-4" />
+                      )}
+                      {(market.priceChange * 100).toFixed(1)} pp
                     </div>
                   </div>
-                  <div className={`text-base font-medium ${
-                    market.priceChange >= 0 ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {(market.priceChange >= 0 ? '+' : '')}{(market.priceChange * 100).toFixed(1)}%
+                  <div className="flex flex-col items-end">
+                    <div className="text-xl font-semibold">
+                      ${market.totalVolume?.toFixed(0) || '0'}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      24h Volume
+                    </div>
                   </div>
                 </div>
                 
