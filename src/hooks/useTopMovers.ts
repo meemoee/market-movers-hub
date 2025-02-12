@@ -46,7 +46,7 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
           interval,
           openOnly,
           page: pageParam,
-          limit: 20,
+          limit: marketId ? 1 : 20,
           searchQuery: searchQuery.trim(),
           marketId
         }
@@ -58,6 +58,28 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
       }
       
       console.log('Received top movers response:', data);
+      
+      if (marketId && (!data?.data || data.data.length === 0)) {
+        // If we're looking for a specific market but didn't find it,
+        // make another call without the interval restriction
+        const { data: singleMarketData, error: singleMarketError } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
+          body: {
+            marketId,
+            page: 1,
+            limit: 1,
+            openOnly: false // We want to find the market even if it's closed
+          }
+        });
+
+        if (singleMarketError) throw singleMarketError;
+        
+        return {
+          data: singleMarketData?.data || [],
+          hasMore: false,
+          total: singleMarketData?.data?.length || 0,
+          nextPage: undefined
+        };
+      }
       
       return {
         data: data?.data || [],
