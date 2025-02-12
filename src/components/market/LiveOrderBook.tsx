@@ -14,15 +14,16 @@ interface LiveOrderBookProps {
   onOrderBookData: (data: OrderBookData | null) => void;
   isLoading: boolean;
   clobTokenId?: string;
+  isClosing?: boolean;
 }
 
-export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveOrderBookProps) {
+export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosing }: LiveOrderBookProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!clobTokenId) {
-      console.log('No CLOB token ID provided');
-      onOrderBookData(null);
+    // Don't connect if we're closing or don't have a token ID
+    if (!clobTokenId || isClosing) {
+      console.log('No CLOB token ID provided or dialog is closing');
       return;
     }
 
@@ -44,7 +45,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveO
           try {
             const data = JSON.parse(event.data);
             console.log('Received orderbook update:', data);
-            if (data.orderbook) {
+            if (data.orderbook && !isClosing) {
               onOrderBookData(data.orderbook);
               setError(null);
             }
@@ -77,7 +78,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveO
         ws.close();
       }
     };
-  }, [clobTokenId, onOrderBookData]);
+  }, [clobTokenId, onOrderBookData, isClosing]);
 
   if (isLoading) {
     return (

@@ -61,6 +61,7 @@ export function TransactionDialog({
 
   const handleClose = () => {
     setIsClosing(true);
+    onOrderBookData(null); // Clear the data immediately when closing starts
     setTimeout(() => {
       onClose();
       setIsClosing(false);
@@ -153,6 +154,7 @@ export function TransactionDialog({
               onOrderBookData={onOrderBookData}
               isLoading={isOrderBookLoading}
               clobTokenId={selectedMarket?.clobTokenId}
+              isClosing={isClosing}
             />
             
             <div className="space-y-4 min-h-[280px]">
