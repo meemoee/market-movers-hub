@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { Loader2 } from "lucide-react";
 
@@ -19,6 +20,9 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveO
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // Clear orderbook data when clobTokenId changes
+    onOrderBookData(null);
+    
     if (!clobTokenId) {
       console.log('No CLOB token ID provided');
       return;
@@ -74,6 +78,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveO
         console.log('Closing WebSocket connection');
         ws.close();
       }
+      // Clear orderbook data when component unmounts or clobTokenId changes
+      onOrderBookData(null);
     };
   }, [onOrderBookData, clobTokenId]);
 
