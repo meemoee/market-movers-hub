@@ -1,4 +1,3 @@
-
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
@@ -26,6 +25,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
     id: string; 
     action: 'buy' | 'sell';
     clobTokenId: string;
+    outcomeIndex: number;
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
@@ -235,7 +235,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                         setSelectedMarket({ 
                           id: market.id, 
                           action: 'buy', 
-                          clobTokenId 
+                          clobTokenId,
+                          outcomeIndex: 0
                         });
                       }
                     }}
@@ -254,7 +255,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                         setSelectedMarket({ 
                           id: market.id, 
                           action: 'buy',
-                          clobTokenId 
+                          clobTokenId,
+                          outcomeIndex: 1
                         });
                       }
                     }}
@@ -279,7 +281,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           question: selectedTopMover.question,
           image: selectedTopMover.image || '',
           clobtokenids: selectedTopMover.clobtokenids.map(id => String(id)),
-          outcomes: selectedTopMover.outcomes.map(outcome => String(outcome))
+          outcomes: selectedTopMover.outcomes.map(outcome => String(outcome)),
+          selectedOutcome: selectedTopMover.outcomes[selectedMarket?.outcomeIndex || 0]
         } : null}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}

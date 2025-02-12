@@ -28,6 +28,7 @@ interface TopMover {
   image: string;
   clobtokenids?: string[];
   outcomes?: string[];
+  selectedOutcome?: string;
 }
 
 interface TransactionDialogProps {
@@ -72,16 +73,14 @@ export function TransactionDialog({
       }
 
       const price = orderBookData.best_ask;
-      const isFirstOutcome = selectedMarket.clobTokenId === topMover.clobtokenids?.[0];
-      const selectedOutcome = isFirstOutcome ? topMover.outcomes[0] : topMover.outcomes[1];
       
       const { data, error } = await supabase.functions.invoke('execute-market-order', {
         body: {
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
-          outcome: selectedOutcome, // Store the actual outcome title
-          side: 'buy', // Always 'buy' since we're buying the respective outcome
+          outcome: topMover.selectedOutcome, // Use the selected outcome
+          side: 'buy',
           size,
           price
         }
@@ -99,7 +98,7 @@ export function TransactionDialog({
 
       toast({
         title: "Order confirmed",
-        description: `Your order to buy ${selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
+        description: `Your order to buy ${topMover.selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
       });
       
       onConfirm();
@@ -130,7 +129,7 @@ export function TransactionDialog({
                 />
                 <div className="flex-1 min-w-0">
                   <AlertDialogTitle className="text-lg font-semibold mb-1">
-                    {selectedMarket?.action === 'buy' ? 'Buy' : 'Sell'}
+                    Buy {topMover.selectedOutcome}
                   </AlertDialogTitle>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {topMover.question}
@@ -204,7 +203,7 @@ export function TransactionDialog({
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={!orderBookData || isOrderBookLoading}
-            className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+            className="bg-green-500 hover:bg-green-600"
           >
             {isOrderBookLoading ? (
               <>
@@ -212,7 +211,7 @@ export function TransactionDialog({
                 Connecting...
               </>
             ) : (
-              `Confirm ${selectedMarket?.action}`
+              `Confirm purchase of ${topMover?.selectedOutcome}`
             )}
           </AlertDialogAction>
         </AlertDialogFooter>
