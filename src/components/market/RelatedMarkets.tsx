@@ -34,7 +34,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   const { data: relatedMarkets, isLoading } = useQuery({
     queryKey: ['relatedMarkets', eventId, marketId, selectedInterval],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: markets, error } = await supabase
         .from('markets')
         .select(`
           id,
@@ -43,61 +43,57 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           image,
           clobtokenids,
           outcomes,
-          market_prices (
-            last_traded_price,
-            timestamp,
-            volume,
-            best_bid,
-            best_ask
-          )
+          event_id
         `)
         .eq('event_id', eventId)
         .neq('id', marketId);
 
       if (error) throw error;
 
-      const marketsWithPriceChanges = await Promise.all(
-        data.map(async (market) => {
-          const { data: prices } = await supabase
-            .from('market_prices')
-            .select('last_traded_price, timestamp, volume, best_bid, best_ask')
-            .eq('market_id', market.id)
-            .order('timestamp', { ascending: true });
+      const { data: topMoversData, error: topMoversError } = await supabase.functions.invoke<{
+        data: Array<{
+          market_id: string;
+          final_last_traded_price: number;
+          final_best_ask: number;
+          final_best_bid: number;
+          final_volume: number;
+          price_change: number;
+        }>;
+      }>('get-top-movers', {
+        body: { 
+          marketIds: markets.map(m => m.id),
+          interval: selectedInterval
+        }
+      });
 
-          if (!prices?.length) return null;
+      if (topMoversError) throw topMoversError;
 
-          const initialPrice = prices[0]?.last_traded_price || 0;
-          const finalPrice = prices[prices.length - 1]?.last_traded_price || 0;
-          const priceChange = finalPrice - initialPrice;
-          
-          const totalVolume = prices.reduce((sum, price) => sum + (price.volume || 0), 0);
-          const latestBid = prices[prices.length - 1]?.best_bid || 0;
-          const latestAsk = prices[prices.length - 1]?.best_ask || 0;
+      const marketsWithPriceChanges = markets.map(market => {
+        const moverData = topMoversData?.data?.find(m => m.market_id === market.id);
+        if (!moverData) return null;
 
-          const clobtokenids = Array.isArray(market.clobtokenids) 
-            ? market.clobtokenids.map(id => String(id))
-            : [];
-          const outcomes = Array.isArray(market.outcomes)
-            ? market.outcomes.map(outcome => String(outcome))
-            : [];
+        const clobtokenids = Array.isArray(market.clobtokenids) 
+          ? market.clobtokenids.map(id => String(id))
+          : [];
+        const outcomes = Array.isArray(market.outcomes)
+          ? market.outcomes.map(outcome => String(outcome))
+          : [];
 
-          return {
-            ...market,
-            initialPrice,
-            finalPrice,
-            priceChange,
-            totalVolume,
-            best_bid: latestBid,
-            best_ask: latestAsk,
-            clobtokenids,
-            outcomes
-          };
-        })
-      );
+        return {
+          ...market,
+          finalPrice: moverData.final_last_traded_price,
+          priceChange: moverData.price_change,
+          totalVolume: moverData.final_volume,
+          best_bid: moverData.final_best_bid,
+          best_ask: moverData.final_best_ask,
+          clobtokenids,
+          outcomes
+        };
+      });
 
       return marketsWithPriceChanges
         .filter(Boolean)
-        .sort((a, b) => (b?.finalPrice || 0) - (a?.finalPrice || 0));
+        .sort((a, b) => Math.abs((b?.priceChange || 0)) - Math.abs((a?.priceChange || 0)));
     },
     enabled: !!eventId && !!marketId,
   });
