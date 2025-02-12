@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -59,9 +58,8 @@ export function TransactionDialog({
   const { toast } = useToast();
   const [size, setSize] = useState(1);
 
-  // Handle dialog close and clear orderbook data
+  // Only clear orderbook data and close
   const handleClose = () => {
-    onOrderBookData(null);
     onClose();
   };
 
