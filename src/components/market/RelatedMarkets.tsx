@@ -117,8 +117,13 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                   </div>
                 )}
                 <div className="flex items-center justify-between mt-3">
-                  <div className="text-sm text-muted-foreground">
-                    Vol: {market.totalVolume?.toFixed(2) || '0'}
+                  <div className="flex items-center gap-4">
+                    <div className="text-sm text-muted-foreground">
+                      Vol: {market.totalVolume?.toFixed(2) || '0'}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      Last: {(market.finalPrice * 100).toFixed(1)}¢
+                    </div>
                   </div>
                   <div className={`text-base font-medium ${
                     market.priceChange >= 0 ? 'text-green-600' : 'text-red-600'
