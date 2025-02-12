@@ -94,6 +94,10 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
     }
   };
 
+  const calculatePosition = (price: number): number => {
+    return price * 100;
+  };
+
   if (isLoading) {
     return (
       <div className="animate-pulse">
@@ -146,6 +150,52 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                     }`}>
                       {(market.priceChange >= 0 ? '+' : '')}{(market.priceChange * 100).toFixed(1)}%
                     </div>
+                  </div>
+                  
+                  {/* Price change visualization bar */}
+                  <div className="relative h-[3px] w-full mt-3">
+                    {/* Base white line showing current price position */}
+                    <div 
+                      className="absolute bg-white/50 h-2 top-[-4px]" 
+                      style={{ 
+                        width: `${calculatePosition(market.finalPrice)}%`
+                      }}
+                    />
+                    
+                    {/* Price change visualization */}
+                    {market.priceChange >= 0 ? (
+                      <>
+                        <div 
+                          className="absolute bg-green-900/90 h-2 top-[-4px]" 
+                          style={{ 
+                            width: `${Math.abs(market.priceChange * 100)}%`,
+                            right: `${100 - calculatePosition(market.finalPrice)}%`
+                          }}
+                        />
+                        <div 
+                          className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
+                          style={{ 
+                            right: `${100 - calculatePosition(market.finalPrice)}%`
+                          }}
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <div 
+                          className="absolute bg-red-500/50 h-2 top-[-4px]" 
+                          style={{ 
+                            width: `${Math.abs(market.priceChange * 100)}%`,
+                            left: `${calculatePosition(market.finalPrice)}%`
+                          }}
+                        />
+                        <div 
+                          className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
+                          style={{ 
+                            left: `${calculatePosition(market.finalPrice)}%`
+                          }}
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
