@@ -110,17 +110,17 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   return (
     <div className="space-y-4 border-t border-border pt-4">
       <div className="text-sm text-muted-foreground mb-2">Related Markets</div>
-      <div className="space-y-3">
+      <div className="space-y-4">
         {relatedMarkets.map((market) => {
           const colors = getColors(market.priceChange);
           return (
             <div 
               key={market.id} 
-              className={`flex items-center justify-between p-3 rounded-lg transition-colors ${colors.bg}`}
+              className={`p-4 rounded-lg transition-colors ${colors.bg}`}
             >
-              <div className="flex items-center flex-1 min-w-0 gap-3">
+              <div className="flex gap-4">
                 {market.image && (
-                  <div className="w-10 h-10 rounded-md overflow-hidden flex-shrink-0">
+                  <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
                     <img 
                       src={market.image} 
                       alt={market.question}
@@ -128,25 +128,25 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                     />
                   </div>
                 )}
-                <div className="min-w-0">
-                  <div className={`text-sm font-medium truncate ${colors.text}`}>
+                <div className="flex-1">
+                  <div className={`text-base font-medium leading-snug ${colors.text}`}>
                     {market.question}
                   </div>
                   {market.yes_sub_title && (
-                    <div className={`text-xs truncate mt-0.5 ${colors.muted}`}>
+                    <div className={`text-sm mt-2 ${colors.muted}`}>
                       {market.yes_sub_title}
                     </div>
                   )}
-                </div>
-              </div>
-              <div className="flex flex-col items-end ml-4">
-                <div className={`text-sm font-medium ${
-                  market.priceChange >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {(market.priceChange >= 0 ? '+' : '')}{(market.priceChange * 100).toFixed(1)}%
-                </div>
-                <div className={`text-xs ${colors.muted}`}>
-                  Vol: {market.totalVolume?.toFixed(2) || '0'}
+                  <div className="flex items-center justify-between mt-3">
+                    <div className={`text-sm ${colors.muted}`}>
+                      Vol: {market.totalVolume?.toFixed(2) || '0'}
+                    </div>
+                    <div className={`text-base font-medium ${
+                      market.priceChange >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {(market.priceChange >= 0 ? '+' : '')}{(market.priceChange * 100).toFixed(1)}%
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
