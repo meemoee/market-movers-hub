@@ -94,6 +94,7 @@ export default function TopMoversList({
     id: string; 
     action: 'buy' | 'sell';
     clobTokenId: string;
+    selectedOutcome: string;
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
@@ -209,7 +210,16 @@ export default function TopMoversList({
             topMovers={displayedMarkets}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
-            setSelectedMarket={setSelectedMarket}
+            setSelectedMarket={(market) => {
+              if (market) {
+                setSelectedMarket({
+                  ...market,
+                  selectedOutcome: market.selectedOutcome || "Yes" // Ensure selectedOutcome is included
+                });
+              } else {
+                setSelectedMarket(null);
+              }
+            }}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
             isLoadingMore={
