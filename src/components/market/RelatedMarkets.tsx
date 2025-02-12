@@ -75,6 +75,14 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           const latestBid = prices[prices.length - 1]?.best_bid || 0;
           const latestAsk = prices[prices.length - 1]?.best_ask || 0;
 
+          // Ensure clobtokenids and outcomes are string arrays
+          const clobtokenids = Array.isArray(market.clobtokenids) 
+            ? market.clobtokenids.map(id => String(id))
+            : [];
+          const outcomes = Array.isArray(market.outcomes)
+            ? market.outcomes.map(outcome => String(outcome))
+            : [];
+
           return {
             ...market,
             initialPrice,
@@ -83,9 +91,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
             totalVolume,
             best_bid: latestBid,
             best_ask: latestAsk,
-            // Ensure clobtokenids and outcomes are arrays
-            clobtokenids: Array.isArray(market.clobtokenids) ? market.clobtokenids : [],
-            outcomes: Array.isArray(market.outcomes) ? market.outcomes : []
+            clobtokenids,
+            outcomes
           };
         })
       );
@@ -246,7 +253,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                       if (clobTokenId) {
                         setSelectedMarket({ 
                           id: market.id, 
-                          action: 'buy', // Changed to 'buy' since we're buying the opposite outcome
+                          action: 'buy',
                           clobTokenId 
                         });
                       }
@@ -270,9 +277,9 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         topMover={selectedTopMover ? {
           market_id: selectedTopMover.id,
           question: selectedTopMover.question,
-          image: selectedTopMover.image,
-          clobtokenids: Array.isArray(selectedTopMover.clobtokenids) ? selectedTopMover.clobtokenids : [],
-          outcomes: Array.isArray(selectedTopMover.outcomes) ? selectedTopMover.outcomes : []
+          image: selectedTopMover.image || '',
+          clobtokenids: selectedTopMover.clobtokenids.map(id => String(id)),
+          outcomes: selectedTopMover.outcomes.map(outcome => String(outcome))
         } : null}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
