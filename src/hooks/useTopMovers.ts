@@ -35,11 +35,11 @@ interface TopMover {
   volume_change_percentage: number;
 }
 
-export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '') {
+export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '', marketId?: string) {
   return useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, marketId],
     queryFn: async ({ pageParam = 1 }) => {
-      console.log('Fetching top movers with:', { interval, openOnly, page: pageParam, searchQuery });
+      console.log('Fetching top movers with:', { interval, openOnly, page: pageParam, searchQuery, marketId });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
@@ -47,7 +47,8 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
           openOnly,
           page: pageParam,
           limit: 20,
-          searchQuery: searchQuery.trim()
+          searchQuery: searchQuery.trim(),
+          marketId
         }
       })
 

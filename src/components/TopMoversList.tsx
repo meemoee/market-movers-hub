@@ -101,16 +101,20 @@ export default function TopMoversList({
   const [searchPage, setSearchPage] = useState(1);
   const debouncedSearch = useDebounce(searchQuery, 300);
   const { toast } = useToast();
-  const { marketId } = useParams(); // Add this line to get the market ID from URL
+  const { marketId } = useParams();
 
-  // Use infinite query for top movers
-  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
+  // Modified to include marketId in query key
+  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '', marketId);
   const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
 
-  // Effect to expand market from URL
+  // Effect to expand market from URL and clear other expanded markets
   useEffect(() => {
     if (marketId) {
       setExpandedMarkets(new Set([marketId]));
+      // Clear search when viewing a specific market
+      setSearchQuery('');
+    } else {
+      setExpandedMarkets(new Set());
     }
   }, [marketId]);
 
@@ -129,10 +133,8 @@ export default function TopMoversList({
   useEffect(() => {
     if (isSearching && marketSearchQuery.data) {
       if (searchPage === 1) {
-        // Reset results for new search
         setLoadedSearchResults(marketSearchQuery.data.data);
       } else {
-        // Append new results for pagination
         setLoadedSearchResults(prev => [...prev, ...marketSearchQuery.data.data]);
       }
     }
@@ -142,14 +144,14 @@ export default function TopMoversList({
     ? loadedSearchResults
     : topMoversQuery.data?.pages.flatMap(page => page.data) || [];
   
-  // Filter to show only selected market if marketId is present
-  const displayedMarkets = marketId 
+  // Filter markets based on marketId if present
+  const displayedMarkets = marketId
     ? allTopMovers.filter(market => market.market_id === marketId)
     : allTopMovers;
   
   const hasMore = isSearching 
     ? marketSearchQuery.data?.hasMore || false 
-    : topMoversQuery.hasNextPage || false;
+    : (!marketId && topMoversQuery.hasNextPage) || false;
 
   useEffect(() => {
     if (!selectedMarket) {
@@ -186,10 +188,8 @@ export default function TopMoversList({
 
   const handleLoadMore = () => {
     if (isSearching) {
-      // For search, increment page number and fetch next page
       setSearchPage(prev => prev + 1);
     } else {
-      // For infinite scroll, use fetchNextPage
       topMoversQuery.fetchNextPage();
     }
   };
@@ -201,18 +201,20 @@ export default function TopMoversList({
   return (
     <div className="flex flex-col w-full">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
-        <div className="flex items-center w-full px-4 py-3 border-b">
-          <div className="relative flex-1 max-w-2xl mx-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search markets..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 bg-background"
-            />
+        {!marketId && (
+          <div className="flex items-center w-full px-4 py-3 border-b">
+            <div className="relative flex-1 max-w-2xl mx-auto">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search markets..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 bg-background"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         <TopMoversHeader
           timeIntervals={timeIntervals}
@@ -238,7 +240,7 @@ export default function TopMoversList({
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
             onLoadMore={handleLoadMore}
-            hasMore={hasMore && !marketId}
+            hasMore={hasMore}
             isLoadingMore={
               isSearching 
                 ? marketSearchQuery.isFetching 
