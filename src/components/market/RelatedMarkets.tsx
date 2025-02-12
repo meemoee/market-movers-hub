@@ -142,140 +142,142 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
             className="p-4 rounded-lg transition-colors bg-accent/10 cursor-pointer hover:bg-accent/20"
             onClick={() => navigate(`/market/${market.id}`)}
           >
-            <div className="flex gap-4">
-              {market.image && (
-                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                  <img 
-                    src={market.image} 
-                    alt={market.question}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-4 h-12">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-base font-medium leading-snug line-clamp-2">
-                      {market.question}
-                    </div>
-                    {market.yes_sub_title && (
-                      <div className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
-                        {market.yes_sub_title}
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-4">
+                {market.image && (
+                  <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                    <img 
+                      src={market.image} 
+                      alt={market.question}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-4 h-12">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-base font-medium leading-snug line-clamp-2">
+                        {market.question}
                       </div>
-                    )}
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <HoverButton
-                      variant="buy"
-                      onClick={() => {
-                        const clobTokenId = market.clobtokenids?.[0];
-                        if (clobTokenId) {
-                          setSelectedMarket({ 
-                            id: market.id, 
-                            action: 'buy', 
-                            clobTokenId,
-                            selectedOutcome: "Yes"
-                          });
-                        }
-                      }}
-                      className="w-[70px] h-10 flex flex-col items-center justify-center"
-                    >
-                      <span className="text-xs">Yes</span>
-                      <span className="text-[11px] font-medium opacity-90">
-                        {(market.best_ask * 100).toFixed(1)}¢
-                      </span>
-                    </HoverButton>
-                    <HoverButton
-                      variant="sell"
-                      onClick={() => {
-                        const clobTokenId = market.clobtokenids?.[1];
-                        if (clobTokenId) {
-                          setSelectedMarket({ 
-                            id: market.id, 
-                            action: 'buy',
-                            clobTokenId,
-                            selectedOutcome: "No"
-                          });
-                        }
-                      }}
-                      className="w-[70px] h-10 flex flex-col items-center justify-center"
-                    >
-                      <span className="text-xs">No</span>
-                      <span className="text-[11px] font-medium opacity-90">
-                        {((1 - market.best_bid) * 100).toFixed(1)}¢
-                      </span>
-                    </HoverButton>
-                  </div>
-                </div>
-
-                <div className="flex items-start justify-between mt-3">
-                  <div className="flex flex-col">
-                    <div className="text-3xl font-bold tracking-tight">
-                      {(market.finalPrice * 100).toFixed(1)}%
-                    </div>
-                    <div className={`text-sm font-medium flex items-center gap-1
-                      ${market.priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
-                    >
-                      {market.priceChange >= 0 ? (
-                        <TrendingUp className="w-4 h-4" />
-                      ) : (
-                        <TrendingDown className="w-4 h-4" />
+                      {market.yes_sub_title && (
+                        <div className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
+                          {market.yes_sub_title}
+                        </div>
                       )}
-                      {(market.priceChange * 100).toFixed(1)} pp
                     </div>
-                  </div>
-                  <div className="flex flex-col items-end">
-                    <div className="text-xl font-semibold">
-                      ${market.totalVolume?.toFixed(0) || '0'}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      24h Volume
+                    <div className="flex gap-2 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <HoverButton
+                        variant="buy"
+                        onClick={() => {
+                          const clobTokenId = market.clobtokenids?.[0];
+                          if (clobTokenId) {
+                            setSelectedMarket({ 
+                              id: market.id, 
+                              action: 'buy', 
+                              clobTokenId,
+                              selectedOutcome: "Yes"
+                            });
+                          }
+                        }}
+                        className="w-[70px] h-10 flex flex-col items-center justify-center"
+                      >
+                        <span className="text-xs">Yes</span>
+                        <span className="text-[11px] font-medium opacity-90">
+                          {(market.best_ask * 100).toFixed(1)}¢
+                        </span>
+                      </HoverButton>
+                      <HoverButton
+                        variant="sell"
+                        onClick={() => {
+                          const clobTokenId = market.clobtokenids?.[1];
+                          if (clobTokenId) {
+                            setSelectedMarket({ 
+                              id: market.id, 
+                              action: 'buy',
+                              clobTokenId,
+                              selectedOutcome: "No"
+                            });
+                          }
+                        }}
+                        className="w-[70px] h-10 flex flex-col items-center justify-center"
+                      >
+                        <span className="text-xs">No</span>
+                        <span className="text-[11px] font-medium opacity-90">
+                          {((1 - market.best_bid) * 100).toFixed(1)}¢
+                        </span>
+                      </HoverButton>
                     </div>
                   </div>
                 </div>
+              </div>
+
+              <div className="flex items-start justify-between">
+                <div className="flex flex-col">
+                  <div className="text-3xl font-bold tracking-tight">
+                    {(market.finalPrice * 100).toFixed(1)}%
+                  </div>
+                  <div className={`text-sm font-medium flex items-center gap-1
+                    ${market.priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
+                  >
+                    {market.priceChange >= 0 ? (
+                      <TrendingUp className="w-4 h-4" />
+                    ) : (
+                      <TrendingDown className="w-4 h-4" />
+                    )}
+                    {(market.priceChange * 100).toFixed(1)} pp
+                  </div>
+                </div>
+                <div className="flex flex-col items-end">
+                  <div className="text-xl font-semibold">
+                    ${market.totalVolume?.toFixed(0) || '0'}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    24h Volume
+                  </div>
+                </div>
+              </div>
+              
+              <div className="relative h-[3px] w-full">
+                <div 
+                  className="absolute bg-white/50 h-2 top-[-4px]" 
+                  style={{ 
+                    width: `${calculatePosition(market.finalPrice)}%`
+                  }}
+                />
                 
-                <div className="relative h-[3px] w-full mt-3 mb-0">
-                  <div 
-                    className="absolute bg-white/50 h-2 top-[-4px]" 
-                    style={{ 
-                      width: `${calculatePosition(market.finalPrice)}%`
-                    }}
-                  />
-                  
-                  {market.priceChange >= 0 ? (
-                    <>
-                      <div 
-                        className="absolute bg-green-900/90 h-2 top-[-4px]" 
-                        style={{ 
-                          width: `${Math.abs(market.priceChange * 100)}%`,
-                          right: `${100 - calculatePosition(market.finalPrice)}%`
-                        }}
-                      />
-                      <div 
-                        className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
-                        style={{ 
-                          right: `${100 - calculatePosition(market.finalPrice)}%`
-                        }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <div 
-                        className="absolute bg-red-500/50 h-2 top-[-4px]" 
-                        style={{ 
-                          width: `${Math.abs(market.priceChange * 100)}%`,
-                          left: `${calculatePosition(market.finalPrice)}%`
-                        }}
-                      />
-                      <div 
-                        className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
-                        style={{ 
-                          left: `${calculatePosition(market.finalPrice)}%`
-                        }}
-                      />
-                    </>
-                  )}
-                </div>
+                {market.priceChange >= 0 ? (
+                  <>
+                    <div 
+                      className="absolute bg-green-900/90 h-2 top-[-4px]" 
+                      style={{ 
+                        width: `${Math.abs(market.priceChange * 100)}%`,
+                        right: `${100 - calculatePosition(market.finalPrice)}%`
+                      }}
+                    />
+                    <div 
+                      className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
+                      style={{ 
+                        right: `${100 - calculatePosition(market.finalPrice)}%`
+                      }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <div 
+                      className="absolute bg-red-500/50 h-2 top-[-4px]" 
+                      style={{ 
+                        width: `${Math.abs(market.priceChange * 100)}%`,
+                        left: `${calculatePosition(market.finalPrice)}%`
+                      }}
+                    />
+                    <div 
+                      className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
+                      style={{ 
+                        left: `${calculatePosition(market.finalPrice)}%`
+                      }}
+                    />
+                  </>
+                )}
               </div>
             </div>
           </div>
