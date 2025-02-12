@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -35,7 +36,7 @@ const TIME_INTERVALS: TimeInterval[] = [
   { label: formatInterval(480), value: '480' },
   { label: formatInterval(1440), value: '1440' },
   { label: formatInterval(10080), value: '10080' },
-];
+] as const;
 
 export interface TopMover {
   market_id: string;
@@ -118,11 +119,6 @@ export default function TopMoversList({
     setSearchPage(1);
   }, [debouncedSearch]);
 
-  const isSearching = debouncedSearch.length > 0 && !marketId;
-  const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
-  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
-  const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
-
   useEffect(() => {
     if (!selectedMarket) {
       setOrderBookData(null);
@@ -130,6 +126,11 @@ export default function TopMoversList({
     }
     setIsOrderBookLoading(true);
   }, [selectedMarket]);
+
+  const isSearching = debouncedSearch.length > 0 && !marketId;
+  const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
+  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
+  const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
 
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;
@@ -203,7 +204,7 @@ export default function TopMoversList({
           <MarketStatsBento selectedInterval={selectedInterval} />
           
           <TopMoversContent
-            isLoading={!isSearching && !topMoversQuery.data && topMoversQuery.isLoading}
+            isLoading={activeQuery.isLoading || (!displayedMarkets.length && activeQuery.isFetching)}
             error={activeQuery.error ? String(activeQuery.error) : null}
             topMovers={displayedMarkets}
             expandedMarkets={expandedMarkets}
