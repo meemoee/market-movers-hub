@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -103,55 +102,26 @@ export default function TopMoversList({
   const { toast } = useToast();
   const { marketId } = useParams();
 
-  // Modified to include marketId in query key
-  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '', marketId);
+  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, debouncedSearch, marketId);
   const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
 
-  // Effect to expand market from URL and clear other expanded markets
   useEffect(() => {
     if (marketId) {
       setExpandedMarkets(new Set([marketId]));
-      // Clear search when viewing a specific market
       setSearchQuery('');
     } else {
       setExpandedMarkets(new Set());
     }
   }, [marketId]);
 
-  // Reset search page when search query changes
   useEffect(() => {
     setSearchPage(1);
   }, [debouncedSearch]);
 
-  const isSearching = debouncedSearch.length > 0;
+  const isSearching = debouncedSearch.length > 0 && !marketId;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
-
-  // For search results, we need to maintain a list of all loaded markets
-  const [loadedSearchResults, setLoadedSearchResults] = useState<TopMover[]>([]);
-
-  // Update loaded search results when we get new data
-  useEffect(() => {
-    if (isSearching && marketSearchQuery.data) {
-      if (searchPage === 1) {
-        setLoadedSearchResults(marketSearchQuery.data.data);
-      } else {
-        setLoadedSearchResults(prev => [...prev, ...marketSearchQuery.data.data]);
-      }
-    }
-  }, [isSearching, marketSearchQuery.data, searchPage]);
-
-  const allTopMovers = isSearching 
-    ? loadedSearchResults
-    : topMoversQuery.data?.pages.flatMap(page => page.data) || [];
-  
-  // Filter markets based on marketId if present
-  const displayedMarkets = marketId
-    ? allTopMovers.filter(market => market.market_id === marketId)
-    : allTopMovers;
-  
-  const hasMore = isSearching 
-    ? marketSearchQuery.data?.hasMore || false 
-    : (!marketId && topMoversQuery.hasNextPage) || false;
+  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
+  const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
 
   useEffect(() => {
     if (!selectedMarket) {
@@ -195,7 +165,7 @@ export default function TopMoversList({
   };
 
   const selectedTopMover = selectedMarket 
-    ? allTopMovers.find(m => m.market_id === selectedMarket.id)
+    ? displayedMarkets.find(m => m.market_id === selectedMarket.id)
     : null;
 
   return (

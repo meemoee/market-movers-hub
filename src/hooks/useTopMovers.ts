@@ -1,5 +1,5 @@
 
-import { useInfiniteQuery } from '@tanstack/react-query'
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
 interface TopMoversResponse {
@@ -36,63 +36,79 @@ interface TopMover {
 }
 
 export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '', marketId?: string) {
-  return useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, marketId],
+  // For single market view, use a simple query instead of infinite query
+  const singleMarketQuery = useQuery({
+    queryKey: ['market', marketId],
+    queryFn: async () => {
+      if (!marketId) return null;
+      
+      console.log('Fetching single market:', marketId);
+      const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
+        body: { marketId }
+      });
+
+      if (error) throw error;
+      
+      if (!data?.data?.[0]) {
+        console.log('Market not found, trying without filters');
+        // Try one more time without any filters
+        const { data: retryData, error: retryError } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
+          body: {
+            marketId,
+            openOnly: false
+          }
+        });
+        
+        if (retryError) throw retryError;
+        return retryData?.data?.[0] || null;
+      }
+      
+      return data.data[0];
+    },
+    enabled: !!marketId
+  });
+
+  // For list view, use infinite query
+  const listQuery = useInfiniteQuery({
+    queryKey: ['topMovers', interval, openOnly, searchQuery],
     queryFn: async ({ pageParam = 1 }) => {
-      console.log('Fetching top movers with:', { interval, openOnly, page: pageParam, searchQuery, marketId });
+      console.log('Fetching top movers list:', { interval, openOnly, page: pageParam, searchQuery });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
           interval,
           openOnly,
           page: pageParam,
-          limit: marketId ? 1 : 20,
-          searchQuery: searchQuery.trim(),
-          marketId
+          limit: 20,
+          searchQuery: searchQuery.trim()
         }
-      })
+      });
 
-      if (error) {
-        console.error('Error fetching top movers:', error);
-        throw error;
-      }
-      
-      console.log('Received top movers response:', data);
-      
-      if (marketId && (!data?.data || data.data.length === 0)) {
-        // If we're looking for a specific market but didn't find it,
-        // make another call without the interval restriction
-        const { data: singleMarketData, error: singleMarketError } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
-          body: {
-            marketId,
-            page: 1,
-            limit: 1,
-            openOnly: false // We want to find the market even if it's closed
-          }
-        });
-
-        if (singleMarketError) throw singleMarketError;
-        
-        return {
-          data: singleMarketData?.data || [],
-          hasMore: false,
-          total: singleMarketData?.data?.length || 0,
-          nextPage: undefined
-        };
-      }
+      if (error) throw error;
       
       return {
         data: data?.data || [],
         hasMore: data?.hasMore || false,
         total: data?.total,
         nextPage: data?.hasMore ? pageParam + 1 : undefined
-      }
+      };
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
-    staleTime: 0,
-    retry: 2,
-    retryDelay: 1000,
-    refetchOnWindowFocus: false
-  })
+    enabled: !marketId // Only enable list query when not viewing a single market
+  });
+
+  // Return appropriate data structure based on whether we're viewing a single market
+  if (marketId) {
+    return {
+      data: { pages: [{ data: singleMarketQuery.data ? [singleMarketQuery.data] : [] }] },
+      isLoading: singleMarketQuery.isLoading,
+      error: singleMarketQuery.error,
+      hasNextPage: false,
+      fetchNextPage: () => Promise.resolve(),
+      isFetchingNextPage: false
+    };
+  }
+
+  return listQuery;
 }
