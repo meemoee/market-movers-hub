@@ -1,3 +1,4 @@
+
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
@@ -133,7 +134,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   }
 
   const selectedTopMover = selectedMarket 
-    ? relatedMarkets.find(m => m.id === selectedMarket.id)
+    ? relatedMarkets?.find(m => m.id === selectedMarket.id)
     : null;
 
   return (
@@ -280,9 +281,15 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           market_id: selectedTopMover.id,
           question: selectedTopMover.question,
           image: selectedTopMover.image || '',
-          clobtokenids: selectedTopMover.clobtokenids.map(id => String(id)),
-          outcomes: selectedTopMover.outcomes.map(outcome => String(outcome)),
-          selectedOutcome: selectedTopMover.outcomes[selectedMarket?.outcomeIndex || 0]
+          clobtokenids: Array.isArray(selectedTopMover.clobtokenids) 
+            ? selectedTopMover.clobtokenids.map(id => String(id))
+            : [],
+          outcomes: Array.isArray(selectedTopMover.outcomes) 
+            ? selectedTopMover.outcomes.map(outcome => String(outcome))
+            : [],
+          selectedOutcome: Array.isArray(selectedTopMover.outcomes) 
+            ? String(selectedTopMover.outcomes[selectedMarket.outcomeIndex])
+            : undefined
         } : null}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
