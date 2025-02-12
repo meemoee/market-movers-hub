@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Loader2 } from "lucide-react";
 
 interface OrderBookData {
@@ -18,70 +18,68 @@ interface LiveOrderBookProps {
 
 export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId }: LiveOrderBookProps) {
   const [error, setError] = useState<string | null>(null);
+  const [ws, setWs] = useState<WebSocket | null>(null);
+
+  const cleanup = useCallback(() => {
+    if (ws) {
+      console.log('Cleaning up WebSocket connection');
+      ws.close();
+      setWs(null);
+    }
+  }, [ws]);
 
   useEffect(() => {
-    // Clear orderbook data when clobTokenId changes or component unmounts
+    // Clear orderbook data and cleanup existing connection
     onOrderBookData(null);
+    cleanup();
     
     if (!clobTokenId) {
       console.log('No CLOB token ID provided');
       return;
     }
 
-    let ws: WebSocket | null = null;
+    const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${clobTokenId}`;
+    console.log('Connecting to WebSocket:', wsUrl);
+    
+    const newWs = new WebSocket(wsUrl);
+    setWs(newWs);
 
-    const connectWebSocket = async () => {
+    newWs.onopen = () => {
+      console.log('WebSocket connected');
+      setError(null);
+    };
+
+    newWs.onmessage = (event) => {
       try {
-        const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${clobTokenId}`;
-        console.log('Connecting to WebSocket:', wsUrl);
-        
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          console.log('WebSocket connected');
+        const data = JSON.parse(event.data);
+        console.log('Received orderbook update:', data);
+        if (data.orderbook) {
+          onOrderBookData(data.orderbook);
           setError(null);
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log('Received orderbook update:', data);
-            if (data.orderbook) {
-              onOrderBookData(data.orderbook);
-              setError(null);
-            }
-          } catch (err) {
-            console.error('Error parsing WebSocket message:', err);
-            setError('Failed to parse orderbook data');
-          }
-        };
-
-        ws.onerror = (event) => {
-          console.error('WebSocket error:', event);
-          setError('WebSocket connection error');
-        };
-
-        ws.onclose = () => {
-          console.log('WebSocket closed');
-        };
-
+        }
       } catch (err) {
-        console.error('Error setting up WebSocket:', err);
-        setError('Failed to connect to orderbook service');
+        console.error('Error parsing WebSocket message:', err);
+        setError('Failed to parse orderbook data');
       }
     };
 
-    connectWebSocket();
+    newWs.onerror = (event) => {
+      console.error('WebSocket error:', event);
+      setError('WebSocket connection error');
+    };
 
+    newWs.onclose = () => {
+      console.log('WebSocket closed');
+      setWs(null);
+    };
+
+    // Cleanup function
     return () => {
-      if (ws) {
-        console.log('Closing WebSocket connection');
-        ws.close();
-      }
-      // Clear orderbook data when cleaning up
+      console.log('Component cleanup - closing WebSocket');
+      cleanup();
       onOrderBookData(null);
     };
-  }, [onOrderBookData, clobTokenId]);
+  }, [clobTokenId, onOrderBookData, cleanup]); // Added cleanup to dependencies
 
   if (isLoading) {
     return (
