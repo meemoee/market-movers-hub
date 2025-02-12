@@ -1,4 +1,3 @@
-
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
@@ -26,7 +25,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
     id: string; 
     action: 'buy' | 'sell';
     clobTokenId: string;
-    outcomeIndex: number;
+    selectedOutcome: string;
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
@@ -56,7 +55,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
 
       if (error) throw error;
 
-      // For each market, get initial and final prices, and total volume
       const marketsWithPriceChanges = await Promise.all(
         data.map(async (market) => {
           const { data: prices } = await supabase
@@ -71,12 +69,10 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           const finalPrice = prices[prices.length - 1]?.last_traded_price || 0;
           const priceChange = finalPrice - initialPrice;
           
-          // Calculate total volume and get latest bid/ask
           const totalVolume = prices.reduce((sum, price) => sum + (price.volume || 0), 0);
           const latestBid = prices[prices.length - 1]?.best_bid || 0;
           const latestAsk = prices[prices.length - 1]?.best_ask || 0;
 
-          // Ensure clobtokenids and outcomes are string arrays
           const clobtokenids = Array.isArray(market.clobtokenids) 
             ? market.clobtokenids.map(id => String(id))
             : [];
@@ -98,7 +94,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         })
       );
 
-      // Sort by final price in descending order
       return marketsWithPriceChanges
         .filter(Boolean)
         .sort((a, b) => (b?.finalPrice || 0) - (a?.finalPrice || 0));
@@ -112,7 +107,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
     const action = selectedMarket.action;
     const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
     
-    // Close the dialog after transaction
     setSelectedMarket(null);
   };
 
@@ -182,7 +176,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                   </div>
                 </div>
                 
-                {/* Price change visualization bar */}
                 <div className="relative h-[3px] w-full mt-3 mb-3">
                   <div 
                     className="absolute bg-white/50 h-2 top-[-4px]" 
@@ -226,7 +219,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                   )}
                 </div>
 
-                {/* Buy/Sell buttons */}
                 <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
                   <HoverButton
                     variant="buy"
@@ -237,7 +229,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                           id: market.id, 
                           action: 'buy', 
                           clobTokenId,
-                          outcomeIndex: 0
+                          selectedOutcome: "Yes"
                         });
                       }
                     }}
@@ -257,7 +249,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                           id: market.id, 
                           action: 'buy',
                           clobTokenId,
-                          outcomeIndex: 1
+                          selectedOutcome: "No"
                         });
                       }
                     }}
@@ -287,9 +279,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           outcomes: Array.isArray(selectedTopMover.outcomes) 
             ? selectedTopMover.outcomes.map(outcome => String(outcome))
             : [],
-          selectedOutcome: Array.isArray(selectedTopMover.outcomes) 
-            ? String(selectedTopMover.outcomes[selectedMarket.outcomeIndex])
-            : undefined
+          selectedOutcome: selectedMarket?.selectedOutcome || ""
         } : null}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
