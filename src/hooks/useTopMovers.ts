@@ -106,7 +106,8 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
       error: singleMarketQuery.error,
       hasNextPage: false,
       fetchNextPage: () => Promise.resolve(),
-      isFetchingNextPage: false
+      isFetchingNextPage: false,
+      isFetching: singleMarketQuery.isFetching // Add this line
     };
   }
 

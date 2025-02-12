@@ -204,7 +204,7 @@ export default function TopMoversList({
           <MarketStatsBento selectedInterval={selectedInterval} />
           
           <TopMoversContent
-            isLoading={activeQuery.isLoading || (!displayedMarkets.length && activeQuery.isFetching)}
+            isLoading={activeQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
             topMovers={displayedMarkets}
             expandedMarkets={expandedMarkets}
