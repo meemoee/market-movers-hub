@@ -82,7 +82,10 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
             priceChange,
             totalVolume,
             best_bid: latestBid,
-            best_ask: latestAsk
+            best_ask: latestAsk,
+            // Ensure clobtokenids and outcomes are arrays
+            clobtokenids: Array.isArray(market.clobtokenids) ? market.clobtokenids : [],
+            outcomes: Array.isArray(market.outcomes) ? market.outcomes : []
           };
         })
       );
@@ -268,8 +271,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           market_id: selectedTopMover.id,
           question: selectedTopMover.question,
           image: selectedTopMover.image,
-          clobtokenids: selectedTopMover.clobtokenids,
-          outcomes: selectedTopMover.outcomes
+          clobtokenids: Array.isArray(selectedTopMover.clobtokenids) ? selectedTopMover.clobtokenids : [],
+          outcomes: Array.isArray(selectedTopMover.outcomes) ? selectedTopMover.outcomes : []
         } : null}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
