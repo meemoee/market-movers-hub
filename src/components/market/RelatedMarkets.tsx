@@ -66,7 +66,10 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         })
       );
 
-      return marketsWithPriceChanges.filter(Boolean);
+      // Sort by final price in descending order
+      return marketsWithPriceChanges
+        .filter(Boolean)
+        .sort((a, b) => (b?.finalPrice || 0) - (a?.finalPrice || 0));
     },
     enabled: !!eventId && !!marketId,
   });
@@ -121,8 +124,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                     <div className="text-sm text-muted-foreground">
                       Vol: {market.totalVolume?.toFixed(2) || '0'}
                     </div>
-                    <div className="text-sm text-muted-foreground">
-                      Last: {(market.finalPrice * 100).toFixed(1)}¢
+                    <div className="text-base font-medium">
+                      {(market.finalPrice * 100).toFixed(1)}¢
                     </div>
                   </div>
                   <div className={`text-base font-medium ${
