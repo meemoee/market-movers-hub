@@ -100,10 +100,18 @@ export default function TopMoversList({
   const [searchPage, setSearchPage] = useState(1);
   const debouncedSearch = useDebounce(searchQuery, 300);
   const { toast } = useToast();
+  const { marketId } = useParams(); // Add this line to get the market ID from URL
 
   // Use infinite query for top movers
   const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
   const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
+
+  // Effect to expand market from URL
+  useEffect(() => {
+    if (marketId) {
+      setExpandedMarkets(new Set([marketId]));
+    }
+  }, [marketId]);
 
   // Reset search page when search query changes
   useEffect(() => {
@@ -132,6 +140,11 @@ export default function TopMoversList({
   const allTopMovers = isSearching 
     ? loadedSearchResults
     : topMoversQuery.data?.pages.flatMap(page => page.data) || [];
+  
+  // Filter to show only selected market if marketId is present
+  const displayedMarkets = marketId 
+    ? allTopMovers.filter(market => market.market_id === marketId)
+    : allTopMovers;
   
   const hasMore = isSearching 
     ? marketSearchQuery.data?.hasMore || false 
@@ -214,18 +227,17 @@ export default function TopMoversList({
       <div className="w-full px-0 sm:px-4 -mt-20">
         <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
           <InsightPostBox />
-          
           <MarketStatsBento selectedInterval={selectedInterval} />
-
+          
           <TopMoversContent
             isLoading={!isSearching && !topMoversQuery.data && topMoversQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
-            topMovers={allTopMovers}
+            topMovers={displayedMarkets}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
             onLoadMore={handleLoadMore}
-            hasMore={hasMore}
+            hasMore={hasMore && !marketId}
             isLoadingMore={
               isSearching 
                 ? marketSearchQuery.isFetching 
