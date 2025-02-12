@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
 import { useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { TransactionDialog } from './TransactionDialog';
 
 interface RelatedMarketsProps {
   eventId: string;
@@ -10,8 +12,24 @@ interface RelatedMarketsProps {
   selectedInterval: string;
 }
 
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
+
 export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedMarketsProps) {
   const navigate = useNavigate();
+  const [selectedMarket, setSelectedMarket] = useState<{ 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
+  } | null>(null);
+  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
+  const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
+
   const { data: relatedMarkets, isLoading } = useQuery({
     queryKey: ['relatedMarkets', eventId, marketId, selectedInterval],
     queryFn: async () => {
@@ -76,6 +94,16 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
     enabled: !!eventId && !!marketId,
   });
 
+  const handleTransaction = () => {
+    if (!selectedMarket || !orderBookData) return;
+    
+    const action = selectedMarket.action;
+    const price = action === 'buy' ? orderBookData.best_ask : orderBookData.best_bid;
+    
+    // Close the dialog after transaction
+    setSelectedMarket(null);
+  };
+
   const calculatePosition = (price: number): number => {
     return price * 100;
   };
@@ -92,6 +120,10 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   if (!relatedMarkets?.length) {
     return null;
   }
+
+  const selectedTopMover = selectedMarket 
+    ? relatedMarkets.find(m => m.id === selectedMarket.id)
+    : null;
 
   return (
     <div className="space-y-4 border-t border-border pt-4">
@@ -183,11 +215,18 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                 </div>
 
                 {/* Buy/Sell buttons */}
-                <div className="flex gap-2 mt-3">
+                <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
                   <HoverButton
                     variant="buy"
-                    onClick={(e) => {
-                      e.stopPropagation(); // Prevent navigation when clicking buttons
+                    onClick={() => {
+                      const clobTokenId = market.clobtokenids?.[0];
+                      if (clobTokenId) {
+                        setSelectedMarket({ 
+                          id: market.id, 
+                          action: 'buy', 
+                          clobTokenId 
+                        });
+                      }
                     }}
                     className="flex-1 h-12 flex flex-col items-center justify-center"
                   >
@@ -198,8 +237,15 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                   </HoverButton>
                   <HoverButton
                     variant="sell"
-                    onClick={(e) => {
-                      e.stopPropagation(); // Prevent navigation when clicking buttons
+                    onClick={() => {
+                      const clobTokenId = market.clobtokenids?.[1];
+                      if (clobTokenId) {
+                        setSelectedMarket({ 
+                          id: market.id, 
+                          action: 'buy', // Changed to 'buy' since we're buying the opposite outcome
+                          clobTokenId 
+                        });
+                      }
                     }}
                     className="flex-1 h-12 flex flex-col items-center justify-center"
                   >
@@ -214,6 +260,26 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           </div>
         ))}
       </div>
+
+      <TransactionDialog
+        selectedMarket={selectedMarket}
+        topMover={selectedTopMover ? {
+          market_id: selectedTopMover.id,
+          question: selectedTopMover.question,
+          image: selectedTopMover.image,
+          yes_sub_title: selectedTopMover.yes_sub_title,
+          final_best_ask: selectedTopMover.best_ask,
+          final_best_bid: selectedTopMover.best_bid
+        } : null}
+        onClose={() => setSelectedMarket(null)}
+        orderBookData={orderBookData}
+        isOrderBookLoading={isOrderBookLoading}
+        onOrderBookData={(data) => {
+          setOrderBookData(data);
+          setIsOrderBookLoading(false);
+        }}
+        onConfirm={handleTransaction}
+      />
     </div>
   );
 }
