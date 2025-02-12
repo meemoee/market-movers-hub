@@ -144,7 +144,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           >
             <div className="flex gap-4">
               {market.image && (
-                <div className="w-16 h-16 rounded-lg overflow-hidden flex-shrink-0">
+                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
                   <img 
                     src={market.image} 
                     alt={market.question}
@@ -153,13 +153,13 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                 </div>
               )}
               <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-center justify-between gap-4 h-12">
                   <div className="flex-1 min-w-0">
                     <div className="text-base font-medium leading-snug line-clamp-2">
                       {market.question}
                     </div>
                     {market.yes_sub_title && (
-                      <div className="text-sm mt-1 text-muted-foreground line-clamp-1">
+                      <div className="text-sm text-muted-foreground line-clamp-1 mt-0.5">
                         {market.yes_sub_title}
                       </div>
                     )}
