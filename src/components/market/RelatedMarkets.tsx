@@ -41,6 +41,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           yes_sub_title,
           image,
           clobtokenids,
+          outcomes,
           market_prices (
             last_traded_price,
             timestamp,
@@ -267,9 +268,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           market_id: selectedTopMover.id,
           question: selectedTopMover.question,
           image: selectedTopMover.image,
-          yes_sub_title: selectedTopMover.yes_sub_title,
-          final_best_ask: selectedTopMover.best_ask,
-          final_best_bid: selectedTopMover.best_bid
+          clobtokenids: selectedTopMover.clobtokenids,
+          outcomes: selectedTopMover.outcomes
         } : null}
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
