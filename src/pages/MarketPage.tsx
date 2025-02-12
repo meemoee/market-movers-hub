@@ -48,6 +48,11 @@ export function MarketPage() {
       const latestBid = prices[prices.length - 1]?.best_bid || 0;
       const latestAsk = prices[prices.length - 1]?.best_ask || 0;
 
+      // Ensure outcomes is always an array of strings
+      const outcomes = Array.isArray(marketData.outcomes) 
+        ? marketData.outcomes as string[]
+        : ["Yes", "No"];
+
       return {
         market_id: marketData.id,
         question: marketData.question,
@@ -59,8 +64,8 @@ export function MarketPage() {
         final_last_traded_price: finalPrice,
         final_best_ask: latestAsk,
         final_best_bid: latestBid,
-        description: marketData.description,
-        outcomes: marketData.outcomes || ["Yes", "No"],
+        description: marketData.description || '',
+        outcomes: outcomes,
         event_id: marketData.event_id,
       };
     },
