@@ -139,7 +139,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         {relatedMarkets.map((market) => (
           <div 
             key={market.id} 
-            className="p-4 rounded-lg transition-colors bg-accent/10 cursor-pointer hover:bg-accent/20"
+            className="p-4 rounded-lg transition-all duration-200 bg-accent/10 cursor-pointer hover:bg-accent/20 hover:scale-[1.01] hover:shadow-lg"
             onClick={() => navigate(`/market/${market.id}`)}
           >
             <div className="flex flex-col gap-3">
