@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
+import { useNavigate } from 'react-router-dom';
 
 interface RelatedMarketsProps {
   eventId: string;
@@ -10,6 +11,7 @@ interface RelatedMarketsProps {
 }
 
 export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedMarketsProps) {
+  const navigate = useNavigate();
   const { data: relatedMarkets, isLoading } = useQuery({
     queryKey: ['relatedMarkets', eventId, marketId, selectedInterval],
     queryFn: async () => {
@@ -98,7 +100,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         {relatedMarkets.map((market) => (
           <div 
             key={market.id} 
-            className="p-4 rounded-lg transition-colors bg-accent/10"
+            className="p-4 rounded-lg transition-colors bg-accent/10 cursor-pointer hover:bg-accent/20"
+            onClick={() => navigate(`/market/${market.id}`)}
           >
             <div className="flex gap-4">
               {market.image && (
@@ -183,7 +186,9 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                 <div className="flex gap-2 mt-3">
                   <HoverButton
                     variant="buy"
-                    onClick={() => {}}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent navigation when clicking buttons
+                    }}
                     className="flex-1 h-12 flex flex-col items-center justify-center"
                   >
                     <span className="text-xs">Yes</span>
@@ -193,7 +198,9 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                   </HoverButton>
                   <HoverButton
                     variant="sell"
-                    onClick={() => {}}
+                    onClick={(e) => {
+                      e.stopPropagation(); // Prevent navigation when clicking buttons
+                    }}
                     className="flex-1 h-12 flex flex-col items-center justify-center"
                   >
                     <span className="text-xs">No</span>
