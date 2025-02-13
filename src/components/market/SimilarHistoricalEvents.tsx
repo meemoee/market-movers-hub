@@ -92,71 +92,64 @@ export function SimilarHistoricalEvents() {
 
       <ScrollArea className="h-[400px] pr-4">
         <div className="space-y-3">
-          <div className="flex px-4">
-            <div className="w-[180px]">Event</div>
-            <div className="flex-1 grid grid-cols-2 gap-8">
-              <span className="text-xs font-medium text-primary">Similarities</span>
-              <span className="text-xs font-medium text-destructive">Differences</span>
-            </div>
-          </div>
-
           {EVENTS.map((event) => (
             <Collapsible
               key={event.id}
               open={openEvents.includes(event.id)}
               onOpenChange={() => toggleEvent(event.id)}
-              className="border rounded-md bg-card"
+              className="border rounded-md bg-card overflow-hidden"
             >
-              <div className="flex">
-                <CollapsibleTrigger className="w-[180px] flex items-center justify-between p-3 hover:bg-accent rounded-l-md text-sm">
-                  <div className="flex flex-col items-start">
-                    <span className="font-medium">{event.title}</span>
-                    <span className="text-xs text-muted-foreground">{event.date}</span>
+              <CollapsibleTrigger className="w-full hover:bg-accent">
+                <div className="flex items-center p-3">
+                  <div className="flex items-center gap-2 w-[180px]">
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{event.title}</span>
+                      <span className="text-xs text-muted-foreground">{event.date}</span>
+                    </div>
+                    {openEvents.includes(event.id) ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
                   </div>
-                  {openEvents.includes(event.id) ? (
-                    <ChevronUp className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                </CollapsibleTrigger>
-
-                <div className="flex-1 grid grid-cols-2 gap-8 p-3">
-                  <div className="text-sm text-muted-foreground">
-                    <span className="line-clamp-1 pl-4 before:content-['•'] before:mr-2 before:text-primary">
-                      {event.similarities[0]}
-                    </span>
-                  </div>
-                  <div className="text-sm text-muted-foreground">
-                    <span className="line-clamp-1 pl-4 before:content-['•'] before:mr-2 before:text-destructive">
-                      {event.differences[0]}
-                    </span>
+                  
+                  <div className="flex-1 grid grid-cols-2 gap-8">
+                    <div className="text-sm text-muted-foreground">
+                      <span className="line-clamp-1 pl-4 before:content-['•'] before:mr-2 before:text-primary">
+                        {event.similarities[0]}
+                      </span>
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      <span className="line-clamp-1 pl-4 before:content-['•'] before:mr-2 before:text-destructive">
+                        {event.differences[0]}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
+              </CollapsibleTrigger>
 
               <CollapsibleContent>
                 <div className="border-t p-4">
-                  <div className="grid grid-cols-2 gap-8">
-                    <div className="space-y-2">
-                      {event.similarities.slice(1).map((item, index) => (
-                        <div 
-                          key={index} 
-                          className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary"
-                        >
-                          {item}
-                        </div>
-                      ))}
+                  <div className="flex gap-8">
+                    <div className="text-xs font-medium text-primary mb-2 w-[180px]">
+                      Similarities
                     </div>
-                    <div className="space-y-2">
-                      {event.differences.slice(1).map((item, index) => (
-                        <div 
-                          key={index} 
-                          className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive"
-                        >
-                          {item}
-                        </div>
-                      ))}
+                    <div className="text-xs font-medium text-destructive mb-2">
+                      Differences
                     </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    {event.similarities.slice(1).map((similarity, index) => (
+                      <div key={index} className="flex gap-8">
+                        <div className="w-[180px] text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary">
+                          {similarity}
+                        </div>
+                        <div className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive">
+                          {event.differences[index + 1]}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </CollapsibleContent>
