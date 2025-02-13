@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -93,9 +92,9 @@ export function SimilarHistoricalEvents() {
 
       <ScrollArea className="h-[400px] pr-4">
         <div className="space-y-3">
-          <div className="grid grid-cols-[1fr,2fr] gap-4">
-            <div className="pl-3">Event</div>
-            <div className="grid grid-cols-2 gap-4 px-4">
+          <div className="flex px-4">
+            <div className="w-[180px]">Event</div>
+            <div className="flex-1 grid grid-cols-2 gap-8">
               <span className="text-xs font-medium text-primary">Similarities</span>
               <span className="text-xs font-medium text-destructive">Differences</span>
             </div>
@@ -108,8 +107,8 @@ export function SimilarHistoricalEvents() {
               onOpenChange={() => toggleEvent(event.id)}
               className="border rounded-md bg-card"
             >
-              <div className="grid grid-cols-[1fr,2fr] gap-4">
-                <CollapsibleTrigger className="flex items-center justify-between p-3 hover:bg-accent rounded-md text-sm">
+              <div className="flex">
+                <CollapsibleTrigger className="w-[180px] flex items-center justify-between p-3 hover:bg-accent rounded-l-md text-sm">
                   <div className="flex flex-col items-start">
                     <span className="font-medium">{event.title}</span>
                     <span className="text-xs text-muted-foreground">{event.date}</span>
@@ -121,45 +120,42 @@ export function SimilarHistoricalEvents() {
                   )}
                 </CollapsibleTrigger>
 
-                <div className="grid grid-cols-2 gap-4 px-4 py-3">
-                  <ul>
-                    <li className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary">
+                <div className="flex-1 grid grid-cols-2 gap-8 p-3">
+                  <div className="text-sm text-muted-foreground">
+                    <span className="line-clamp-1 pl-4 before:content-['•'] before:mr-2 before:text-primary">
                       {event.similarities[0]}
-                    </li>
-                  </ul>
-                  <ul>
-                    <li className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive">
+                    </span>
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    <span className="line-clamp-1 pl-4 before:content-['•'] before:mr-2 before:text-destructive">
                       {event.differences[0]}
-                    </li>
-                  </ul>
+                    </span>
+                  </div>
                 </div>
               </div>
 
               <CollapsibleContent>
-                <div className="border-t">
-                  <div className="grid grid-cols-[1fr,2fr] gap-4">
-                    <div /> 
-                    <div className="grid grid-cols-2 gap-4 px-4 py-3">
-                      <ul className="space-y-1">
-                        {event.similarities.slice(1).map((item, index) => (
-                          <li 
-                            key={index} 
-                            className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary"
-                          >
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
-                      <ul className="space-y-1">
-                        {event.differences.slice(1).map((item, index) => (
-                          <li 
-                            key={index} 
-                            className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive"
-                          >
-                            {item}
-                          </li>
-                        ))}
-                      </ul>
+                <div className="border-t p-4">
+                  <div className="grid grid-cols-2 gap-8">
+                    <div className="space-y-2">
+                      {event.similarities.slice(1).map((item, index) => (
+                        <div 
+                          key={index} 
+                          className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary"
+                        >
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="space-y-2">
+                      {event.differences.slice(1).map((item, index) => (
+                        <div 
+                          key={index} 
+                          className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive"
+                        >
+                          {item}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
