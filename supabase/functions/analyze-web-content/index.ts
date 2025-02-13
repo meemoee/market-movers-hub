@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -47,6 +48,7 @@ serve(async (req) => {
       })
     })
 
+    // Simply pipe the response stream directly, maintaining the original SSE format
     return new Response(response.body, {
       headers: {
         ...corsHeaders,
