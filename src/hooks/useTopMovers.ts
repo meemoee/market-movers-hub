@@ -44,7 +44,10 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
       
       console.log('Fetching single market:', marketId);
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
-        body: { marketId }
+        body: { 
+          marketId,
+          interval // Include interval to get the correct time period data
+        }
       });
 
       if (error) throw error;
@@ -55,7 +58,8 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
         const { data: retryData, error: retryError } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
           body: {
             marketId,
-            openOnly: false
+            openOnly: false,
+            interval // Include interval here too
           }
         });
         
@@ -107,7 +111,7 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
       hasNextPage: false,
       fetchNextPage: () => Promise.resolve(),
       isFetchingNextPage: false,
-      isFetching: singleMarketQuery.isFetching // Add this line
+      isFetching: singleMarketQuery.isFetching
     };
   }
 
