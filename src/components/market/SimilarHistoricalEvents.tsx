@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -136,9 +135,8 @@ export function SimilarHistoricalEvents() {
               </div>
 
               <CollapsibleContent>
-                <div className="grid grid-cols-[2fr,3fr] gap-4 border-t">
-                  <div /> 
-                  <div className="grid grid-cols-2 gap-4 p-3">
+                <div className="border-t px-3 pt-3">
+                  <div className="grid grid-cols-2 gap-4">
                     <ul className="space-y-1">
                       {event.similarities.slice(1).map((item, index) => (
                         <li 
