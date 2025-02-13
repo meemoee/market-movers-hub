@@ -111,10 +111,25 @@ export function SimilarHistoricalEvents() {
                   <ChevronDown className="h-4 w-4" />
                 )}
               </CollapsibleTrigger>
+
+              <div className="grid grid-cols-2 gap-4 px-4 pb-2">
+                <div>
+                  <h4 className="text-xs font-medium text-primary mb-1">Similarities</h4>
+                  <p className="text-xs text-muted-foreground line-clamp-1">
+                    {event.similarities[0]}
+                  </p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-medium text-destructive mb-1">Differences</h4>
+                  <p className="text-xs text-muted-foreground line-clamp-1">
+                    {event.differences[0]}
+                  </p>
+                </div>
+              </div>
+
               <CollapsibleContent>
-                <div className="grid grid-cols-2 gap-4 p-4 pt-2">
+                <div className="grid grid-cols-2 gap-4 p-4 pt-2 border-t mt-2">
                   <div>
-                    <h4 className="text-xs font-medium text-primary mb-2">Similarities</h4>
                     <ul className="space-y-1">
                       {event.similarities.map((item, index) => (
                         <li 
@@ -127,7 +142,6 @@ export function SimilarHistoricalEvents() {
                     </ul>
                   </div>
                   <div>
-                    <h4 className="text-xs font-medium text-destructive mb-2">Differences</h4>
                     <ul className="space-y-1">
                       {event.differences.map((item, index) => (
                         <li 
