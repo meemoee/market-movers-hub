@@ -41,7 +41,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   const [sortBy, setSortBy] = useState<'priceChange' | 'likelihood'>('priceChange');
 
   const { data: relatedMarkets, isLoading } = useQuery({
-    queryKey: ['relatedMarkets', eventId, marketId, selectedInterval],
+    queryKey: ['relatedMarkets', eventId, marketId, selectedInterval, sortBy],
     queryFn: async () => {
       const { data: markets, error } = await supabase
         .from('markets')
