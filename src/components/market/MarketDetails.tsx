@@ -6,7 +6,6 @@ import PriceChart from './PriceChart';
 import { QADisplay } from './QADisplay';
 import { WebResearchCard } from './WebResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
-import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
 
 interface MarketDetailsProps {
   description?: string;
@@ -142,11 +141,6 @@ export function MarketDetails({
           marketId={marketId} 
           marketQuestion={question}
         />
-      </div>
-
-      {/* Similar Historical Events Section */}
-      <div className="mt-6">
-        <SimilarHistoricalEvents />
       </div>
     </div>
   );
