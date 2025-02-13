@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -51,7 +52,39 @@ serve(async (req) => {
       throw new Error('Failed to get insights from OpenRouter')
     }
 
-    return new Response(response.body, {
+    // Create a TransformStream to process the response
+    const transformStream = new TransformStream({
+      async transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk)
+        const lines = text.split('\n')
+
+        for (const line of lines) {
+          if (line.trim() === '') continue
+          if (line.trim() === 'data: [DONE]') continue
+
+          if (line.startsWith('data: ')) {
+            try {
+              const jsonStr = line.slice(6)
+              const parsed = JSON.parse(jsonStr)
+              const content = parsed.choices?.[0]?.delta?.content || ''
+              if (content) {
+                controller.enqueue(`data: ${JSON.stringify({ content })}\n\n`)
+              }
+            } catch (e) {
+              console.error('Error parsing SSE data:', e)
+            }
+          }
+        }
+      }
+    })
+
+    // Pipe the response through the transform stream
+    const readableStream = response.body
+      .pipeThrough(new TextDecoderStream())
+      .pipeThrough(transformStream)
+      .pipeThrough(new TextEncoderStream())
+
+    return new Response(readableStream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
