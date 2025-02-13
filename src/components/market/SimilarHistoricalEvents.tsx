@@ -1,8 +1,7 @@
-
-import { useState } from 'react';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ArrowLeft, ArrowRight, History } from 'lucide-react';
+import { History } from "lucide-react";
 
 interface HistoricalEvent {
   id: string;
@@ -57,83 +56,51 @@ const PLACEHOLDER_EVENTS: HistoricalEvent[] = [
 ];
 
 export function SimilarHistoricalEvents() {
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const currentEvent = PLACEHOLDER_EVENTS[currentIndex];
-
-  const handlePrevious = () => {
-    setCurrentIndex((prev) => (prev > 0 ? prev - 1 : PLACEHOLDER_EVENTS.length - 1));
-  };
-
-  const handleNext = () => {
-    setCurrentIndex((prev) => (prev < PLACEHOLDER_EVENTS.length - 1 ? prev + 1 : 0));
-  };
-
   return (
     <Card className="p-6 bg-card animate-fade-in">
       <div className="flex items-center gap-2 mb-4">
         <History className="w-5 h-5 text-primary" />
         <h3 className="text-lg font-semibold">Similar Historical Events</h3>
       </div>
-
-      <div className="relative">
-        <button
-          onClick={handlePrevious}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-background/80 backdrop-blur-sm hover:bg-background/90 transition-colors"
-          aria-label="Previous event"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={handleNext}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full bg-background/80 backdrop-blur-sm hover:bg-background/90 transition-colors"
-          aria-label="Next event"
-        >
-          <ArrowRight className="w-4 h-4" />
-        </button>
-
-        <div className="mb-6 px-8">
-          <div className="aspect-video relative rounded-lg overflow-hidden mb-4">
-            <img
-              src={currentEvent.image}
-              alt={currentEvent.title}
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
-              <h4 className="text-white font-semibold">{currentEvent.title}</h4>
-              <p className="text-white/80 text-sm">{currentEvent.date}</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <h5 className="text-sm font-medium text-primary mb-2">Similarities</h5>
-            <ScrollArea className="h-[200px] rounded-md border p-4">
-              <ul className="space-y-2">
-                {currentEvent.similarities.map((similarity, index) => (
-                  <li key={index} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    • {similarity}
-                  </li>
-                ))}
-              </ul>
-            </ScrollArea>
-          </div>
-
-          <div className="space-y-2">
-            <h5 className="text-sm font-medium text-destructive mb-2">Differences</h5>
-            <ScrollArea className="h-[200px] rounded-md border p-4">
-              <ul className="space-y-2">
-                {currentEvent.differences.map((difference, index) => (
-                  <li key={index} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-                    • {difference}
-                  </li>
-                ))}
-              </ul>
-            </ScrollArea>
-          </div>
-        </div>
-      </div>
+      <ScrollArea className="max-h-[400px]">
+        <Accordion type="single" collapsible className="w-full">
+          {PLACEHOLDER_EVENTS.map((event) => (
+            <AccordionItem key={event.id} value={event.id}>
+              <AccordionTrigger className="px-4 py-2 flex items-center gap-3">
+                <img 
+                  src={event.image} 
+                  alt={event.title} 
+                  className="w-8 h-8 object-cover rounded" 
+                />
+                <div>
+                  <p className="font-semibold">{event.title}</p>
+                  <p className="text-xs text-muted-foreground">{event.date}</p>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <h5 className="text-sm font-medium text-primary mb-2">Similarities</h5>
+                    <ul className="space-y-1">
+                      {event.similarities.map((similarity, index) => (
+                        <li key={index} className="text-sm text-muted-foreground">• {similarity}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-medium text-destructive mb-2">Differences</h5>
+                    <ul className="space-y-1">
+                      {event.differences.map((difference, index) => (
+                        <li key={index} className="text-sm text-muted-foreground">• {difference}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          ))}
+        </Accordion>
+      </ScrollArea>
     </Card>
   );
 }
