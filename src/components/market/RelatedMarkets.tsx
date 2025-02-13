@@ -1,10 +1,18 @@
+
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { TransactionDialog } from './TransactionDialog';
-import { TrendingUp, TrendingDown } from "lucide-react";
+import { TrendingUp, TrendingDown, SortAsc } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 
 interface RelatedMarketsProps {
   eventId: string;
@@ -30,6 +38,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
+  const [sortBy, setSortBy] = useState<'priceChange' | 'likelihood'>('priceChange');
 
   const { data: relatedMarkets, isLoading } = useQuery({
     queryKey: ['relatedMarkets', eventId, marketId, selectedInterval],
@@ -91,9 +100,15 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         };
       });
 
-      return marketsWithPriceChanges
-        .filter(Boolean)
-        .sort((a, b) => Math.abs((b?.priceChange || 0)) - Math.abs((a?.priceChange || 0)));
+      const filteredMarkets = marketsWithPriceChanges.filter(Boolean);
+      
+      return filteredMarkets.sort((a, b) => {
+        if (sortBy === 'priceChange') {
+          return Math.abs((b?.priceChange || 0)) - Math.abs((a?.priceChange || 0));
+        } else {
+          return (b?.finalPrice || 0) - (a?.finalPrice || 0);
+        }
+      });
     },
     enabled: !!eventId && !!marketId,
   });
@@ -130,7 +145,25 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
 
   return (
     <div className="space-y-4 border-t border-border pt-4">
-      <div className="text-sm text-muted-foreground mb-2">Related Markets</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm text-muted-foreground">Related Markets</div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 gap-2">
+              <SortAsc className="h-4 w-4" />
+              Sort by {sortBy === 'priceChange' ? 'Price Change' : 'Likelihood'}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-[200px]">
+            <DropdownMenuItem onClick={() => setSortBy('priceChange')}>
+              Price Change
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setSortBy('likelihood')}>
+              Likelihood
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
       <div className="space-y-4">
         {relatedMarkets.map((market) => (
           <div 
