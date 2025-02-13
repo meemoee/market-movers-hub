@@ -91,6 +91,11 @@ export function SimilarHistoricalEvents() {
         <h3 className="text-lg font-semibold">Similar Historical Events</h3>
       </div>
 
+      <div className="grid grid-cols-2 gap-4 px-4 mb-2">
+        <h4 className="text-xs font-medium text-primary">Similarities</h4>
+        <h4 className="text-xs font-medium text-destructive">Differences</h4>
+      </div>
+
       <ScrollArea className="h-[400px] pr-4">
         <div className="space-y-2">
           {EVENTS.map((event) => (
@@ -100,7 +105,7 @@ export function SimilarHistoricalEvents() {
               onOpenChange={() => toggleEvent(event.id)}
               className="border rounded-md bg-card"
             >
-              <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-accent rounded-md text-sm">
+              <CollapsibleTrigger className="flex items-center justify-between w-full px-4 py-3 hover:bg-accent rounded-md text-sm">
                 <div className="flex flex-col items-start">
                   <span className="font-medium">{event.title}</span>
                   <span className="text-xs text-muted-foreground">{event.date}</span>
@@ -112,23 +117,17 @@ export function SimilarHistoricalEvents() {
                 )}
               </CollapsibleTrigger>
 
-              <div className="grid grid-cols-2 gap-4 px-4 pb-2">
-                <div>
-                  <h4 className="text-xs font-medium text-primary mb-1">Similarities</h4>
-                  <p className="text-xs text-muted-foreground line-clamp-1">
-                    {event.similarities[0]}
-                  </p>
-                </div>
-                <div>
-                  <h4 className="text-xs font-medium text-destructive mb-1">Differences</h4>
-                  <p className="text-xs text-muted-foreground line-clamp-1">
-                    {event.differences[0]}
-                  </p>
-                </div>
+              <div className="grid grid-cols-2 gap-4 px-4">
+                <p className="text-xs text-muted-foreground line-clamp-1">
+                  {event.similarities[0]}
+                </p>
+                <p className="text-xs text-muted-foreground line-clamp-1">
+                  {event.differences[0]}
+                </p>
               </div>
 
               <CollapsibleContent>
-                <div className="grid grid-cols-2 gap-4 p-4 pt-2 border-t mt-2">
+                <div className="grid grid-cols-2 gap-4 px-4 py-3 border-t mt-2">
                   <div>
                     <ul className="space-y-1">
                       {event.similarities.map((item, index) => (
