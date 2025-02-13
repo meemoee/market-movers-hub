@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -99,73 +98,67 @@ export function SimilarHistoricalEvents() {
               open={openEvents.includes(event.id)}
               onOpenChange={() => toggleEvent(event.id)}
             >
-              <div className="relative">
-                <CollapsibleTrigger className="w-full">
-                  <div className="border rounded-lg bg-card hover:bg-accent/50 transition-colors">
-                    <div className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold">{event.title}</span>
-                          <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
-                            {event.date}
-                          </span>
-                        </div>
-                        {openEvents.includes(event.id) ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-8">
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-primary"/>
-                            <span className="text-xs font-medium text-primary">Similarities</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground line-clamp-1">
-                            {event.similarities[0]}
-                          </p>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-destructive"/>
-                            <span className="text-xs font-medium text-destructive">Differences</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground line-clamp-1">
-                            {event.differences[0]}
-                          </p>
-                        </div>
+              <CollapsibleTrigger className="w-full text-left">
+                <div className="border rounded-lg bg-card hover:bg-accent/50 transition-colors p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <h4 className="font-semibold truncate">{event.title}</h4>
+                      <div className="shrink-0 text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                        {event.date}
                       </div>
                     </div>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${openEvents.includes(event.id) ? 'rotate-180' : ''}`} />
                   </div>
-                </CollapsibleTrigger>
 
-                <CollapsibleContent>
-                  <div className="pt-3 grid grid-cols-2 gap-8">
-                    <div className="space-y-2 pl-4">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="h-2 w-2 rounded-full bg-primary shrink-0"/>
+                        <span className="text-xs font-medium text-primary">Similarities</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-1 pl-4">
+                        {event.similarities[0]}
+                      </p>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="h-2 w-2 rounded-full bg-destructive shrink-0"/>
+                        <span className="text-xs font-medium text-destructive">Differences</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-1 pl-4">
+                        {event.differences[0]}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CollapsibleTrigger>
+
+              <CollapsibleContent>
+                <div className="pt-2 px-4">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-2">
                       {event.similarities.slice(1).map((similarity, index) => (
                         <div key={index} className="flex items-start gap-2">
-                          <div className="h-2 w-2 rounded-full bg-primary mt-[6px]"/>
-                          <p className="text-sm text-muted-foreground flex-1">
+                          <div className="h-2 w-2 rounded-full bg-primary mt-[6px] shrink-0"/>
+                          <p className="text-sm text-muted-foreground">
                             {similarity}
                           </p>
                         </div>
                       ))}
                     </div>
-                    <div className="space-y-2 pl-4">
+                    <div className="space-y-2">
                       {event.differences.slice(1).map((difference, index) => (
                         <div key={index} className="flex items-start gap-2">
-                          <div className="h-2 w-2 rounded-full bg-destructive mt-[6px]"/>
-                          <p className="text-sm text-muted-foreground flex-1">
+                          <div className="h-2 w-2 rounded-full bg-destructive mt-[6px] shrink-0"/>
+                          <p className="text-sm text-muted-foreground">
                             {difference}
                           </p>
                         </div>
                       ))}
                     </div>
                   </div>
-                </CollapsibleContent>
-              </div>
+                </div>
+              </CollapsibleContent>
             </Collapsible>
           ))}
         </div>
