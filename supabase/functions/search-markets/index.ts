@@ -58,6 +58,27 @@ serve(async (req) => {
       const chunkData = await redis.get(chunkKey);
       if (chunkData) {
         const markets = JSON.parse(chunkData);
+        // Clean up any multiple quotes in the market data
+        markets.forEach(market => {
+          if (market.question) {
+            market.question = market.question.replace(/'{2,}/g, "'");
+          }
+          if (market.subtitle) {
+            market.subtitle = market.subtitle.replace(/'{2,}/g, "'");
+          }
+          if (market.yes_sub_title) {
+            market.yes_sub_title = market.yes_sub_title.replace(/'{2,}/g, "'");
+          }
+          if (market.no_sub_title) {
+            market.no_sub_title = market.no_sub_title.replace(/'{2,}/g, "'");
+          }
+          if (market.description) {
+            market.description = market.description.replace(/'{2,}/g, "'");
+          }
+          if (market.event_title) {
+            market.event_title = market.event_title.replace(/'{2,}/g, "'");
+          }
+        });
         allMarkets.push(...markets);
       }
     }
