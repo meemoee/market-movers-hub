@@ -2,6 +2,7 @@
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { History } from "lucide-react";
 
 interface HistoricalEvent {
@@ -82,8 +83,8 @@ export function SimilarHistoricalEvents() {
                   </div>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="px-4 pb-2 will-change-[height] data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-                <div className="grid grid-cols-2 gap-4">
+              <AccordionContent className="px-4 pb-2">
+                <div className="grid grid-cols-2 gap-4 relative">
                   <div>
                     <h5 className="text-sm font-medium text-primary mb-2">Similarities</h5>
                     <ul className="space-y-1">
@@ -92,6 +93,7 @@ export function SimilarHistoricalEvents() {
                       ))}
                     </ul>
                   </div>
+                  <Separator orientation="vertical" className="absolute left-1/2 h-full -mx-2" />
                   <div>
                     <h5 className="text-sm font-medium text-destructive mb-2">Differences</h5>
                     <ul className="space-y-1">
