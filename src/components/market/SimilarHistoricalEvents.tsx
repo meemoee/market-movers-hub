@@ -74,10 +74,10 @@ const EVENTS: Event[] = [
 ];
 
 export function SimilarHistoricalEvents() {
-  const [openItems, setOpenItems] = useState<string[]>([]);
+  const [openEvents, setOpenEvents] = useState<string[]>([]);
 
-  const toggleItem = (id: string) => {
-    setOpenItems(current => 
+  const toggleEvent = (id: string) => {
+    setOpenEvents(current => 
       current.includes(id) 
         ? current.filter(item => item !== id)
         : [...current, id]
@@ -91,83 +91,60 @@ export function SimilarHistoricalEvents() {
         <h3 className="text-lg font-semibold">Similar Historical Events</h3>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        {/* Similarities Column */}
-        <div>
-          <h4 className="text-sm font-medium text-primary mb-3">Similarities</h4>
-          <ScrollArea className="h-[400px] pr-4">
-            <div className="space-y-2">
-              {EVENTS.map((event) => (
-                <Collapsible
-                  key={`sim-${event.id}`}
-                  open={openItems.includes(event.id)}
-                  onOpenChange={() => toggleItem(event.id)}
-                  className="border rounded-md"
-                >
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-accent rounded-md text-sm">
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{event.title}</span>
-                      <span className="text-xs text-muted-foreground">{event.date}</span>
-                    </div>
-                    {openItems.includes(event.id) ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="p-3 pt-0">
+      <ScrollArea className="h-[400px] pr-4">
+        <div className="space-y-2">
+          {EVENTS.map((event) => (
+            <Collapsible
+              key={event.id}
+              open={openEvents.includes(event.id)}
+              onOpenChange={() => toggleEvent(event.id)}
+              className="border rounded-md bg-card"
+            >
+              <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-accent rounded-md text-sm">
+                <div className="flex flex-col items-start">
+                  <span className="font-medium">{event.title}</span>
+                  <span className="text-xs text-muted-foreground">{event.date}</span>
+                </div>
+                {openEvents.includes(event.id) ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="grid grid-cols-2 gap-4 p-4 pt-2">
+                  <div>
+                    <h4 className="text-xs font-medium text-primary mb-2">Similarities</h4>
                     <ul className="space-y-1">
                       {event.similarities.map((item, index) => (
-                        <li key={index} className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary">
+                        <li 
+                          key={index} 
+                          className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary"
+                        >
                           {item}
                         </li>
                       ))}
                     </ul>
-                  </CollapsibleContent>
-                </Collapsible>
-              ))}
-            </div>
-          </ScrollArea>
-        </div>
-
-        {/* Differences Column */}
-        <div>
-          <h4 className="text-sm font-medium text-destructive mb-3">Differences</h4>
-          <ScrollArea className="h-[400px] pr-4">
-            <div className="space-y-2">
-              {EVENTS.map((event) => (
-                <Collapsible
-                  key={`diff-${event.id}`}
-                  open={openItems.includes(event.id)}
-                  onOpenChange={() => toggleItem(event.id)}
-                  className="border rounded-md"
-                >
-                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-accent rounded-md text-sm">
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{event.title}</span>
-                      <span className="text-xs text-muted-foreground">{event.date}</span>
-                    </div>
-                    {openItems.includes(event.id) ? (
-                      <ChevronUp className="h-4 w-4" />
-                    ) : (
-                      <ChevronDown className="h-4 w-4" />
-                    )}
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="p-3 pt-0">
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-medium text-destructive mb-2">Differences</h4>
                     <ul className="space-y-1">
                       {event.differences.map((item, index) => (
-                        <li key={index} className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive">
+                        <li 
+                          key={index} 
+                          className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive"
+                        >
                           {item}
                         </li>
                       ))}
                     </ul>
-                  </CollapsibleContent>
-                </Collapsible>
-              ))}
-            </div>
-          </ScrollArea>
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          ))}
         </div>
-      </div>
+      </ScrollArea>
     </Card>
   );
 }
