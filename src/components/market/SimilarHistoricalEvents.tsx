@@ -1,3 +1,4 @@
+
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -57,7 +58,7 @@ const PLACEHOLDER_EVENTS: HistoricalEvent[] = [
 
 export function SimilarHistoricalEvents() {
   return (
-    <Card className="p-6 bg-card animate-fade-in">
+    <Card className="p-6 bg-card">
       <div className="flex items-center gap-2 mb-4">
         <History className="w-5 h-5 text-primary" />
         <h3 className="text-lg font-semibold">Similar Historical Events</h3>
@@ -65,19 +66,23 @@ export function SimilarHistoricalEvents() {
       <ScrollArea className="max-h-[400px]">
         <Accordion type="single" collapsible className="w-full">
           {PLACEHOLDER_EVENTS.map((event) => (
-            <AccordionItem key={event.id} value={event.id}>
-              <AccordionTrigger className="px-4 py-2 flex items-center gap-3">
-                <img 
-                  src={event.image} 
-                  alt={event.title} 
-                  className="w-8 h-8 object-cover rounded" 
-                />
-                <div>
-                  <p className="font-semibold">{event.title}</p>
-                  <p className="text-xs text-muted-foreground">{event.date}</p>
+            <AccordionItem key={event.id} value={event.id} className="border-0">
+              <AccordionTrigger className="px-4 py-2 rounded-lg hover:bg-accent/50 [&[data-state=open]>div]:pb-2 transition-colors">
+                <div className="flex items-center gap-3 w-full">
+                  <img 
+                    src={event.image} 
+                    alt={event.title}
+                    width={32}
+                    height={32}
+                    className="w-8 h-8 object-cover rounded" 
+                  />
+                  <div>
+                    <p className="font-semibold">{event.title}</p>
+                    <p className="text-xs text-muted-foreground">{event.date}</p>
+                  </div>
                 </div>
               </AccordionTrigger>
-              <AccordionContent>
+              <AccordionContent className="px-4 pb-2 will-change-[height] data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <h5 className="text-sm font-medium text-primary mb-2">Similarities</h5>
