@@ -1,4 +1,3 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -48,6 +47,7 @@ export function TopMoversHeader({
 
   const handleRangeChange = (newValue: number[]) => {
     let [newMin, newMax] = newValue;
+    const [currentMin, currentMax] = probabilityRange;
     
     // If min thumb is disabled, force to 0
     if (!showMinThumb) {
@@ -61,14 +61,16 @@ export function TopMoversHeader({
 
     // Ensure min cannot exceed max and max cannot be less than min
     if (showMinThumb && showMaxThumb) {
-      if (newMin > newMax) {
-        if (newMin !== probabilityRange[0]) {
-          // If min is being dragged, set max to min
-          newMax = newMin;
-        } else {
-          // If max is being dragged, set min to max
-          newMin = newMax;
-        }
+      // Determine which thumb is being moved by comparing with previous values
+      const isMovingMin = newMin !== currentMin;
+      const isMovingMax = newMax !== currentMax;
+
+      if (isMovingMin && newMin > currentMax) {
+        // If moving min thumb past max, keep max at its position
+        newMin = currentMax;
+      } else if (isMovingMax && newMax < currentMin) {
+        // If moving max thumb past min, keep min at its position
+        newMax = currentMin;
       }
     }
     
