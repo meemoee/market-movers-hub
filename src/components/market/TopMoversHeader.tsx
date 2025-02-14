@@ -55,27 +55,25 @@ export function TopMoversHeader({
   const handleRangeChange = (newValue: number[]) => {
     let [newMin, newMax] = newValue;
 
-    // If min thumb is disabled, force to 0
+    // Force values if a thumb is disabled.
     if (!showMinThumb) {
       newMin = 0;
     }
-
-    // If max thumb is disabled, force to 100
     if (!showMaxThumb) {
       newMax = 100;
     }
 
-    // When both thumbs are enabled, prevent the left knob from sliding past the right knob.
+    // When both thumbs are enabled, prevent them from crossing.
     if (showMinThumb && showMaxThumb) {
-      const [oldMin, oldMax] = probabilityRange;
-      // Check which thumb is being moved:
-      if (newValue[0] !== oldMin) {
-        // Left thumb is being moved; clamp it so it doesn't exceed the current right value.
-        newMin = Math.min(newMin, oldMax);
-      }
-      if (newValue[1] !== oldMax) {
-        // Right thumb is being moved; clamp it so it doesn't go below the current left value.
-        newMax = Math.max(newMax, oldMin);
+      if (newMin > newMax) {
+        const [prevMin, prevMax] = probabilityRange;
+        // Determine which thumb moved:
+        // If the left thumb value changed compared to previous state, it's the left thumb.
+        if (newValue[0] !== prevMin) {
+          newMin = newMax;
+        } else {
+          newMax = newMin;
+        }
       }
     }
 
