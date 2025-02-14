@@ -1,3 +1,4 @@
+
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -5,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuIte
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 interface TimeInterval {
   label: string;
@@ -48,24 +49,12 @@ export function TopMoversHeader({
   const handleRangeChange = (newValue: number[]) => {
     let [newMin, newMax] = newValue;
     
-    // If min thumb is disabled, force to 0
-    if (!showMinThumb) {
-      newMin = 0;
-    }
-    
-    // If max thumb is disabled, force to 100
-    if (!showMaxThumb) {
-      newMax = 100;
-    }
+    // Apply constraints based on which thumbs are shown
+    if (!showMinThumb) newMin = 0;
+    if (!showMaxThumb) newMax = 100;
     
     setProbabilityRange([newMin, newMax]);
   };
-
-  // Initialize display range based on which thumbs are shown
-  const displayRange: [number, number] = [
-    showMinThumb ? probabilityRange[0] : 0,
-    showMaxThumb ? probabilityRange[1] : 100
-  ];
 
   return (
     <div className="p-4 w-full relative">
@@ -130,11 +119,11 @@ export function TopMoversHeader({
               <div className="flex items-center justify-between gap-2">
                 <Label className="leading-6">Probability Range</Label>
                 <output className="text-sm font-medium tabular-nums">
-                  {displayRange[0]}% - {displayRange[1]}%
+                  {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
                 </output>
               </div>
               <Slider 
-                value={[displayRange[0], displayRange[1]]}
+                value={probabilityRange}
                 onValueChange={handleRangeChange} 
                 className="w-full" 
                 min={0} 
@@ -166,7 +155,11 @@ export function TopMoversHeader({
                       if (!checked) {
                         setProbabilityRange([probabilityRange[0], 100]);
                       } else {
-                        setProbabilityRange([probabilityRange[0], 100]);
+                        // When enabling max thumb, initialize at max value
+                        setProbabilityRange([
+                          showMinThumb ? probabilityRange[0] : 0,
+                          100
+                        ]);
                       }
                     }}
                   />
