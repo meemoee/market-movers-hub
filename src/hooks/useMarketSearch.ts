@@ -38,7 +38,7 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
         total: data?.total
       }
     },
-    enabled: searchQuery.length > 0, // Only run query if there's a search term
+    enabled: true, // Always enable the query since we want it to work with probability filters too
     staleTime: 0,
     retry: 2,
     retryDelay: 1000
