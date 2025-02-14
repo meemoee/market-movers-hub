@@ -43,10 +43,12 @@ export function AccountHoldings() {
 
       if (topMoversError) throw topMoversError;
 
-      // Convert to map for easy lookup, keeping the latest non-zero price for each market
+      // Convert to map for easy lookup, keeping the latest price for each market
+      // regardless of whether it's zero or not
       const priceMap: Record<string, number> = {};
       (topMoversData || []).forEach(price => {
-        if (!priceMap[price.market_id] && price.last_traded_price > 0) {
+        // If we haven't seen this market yet, use its price (even if zero)
+        if (!(price.market_id in priceMap)) {
           priceMap[price.market_id] = price.last_traded_price;
         }
       });
