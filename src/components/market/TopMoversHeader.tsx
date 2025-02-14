@@ -74,6 +74,16 @@ export function TopMoversHeader({
     showMaxThumb ? probabilityRange[1] : 100
   ];
 
+  // Ensure the max thumb appears on the right when only max is enabled
+  useEffect(() => {
+    if (!showMinThumb && showMaxThumb) {
+      setProbabilityRange([0, probabilityRange[1]]);
+    }
+    if (showMinThumb && !showMaxThumb) {
+      setProbabilityRange([probabilityRange[0], 100]);
+    }
+  }, [showMinThumb, showMaxThumb]);
+
   return (
     <div className="p-4 w-full relative">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">

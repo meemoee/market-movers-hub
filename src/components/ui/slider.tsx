@@ -16,6 +16,7 @@ const Slider = React.forwardRef<
   const values = props.value as number[];
   const isRange = values?.length === 2;
 
+  // For range slider, decide which thumbs to show based on props
   const displayValues = isRange ? [
     showMinThumb ? values[0] : props.min || 0,
     showMaxThumb ? values[1] : props.max || 100
