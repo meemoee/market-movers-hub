@@ -107,12 +107,20 @@ export default function TopMoversList({
   const { toast } = useToast();
   const { marketId } = useParams();
 
-  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, debouncedSearch, marketId);
+  const topMoversQuery = useTopMovers(
+    selectedInterval, 
+    openMarketsOnly, 
+    debouncedSearch, 
+    marketId,
+    showMinThumb ? debouncedProbabilityRange[0] : undefined,
+    showMaxThumb ? debouncedProbabilityRange[1] : undefined
+  );
+  
   const marketSearchQuery = useMarketSearch(
     debouncedSearch, 
     searchPage, 
-    showMinThumb ? debouncedProbabilityRange[0] : 0,
-    showMaxThumb ? debouncedProbabilityRange[1] : 100
+    showMinThumb ? debouncedProbabilityRange[0] : undefined,
+    showMaxThumb ? debouncedProbabilityRange[1] : undefined
   );
 
   useEffect(() => {

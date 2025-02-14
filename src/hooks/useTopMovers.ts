@@ -35,7 +35,7 @@ interface TopMover {
   volume_change_percentage: number;
 }
 
-export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '', marketId?: string) {
+export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '', marketId?: string, probabilityMin?: number, probabilityMax?: number) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
     queryKey: ['market', marketId],
@@ -74,9 +74,9 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax],
     queryFn: async ({ pageParam = 1 }) => {
-      console.log('Fetching top movers list:', { interval, openOnly, page: pageParam, searchQuery });
+      console.log('Fetching top movers list:', { interval, openOnly, page: pageParam, searchQuery, probabilityMin, probabilityMax });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
@@ -84,7 +84,9 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
           openOnly,
           page: pageParam,
           limit: 20,
-          searchQuery: searchQuery.trim()
+          searchQuery: searchQuery.trim(),
+          probabilityMin,
+          probabilityMax
         }
       });
 
