@@ -1,3 +1,4 @@
+
 import { useMemo, useCallback } from 'react';
 import { ParentSize } from '@visx/responsive';
 import { scaleTime, scaleLinear } from '@visx/scale';
@@ -8,9 +9,11 @@ import { LinearGradient } from '@visx/gradient';
 import { timeFormat } from 'd3-time-format';
 import { curveStepAfter } from '@visx/curve';
 import { AxisLeft, AxisBottom } from '@visx/axis';
+import { useQuery } from '@tanstack/react-query';
 import { ChartSegment } from './chart/ChartSegment';
 import { EventMarkers } from './chart/EventMarkers';
 import { useChartData } from './chart/useChartData';
+import { supabase } from '@/integrations/supabase/client';
 import type { PriceData, MarketEvent } from './chart/types';
 
 const intervals = [
@@ -281,24 +284,43 @@ function Chart({
 }
 
 interface PriceChartProps {
-  data: PriceData[];
-  events: MarketEvent[];
+  marketId: string;
   selectedInterval: string;
   onIntervalSelect?: (interval: string) => void;
 }
 
 export default function PriceChart({ 
-  data, 
-  events,
+  marketId,
   selectedInterval, 
   onIntervalSelect 
 }: PriceChartProps) {
+  // Fetch price data
+  const { data: priceData = [] } = useQuery({
+    queryKey: ['priceHistory', marketId, selectedInterval],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('price-history', {
+        body: { marketId, interval: selectedInterval }
+      });
+      if (error) throw error;
+      return data.prices || [];
+    }
+  });
+
+  // Fetch market events
+  const { data: events = [] } = useQuery({
+    queryKey: ['marketEvents', marketId],
+    queryFn: async () => {
+      // Placeholder for market events fetch
+      return [] as MarketEvent[];
+    }
+  });
+
   const normalizedData = useMemo(() => 
-    data.map(d => ({
+    priceData.map(d => ({
       ...d,
       time: d.time * (d.time < 1e12 ? 1000 : 1)
     }))
-  , [data]);
+  , [priceData]);
 
   return (
     <div>      
