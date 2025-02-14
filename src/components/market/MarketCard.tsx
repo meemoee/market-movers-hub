@@ -12,6 +12,8 @@ interface Market {
   volume: number;
   image: string;
   yes_sub_title?: string;
+  no_sub_title?: string;
+  subtitle?: string;
   final_last_traded_price: number;
   final_best_ask: number;
   final_best_bid: number;
@@ -63,6 +65,9 @@ export function MarketCard({
           question={market.question}
           selectedInterval={selectedInterval}
           eventId={market.event_id}
+          subtitle={market.subtitle}
+          yesSubTitle={market.yes_sub_title}
+          noSubTitle={market.no_sub_title}
         />
       )}
       <Separator className="mt-3" />

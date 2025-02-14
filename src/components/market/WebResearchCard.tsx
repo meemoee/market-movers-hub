@@ -24,6 +24,10 @@ import { Json } from '@/integrations/supabase/types'
 interface WebResearchCardProps {
   description: string;
   marketId: string;
+  question: string;
+  subtitle?: string;
+  yesSubTitle?: string;
+  noSubTitle?: string;
 }
 
 interface ResearchResult {
@@ -53,7 +57,14 @@ interface SavedResearch {
   market_id: string;
 }
 
-export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
+export function WebResearchCard({ 
+  description, 
+  marketId,
+  question,
+  subtitle,
+  yesSubTitle,
+  noSubTitle 
+}: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
@@ -225,9 +236,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setStreamingState({ rawText: '', parsedData: null })
 
     try {
-      // First, generate queries
+      // First, generate queries with all market context
       const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-        body: { query: description }
+        body: { 
+          query: description,
+          marketContext: {
+            question,
+            subtitle,
+            yesSubTitle,
+            noSubTitle
+          }
+        }
       })
 
       if (queriesError) {
