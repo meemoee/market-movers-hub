@@ -1,8 +1,14 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -48,30 +54,37 @@ export function TopMoversHeader({
 
   const handleRangeChange = (newValue: number[]) => {
     let [newMin, newMax] = newValue;
-    
+
     // If min thumb is disabled, force to 0
     if (!showMinThumb) {
       newMin = 0;
     }
-    
+
     // If max thumb is disabled, force to 100
     if (!showMaxThumb) {
       newMax = 100;
     }
-    
-    // Ensure min <= max and update the parent state
+
+    // When both thumbs are enabled, prevent the left knob from sliding past the right knob.
     if (showMinThumb && showMaxThumb) {
-      if (newMin <= newMax) {
-        setProbabilityRange([newMin, newMax]);
+      const [oldMin, oldMax] = probabilityRange;
+      // Check which thumb is being moved:
+      if (newValue[0] !== oldMin) {
+        // Left thumb is being moved; clamp it so it doesn't exceed the current right value.
+        newMin = Math.min(newMin, oldMax);
       }
-    } else {
-      setProbabilityRange([newMin, newMax]);
+      if (newValue[1] !== oldMax) {
+        // Right thumb is being moved; clamp it so it doesn't go below the current left value.
+        newMax = Math.max(newMax, oldMin);
+      }
     }
+
+    setProbabilityRange([newMin, newMax]);
   };
 
   const displayRange: [number, number] = [
     showMinThumb ? probabilityRange[0] : 0,
-    showMaxThumb ? probabilityRange[1] : 100
+    showMaxThumb ? probabilityRange[1] : 100,
   ];
 
   return (
@@ -84,13 +97,15 @@ export function TopMoversHeader({
               onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
               className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-accent/20 transition-colors text-xl sm:text-2xl font-bold"
             >
-              <span>{timeIntervals.find(i => i.value === selectedInterval)?.label.replace('minutes', 'mins')}</span>
+              <span>
+                {timeIntervals.find(i => i.value === selectedInterval)?.label.replace('minutes', 'mins')}
+              </span>
               <ChevronDown className="w-4 h-4" />
             </button>
 
             {isTimeIntervalDropdownOpen && (
               <div className="absolute top-full left-0 mt-2 bg-black/80 backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
-                {timeIntervals.map((interval) => (
+                {timeIntervals.map(interval => (
                   <button
                     key={interval.value}
                     className="w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-xl sm:text-2xl font-bold whitespace-nowrap"
@@ -117,7 +132,7 @@ export function TopMoversHeader({
           <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
             <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem 
+            <DropdownMenuItem
               className="flex items-center gap-2 cursor-pointer"
               onClick={() => onOpenMarketsChange(!openMarketsOnly)}
             >
@@ -125,9 +140,9 @@ export function TopMoversHeader({
                 <input
                   type="checkbox"
                   checked={openMarketsOnly}
-                  onChange={(e) => onOpenMarketsChange(e.target.checked)}
+                  onChange={e => onOpenMarketsChange(e.target.checked)}
                   className="rounded border-border bg-transparent"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}
                 />
                 <span className="text-sm">Open Markets Only</span>
               </div>
@@ -140,42 +155,46 @@ export function TopMoversHeader({
                   {displayRange[0]}% - {displayRange[1]}%
                 </output>
               </div>
-              <Slider 
-                value={displayRange} 
-                onValueChange={handleRangeChange} 
-                className="w-full" 
-                min={0} 
-                max={100} 
+              <Slider
+                value={displayRange}
+                onValueChange={handleRangeChange}
+                className="w-full"
+                min={0}
+                max={100}
                 step={1}
                 showMinThumb={showMinThumb}
                 showMaxThumb={showMaxThumb}
               />
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-2">
-                  <Checkbox 
+                  <Checkbox
                     id="min-thumb"
                     checked={showMinThumb}
-                    onCheckedChange={(checked) => {
+                    onCheckedChange={checked => {
                       setShowMinThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([0, probabilityRange[1]]);
                       }
                     }}
                   />
-                  <Label htmlFor="min-thumb" className="text-sm">Min</Label>
+                  <Label htmlFor="min-thumb" className="text-sm">
+                    Min
+                  </Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Checkbox 
+                  <Checkbox
                     id="max-thumb"
                     checked={showMaxThumb}
-                    onCheckedChange={(checked) => {
+                    onCheckedChange={checked => {
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([probabilityRange[0], 100]);
                       }
                     }}
                   />
-                  <Label htmlFor="max-thumb" className="text-sm">Max</Label>
+                  <Label htmlFor="max-thumb" className="text-sm">
+                    Max
+                  </Label>
                 </div>
               </div>
             </div>
