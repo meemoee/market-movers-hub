@@ -98,9 +98,9 @@ export default function TopMoversList({
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([25, 75]);
-  const [showMinThumb, setShowMinThumb] = useState(true);
-  const [showMaxThumb, setShowMaxThumb] = useState(true);
+  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
+  const [showMinThumb, setShowMinThumb] = useState(false);
+  const [showMaxThumb, setShowMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
