@@ -48,8 +48,39 @@ serve(async (req) => {
       })
     })
 
-    // Simply pipe the response stream directly, maintaining the original SSE format
-    return new Response(response.body, {
+    // Create a TransformStream to handle accumulating text chunks
+    const transformer = new TransformStream({
+      start() {},
+      transform(chunk: Uint8Array, controller) {
+        // Convert chunk to string
+        const text = new TextDecoder().decode(chunk)
+        const lines = text.split('\n').filter(line => line.trim())
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
+            
+            try {
+              // Append each chunk to the stream
+              controller.enqueue(chunk)
+            } catch (e) {
+              console.error('Transform error:', e)
+            }
+          }
+        }
+      },
+      flush() {}
+    })
+
+    // Pipe the response through our transformer
+    const transformedStream = response.body?.pipeThrough(transformer)
+
+    if (!transformedStream) {
+      throw new Error('Failed to create stream')
+    }
+
+    return new Response(transformedStream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -51,7 +52,39 @@ serve(async (req) => {
       throw new Error('Failed to get insights from OpenRouter')
     }
 
-    return new Response(response.body, {
+    // Create a TransformStream to handle accumulating JSON chunks
+    const transformer = new TransformStream({
+      start() {},
+      transform(chunk: Uint8Array, controller) {
+        // Convert chunk to string
+        const text = new TextDecoder().decode(chunk)
+        const lines = text.split('\n').filter(line => line.trim())
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
+            
+            try {
+              // Append each chunk to the stream
+              controller.enqueue(chunk)
+            } catch (e) {
+              console.error('Transform error:', e)
+            }
+          }
+        }
+      },
+      flush() {}
+    })
+
+    // Pipe the response through our transformer
+    const transformedStream = response.body?.pipeThrough(transformer)
+
+    if (!transformedStream) {
+      throw new Error('Failed to create stream')
+    }
+
+    return new Response(transformedStream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
