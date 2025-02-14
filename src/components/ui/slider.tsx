@@ -14,15 +14,11 @@ const Slider = React.forwardRef<
 >(({ className, showMinThumb = true, showMaxThumb = true, value, ...props }, ref) => {
   const values = value as number[];
   const [min, max] = [props.min || 0, props.max || 100];
-
-  // If only max thumb is shown, we need to render it differently
-  const isMaxOnly = !showMinThumb && showMaxThumb;
   
-  // When only max thumb is shown, we use a different array structure
-  // where the max value is in the first position
-  const displayValues = isMaxOnly ? 
-    [values[1], max] :  // For max-only, show max value in first position
-    values;             // Otherwise use normal array
+  // When only max thumb is shown, we treat the max value as a single value slider
+  const displayValues = !showMinThumb && showMaxThumb ? 
+    [values[1]] :  // For max-only mode, just use the max value
+    values;        // Otherwise use both values
 
   return (
     <SliderPrimitive.Root
@@ -39,7 +35,7 @@ const Slider = React.forwardRef<
       </SliderPrimitive.Track>
 
       {/* For max-only mode, we only render one thumb */}
-      {isMaxOnly ? (
+      {!showMinThumb && showMaxThumb ? (
         <SliderPrimitive.Thumb
           className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
         />
