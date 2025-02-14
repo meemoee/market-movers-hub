@@ -16,6 +16,11 @@ const Slider = React.forwardRef<
   const values = props.value as number[];
   const isRange = values?.length === 2;
 
+  const displayValues = isRange ? [
+    showMinThumb ? values[0] : props.min || 0,
+    showMaxThumb ? values[1] : props.max || 100
+  ] : values;
+
   return (
     <SliderPrimitive.Root
       ref={ref}
@@ -24,6 +29,7 @@ const Slider = React.forwardRef<
         className
       )}
       {...props}
+      value={displayValues}
     >
       <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary">
         <SliderPrimitive.Range className="absolute h-full bg-primary" />

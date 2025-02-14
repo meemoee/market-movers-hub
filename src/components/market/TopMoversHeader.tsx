@@ -38,11 +38,32 @@ export function TopMoversHeader({
   const [showMaxThumb, setShowMaxThumb] = useState(true);
 
   const handleRangeChange = (newValue: number[]) => {
-    const [newMin, newMax] = newValue;
-    if (newMin <= newMax) {
+    let [newMin, newMax] = newValue;
+    
+    // If min thumb is disabled, force to 0
+    if (!showMinThumb) {
+      newMin = 0;
+    }
+    
+    // If max thumb is disabled, force to 100
+    if (!showMaxThumb) {
+      newMax = 100;
+    }
+    
+    // Ensure min <= max
+    if (showMinThumb && showMaxThumb) {
+      if (newMin <= newMax) {
+        setProbabilityRange([newMin, newMax]);
+      }
+    } else {
       setProbabilityRange([newMin, newMax]);
     }
   };
+
+  const displayRange: [number, number] = [
+    showMinThumb ? probabilityRange[0] : 0,
+    showMaxThumb ? probabilityRange[1] : 100
+  ];
 
   return (
     <div className="p-4 w-full relative">
@@ -107,11 +128,11 @@ export function TopMoversHeader({
               <div className="flex items-center justify-between gap-2">
                 <Label className="leading-6">Probability Range</Label>
                 <output className="text-sm font-medium tabular-nums">
-                  {probabilityRange[0]}% - {probabilityRange[1]}%
+                  {displayRange[0]}% - {displayRange[1]}%
                 </output>
               </div>
               <Slider 
-                value={probabilityRange} 
+                value={displayRange} 
                 onValueChange={handleRangeChange} 
                 className="w-full" 
                 min={0} 
@@ -125,7 +146,12 @@ export function TopMoversHeader({
                   <Checkbox 
                     id="min-thumb"
                     checked={showMinThumb}
-                    onCheckedChange={(checked) => setShowMinThumb(checked as boolean)}
+                    onCheckedChange={(checked) => {
+                      setShowMinThumb(checked as boolean);
+                      if (!checked) {
+                        handleRangeChange([0, probabilityRange[1]]);
+                      }
+                    }}
                   />
                   <Label htmlFor="min-thumb" className="text-sm">Min</Label>
                 </div>
@@ -133,7 +159,12 @@ export function TopMoversHeader({
                   <Checkbox 
                     id="max-thumb"
                     checked={showMaxThumb}
-                    onCheckedChange={(checked) => setShowMaxThumb(checked as boolean)}
+                    onCheckedChange={(checked) => {
+                      setShowMaxThumb(checked as boolean);
+                      if (!checked) {
+                        handleRangeChange([probabilityRange[0], 100]);
+                      }
+                    }}
                   />
                   <Label htmlFor="max-thumb" className="text-sm">Max</Label>
                 </div>
