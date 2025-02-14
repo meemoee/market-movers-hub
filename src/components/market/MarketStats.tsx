@@ -1,4 +1,3 @@
-
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface MarketStatsProps {
@@ -9,9 +8,9 @@ interface MarketStatsProps {
 }
 
 export function MarketStats({ 
-  lastTradedPrice = 0, 
-  priceChange = 0, 
-  volume = 0,
+  lastTradedPrice, 
+  priceChange, 
+  volume,
   isExpanded,
 }: MarketStatsProps) {
   const formatPrice = (price: number): string => {

@@ -7,16 +7,14 @@ import { Separator } from "@/components/ui/separator";
 interface Market {
   market_id: string;
   question: string;
-  price?: number;
-  price_change?: number;
-  volume?: number;
-  image?: string;
+  price: number;
+  price_change: number;
+  volume: number;
+  image: string;
   yes_sub_title?: string;
-  no_sub_title?: string;
-  subtitle?: string;
-  final_last_traded_price?: number;
-  final_best_ask?: number;
-  final_best_bid?: number;
+  final_last_traded_price: number;
+  final_best_ask: number;
+  final_best_bid: number;
   description?: string;
   outcomes?: string[];
   event_id?: string;
@@ -39,53 +37,32 @@ export function MarketCard({
   onSell,
   selectedInterval,
 }: MarketCardProps) {
-  // Ensure we have default values for all potentially undefined properties
-  const {
-    image = '',
-    question = '',
-    yes_sub_title,
-    final_best_bid = 0,
-    final_best_ask = 0,
-    final_last_traded_price = 0,
-    price_change = 0,
-    volume = 0,
-    outcomes = [],
-    market_id = '',
-    description,
-    event_id,
-    subtitle,
-    no_sub_title,
-  } = market;
-
   return (
     <div className="w-full p-3 space-y-3">
       <MarketHeader
-        image={image}
-        question={question}
-        yesSubTitle={yes_sub_title}
-        bestBid={final_best_bid}
-        bestAsk={final_best_ask}
+        image={market.image}
+        question={market.question}
+        yesSubTitle={market.yes_sub_title}
+        bestBid={market.final_best_bid}
+        bestAsk={market.final_best_ask}
         onBuy={onBuy}
         onSell={onSell}
-        outcomes={outcomes}
+        outcomes={market.outcomes}
         onToggleExpand={onToggleExpand}
       />
       <MarketStats
-        lastTradedPrice={final_last_traded_price}
-        priceChange={price_change}
-        volume={volume}
+        lastTradedPrice={market.final_last_traded_price}
+        priceChange={market.price_change}
+        volume={market.volume}
         isExpanded={isExpanded}
       />
       {isExpanded && (
         <MarketDetails
-          description={description}
-          marketId={market_id}
-          question={question}
+          description={market.description}
+          marketId={market.market_id}
+          question={market.question}
           selectedInterval={selectedInterval}
-          eventId={event_id}
-          subtitle={subtitle}
-          yesSubTitle={yes_sub_title}
-          noSubTitle={no_sub_title}
+          eventId={market.event_id}
         />
       )}
       <Separator className="mt-3" />

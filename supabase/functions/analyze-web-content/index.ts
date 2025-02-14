@@ -15,14 +15,13 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query, marketContext } = await req.json()
+    const { content, query } = await req.json()
     
     if (!content || content.length === 0) {
       throw new Error('No content provided for analysis')
     }
 
     console.log(`Analyzing content for query: ${query}`)
-    console.log(`Market context:`, marketContext)
     console.log(`Content length: ${content.length} characters`)
 
     const response = await fetch(OPENROUTER_URL, {
@@ -42,16 +41,7 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Given this market context:
-            Question: ${marketContext.question}
-            ${marketContext.subtitle ? `Subtitle: ${marketContext.subtitle}` : ''}
-            ${marketContext.yesSubTitle ? `Yes Option: ${marketContext.yesSubTitle}` : ''}
-            ${marketContext.noSubTitle ? `No Option: ${marketContext.noSubTitle}` : ''}
-            
-            Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}
-
-            Content:
-            ${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
+            content: `Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}\n\nContent:\n${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
           }
         ],
         stream: true
