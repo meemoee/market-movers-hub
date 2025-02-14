@@ -65,52 +65,59 @@ export function TopMoversContent({
   return (
     <div className="w-full">
       <div className="w-full space-y-3">
-        {topMovers.map((mover) => (
-          <div key={mover.market_id} className="w-full first:mt-0">
-            <MarketCard
-              market={{
-                market_id: mover.market_id,
-                question: mover.question,
-                price: mover.final_last_traded_price,
-                price_change: mover.price_change,
-                volume: mover.final_volume,
-                image: mover.image || '/placeholder.svg',
-                yes_sub_title: mover.yes_sub_title,
-                final_last_traded_price: mover.final_last_traded_price,
-                final_best_ask: mover.final_best_ask,
-                final_best_bid: mover.final_best_bid,
-                description: mover.description,
-                outcomes: mover.outcomes || ["Yes", "No"],
-                event_id: mover.event_id,
-              }}
-              isExpanded={expandedMarkets.has(mover.market_id)}
-              onToggleExpand={() => toggleMarket(mover.market_id)}
-              onBuy={() => {
-                const clobTokenId = mover.clobtokenids?.[0];
-                if (clobTokenId) {
-                  setSelectedMarket({ 
-                    id: mover.market_id, 
-                    action: 'buy', 
-                    clobTokenId,
-                    selectedOutcome: "Yes"
-                  });
-                }
-              }}
-              onSell={() => {
-                const clobTokenId = mover.clobtokenids?.[1];
-                if (clobTokenId) {
-                  setSelectedMarket({ 
-                    id: mover.market_id, 
-                    action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
-                    clobTokenId,
-                    selectedOutcome: "No"
-                  });
-                }
-              }}
-              selectedInterval={selectedInterval}
-            />
-          </div>
-        ))}
+        {topMovers.map((mover) => {
+          // Ensure all required properties have default values
+          const market = {
+            market_id: mover.market_id,
+            question: mover.question,
+            price: mover.final_last_traded_price || 0,  // Add default value
+            price_change: mover.price_change || 0,
+            volume: mover.final_volume || 0,
+            image: mover.image || '/placeholder.svg',
+            yes_sub_title: mover.yes_sub_title,
+            no_sub_title: mover.no_sub_title,
+            subtitle: mover.subtitle,
+            final_last_traded_price: mover.final_last_traded_price || 0,
+            final_best_ask: mover.final_best_ask || 0,
+            final_best_bid: mover.final_best_bid || 0,
+            description: mover.description,
+            outcomes: mover.outcomes || ["Yes", "No"],
+            event_id: mover.event_id,
+          };
+
+          return (
+            <div key={mover.market_id} className="w-full first:mt-0">
+              <MarketCard
+                market={market}
+                isExpanded={expandedMarkets.has(mover.market_id)}
+                onToggleExpand={() => toggleMarket(mover.market_id)}
+                onBuy={() => {
+                  const clobTokenId = mover.clobtokenids?.[0];
+                  if (clobTokenId) {
+                    setSelectedMarket({ 
+                      id: mover.market_id, 
+                      action: 'buy', 
+                      clobTokenId,
+                      selectedOutcome: "Yes"
+                    });
+                  }
+                }}
+                onSell={() => {
+                  const clobTokenId = mover.clobtokenids?.[1];
+                  if (clobTokenId) {
+                    setSelectedMarket({ 
+                      id: mover.market_id, 
+                      action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
+                      clobTokenId,
+                      selectedOutcome: "No"
+                    });
+                  }
+                }}
+                selectedInterval={selectedInterval}
+              />
+            </div>
+          );
+        })}
       </div>
 
       {hasMore && (
