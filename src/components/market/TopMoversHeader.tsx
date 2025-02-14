@@ -1,6 +1,5 @@
-import { ChevronDown, SlidersHorizontal } from 'lucide-react';
-import { Card } from '../ui/card';
-import { useIsMobile } from '@/hooks/use-mobile';
+import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -8,11 +7,11 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
-import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
-import { Checkbox } from '@/components/ui/checkbox';
-import { useState, useEffect } from 'react';
+} from "@/components/ui/dropdown-menu";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useState } from "react";
 
 interface TimeInterval {
   label: string;
@@ -52,24 +51,16 @@ export function TopMoversHeader({
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
 
+  // A simpler handler here—our Slider now ensures thumbs never cross.
   const handleRangeChange = (newValue: number[]) => {
     let newMin = newValue[0];
     let newMax = newValue[1];
-
-    // Force thumb values if a thumb is disabled.
     if (!showMinThumb) {
       newMin = 0;
     }
     if (!showMaxThumb) {
       newMax = 100;
     }
-
-    // When both thumbs are enabled, ensure they do not cross by sorting.
-    if (showMinThumb && showMaxThumb) {
-      newMin = Math.min(newMin, newMax);
-      newMax = Math.max(newMin, newMax);
-    }
-
     setProbabilityRange([newMin, newMax]);
   };
 
@@ -87,21 +78,22 @@ export function TopMoversHeader({
           </h2>
           <div className="relative -ml-1">
             <button
-              onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
+              onClick={() =>
+                setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)
+              }
               className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-accent/20 transition-colors text-xl sm:text-2xl font-bold"
             >
               <span>
-                {timeIntervals.find(i => i.value === selectedInterval)?.label.replace(
-                  'minutes',
-                  'mins'
-                )}
+                {timeIntervals
+                  .find((i) => i.value === selectedInterval)
+                  ?.label.replace("minutes", "mins")}
               </span>
               <ChevronDown className="w-4 h-4" />
             </button>
 
             {isTimeIntervalDropdownOpen && (
               <div className="absolute top-full left-0 mt-2 bg-black/80 backdrop-blur-sm border border-border rounded-lg shadow-xl z-50">
-                {timeIntervals.map(interval => (
+                {timeIntervals.map((interval) => (
                   <button
                     key={interval.value}
                     className="w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-xl sm:text-2xl font-bold whitespace-nowrap"
@@ -110,7 +102,7 @@ export function TopMoversHeader({
                       onIntervalChange(interval.value);
                     }}
                   >
-                    {interval.label.replace('minutes', 'mins')}
+                    {interval.label.replace("minutes", "mins")}
                   </button>
                 ))}
               </div>
@@ -125,7 +117,10 @@ export function TopMoversHeader({
               <span className="text-sm">Filters</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
+          <DropdownMenuContent
+            align="end"
+            className="w-[300px] bg-background/95 backdrop-blur-sm border-border"
+          >
             <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem
@@ -136,9 +131,9 @@ export function TopMoversHeader({
                 <input
                   type="checkbox"
                   checked={openMarketsOnly}
-                  onChange={e => onOpenMarketsChange(e.target.checked)}
+                  onChange={(e) => onOpenMarketsChange(e.target.checked)}
                   className="rounded border-border bg-transparent"
-                  onClick={e => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
                 />
                 <span className="text-sm">Open Markets Only</span>
               </div>
@@ -166,7 +161,7 @@ export function TopMoversHeader({
                   <Checkbox
                     id="min-thumb"
                     checked={showMinThumb}
-                    onCheckedChange={checked => {
+                    onCheckedChange={(checked) => {
                       setShowMinThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([0, probabilityRange[1]]);
@@ -181,7 +176,7 @@ export function TopMoversHeader({
                   <Checkbox
                     id="max-thumb"
                     checked={showMaxThumb}
-                    onCheckedChange={checked => {
+                    onCheckedChange={(checked) => {
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([probabilityRange[0], 100]);
