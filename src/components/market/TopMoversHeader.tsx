@@ -53,9 +53,10 @@ export function TopMoversHeader({
   const isMobile = useIsMobile();
 
   const handleRangeChange = (newValue: number[]) => {
-    let [newMin, newMax] = newValue;
+    let newMin = newValue[0];
+    let newMax = newValue[1];
 
-    // Force values if a thumb is disabled.
+    // Force thumb values if a thumb is disabled.
     if (!showMinThumb) {
       newMin = 0;
     }
@@ -63,18 +64,10 @@ export function TopMoversHeader({
       newMax = 100;
     }
 
-    // When both thumbs are enabled, prevent them from crossing.
+    // When both thumbs are enabled, ensure they do not cross by sorting.
     if (showMinThumb && showMaxThumb) {
-      if (newMin > newMax) {
-        const [prevMin, prevMax] = probabilityRange;
-        // Determine which thumb moved:
-        // If the left thumb value changed compared to previous state, it's the left thumb.
-        if (newValue[0] !== prevMin) {
-          newMin = newMax;
-        } else {
-          newMax = newMin;
-        }
-      }
+      newMin = Math.min(newMin, newMax);
+      newMax = Math.max(newMin, newMax);
     }
 
     setProbabilityRange([newMin, newMax]);
@@ -89,14 +82,19 @@ export function TopMoversHeader({
     <div className="p-4 w-full relative">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
         <div className="flex items-center flex-wrap">
-          <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">What happened in the last</h2>
+          <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">
+            What happened in the last
+          </h2>
           <div className="relative -ml-1">
             <button
               onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
               className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-accent/20 transition-colors text-xl sm:text-2xl font-bold"
             >
               <span>
-                {timeIntervals.find(i => i.value === selectedInterval)?.label.replace('minutes', 'mins')}
+                {timeIntervals.find(i => i.value === selectedInterval)?.label.replace(
+                  'minutes',
+                  'mins'
+                )}
               </span>
               <ChevronDown className="w-4 h-4" />
             </button>
