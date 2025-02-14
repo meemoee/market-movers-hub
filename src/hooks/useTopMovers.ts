@@ -85,8 +85,8 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
           page: pageParam,
           limit: 20,
           searchQuery: searchQuery.trim(),
-          probabilityMin: typeof probabilityMin === 'number' ? probabilityMin : undefined,
-          probabilityMax: typeof probabilityMax === 'number' ? probabilityMax : undefined
+          probabilityMin,
+          probabilityMax
         }
       });
 
