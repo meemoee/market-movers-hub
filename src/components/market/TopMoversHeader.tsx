@@ -1,3 +1,4 @@
+
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -5,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuIte
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface TimeInterval {
   label: string;
@@ -44,36 +45,33 @@ export function TopMoversHeader({
   setShowMaxThumb,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
-  const [probabilityRangeState, setProbabilityRangeState] = useState<[number, number]>(probabilityRange);
-  const [showMinThumbState, setShowMinThumbState] = useState(showMinThumb);
-  const [showMaxThumbState, setShowMaxThumbState] = useState(showMaxThumb);
 
   const handleRangeChange = (newValue: number[]) => {
     let [newMin, newMax] = newValue;
     
     // If min thumb is disabled, force to 0
-    if (!showMinThumbState) {
+    if (!showMinThumb) {
       newMin = 0;
     }
     
     // If max thumb is disabled, force to 100
-    if (!showMaxThumbState) {
+    if (!showMaxThumb) {
       newMax = 100;
     }
     
-    // Ensure min <= max
-    if (showMinThumbState && showMaxThumbState) {
+    // Ensure min <= max and update the parent state
+    if (showMinThumb && showMaxThumb) {
       if (newMin <= newMax) {
-        setProbabilityRangeState([newMin, newMax]);
+        setProbabilityRange([newMin, newMax]);
       }
     } else {
-      setProbabilityRangeState([newMin, newMax]);
+      setProbabilityRange([newMin, newMax]);
     }
   };
 
   const displayRange: [number, number] = [
-    showMinThumbState ? probabilityRangeState[0] : 0,
-    showMaxThumbState ? probabilityRangeState[1] : 100
+    showMinThumb ? probabilityRange[0] : 0,
+    showMaxThumb ? probabilityRange[1] : 100
   ];
 
   return (
@@ -149,18 +147,18 @@ export function TopMoversHeader({
                 min={0} 
                 max={100} 
                 step={1}
-                showMinThumb={showMinThumbState}
-                showMaxThumb={showMaxThumbState}
+                showMinThumb={showMinThumb}
+                showMaxThumb={showMaxThumb}
               />
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-2">
                   <Checkbox 
                     id="min-thumb"
-                    checked={showMinThumbState}
+                    checked={showMinThumb}
                     onCheckedChange={(checked) => {
-                      setShowMinThumbState(checked as boolean);
+                      setShowMinThumb(checked as boolean);
                       if (!checked) {
-                        handleRangeChange([0, probabilityRangeState[1]]);
+                        setProbabilityRange([0, probabilityRange[1]]);
                       }
                     }}
                   />
@@ -169,11 +167,11 @@ export function TopMoversHeader({
                 <div className="flex items-center gap-2">
                   <Checkbox 
                     id="max-thumb"
-                    checked={showMaxThumbState}
+                    checked={showMaxThumb}
                     onCheckedChange={(checked) => {
-                      setShowMaxThumbState(checked as boolean);
+                      setShowMaxThumb(checked as boolean);
                       if (!checked) {
-                        handleRangeChange([probabilityRangeState[0], 100]);
+                        setProbabilityRange([probabilityRange[0], 100]);
                       }
                     }}
                   />
