@@ -1,4 +1,3 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -21,6 +20,12 @@ interface TopMoversHeaderProps {
   onOpenMarketsChange: (value: boolean) => void;
   isTimeIntervalDropdownOpen: boolean;
   setIsTimeIntervalDropdownOpen: (value: boolean) => void;
+  probabilityRange: [number, number];
+  setProbabilityRange: (range: [number, number]) => void;
+  showMinThumb: boolean;
+  setShowMinThumb: (show: boolean) => void;
+  showMaxThumb: boolean;
+  setShowMaxThumb: (show: boolean) => void;
 }
 
 export function TopMoversHeader({
@@ -31,38 +36,44 @@ export function TopMoversHeader({
   onOpenMarketsChange,
   isTimeIntervalDropdownOpen,
   setIsTimeIntervalDropdownOpen,
+  probabilityRange,
+  setProbabilityRange,
+  showMinThumb,
+  setShowMinThumb,
+  showMaxThumb,
+  setShowMaxThumb,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
-  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([25, 75]);
-  const [showMinThumb, setShowMinThumb] = useState(true);
-  const [showMaxThumb, setShowMaxThumb] = useState(true);
+  const [probabilityRangeState, setProbabilityRangeState] = useState<[number, number]>(probabilityRange);
+  const [showMinThumbState, setShowMinThumbState] = useState(showMinThumb);
+  const [showMaxThumbState, setShowMaxThumbState] = useState(showMaxThumb);
 
   const handleRangeChange = (newValue: number[]) => {
     let [newMin, newMax] = newValue;
     
     // If min thumb is disabled, force to 0
-    if (!showMinThumb) {
+    if (!showMinThumbState) {
       newMin = 0;
     }
     
     // If max thumb is disabled, force to 100
-    if (!showMaxThumb) {
+    if (!showMaxThumbState) {
       newMax = 100;
     }
     
     // Ensure min <= max
-    if (showMinThumb && showMaxThumb) {
+    if (showMinThumbState && showMaxThumbState) {
       if (newMin <= newMax) {
-        setProbabilityRange([newMin, newMax]);
+        setProbabilityRangeState([newMin, newMax]);
       }
     } else {
-      setProbabilityRange([newMin, newMax]);
+      setProbabilityRangeState([newMin, newMax]);
     }
   };
 
   const displayRange: [number, number] = [
-    showMinThumb ? probabilityRange[0] : 0,
-    showMaxThumb ? probabilityRange[1] : 100
+    showMinThumbState ? probabilityRangeState[0] : 0,
+    showMaxThumbState ? probabilityRangeState[1] : 100
   ];
 
   return (
@@ -138,18 +149,18 @@ export function TopMoversHeader({
                 min={0} 
                 max={100} 
                 step={1}
-                showMinThumb={showMinThumb}
-                showMaxThumb={showMaxThumb}
+                showMinThumb={showMinThumbState}
+                showMaxThumb={showMaxThumbState}
               />
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-2">
                   <Checkbox 
                     id="min-thumb"
-                    checked={showMinThumb}
+                    checked={showMinThumbState}
                     onCheckedChange={(checked) => {
-                      setShowMinThumb(checked as boolean);
+                      setShowMinThumbState(checked as boolean);
                       if (!checked) {
-                        handleRangeChange([0, probabilityRange[1]]);
+                        handleRangeChange([0, probabilityRangeState[1]]);
                       }
                     }}
                   />
@@ -158,11 +169,11 @@ export function TopMoversHeader({
                 <div className="flex items-center gap-2">
                   <Checkbox 
                     id="max-thumb"
-                    checked={showMaxThumb}
+                    checked={showMaxThumbState}
                     onCheckedChange={(checked) => {
-                      setShowMaxThumb(checked as boolean);
+                      setShowMaxThumbState(checked as boolean);
                       if (!checked) {
-                        handleRangeChange([probabilityRange[0], 100]);
+                        handleRangeChange([probabilityRangeState[0], 100]);
                       }
                     }}
                   />

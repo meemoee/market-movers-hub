@@ -9,17 +9,19 @@ interface MarketSearchResponse {
   total?: number;
 }
 
-export function useMarketSearch(searchQuery: string = '', page: number = 1) {
+export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number) {
   return useQuery({
-    queryKey: ['marketSearch', searchQuery, page], // Include page in queryKey
+    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax], // Include probability range in queryKey
     queryFn: async () => {
-      console.log('Searching markets with:', { searchQuery, page });
+      console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax });
       
       const { data, error } = await supabase.functions.invoke<MarketSearchResponse>('search-markets', {
         body: {
           searchQuery: searchQuery.trim(),
           page,
-          limit: 20
+          limit: 20,
+          probabilityMin,
+          probabilityMax
         }
       })
 

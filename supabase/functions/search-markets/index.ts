@@ -14,8 +14,8 @@ serve(async (req) => {
 
   let redis;
   try {
-    const { searchQuery = '', page = 1, limit = 20 } = await req.json();
-    console.log(`Searching markets with query: "${searchQuery}", page: ${page}, limit: ${limit}`);
+    const { searchQuery = '', page = 1, limit = 20, probabilityMin = 0, probabilityMax = 100 } = await req.json();
+    console.log(`Searching markets with query: "${searchQuery}", page: ${page}, limit: ${limit}, probability range: ${probabilityMin}-${probabilityMax}`);
 
     const redisUrl = Deno.env.get('REDIS_URL');
     if (!redisUrl) {
@@ -83,7 +83,7 @@ serve(async (req) => {
       }
     }
 
-    // Apply search filtering
+    // Apply search filtering and probability range filtering
     let searchResults = allMarkets;
     if (searchQuery) {
       const searchTerms = searchQuery.toLowerCase().split(' ');
@@ -101,6 +101,12 @@ serve(async (req) => {
       });
     }
 
+    // Apply probability range filtering
+    searchResults = searchResults.filter(market => {
+      const probability = market.final_last_traded_price * 100;
+      return probability >= probabilityMin && probability <= probabilityMax;
+    });
+
     // Sort by recency (latest first) instead of price change
     searchResults.sort((a, b) => {
       const dateA = a.updated_at ? new Date(a.updated_at) : new Date(0);
@@ -113,7 +119,7 @@ serve(async (req) => {
     const paginatedMarkets = searchResults.slice(start, start + limit);
     const hasMore = searchResults.length > start + limit;
 
-    console.log(`Found ${searchResults.length} markets matching search query "${searchQuery}"`);
+    console.log(`Found ${searchResults.length} markets matching search query "${searchQuery}" and probability range ${probabilityMin}-${probabilityMax}`);
     console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}`);
 
     await redis.close();

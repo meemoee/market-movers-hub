@@ -98,13 +98,22 @@ export default function TopMoversList({
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([25, 75]);
+  const [showMinThumb, setShowMinThumb] = useState(true);
+  const [showMaxThumb, setShowMaxThumb] = useState(true);
   const [searchPage, setSearchPage] = useState(1);
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
 
   const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, debouncedSearch, marketId);
-  const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
+  const marketSearchQuery = useMarketSearch(
+    debouncedSearch, 
+    searchPage, 
+    showMinThumb ? debouncedProbabilityRange[0] : 0,
+    showMaxThumb ? debouncedProbabilityRange[1] : 100
+  );
 
   useEffect(() => {
     if (marketId) {
@@ -195,6 +204,12 @@ export default function TopMoversList({
           onOpenMarketsChange={onOpenMarketsChange}
           isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
           setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+          probabilityRange={probabilityRange}
+          setProbabilityRange={setProbabilityRange}
+          showMinThumb={showMinThumb}
+          setShowMinThumb={setShowMinThumb}
+          showMaxThumb={showMaxThumb}
+          setShowMaxThumb={setShowMaxThumb}
         />
       </div>
       
