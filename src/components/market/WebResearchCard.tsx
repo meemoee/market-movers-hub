@@ -312,7 +312,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: { 
           content: allContent.join('\n\n'),
-          query: description
+          query: description,
+          question: description
         }
       })
 
