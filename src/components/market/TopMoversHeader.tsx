@@ -1,17 +1,12 @@
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
-import { useIsMobile } from "@/hooks/use-mobile";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
-import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
-import { Checkbox } from "@/components/ui/checkbox";
-import { useState } from "react";
+
+import { ChevronDown, SlidersHorizontal } from 'lucide-react';
+import { Card } from '../ui/card';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useState, useEffect } from 'react';
 
 interface TimeInterval {
   label: string;
@@ -51,43 +46,45 @@ export function TopMoversHeader({
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
 
-  // A simpler handler here—our Slider now ensures thumbs never cross.
   const handleRangeChange = (newValue: number[]) => {
-    let newMin = newValue[0];
-    let newMax = newValue[1];
+    let [newMin, newMax] = newValue;
+    
+    // If min thumb is disabled, force to 0
     if (!showMinThumb) {
       newMin = 0;
     }
+    
+    // If max thumb is disabled, force to 100
     if (!showMaxThumb) {
       newMax = 100;
     }
-    setProbabilityRange([newMin, newMax]);
+    
+    // Ensure min <= max and update the parent state
+    if (showMinThumb && showMaxThumb) {
+      if (newMin <= newMax) {
+        setProbabilityRange([newMin, newMax]);
+      }
+    } else {
+      setProbabilityRange([newMin, newMax]);
+    }
   };
 
   const displayRange: [number, number] = [
     showMinThumb ? probabilityRange[0] : 0,
-    showMaxThumb ? probabilityRange[1] : 100,
+    showMaxThumb ? probabilityRange[1] : 100
   ];
 
   return (
     <div className="p-4 w-full relative">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
         <div className="flex items-center flex-wrap">
-          <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">
-            What happened in the last
-          </h2>
+          <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">What happened in the last</h2>
           <div className="relative -ml-1">
             <button
-              onClick={() =>
-                setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)
-              }
+              onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
               className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-accent/20 transition-colors text-xl sm:text-2xl font-bold"
             >
-              <span>
-                {timeIntervals
-                  .find((i) => i.value === selectedInterval)
-                  ?.label.replace("minutes", "mins")}
-              </span>
+              <span>{timeIntervals.find(i => i.value === selectedInterval)?.label.replace('minutes', 'mins')}</span>
               <ChevronDown className="w-4 h-4" />
             </button>
 
@@ -102,7 +99,7 @@ export function TopMoversHeader({
                       onIntervalChange(interval.value);
                     }}
                   >
-                    {interval.label.replace("minutes", "mins")}
+                    {interval.label.replace('minutes', 'mins')}
                   </button>
                 ))}
               </div>
@@ -117,13 +114,10 @@ export function TopMoversHeader({
               <span className="text-sm">Filters</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-[300px] bg-background/95 backdrop-blur-sm border-border"
-          >
+          <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
             <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem
+            <DropdownMenuItem 
               className="flex items-center gap-2 cursor-pointer"
               onClick={() => onOpenMarketsChange(!openMarketsOnly)}
             >
@@ -146,19 +140,19 @@ export function TopMoversHeader({
                   {displayRange[0]}% - {displayRange[1]}%
                 </output>
               </div>
-              <Slider
-                value={displayRange}
-                onValueChange={handleRangeChange}
-                className="w-full"
-                min={0}
-                max={100}
+              <Slider 
+                value={displayRange} 
+                onValueChange={handleRangeChange} 
+                className="w-full" 
+                min={0} 
+                max={100} 
                 step={1}
                 showMinThumb={showMinThumb}
                 showMaxThumb={showMaxThumb}
               />
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-2">
-                  <Checkbox
+                  <Checkbox 
                     id="min-thumb"
                     checked={showMinThumb}
                     onCheckedChange={(checked) => {
@@ -168,12 +162,10 @@ export function TopMoversHeader({
                       }
                     }}
                   />
-                  <Label htmlFor="min-thumb" className="text-sm">
-                    Min
-                  </Label>
+                  <Label htmlFor="min-thumb" className="text-sm">Min</Label>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Checkbox
+                  <Checkbox 
                     id="max-thumb"
                     checked={showMaxThumb}
                     onCheckedChange={(checked) => {
@@ -183,9 +175,7 @@ export function TopMoversHeader({
                       }
                     }}
                   />
-                  <Label htmlFor="max-thumb" className="text-sm">
-                    Max
-                  </Label>
+                  <Label htmlFor="max-thumb" className="text-sm">Max</Label>
                 </div>
               </div>
             </div>
