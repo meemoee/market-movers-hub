@@ -164,7 +164,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="space-y-4">
+      <div className="max-h-[600px] overflow-y-auto pr-2 -mr-2 space-y-4">
         {relatedMarkets.map((market) => (
           <div 
             key={market.id} 
