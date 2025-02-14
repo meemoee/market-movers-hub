@@ -15,14 +15,13 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query, marketQuestion } = await req.json()
+    const { content, query } = await req.json()
     
     if (!content || content.length === 0) {
       throw new Error('No content provided for analysis')
     }
 
     console.log(`Analyzing content for query: ${query}`)
-    console.log(`Market question: ${marketQuestion}`)
     console.log(`Content length: ${content.length} characters`)
 
     const response = await fetch(OPENROUTER_URL, {
@@ -42,12 +41,7 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `For the market question: "${marketQuestion}"
-
-Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}
-
-Content:
-${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
+            content: `Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}\n\nContent:\n${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
           }
         ],
         stream: true
