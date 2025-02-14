@@ -3,6 +3,7 @@ import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { useState } from 'react';
 
@@ -31,7 +32,7 @@ export function TopMoversHeader({
   setIsTimeIntervalDropdownOpen,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
-  const [sliderValue, setSliderValue] = useState([50]);
+  const [probabilityRange, setProbabilityRange] = useState([25, 75]);
 
   return (
     <div className="p-4 w-full relative">
@@ -73,7 +74,7 @@ export function TopMoversHeader({
               <span className="text-sm">Filters</span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56 bg-background/95 backdrop-blur-sm border-border">
+          <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
             <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem 
@@ -92,19 +93,21 @@ export function TopMoversHeader({
               </div>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <div className="px-2 py-4">
-              <p className="text-sm mb-4">Probability Range</p>
-              <Slider
-                value={sliderValue}
-                onValueChange={setSliderValue}
-                max={100}
-                step={1}
-                className="w-full"
-              />
-              <div className="flex justify-between mt-2">
-                <span className="text-xs text-muted-foreground">{sliderValue}%</span>
-                <span className="text-xs text-muted-foreground">100%</span>
+            <div className="px-4 py-4 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="leading-6">Probability Range</Label>
+                <output className="text-sm font-medium tabular-nums">
+                  {probabilityRange[0]}% - {probabilityRange[1]}%
+                </output>
               </div>
+              <Slider 
+                value={probabilityRange} 
+                onValueChange={setProbabilityRange} 
+                className="w-full" 
+                min={0} 
+                max={100} 
+                step={1}
+              />
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
