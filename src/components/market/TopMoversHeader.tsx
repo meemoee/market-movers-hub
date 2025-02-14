@@ -58,15 +58,21 @@ export function TopMoversHeader({
     if (!showMaxThumb) {
       newMax = 100;
     }
-    
-    // Ensure min <= max and update the parent state
+
+    // Ensure min cannot exceed max and max cannot be less than min
     if (showMinThumb && showMaxThumb) {
-      if (newMin <= newMax) {
-        setProbabilityRange([newMin, newMax]);
+      if (newMin > newMax) {
+        if (newMin !== probabilityRange[0]) {
+          // If min is being dragged, set max to min
+          newMax = newMin;
+        } else {
+          // If max is being dragged, set min to max
+          newMin = newMax;
+        }
       }
-    } else {
-      setProbabilityRange([newMin, newMax]);
     }
+    
+    setProbabilityRange([newMin, newMax]);
   };
 
   const displayRange: [number, number] = [
