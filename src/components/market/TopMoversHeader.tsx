@@ -46,36 +46,6 @@ export function TopMoversHeader({
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
 
-  const handleRangeChange = (newValue: number[]) => {
-    const [currentMin, currentMax] = probabilityRange;
-    let [newMin, newMax] = newValue;
-    
-    // If min thumb is disabled, force to 0
-    if (!showMinThumb) {
-      newMin = 0;
-    }
-    
-    // If max thumb is disabled, force to 100
-    if (!showMaxThumb) {
-      newMax = 100;
-    }
-
-    // Ensure min cannot exceed max and max cannot be less than min
-    if (showMinThumb && showMaxThumb) {
-      // Determine which thumb is being moved by comparing with previous values
-      if (newMin !== currentMin) {
-        // Min thumb is being moved
-        newMin = Math.min(newMin, currentMax);
-      }
-      if (newMax !== currentMax) {
-        // Max thumb is being moved
-        newMax = Math.max(newMax, currentMin);
-      }
-    }
-    
-    setProbabilityRange([newMin, newMax]);
-  };
-
   const displayRange: [number, number] = [
     showMinThumb ? probabilityRange[0] : 0,
     showMaxThumb ? probabilityRange[1] : 100
@@ -149,7 +119,7 @@ export function TopMoversHeader({
               </div>
               <Slider 
                 value={displayRange} 
-                onValueChange={handleRangeChange} 
+                onValueChange={setProbabilityRange} 
                 className="w-full" 
                 min={0} 
                 max={100} 
