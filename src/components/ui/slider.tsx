@@ -1,8 +1,7 @@
+import * as React from "react";
+import * as SliderPrimitive from "@radix-ui/react-slider";
 
-import * as React from "react"
-import * as SliderPrimitive from "@radix-ui/react-slider"
-
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
 interface SliderProps extends React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> {
   showMinThumb?: boolean;
@@ -16,18 +15,18 @@ const Slider = React.forwardRef<
   const values = props.value as number[];
   const isRange = values?.length === 2;
 
-  const displayValues = isRange ? [
-    showMinThumb ? values[0] : props.min || 0,
-    showMaxThumb ? values[1] : props.max || 100
-  ] : values;
+  // If it's a range, force the displayed values to be in order.
+  const displayValues = isRange
+    ? [
+        showMinThumb ? Math.min(values[0], values[1]) : props.min || 0,
+        showMaxThumb ? Math.max(values[0], values[1]) : props.max || 100,
+      ]
+    : values;
 
   return (
     <SliderPrimitive.Root
       ref={ref}
-      className={cn(
-        "relative flex w-full touch-none select-none items-center",
-        className
-      )}
+      className={cn("relative flex w-full touch-none select-none items-center", className)}
       {...props}
       value={displayValues}
     >
@@ -53,8 +52,8 @@ const Slider = React.forwardRef<
         />
       )}
     </SliderPrimitive.Root>
-  )
-})
-Slider.displayName = SliderPrimitive.Root.displayName
+  );
+});
+Slider.displayName = SliderPrimitive.Root.displayName;
 
-export { Slider }
+export { Slider };
