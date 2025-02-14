@@ -47,14 +47,23 @@ export function TopMoversHeader({
   const isMobile = useIsMobile();
 
   const handleRangeChange = (newValue: number[]) => {
-    let [newMin, newMax] = newValue;
+    // For max-only mode, the value comes in a different format
+    if (!showMinThumb && showMaxThumb) {
+      setProbabilityRange([0, newValue[0]]);
+      return;
+    }
     
-    // Apply constraints based on which thumbs are shown
+    // Normal mode
+    let [newMin, newMax] = newValue;
     if (!showMinThumb) newMin = 0;
     if (!showMaxThumb) newMax = 100;
-    
     setProbabilityRange([newMin, newMax]);
   };
+
+  // Convert the range values based on which thumbs are shown
+  const displayRange = !showMinThumb && showMaxThumb ? 
+    [probabilityRange[1], 100] :  // Max-only mode
+    probabilityRange;             // Normal mode
 
   return (
     <div className="p-4 w-full relative">
@@ -123,7 +132,7 @@ export function TopMoversHeader({
                 </output>
               </div>
               <Slider 
-                value={probabilityRange}
+                value={displayRange}
                 onValueChange={handleRangeChange} 
                 className="w-full" 
                 min={0} 
@@ -154,12 +163,9 @@ export function TopMoversHeader({
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([probabilityRange[0], 100]);
-                      } else {
-                        // When enabling max thumb, initialize at max value
-                        setProbabilityRange([
-                          showMinThumb ? probabilityRange[0] : 0,
-                          100
-                        ]);
+                      } else if (!showMinThumb) {
+                        // When enabling max thumb alone, set it to render on the right
+                        setProbabilityRange([0, 100]);
                       }
                     }}
                   />
