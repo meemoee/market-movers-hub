@@ -5,6 +5,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useState } from 'react';
 
 interface TimeInterval {
@@ -32,7 +33,16 @@ export function TopMoversHeader({
   setIsTimeIntervalDropdownOpen,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
-  const [probabilityRange, setProbabilityRange] = useState([25, 75]);
+  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([25, 75]);
+  const [showMinThumb, setShowMinThumb] = useState(true);
+  const [showMaxThumb, setShowMaxThumb] = useState(true);
+
+  const handleRangeChange = (newValue: number[]) => {
+    const [newMin, newMax] = newValue;
+    if (newMin <= newMax) {
+      setProbabilityRange([newMin, newMax]);
+    }
+  };
 
   return (
     <div className="p-4 w-full relative">
@@ -102,12 +112,32 @@ export function TopMoversHeader({
               </div>
               <Slider 
                 value={probabilityRange} 
-                onValueChange={setProbabilityRange} 
+                onValueChange={handleRangeChange} 
                 className="w-full" 
                 min={0} 
                 max={100} 
                 step={1}
+                showMinThumb={showMinThumb}
+                showMaxThumb={showMaxThumb}
               />
+              <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="min-thumb"
+                    checked={showMinThumb}
+                    onCheckedChange={(checked) => setShowMinThumb(checked as boolean)}
+                  />
+                  <Label htmlFor="min-thumb" className="text-sm">Min</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    id="max-thumb"
+                    checked={showMaxThumb}
+                    onCheckedChange={(checked) => setShowMaxThumb(checked as boolean)}
+                  />
+                  <Label htmlFor="max-thumb" className="text-sm">Max</Label>
+                </div>
+              </div>
             </div>
           </DropdownMenuContent>
         </DropdownMenu>
