@@ -1,4 +1,3 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -59,30 +58,14 @@ export function TopMoversHeader({
       newMax = 100;
     }
     
-    // Ensure min <= max and update the parent state
-    if (showMinThumb && showMaxThumb) {
-      if (newMin <= newMax) {
-        setProbabilityRange([newMin, newMax]);
-      }
-    } else {
-      setProbabilityRange([newMin, newMax]);
-    }
+    setProbabilityRange([newMin, newMax]);
   };
 
+  // Initialize display range based on which thumbs are shown
   const displayRange: [number, number] = [
     showMinThumb ? probabilityRange[0] : 0,
     showMaxThumb ? probabilityRange[1] : 100
   ];
-
-  // Ensure the max thumb appears on the right when only max is enabled
-  useEffect(() => {
-    if (!showMinThumb && showMaxThumb) {
-      setProbabilityRange([0, probabilityRange[1]]);
-    }
-    if (showMinThumb && !showMaxThumb) {
-      setProbabilityRange([probabilityRange[0], 100]);
-    }
-  }, [showMinThumb, showMaxThumb]);
 
   return (
     <div className="p-4 w-full relative">
@@ -151,7 +134,7 @@ export function TopMoversHeader({
                 </output>
               </div>
               <Slider 
-                value={displayRange} 
+                value={[displayRange[0], displayRange[1]]}
                 onValueChange={handleRangeChange} 
                 className="w-full" 
                 min={0} 
@@ -181,6 +164,8 @@ export function TopMoversHeader({
                     onCheckedChange={(checked) => {
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
+                        setProbabilityRange([probabilityRange[0], 100]);
+                      } else {
                         setProbabilityRange([probabilityRange[0], 100]);
                       }
                     }}
