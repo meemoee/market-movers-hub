@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -54,39 +53,66 @@ ${content} ------ YOU MUST indicate a percent probability at the end of your sta
       })
     })
 
-    // Create a TransformStream to handle accumulating text chunks
-    const transformer = new TransformStream({
-      start() {},
-      transform(chunk: Uint8Array, controller) {
-        // Convert chunk to string
+    // A simple TransformStream that buffers incoming text until full SSE events are available
+    let buffer = ""
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
         const text = new TextDecoder().decode(chunk)
-        const lines = text.split('\n').filter(line => line.trim())
+        buffer += text
+        const parts = buffer.split("\n\n")
+        // Keep the last (possibly incomplete) part in the buffer
+        buffer = parts.pop() || ""
         
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim()
-            if (jsonStr === '[DONE]') continue
+        for (const part of parts) {
+          if (part.startsWith("data: ")) {
+            const dataStr = part.slice(6).trim()
+            if (dataStr === "[DONE]") continue
             
             try {
-              // Append each chunk to the stream
-              controller.enqueue(chunk)
-            } catch (e) {
-              console.error('Transform error:', e)
+              const parsed = JSON.parse(dataStr)
+              const content = parsed.choices?.[0]?.delta?.content || 
+                            parsed.choices?.[0]?.message?.content || ""
+              
+              if (content) {
+                // Re-emit the SSE event with properly formatted content
+                controller.enqueue(
+                  new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`)
+                )
+              }
+            } catch (err) {
+              console.error("Error parsing SSE chunk:", err)
             }
           }
         }
       },
-      flush() {}
+      flush(controller) {
+        // Process any remaining data in the buffer
+        if (buffer.trim()) {
+          try {
+            const dataStr = buffer.trim()
+            if (dataStr.startsWith("data: ")) {
+              const jsonStr = dataStr.slice(6).trim()
+              if (jsonStr !== "[DONE]") {
+                const parsed = JSON.parse(jsonStr)
+                const content = parsed.choices?.[0]?.delta?.content || 
+                              parsed.choices?.[0]?.message?.content || ""
+                
+                if (content) {
+                  controller.enqueue(
+                    new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`)
+                  )
+                }
+              }
+            }
+          } catch (err) {
+            console.error("Error parsing final SSE chunk:", err)
+          }
+        }
+        buffer = ""
+      }
     })
 
-    // Pipe the response through our transformer
-    const transformedStream = response.body?.pipeThrough(transformer)
-
-    if (!transformedStream) {
-      throw new Error('Failed to create stream')
-    }
-
-    return new Response(transformedStream, {
+    return new Response(response.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
