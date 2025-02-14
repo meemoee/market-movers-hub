@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
@@ -30,8 +31,8 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}`);
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}`);
     
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
@@ -300,7 +301,18 @@ serve(async (req) => {
     }
     console.log(`Retrieved ${allMarkets.length} markets total for interval ${interval}`);
 
-    // First apply filters (openOnly)
+    // First apply probability filters if they exist
+    if (probabilityMin !== undefined || probabilityMax !== undefined) {
+      allMarkets = allMarkets.filter(market => {
+        const probability = market.final_last_traded_price * 100; // Convert to percentage
+        const meetsMin = probabilityMin === undefined || probability >= probabilityMin;
+        const meetsMax = probabilityMax === undefined || probability <= probabilityMax;
+        return meetsMin && meetsMax;
+      });
+      console.log(`Filtered to ${allMarkets.length} markets within probability range ${probabilityMin}% - ${probabilityMax}%`);
+    }
+
+    // Then apply openOnly filter
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
       console.log(`Filtered to ${allMarkets.length} open markets for interval ${interval}`);
