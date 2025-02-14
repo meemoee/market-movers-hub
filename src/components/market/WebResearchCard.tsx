@@ -326,12 +326,18 @@ export function WebResearchCard({
         throw new Error('No content collected from web scraping')
       }
 
-      // After collecting all content, start the analysis with improved streaming
+      // After collecting all content, start the analysis with market context
       setIsAnalyzing(true)
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: { 
           content: allContent.join('\n\n'),
-          query: description
+          query: description,
+          marketContext: {
+            question,
+            subtitle,
+            yesSubTitle,
+            noSubTitle
+          }
         }
       })
 
