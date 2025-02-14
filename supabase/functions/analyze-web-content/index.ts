@@ -59,53 +59,70 @@ ${content} ------ YOU MUST indicate a percent probability at the end of your sta
       transform(chunk, controller) {
         const text = new TextDecoder().decode(chunk)
         buffer += text
-        const parts = buffer.split("\n\n")
-        // Keep the last (possibly incomplete) part in the buffer
-        buffer = parts.pop() || ""
         
-        for (const part of parts) {
-          if (part.startsWith("data: ")) {
-            const dataStr = part.slice(6).trim()
-            if (dataStr === "[DONE]") continue
+        // Keep processing the buffer until we can't find any more complete messages
+        while (true) {
+          const nlIndex = buffer.indexOf('\n')
+          if (nlIndex === -1) break
+          
+          const line = buffer.slice(0, nlIndex)
+          buffer = buffer.slice(nlIndex + 1)
+          
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') continue
             
             try {
-              const parsed = JSON.parse(dataStr)
+              const parsed = JSON.parse(data)
               const content = parsed.choices?.[0]?.delta?.content || 
                             parsed.choices?.[0]?.message?.content || ""
               
               if (content) {
-                // Re-emit the SSE event with properly formatted content
+                const event = {
+                  choices: [{
+                    delta: { content },
+                    message: { content }
+                  }]
+                }
                 controller.enqueue(
-                  new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`)
+                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
                 )
               }
             } catch (err) {
-              console.error("Error parsing SSE chunk:", err)
+              console.debug('Parsing chunk (expected during streaming):', err)
             }
           }
         }
       },
       flush(controller) {
-        // Process any remaining data in the buffer
+        // Process any remaining complete messages in the buffer
         if (buffer.trim()) {
-          try {
-            const dataStr = buffer.trim()
-            if (dataStr.startsWith("data: ")) {
-              const jsonStr = dataStr.slice(6).trim()
-              if (jsonStr !== "[DONE]") {
-                const parsed = JSON.parse(jsonStr)
+          const lines = buffer.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim()
+              if (data === '[DONE]') continue
+              
+              try {
+                const parsed = JSON.parse(data)
                 const content = parsed.choices?.[0]?.delta?.content || 
                               parsed.choices?.[0]?.message?.content || ""
                 
                 if (content) {
+                  const event = {
+                    choices: [{
+                      delta: { content },
+                      message: { content }
+                    }]
+                  }
                   controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`)
+                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
                   )
                 }
+              } catch (err) {
+                console.debug('Parsing final chunk (expected):', err)
               }
             }
-          } catch (err) {
-            console.error("Error parsing final SSE chunk:", err)
           }
         }
         buffer = ""

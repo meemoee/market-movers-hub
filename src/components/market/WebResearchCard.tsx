@@ -171,11 +171,22 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
   const cleanStreamContent = (chunk: string): { content: string } => {
     try {
-      const parsed = JSON.parse(chunk);
-      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
+      let dataStr = chunk;
+      if (dataStr.startsWith('data: ')) {
+        dataStr = dataStr.slice(6);
+      }
+      dataStr = dataStr.trim();
+      
+      if (dataStr === '[DONE]') {
+        return { content: '' };
+      }
+      
+      const parsed = JSON.parse(dataStr);
+      const content = parsed.choices?.[0]?.delta?.content || 
+                     parsed.choices?.[0]?.message?.content || '';
       return { content };
     } catch (e) {
-      console.error('Error parsing stream chunk:', e);
+      console.debug('Chunk parse error (expected during streaming):', e);
       return { content: '' };
     }
   };
