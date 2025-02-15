@@ -369,7 +369,8 @@ serve(async (req) => {
     // Sort all filtered results based on sortBy parameter
     allMarkets.sort((a, b) => {
       if (sortBy === 'volume') {
-        return b.final_volume - a.final_volume;
+        // Sort by volume change percentage (which accounts for the relative increase/decrease)
+        return Math.abs(b.volume_change_percentage) - Math.abs(a.volume_change_percentage);
       }
       // Default to price change sorting
       return Math.abs(b.price_change) - Math.abs(a.price_change);
@@ -379,7 +380,7 @@ serve(async (req) => {
     const start = (page - 1) * limit;
     const paginatedMarkets = allMarkets.slice(start, start + limit);
     const hasMore = allMarkets.length > start + limit;
-    console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}, sortBy: ${sortBy}`);
+    console.log(`Returning ${paginatedMarkets.length} markets, sorted by ${sortBy === 'volume' ? 'volume change' : 'price change'}, hasMore: ${hasMore}`);
 
     await redis.close();
 
