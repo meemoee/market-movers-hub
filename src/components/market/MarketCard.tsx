@@ -51,10 +51,10 @@ export function MarketCard({
         onToggleExpand={onToggleExpand}
       />
       <MarketStats
-        lastTradedPrice={market.final_last_traded_price}
+        currentPrice={market.final_last_traded_price}
         priceChange={market.price_change}
-        volume={market.volume}
-        isExpanded={isExpanded}
+        volumeChange={0} // You'll need to add this to your Market interface if needed
+        totalVolume={market.volume}
       />
       {isExpanded && (
         <MarketDetails
