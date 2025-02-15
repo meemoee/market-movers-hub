@@ -70,8 +70,8 @@ export default function Index() {
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
           >
-            <div className={`${isMobile ? 'h-full overflow-y-auto' : 'sticky top-0 h-screen pt-6 overflow-y-auto'}`}>
-              <a href="/" className="block ml-6 mb-4">
+            <div className={`${isMobile ? 'h-full overflow-y-auto' : 'sticky top-0 h-screen pt-3 overflow-y-auto'}`}>
+              <a href="/" className="block ml-6 mb-3">
                 <img 
                   src="/hunchex-logo.svg" 
                   alt="Hunchex" 
