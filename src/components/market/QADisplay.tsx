@@ -772,6 +772,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       hr: () => <hr className="my-4 border-muted" />,
     };
 
+    const getScoreBackgroundColor = (score: number) => {
+      if (score >= 80) return 'bg-green-500/20';
+      if (score >= 60) return 'bg-yellow-500/20';
+      return 'bg-red-500/20';
+    };
+
     return (
       <div key={node.id} className="relative flex flex-col">
         <div className="flex items-stretch">
@@ -792,23 +798,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </Avatar>
             </div>
             <div className="space-y-2">
-              <div className="flex items-start gap-2">
+              <div className="flex items-start">
                 <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
                   {node.question}
                   {getExtensionInfo(node)}
                 </h3>
-                {!node.isExtendedRoot && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExpandQuestion(node);
-                    }}
-                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                    title="Expand this question into a follow-up analysis"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                )}
               </div>
               <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
                 <div className="flex items-start gap-2">
@@ -826,17 +820,27 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                         </ReactMarkdown>
                         {renderCitations(citations)}
                         
-                        <div className="mt-4 flex items-center gap-2">
+                        <div className="mt-4 flex items-center justify-between">
                           {node.evaluation && (
-                            <div className="flex items-center gap-2">
-                              <div className={`px-2 py-1 rounded text-xs font-medium ${
-                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
-                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
-                                'bg-red-500/20 text-red-500'
-                              }`}>
-                                Score: {node.evaluation.score}%
+                            <div className={`flex items-center gap-2 rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
+                              <div className="flex items-center gap-2">
+                                <div className="text-xs font-medium">
+                                  Score: {node.evaluation.score}%
+                                </div>
+                                <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
                               </div>
-                              <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
+                              {!node.isExtendedRoot && (
+                                <button 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleExpandQuestion(node);
+                                  }}
+                                  className="p-1 hover:bg-accent/50 rounded-full transition-colors ml-2"
+                                  title="Expand this question into a follow-up analysis"
+                                >
+                                  <ArrowRight className="h-4 w-4" />
+                                </button>
+                              )}
                             </div>
                           )}
                         </div>
