@@ -30,7 +30,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format, nothing else: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown, explanations, or other text."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown or code block syntax, just the raw JSON object."
           },
           {
             role: "user",
@@ -45,10 +45,13 @@ serve(async (req) => {
     }
 
     const data = await openRouterResponse.json()
-    const evaluationText = data.choices[0].message.content
+    let evaluationText = data.choices[0].message.content
 
     try {
-      console.log('Raw evaluation text:', evaluationText)
+      // Clean up any potential markdown or code block syntax
+      evaluationText = evaluationText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim()
+      console.log('Cleaned evaluation text:', evaluationText)
+      
       const evaluation = JSON.parse(evaluationText)
       
       // Validate the evaluation object structure
@@ -79,4 +82,3 @@ serve(async (req) => {
     )
   }
 })
-
