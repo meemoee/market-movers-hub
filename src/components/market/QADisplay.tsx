@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -603,8 +604,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         originalNodeId: node.id
       };
 
+      // Update both states immediately
       setRootExtensions(prev => [...prev, newRootNode]);
-
       setQaData([newRootNode]);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
@@ -630,6 +631,35 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       const analysis = await processStream(reader, nodeId);
 
+      // Create the complete node with analysis
+      const completeNode: QANode = {
+        ...newRootNode,
+        analysis
+      };
+
+      // Evaluate the node before updating the states
+      const { data: evaluationData, error: evaluationError } = await supabase.functions.invoke('evaluate-qa-pair', {
+        body: { 
+          question: completeNode.question,
+          analysis: completeNode.analysis
+        }
+      });
+
+      if (evaluationError) throw evaluationError;
+
+      // Add evaluation to the complete node
+      const evaluatedNode: QANode = {
+        ...completeNode,
+        evaluation: evaluationData
+      };
+
+      // Update both states with the evaluated node
+      setQaData([evaluatedNode]);
+      setRootExtensions(prev => 
+        prev.map(ext => ext.id === nodeId ? evaluatedNode : ext)
+      );
+
+      // Generate follow-up questions
       const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
@@ -647,16 +677,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       
       if (followUpError) throw followUpError;
 
+      // Process follow-up questions
       for (const item of followUpData) {
         if (item?.question) {
           await analyzeQuestion(item.question, nodeId, 1);
         }
       }
-
-      setRootExtensions(prev => {
-        const currentTree = qaData[0];
-        return prev.map(ext => ext.id === nodeId ? currentTree : ext);
-      });
 
     } catch (error) {
       console.error('Analysis error:', error);
