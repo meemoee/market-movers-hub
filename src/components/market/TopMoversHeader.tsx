@@ -115,9 +115,9 @@ export function TopMoversHeader({
               </div>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <div className="px-4 py-6 space-y-8">
-              <div className="space-y-4">
-                <div className="space-y-2">
+            <div className="px-4 py-6 space-y-12">
+              <div className="space-y-6">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2">
                     <Label className="leading-6">Probability Range</Label>
                     <output className="text-sm font-medium tabular-nums">
@@ -131,10 +131,10 @@ export function TopMoversHeader({
                     onChange={setProbabilityRange}
                     showMinThumb={showMinThumb}
                     showMaxThumb={showMaxThumb}
-                    className="w-full mt-6"
+                    className="w-full"
                   />
                 </div>
-                <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <Checkbox 
                       id="min-thumb"
@@ -164,15 +164,15 @@ export function TopMoversHeader({
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="space-y-2">
+              <div className="space-y-6">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between gap-2">
                     <Label className="leading-6">Price Change Range</Label>
                     <output className="text-sm font-medium tabular-nums">
                       {showPriceChangeMinThumb ? priceChangeRange[0] : -100}% - {showPriceChangeMaxThumb ? priceChangeRange[1] : 100}%
                     </output>
                   </div>
-                  <div className="relative mt-6">
+                  <div className="relative">
                     <div className="absolute inset-0 flex">
                       <div className="w-1/2 bg-red-500/20" />
                       <div className="w-1/2 bg-green-500/20" />
@@ -188,7 +188,7 @@ export function TopMoversHeader({
                     />
                   </div>
                 </div>
-                <div className="flex items-center gap-4 mt-2">
+                <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2">
                     <Checkbox 
                       id="price-change-min-thumb"
