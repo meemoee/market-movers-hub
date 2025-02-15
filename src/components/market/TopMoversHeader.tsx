@@ -95,19 +95,6 @@ export function TopMoversHeader({
         </div>
 
         <div className="flex items-center gap-2">
-          <Select
-            value={sortBy}
-            onValueChange={(value: 'price_change' | 'volume') => onSortChange(value)}
-          >
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Sort by" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="price_change">Price Change</SelectItem>
-              <SelectItem value="volume">Volume</SelectItem>
-            </SelectContent>
-          </Select>
-
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent/20 transition-colors">
@@ -117,6 +104,21 @@ export function TopMoversHeader({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
               <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <div className="p-2">
+                <Select
+                  value={sortBy}
+                  onValueChange={(value: 'price_change' | 'volume') => onSortChange(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="price_change">Price Change</SelectItem>
+                    <SelectItem value="volume">Volume Change</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem 
                 className="flex items-center gap-2 cursor-pointer"
