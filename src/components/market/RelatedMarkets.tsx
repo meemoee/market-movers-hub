@@ -263,7 +263,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                     ${Math.abs(market.volume_change)?.toFixed(0) || '0'}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    ${market.totalVolume?.toFixed(0) || '0'} Total Volume
+                    ${market.totalVolume?.toFixed(0) || '0'} Total
                   </div>
                 </div>
               </div>
