@@ -212,21 +212,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return combinedContent;
   };
 
-  useEffect(() => {
-    if (currentNodeId && streamingContent[currentNodeId]) {
-      const { content } = streamingContent[currentNodeId];
-      if (content) {
-        const processedContent = processStreamContent(content);
-        setStreamingContent(prev => ({
-          ...prev,
-          [currentNodeId]: {
-            ...prev[currentNodeId],
-            content: processedContent
-          }
-        }));
-      }
+  const getExtensionInfo = (node: QANode): string => {
+    if (!node.isExtendedRoot) {
+      const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.id).length;
+      return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
     }
-  }, [currentNodeId, streamingContent]);
+    return '';
+  };
 
   async function saveQATree() {
     try {
@@ -265,14 +257,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   }
 
-  function getExtensionInfo(node: QANode): string {
-    if (!node.isExtendedRoot) {
-      const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.id).length;
-      return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
-    }
-    return '';
-  }
-
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
@@ -309,10 +293,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (jsonStr === '[DONE]') continue;
         const { content, citations } = cleanStreamContent(jsonStr);
         if (content) {
-          accumulatedContent += content;
+          const newContent = accumulatedContent + content;
+          const processedContent = processStreamContent(newContent);
+          accumulatedContent = processedContent;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
+          const fixedContent = processedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
             const preceding = string.slice(0, offset);
             const lastLine = preceding.split('\n').pop() || '';
             if (lastLine.trim().startsWith('###')) {
