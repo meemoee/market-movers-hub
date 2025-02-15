@@ -1,11 +1,9 @@
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
-import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
-import { Slider } from '@/components/ui/slider';
+import { MultiRangeSlider } from '@/components/ui/multi-range-slider';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useState } from 'react';
 
 interface TimeInterval {
   label: string;
@@ -44,10 +42,6 @@ export function TopMoversHeader({
   setShowMaxThumb,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
-
-  const handleRangeChange = (newValue: number[]) => {
-    setProbabilityRange([newValue[0], newValue[1]]);
-  };
 
   return (
     <div className="p-4 w-full relative">
@@ -115,15 +109,14 @@ export function TopMoversHeader({
                   {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
                 </output>
               </div>
-              <Slider 
+              <MultiRangeSlider
+                min={0}
+                max={100}
                 value={probabilityRange}
-                onValueChange={handleRangeChange} 
-                className="w-full" 
-                min={0} 
-                max={100} 
-                step={1}
+                onChange={setProbabilityRange}
                 showMinThumb={showMinThumb}
                 showMaxThumb={showMaxThumb}
+                className="w-full"
               />
               <div className="flex items-center gap-4 mt-2">
                 <div className="flex items-center gap-2">
