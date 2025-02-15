@@ -261,6 +261,20 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   }
 
+  // Helper function to find a node by ID
+  const findNodeById = (nodeId: string, nodes: QANode[]): QANode | null => {
+    for (const node of nodes) {
+      if (node.id === nodeId) {
+        return node;
+      }
+      if (node.children.length > 0) {
+        const found = findNodeById(nodeId, node.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
@@ -293,58 +307,59 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           }
         }
       }
-    } catch (error) {
-      console.error('Error processing stream:', error);
-      throw error;
     }
+  } catch (error) {
+    console.error('Error processing stream:', error);
+    throw error;
+  }
 
-    async function processPart(text: string) {
-      const lines = text.split('\n').filter(line => line.startsWith('data: '));
-      for (const line of lines) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        const { content, citations } = cleanStreamContent(jsonStr);
-        if (content) {
-          accumulatedContent += content;
-          accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+  async function processPart(text: string) {
+    const lines = text.split('\n').filter(line => line.startsWith('data: '));
+    for (const line of lines) {
+      const jsonStr = line.slice(6).trim();
+      if (jsonStr === '[DONE]') continue;
+      const { content, citations } = cleanStreamContent(jsonStr);
+      if (content) {
+        accumulatedContent += content;
+        accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          setStreamingContent(prev => ({
-            ...prev,
-            [nodeId]: {
-              content: accumulatedContent,
-              citations: accumulatedCitations,
-            },
-          }));
-          
-          // Update the node with accumulated content
-          setQaData(prev => {
-            const updateNode = (nodes: QANode[]): QANode[] =>
-              nodes.map(node => {
-                if (node.id === nodeId) {
-                  const updatedNode = {
-                    ...node,
-                    analysis: accumulatedContent,
-                    citations: accumulatedCitations,
-                  };
-                  // If we have a complete sentence, try to evaluate
-                  if (isCompleteMarkdown(accumulatedContent)) {
-                    evaluateQAPair(updatedNode).catch(console.error);
-                  }
-                  return updatedNode;
+        setStreamingContent(prev => ({
+          ...prev,
+          [nodeId]: {
+            content: accumulatedContent,
+            citations: accumulatedCitations,
+          },
+        }));
+        
+        // Update the node with accumulated content
+        setQaData(prev => {
+          const updateNode = (nodes: QANode[]): QANode[] =>
+            nodes.map(node => {
+              if (node.id === nodeId) {
+                const updatedNode = {
+                  ...node,
+                  analysis: accumulatedContent,
+                  citations: accumulatedCitations,
+                };
+                // If we have a complete sentence, try to evaluate
+                if (isCompleteMarkdown(accumulatedContent)) {
+                  evaluateQAPair(updatedNode).catch(console.error);
                 }
-                if (node.children.length > 0) {
-                  return { ...node, children: updateNode(node.children) };
-                }
-                return node;
-              });
-            return updateNode(prev);
-          });
-        }
+                return updatedNode;
+              }
+              if (node.children.length > 0) {
+                return { ...node, children: updateNode(node.children) };
+              }
+              return node;
+            });
+          return updateNode(prev);
+        });
       }
     }
-
-    return accumulatedContent;
   }
+
+  return accumulatedContent;
+}
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
@@ -883,87 +898,4 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             </div>
             {node.children.length > 0 && isExpanded && (
               <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        {navigationHistory.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
+                {
