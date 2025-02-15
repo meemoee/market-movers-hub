@@ -57,7 +57,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
+  const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
+
+  const navigateToExtension = (extension: QANode) => {
+    setNavigationHistory(prev => [...prev, qaData]);
+    setQaData([extension]);
+  };
+
+  const navigateBack = () => {
+    const previousTree = navigationHistory[navigationHistory.length - 1];
+    if (previousTree) {
+      setQaData(previousTree);
+      setNavigationHistory(prev => prev.slice(0, -1));
+    }
+  };
 
   const { data: savedResearch } = useQuery<SavedResearch[]>({
     queryKey: ['saved-research', marketId],
@@ -631,7 +645,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                       handleExpandQuestion(node);
                     }}
                     className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                    title="Expand this question into a new analysis"
+                    title="Expand this question into a follow-up analysis"
                   >
                     <ArrowRight className="h-4 w-4" />
                   </button>
@@ -657,7 +671,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                         {nodeExtensions.length > 0 && (
                           <div className="mt-4 space-y-2">
                             <div className="text-xs font-medium text-muted-foreground">
-                              Alternative Analyses ({nodeExtensions.length}):
+                              Follow-up Analyses ({nodeExtensions.length}):
                             </div>
                             <div className="space-y-4">
                               {nodeExtensions.map((extension, index) => (
@@ -666,11 +680,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                                   className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setQaData([extension]);
+                                    navigateToExtension(extension);
                                   }}
                                 >
                                   <div className="text-xs text-muted-foreground mb-2">
-                                    Alternative Analysis #{index + 1}
+                                    Continuation #{index + 1}
                                   </div>
                                   <div className="line-clamp-3">
                                     {getPreviewText(extension.analysis)}
@@ -702,6 +716,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+        {navigationHistory.length > 0 && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={navigateBack}
+            className="mb-4 sm:mb-0"
+          >
+            ← Back to Previous Analysis
+          </Button>
+        )}
         <div className="flex-1 min-w-[200px] max-w-[300px]">
           <Select
             value={selectedResearch}
@@ -725,6 +749,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             value={selectedQATree}
             onValueChange={(value) => {
               setSelectedQATree(value);
+              setNavigationHistory([]); // Reset navigation history when loading new tree
               if (value !== 'none') {
                 const tree = savedQATrees?.find(t => t.id === value);
                 if (tree) {
