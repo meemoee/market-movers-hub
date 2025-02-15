@@ -407,8 +407,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateNode(prev);
       });
 
-      // Evaluate the node after updating its analysis
-      const currentNode = { id: nodeId, question, analysis };
+      // Create a complete QANode object for evaluation
+      const currentNode: QANode = {
+        id: nodeId,
+        question,
+        analysis,
+        children: [] // Add the required children property
+      };
       await evaluateQAPair(currentNode);
 
       if (!parentId) {
