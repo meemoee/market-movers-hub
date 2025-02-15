@@ -1,4 +1,3 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -116,8 +115,8 @@ export function TopMoversHeader({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-4 py-6 space-y-12">
-              <div className="space-y-6">
-                <div className="space-y-4">
+              <div className="space-y-8">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <Label className="leading-6">Probability Range</Label>
                     <output className="text-sm font-medium tabular-nums">
@@ -131,7 +130,7 @@ export function TopMoversHeader({
                     onChange={setProbabilityRange}
                     showMinThumb={showMinThumb}
                     showMaxThumb={showMaxThumb}
-                    className="w-full"
+                    className="w-full mb-4"
                   />
                 </div>
                 <div className="flex items-center gap-4">
@@ -164,8 +163,8 @@ export function TopMoversHeader({
                 </div>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-4">
+              <div className="space-y-8">
+                <div className="space-y-2">
                   <div className="flex items-center justify-between gap-2">
                     <Label className="leading-6">Price Change Range</Label>
                     <output className="text-sm font-medium tabular-nums">
@@ -184,7 +183,7 @@ export function TopMoversHeader({
                       onChange={setPriceChangeRange}
                       showMinThumb={showPriceChangeMinThumb}
                       showMaxThumb={showPriceChangeMaxThumb}
-                      className="w-full relative z-10"
+                      className="w-full relative z-10 mb-4"
                     />
                   </div>
                 </div>
