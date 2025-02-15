@@ -271,7 +271,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         const { done, value } = await reader.read();
         if (done) {
           // When stream is done, find the node and evaluate it
-          const node = qaData.find(n => n.id === nodeId) || 
+          const node = findNodeById(nodeId, qaData) || 
                       rootExtensions.find(n => n.id === nodeId);
           if (node && node.analysis) {
             console.log('Evaluating node after stream completion:', nodeId);
@@ -286,10 +286,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         buffer = parts.pop() || '';
         for (const part of parts) {
           if (part.trim() && isLineComplete(part.trim())) {
-            processPart(part);
+            await processPart(part);
             buffer = '';
           } else {
-            processPart(part);
+            await processPart(part);
           }
         }
       }
@@ -298,7 +298,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       throw error;
     }
 
-    function processPart(text: string) {
+    async function processPart(text: string) {
       const lines = text.split('\n').filter(line => line.startsWith('data: '));
       for (const line of lines) {
         const jsonStr = line.slice(6).trim();
@@ -316,15 +316,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             },
           }));
           
+          // Update the node with accumulated content
           setQaData(prev => {
             const updateNode = (nodes: QANode[]): QANode[] =>
               nodes.map(node => {
                 if (node.id === nodeId) {
-                  return {
+                  const updatedNode = {
                     ...node,
                     analysis: accumulatedContent,
                     citations: accumulatedCitations,
                   };
+                  // If we have a complete sentence, try to evaluate
+                  if (isCompleteMarkdown(accumulatedContent)) {
+                    evaluateQAPair(updatedNode).catch(console.error);
+                  }
+                  return updatedNode;
                 }
                 if (node.children.length > 0) {
                   return { ...node, children: updateNode(node.children) };
