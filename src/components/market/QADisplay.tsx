@@ -461,7 +461,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         ...prev,
         [node.id]: {
           content: node.analysis,
-          citations: node.citations || [],
+          citations: node.citations || [], // Make sure to populate citations
         },
       }));
       if (node.children.length > 0) {
@@ -475,8 +475,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const extensions = treeData.filter(node => node.isExtendedRoot);
     setRootExtensions(extensions);
     setQaData(mainRoots);
-    setStreamingContent({});
+    setStreamingContent({}); // Clear existing streaming content
+    
+    // Populate streaming content for both main roots and extensions
     populateStreamingContent([...mainRoots, ...extensions]);
+    
     const allNodeIds = new Set<string>();
     const addNodeIds = (nodes: QANode[]) => {
       nodes.forEach(node => {
@@ -492,7 +495,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     console.log('Loaded tree structure:', {
       mainRoots,
       extensions,
-      totalNodes: [...mainRoots, ...extensions].length
+      totalNodes: [...mainRoots, ...extensions].length,
+      streamingContent: streamingContent
     });
   };
 
