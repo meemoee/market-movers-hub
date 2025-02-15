@@ -25,9 +25,9 @@ export function MarketStats({
     return `${prefix}${(change * 100).toFixed(1)} pp`;
   };
 
-  const formatVolume = (vol: number): string => {
+  const formatVolume = (vol: number, isChange: boolean = false): string => {
     if (!vol && vol !== 0) return '$0';
-    const prefix = vol >= 0 ? '+' : '';
+    const prefix = isChange ? (vol >= 0 ? '+' : '') : '';
     if (vol >= 1e6) return `${prefix}$${(vol / 1e6).toFixed(1)}M`;
     if (vol >= 1e3) return `${prefix}$${(vol / 1e3).toFixed(1)}K`;
     return `${prefix}$${vol.toFixed(0)}`;
@@ -78,10 +78,10 @@ export function MarketStats({
             className="text-xl font-semibold"
             style={{ color: getVolumeColor(volume, totalVolume) }}
           >
-            {formatVolume(volume)}
+            {formatVolume(volume, true)}
           </span>
           <span className="text-sm text-muted-foreground">
-            {formatVolume(totalVolume)}
+            {formatVolume(totalVolume)} total volume
           </span>
         </div>
       </div>
