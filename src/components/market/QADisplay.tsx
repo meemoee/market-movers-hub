@@ -170,7 +170,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return stack.length === 0 && !inCode && !inList;
   };
 
-  const cleanStreamContent = (chunk: string): { content: string } => {
+  const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
     try {
       let dataStr = chunk;
       if (dataStr.startsWith('data: ')) {
@@ -179,16 +179,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       dataStr = dataStr.trim();
       
       if (dataStr === '[DONE]') {
-        return { content: '' };
+        return { content: '', citations: [] };
       }
       
       const parsed = JSON.parse(dataStr);
       const content = parsed.choices?.[0]?.delta?.content || 
                      parsed.choices?.[0]?.message?.content || '';
-      return { content };
+      return { content, citations: [] };
     } catch (e) {
       console.debug('Chunk parse error (expected during streaming):', e);
-      return { content: '' };
+      return { content: '', citations: [] };
     }
   };
 
@@ -651,12 +651,20 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   };
 
+  const isLineComplete = (line: string): boolean => {
+    // Check if the line ends with a proper sentence ending
+    return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
     const analysisContent = isStreaming ? streamContent?.content : node.analysis;
     const citations = isStreaming ? streamContent?.citations : node.citations;
+    
+    // Get extensions for this node
+    const nodeExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
     
     const markdownComponents: MarkdownComponents = {
       p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
