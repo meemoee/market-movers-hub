@@ -392,6 +392,25 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const analysis = await processStream(reader, nodeId);
       console.log('Completed analysis for node', nodeId, ':', analysis);
 
+      // Update the node with the complete analysis and trigger evaluation
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(n => {
+            if (n.id === nodeId) {
+              return { ...n, analysis };
+            }
+            if (n.children.length > 0) {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
+      });
+
+      // Evaluate the node after updating its analysis
+      const currentNode = { id: nodeId, question, analysis };
+      await evaluateQAPair(currentNode);
+
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({ 
@@ -676,7 +695,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Update qaData
+      // Update qaData with evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -691,7 +710,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateNode(prev);
       });
 
-      // Update rootExtensions if needed
+      // Update rootExtensions with evaluation
       setRootExtensions(prev => 
         prev.map(ext => 
           ext.id === node.id ? { ...ext, evaluation: data } : ext
