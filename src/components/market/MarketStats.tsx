@@ -1,109 +1,73 @@
-import { TrendingUp, TrendingDown } from "lucide-react";
+
+import { useState, useEffect } from 'react';
+import { ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { formatNumber } from '@/lib/utils';
 
 interface MarketStatsProps {
-  lastTradedPrice: number;
+  currentPrice: number;
   priceChange: number;
-  volume: number;
-  isExpanded: boolean;
+  volumeChange: number;
+  totalVolume: number;
 }
 
-export function MarketStats({ 
-  lastTradedPrice, 
-  priceChange, 
-  volume,
-  isExpanded,
-}: MarketStatsProps) {
-  const formatPrice = (price: number): string => {
-    return `${(price * 100).toFixed(1)}%`;
-  };
+export function MarketStats({ currentPrice, priceChange, volumeChange, totalVolume }: MarketStatsProps) {
+  const isPricePositive = priceChange >= 0;
+  const isVolumePositive = volumeChange >= 0;
+  const [isClient, setIsClient] = useState(false);
 
-  const formatPriceChange = (change: number): string => {
-    const prefix = change >= 0 ? '+' : '';
-    return `${prefix}${(change * 100).toFixed(1)} pp`;
-  };
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
-  const formatVolume = (vol: number): string => {
-    if (!vol && vol !== 0) return '$0';
-    if (vol >= 1e6) return `$${(vol / 1e6).toFixed(1)}M`;
-    if (vol >= 1e3) return `$${(vol / 1e3).toFixed(1)}K`;
-    return `$${vol.toFixed(0)}`;
-  };
-
-  const calculatePosition = (price: number): number => {
-    return price * 100;
-  };
+  if (!isClient) {
+    return (
+      <div className="flex gap-8 animate-pulse">
+        <div className="space-y-2">
+          <div className="h-4 w-24 bg-muted rounded" />
+          <div className="h-6 w-32 bg-muted rounded" />
+        </div>
+        <div className="space-y-2">
+          <div className="h-4 w-24 bg-muted rounded" />
+          <div className="h-6 w-32 bg-muted rounded" />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full flex flex-col space-y-2 pb-2">
-      <div className="flex justify-between items-start">
-        <div className="flex flex-col">
-          <span className="text-3xl font-bold tracking-tight">
-            {formatPrice(lastTradedPrice)}
-          </span>
-          <span className={`text-sm font-medium flex items-center gap-1 mb-2
-            ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
-          >
-            {priceChange >= 0 ? (
-              <TrendingUp className="w-4 h-4" />
-            ) : (
-              <TrendingDown className="w-4 h-4" />
-            )}
-            {formatPriceChange(priceChange)}
-          </span>
+    <div className="flex gap-8">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Price</span>
+          {isPricePositive ? (
+            <ArrowUpCircle className="w-4 h-4 text-green-500" />
+          ) : (
+            <ArrowDownCircle className="w-4 h-4 text-red-500" />
+          )}
         </div>
-        <div className="flex flex-col items-end">
-          <span className="text-xl font-semibold">
-            {formatVolume(volume)}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            24h Volume
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-bold">{(currentPrice * 100).toFixed(2)}¢</span>
+          <span className={`text-sm ${isPricePositive ? 'text-green-500' : 'text-red-500'}`}>
+            {isPricePositive ? '+' : ''}{(priceChange * 100).toFixed(2)}%
           </span>
         </div>
       </div>
-      
-      <div className="relative h-[3px] w-full">
-        {/* Base white line showing current price position */}
-        <div 
-          className="absolute bg-white/50 h-2 top-[-4px]" 
-          style={{ 
-            width: `${calculatePosition(lastTradedPrice)}%`
-          }}
-        />
-        
-        {/* Price change visualization */}
-        {priceChange >= 0 ? (
-          <>
-            <div 
-              className="absolute bg-green-900/90 h-2 top-[-4px]" 
-              style={{ 
-                width: `${Math.abs(priceChange * 100)}%`,
-                right: `${100 - calculatePosition(lastTradedPrice)}%`
-              }}
-            />
-            <div 
-              className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
-              style={{ 
-                right: `${100 - calculatePosition(lastTradedPrice)}%`
-              }}
-            />
-          </>
-        ) : (
-          <>
-            <div 
-              className="absolute bg-red-500/50 h-2 top-[-4px]" 
-              style={{ 
-                width: `${Math.abs(priceChange * 100)}%`,
-                left: `${calculatePosition(lastTradedPrice)}%`
-              }}
-            />
-            <div 
-              className="absolute h-3 w-0.5 bg-gray-400 top-[-6px]"
-              style={{ 
-                left: `${calculatePosition(lastTradedPrice)}%`
-              }}
-            />
-          </>
-        )}
+
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">${formatNumber(totalVolume)} Volume</span>
+          {isVolumePositive ? (
+            <ArrowUpCircle className="w-4 h-4 text-green-500" />
+          ) : (
+            <ArrowDownCircle className="w-4 h-4 text-red-500" />
+          )}
+        </div>
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-bold">${formatNumber(Math.abs(volumeChange))}</span>
+          <span className={`text-sm ${isVolumePositive ? 'text-green-500' : 'text-red-500'}`}>
+            {isVolumePositive ? '+' : ''}{(volumeChange / (totalVolume - volumeChange) * 100).toFixed(2)}%
+          </span>
+        </div>
       </div>
     </div>
   );
