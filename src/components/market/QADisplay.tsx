@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -846,27 +845,29 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                         </ReactMarkdown>
                         {renderCitations(citations)}
                         
-                        <div className="mt-4 flex items-center justify-between">
+                        <div className="mt-4 space-y-2">
                           {node.evaluation && (
-                            <div className={`flex items-center gap-2 rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
-                              <div className="flex items-center gap-2">
+                            <div className={`rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
+                              <div className="flex items-center justify-between mb-2">
                                 <div className="text-xs font-medium">
                                   Score: {node.evaluation.score}%
                                 </div>
-                                <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
+                                {!node.isExtendedRoot && (
+                                  <button 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleExpandQuestion(node);
+                                    }}
+                                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
+                                    title="Expand this question into a follow-up analysis"
+                                  >
+                                    <ArrowRight className="h-4 w-4" />
+                                  </button>
+                                )}
                               </div>
-                              {!node.isExtendedRoot && (
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleExpandQuestion(node);
-                                  }}
-                                  className="p-1 hover:bg-accent/50 rounded-full transition-colors ml-2"
-                                  title="Expand this question into a follow-up analysis"
-                                >
-                                  <ArrowRight className="h-4 w-4" />
-                                </button>
-                              )}
+                              <span className="text-xs text-muted-foreground block">
+                                {node.evaluation.reason}
+                              </span>
                             </div>
                           )}
                         </div>
