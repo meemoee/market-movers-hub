@@ -73,9 +73,9 @@ export function MarketStats({
             {formatPriceChange(priceChange)}
           </span>
         </div>
-        <div className="flex flex-col items-end">
+        <div className="flex flex-col items-end justify-end h-[60px]">
           <span 
-            className="text-xl font-semibold"
+            className="text-xl font-semibold pb-0.5"
             style={{ color: getVolumeColor(volume, totalVolume) }}
           >
             {formatVolume(volume, true)}
