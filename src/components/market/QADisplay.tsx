@@ -269,7 +269,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          // When the stream is done, evaluate the complete Q&A pair
+          const node = qaData.find(n => n.id === nodeId) || 
+                      rootExtensions.find(n => n.id === nodeId);
+          if (node) {
+            await evaluateQAPair(node);
+          }
+          break;
+        }
         const decoded = new TextDecoder().decode(value);
         buffer += decoded;
 
@@ -628,13 +636,15 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const evaluateQAPair = async (node: QANode) => {
+    if (!node.analysis || node.evaluation) return; // Skip if no analysis or already evaluated
+
     try {
       const { data, error } = await supabase.functions.invoke('evaluate-qa-pair', {
         body: { 
           question: node.question,
           analysis: node.analysis
         }
-      })
+      });
 
       if (error) throw error;
 
@@ -764,7 +774,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                         {renderCitations(citations)}
                         
                         <div className="mt-4 flex items-center gap-2">
-                          {node.evaluation ? (
+                          {node.evaluation && (
                             <div className="flex items-center gap-2">
                               <div className={`px-2 py-1 rounded text-xs font-medium ${
                                 node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
@@ -775,17 +785,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                               </div>
                               <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
                             </div>
-                          ) : (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                evaluateQAPair(node);
-                              }}
-                            >
-                              Evaluate Answer
-                            </Button>
                           )}
                         </div>
                         
