@@ -5,7 +5,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuIte
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface TimeInterval {
   label: string;
@@ -44,9 +44,20 @@ export function TopMoversHeader({
   setShowMaxThumb,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
+  const [internalRange, setInternalRange] = useState<[number, number]>([0, 100]);
 
-  const handleRangeChange = (newValue: number[]) => {
-    setProbabilityRange([newValue[0], newValue[1]]);
+  // Initialize internal range with prop values
+  useEffect(() => {
+    setInternalRange(probabilityRange);
+  }, [probabilityRange]);
+
+  const handleRangeChange = (newValues: number[]) => {
+    const newRange: [number, number] = [
+      showMinThumb ? newValues[0] : 0,
+      showMaxThumb ? newValues[showMinThumb ? 1 : 0] : 100
+    ];
+    setInternalRange(newRange);
+    setProbabilityRange(newRange);
   };
 
   return (
@@ -97,12 +108,10 @@ export function TopMoversHeader({
               onClick={() => onOpenMarketsChange(!openMarketsOnly)}
             >
               <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={openMarketsOnly}
-                  onChange={(e) => onOpenMarketsChange(e.target.checked)}
+                  onCheckedChange={(checked) => onOpenMarketsChange(checked as boolean)}
                   className="rounded border-border bg-transparent"
-                  onClick={(e) => e.stopPropagation()}
                 />
                 <span className="text-sm">Open Markets Only</span>
               </div>
@@ -112,12 +121,12 @@ export function TopMoversHeader({
               <div className="flex items-center justify-between gap-2">
                 <Label className="leading-6">Probability Range</Label>
                 <output className="text-sm font-medium tabular-nums">
-                  {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
+                  {showMinThumb ? internalRange[0] : 0}% - {showMaxThumb ? internalRange[1] : 100}%
                 </output>
               </div>
               <Slider 
-                value={probabilityRange}
-                onValueChange={handleRangeChange} 
+                value={internalRange}
+                onValueChange={handleRangeChange}
                 className="w-full" 
                 min={0} 
                 max={100} 
@@ -133,7 +142,9 @@ export function TopMoversHeader({
                     onCheckedChange={(checked) => {
                       setShowMinThumb(checked as boolean);
                       if (!checked) {
-                        setProbabilityRange([0, probabilityRange[1]]);
+                        setProbabilityRange([0, internalRange[1]]);
+                      } else {
+                        setProbabilityRange([0, internalRange[1]]);
                       }
                     }}
                   />
@@ -146,7 +157,9 @@ export function TopMoversHeader({
                     onCheckedChange={(checked) => {
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
-                        setProbabilityRange([probabilityRange[0], 100]);
+                        setProbabilityRange([internalRange[0], 100]);
+                      } else {
+                        setProbabilityRange([internalRange[0], 100]);
                       }
                     }}
                   />
