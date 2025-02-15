@@ -137,10 +137,11 @@ export function TopMoversHeader({
                     id="min-thumb"
                     checked={showMinThumb}
                     onCheckedChange={(checked) => {
-                      setShowMinThumb(checked as boolean);
-                      if (!checked) {
+                      if (checked) {
+                        // When enabling min thumb, set it to 0 while maintaining max value
                         setProbabilityRange([0, probabilityRange[1]]);
                       }
+                      setShowMinThumb(checked as boolean);
                     }}
                   />
                   <Label htmlFor="min-thumb" className="text-sm">Min</Label>
@@ -150,6 +151,10 @@ export function TopMoversHeader({
                     id="max-thumb"
                     checked={showMaxThumb}
                     onCheckedChange={(checked) => {
+                      if (checked && !showMinThumb) {
+                        // When enabling max thumb alone, set it to 100
+                        setProbabilityRange([0, 100]);
+                      }
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([probabilityRange[0], 100]);
