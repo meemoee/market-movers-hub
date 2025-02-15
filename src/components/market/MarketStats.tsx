@@ -57,12 +57,12 @@ export function MarketStats({
 
   return (
     <div className="w-full flex flex-col space-y-2 pb-2">
-      <div className="flex justify-between items-start">
+      <div className="flex justify-between items-start pt-0.5">
         <div className="flex flex-col">
           <span className="text-3xl font-bold tracking-tight">
             {formatPrice(lastTradedPrice)}
           </span>
-          <span className={`text-sm font-medium flex items-center gap-1
+          <span className={`text-sm font-medium flex items-center gap-1 pb-1.5
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
             {priceChange >= 0 ? (
