@@ -102,23 +102,25 @@ export function TopMoversHeader({
               </div>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <div className="px-4 py-4 space-y-4">
+            <div className="px-4 py-6 space-y-6">
               <div className="flex items-center justify-between gap-2">
                 <Label className="leading-6">Probability Range</Label>
                 <output className="text-sm font-medium tabular-nums">
                   {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
                 </output>
               </div>
-              <MultiRangeSlider
-                min={0}
-                max={100}
-                value={probabilityRange}
-                onChange={setProbabilityRange}
-                showMinThumb={showMinThumb}
-                showMaxThumb={showMaxThumb}
-                className="w-full"
-              />
-              <div className="flex items-center gap-4 mt-2">
+              <div className="pt-2">
+                <MultiRangeSlider
+                  min={0}
+                  max={100}
+                  value={probabilityRange}
+                  onChange={setProbabilityRange}
+                  showMinThumb={showMinThumb}
+                  showMaxThumb={showMaxThumb}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
                   <Checkbox 
                     id="min-thumb"
