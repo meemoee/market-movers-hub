@@ -1,4 +1,3 @@
-<lov-code>
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -112,14 +111,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     },
   });
 
-  // Improved function to check markdown formatting completeness
   const isCompleteMarkdown = (text: string): boolean => {
     const stack: string[] = [];
     let inCode = false;
     let inList = false;
     let currentNumber = '';
     
-    // Check for incomplete sentences
     if (text.match(/[a-zA-Z]$/)) return false; // Ends with a letter
     if (text.match(/\([^)]*$/)) return false; // Unclosed parenthesis
     if (text.match(/\[[^\]]*$/)) return false; // Unclosed square bracket
@@ -129,7 +126,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const nextChar = text[i + 1];
       const prevChar = text[i - 1];
       
-      // Handle code blocks
       if (char === '`' && nextChar === '`' && text[i + 2] === '`') {
         inCode = !inCode;
         i += 2;
@@ -138,7 +134,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       
       if (inCode) continue;
       
-      // Handle numbered lists
       if (/^\d$/.test(char)) {
         currentNumber += char;
         continue;
@@ -154,10 +149,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         currentNumber = '';
       }
       
-      // Handle bold/italic markers
       if ((char === '*' || char === '_')) {
         if (nextChar === char) {
-          // Double markers (bold)
           if (stack.length > 0 && stack[stack.length - 1] === char + char) {
             stack.pop();
           } else {
@@ -165,7 +158,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           }
           i++; // Skip next character
         } else {
-          // Single markers (italic)
           if (stack.length > 0 && stack[stack.length - 1] === char) {
             stack.pop();
           } else {
@@ -200,14 +192,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     }
   };
 
-  // Modified function to handle streaming content
   const processStreamContent = (content: string, prevContent: string = ''): string => {
-    // Combine with previous content to check for complete formatting
     let combinedContent = prevContent + content;
     
-    // Clean up any unmatched formatting
     combinedContent = combinedContent
-      // Fix common markdown issues
       .replace(/\*\*\s*\*\*/g, '') // Remove empty bold tags
       .replace(/\*\s*\*/g, '') // Remove empty italic tags
       .replace(/`\s*`/g, '') // Remove empty code tags
@@ -217,7 +205,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       .replace(/\s+/g, ' ') // Normalize whitespace
       .trim();
     
-    // Ensure complete sentences
     if (combinedContent.match(/[a-zA-Z]$/)) {
       combinedContent += '.';
     }
@@ -225,7 +212,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return combinedContent;
   };
 
-  // In your component where you process the stream
   useEffect(() => {
     if (currentNodeId && streamingContent[currentNodeId]) {
       const { content } = streamingContent[currentNodeId];
@@ -247,7 +233,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      // Combine main tree and all root extensions
       const completeTreeData = [...qaData, ...rootExtensions];
 
       const { data, error } = await supabase
@@ -527,23 +512,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const loadSavedQATree = (treeData: QANode[]) => {
-    // First, find all root nodes (nodes that were original starting points)
     const mainRoots = treeData.filter(node => !node.isExtendedRoot);
-    
-    // Find all extension nodes (nodes that were created by clicking the arrow)
     const extensions = treeData.filter(node => node.isExtendedRoot);
-    
-    // Store all extensions for later use
     setRootExtensions(extensions);
-    
-    // Set the main tree as the current display
     setQaData(mainRoots);
-    
-    // Reset and populate streaming content for all nodes
     setStreamingContent({});
     populateStreamingContent([...mainRoots, ...extensions]);
-    
-    // Expand all nodes by default when loading a saved tree
     const allNodeIds = new Set<string>();
     const addNodeIds = (nodes: QANode[]) => {
       nodes.forEach(node => {
@@ -555,9 +529,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     };
     addNodeIds([...mainRoots, ...extensions]);
     setExpandedNodes(allNodeIds);
-    
     setCurrentNodeId(null);
-
     console.log('Loaded tree structure:', {
       mainRoots,
       extensions,
@@ -611,10 +583,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         originalNodeId: node.id
       };
 
-      // Add to root extensions first
       setRootExtensions(prev => [...prev, newRootNode]);
 
-      // Set as current QA display
       setQaData([newRootNode]);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
@@ -657,16 +627,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       
       if (followUpError) throw followUpError;
 
-      // Process follow-up questions
       for (const item of followUpData) {
         if (item?.question) {
           await analyzeQuestion(item.question, nodeId, 1);
         }
       }
 
-      // After all follow-up questions are processed, update root extensions with the complete tree
       setRootExtensions(prev => {
-        const currentTree = qaData[0]; // Get the complete tree after all processing
+        const currentTree = qaData[0];
         return prev.map(ext => ext.id === nodeId ? currentTree : ext);
       });
 
@@ -689,9 +657,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const isExpanded = expandedNodes.has(node.id);
     const analysisContent = isStreaming ? streamContent?.content : node.analysis;
     const citations = isStreaming ? streamContent?.citations : node.citations;
-    
-    // Find any extensions for this node
-    const nodeExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
     
     const markdownComponents: MarkdownComponents = {
       p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
@@ -778,7 +743,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                         </ReactMarkdown>
                         {renderCitations(citations)}
                         
-                        {/* Show extensions for this node if they exist */}
                         {nodeExtensions.length > 0 && (
                           <div className="mt-4 space-y-2">
                             <div className="text-xs font-medium text-muted-foreground">
@@ -899,5 +863,3 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     </Card>
   );
 }
-
-function findOriginalNode(
