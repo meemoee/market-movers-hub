@@ -1,3 +1,4 @@
+
 import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface MarketStatsProps {
@@ -40,7 +41,7 @@ export function MarketStats({
           <span className="text-3xl font-bold tracking-tight">
             {formatPrice(lastTradedPrice)}
           </span>
-          <span className={`text-sm font-medium flex items-center gap-1 mb-2
+          <span className={`text-sm font-medium flex items-center gap-1
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
             {priceChange >= 0 ? (
@@ -56,7 +57,7 @@ export function MarketStats({
             {formatVolume(volume)}
           </span>
           <span className="text-sm text-muted-foreground">
-            24h Volume
+            Volume Change
           </span>
         </div>
       </div>
