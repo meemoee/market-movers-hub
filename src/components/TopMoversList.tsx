@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -122,7 +121,8 @@ export default function TopMoversList({
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
     showMaxThumb ? debouncedProbabilityRange[1] : undefined,
     showPriceChangeMinThumb ? debouncedPriceChangeRange[0] : undefined,
-    showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined
+    showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
+    sortBy
   );
 
   const marketSearchQuery = useMarketSearch(
@@ -195,17 +195,7 @@ export default function TopMoversList({
     ? displayedMarkets.find(m => m.market_id === selectedMarket.id)
     : null;
 
-  const sortMarkets = (markets: TopMover[]) => {
-    return [...markets].sort((a, b) => {
-      if (sortBy === 'price_change') {
-        return Math.abs(b.price_change) - Math.abs(a.price_change);
-      } else {
-        return b.volume_change - a.volume_change;
-      }
-    });
-  };
-
-  const sortedMarkets = sortMarkets(displayedMarkets);
+  const sortedMarkets = displayedMarkets;
 
   return (
     <div className="flex flex-col w-full">

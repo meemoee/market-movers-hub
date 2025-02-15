@@ -44,9 +44,9 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}`);
-    
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, sortBy = 'price_change' } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, sortBy: ${sortBy}`);
+
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
     
@@ -366,14 +366,20 @@ serve(async (req) => {
       console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
     }
 
-    // Then sort all filtered results by absolute price change
-    allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
+    // Sort all filtered results based on sortBy parameter
+    allMarkets.sort((a, b) => {
+      if (sortBy === 'volume') {
+        return b.final_volume - a.final_volume;
+      }
+      // Default to price change sorting
+      return Math.abs(b.price_change) - Math.abs(a.price_change);
+    });
 
     // Apply pagination to the filtered and sorted results
     const start = (page - 1) * limit;
     const paginatedMarkets = allMarkets.slice(start, start + limit);
     const hasMore = allMarkets.length > start + limit;
-    console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}`);
+    console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}, sortBy: ${sortBy}`);
 
     await redis.close();
 
