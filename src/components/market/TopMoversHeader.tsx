@@ -1,3 +1,4 @@
+
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -103,13 +104,13 @@ export function TopMoversHeader({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-4 py-6 space-y-8">
-              <div className="flex items-center justify-between gap-2">
-                <Label className="leading-6">Probability Range</Label>
-                <output className="text-sm font-medium tabular-nums">
-                  {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
-                </output>
-              </div>
-              <div className="pt-2">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="leading-6">Probability Range</Label>
+                  <output className="text-sm font-medium tabular-nums">
+                    {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
+                  </output>
+                </div>
                 <MultiRangeSlider
                   min={0}
                   max={100}
