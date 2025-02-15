@@ -1,10 +1,11 @@
+
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { Components as MarkdownComponents } from 'react-markdown';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -473,7 +474,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const analysisContent = isStreaming ? streamContent?.content : node.analysis;
     const citations = isStreaming ? streamContent?.citations : node.citations;
     
-    const markdownComponents: Components = {
+    const markdownComponents: MarkdownComponents = {
       p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
       code: ({ children, className }) => {
         const isInline = !className;
