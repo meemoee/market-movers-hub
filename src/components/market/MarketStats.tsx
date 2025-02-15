@@ -49,9 +49,10 @@ export function MarketStats({
     // Combined score (0-1) weighing both factors
     const combinedScore = (volumeScore * 0.5) + (changeScore * 0.5);
     
-    // Convert score to hex color from white (#FFFFFF) to yellow (#F97316)
-    const intensity = Math.floor(combinedScore * 255);
-    return `rgb(255, ${255 - (intensity * 0.3)}, ${255 - (intensity * 0.7)})`;
+    // Apply a more gradual color transition by reducing the intensity
+    // This will make low volume changes appear whiter
+    const intensity = Math.floor(combinedScore * 255 * 0.7); // Reduced intensity by 30%
+    return `rgb(255, ${255 - (intensity * 0.2)}, ${255 - (intensity * 0.5)})`;
   };
 
   return (
