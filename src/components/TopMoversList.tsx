@@ -105,6 +105,7 @@ export default function TopMoversList({
   const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
   const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
+  const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
@@ -192,6 +193,18 @@ export default function TopMoversList({
     ? displayedMarkets.find(m => m.market_id === selectedMarket.id)
     : null;
 
+  const sortMarkets = (markets: TopMover[]) => {
+    return [...markets].sort((a, b) => {
+      if (sortBy === 'price_change') {
+        return Math.abs(b.price_change) - Math.abs(a.price_change);
+      } else {
+        return b.volume_change - a.volume_change;
+      }
+    });
+  };
+
+  const sortedMarkets = sortMarkets(displayedMarkets);
+
   return (
     <div className="flex flex-col w-full">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
@@ -230,6 +243,8 @@ export default function TopMoversList({
           setShowPriceChangeMinThumb={setShowPriceChangeMinThumb}
           showPriceChangeMaxThumb={showPriceChangeMaxThumb}
           setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
         />
       </div>
       
@@ -238,10 +253,16 @@ export default function TopMoversList({
           <InsightPostBox />
           <MarketStatsBento selectedInterval={selectedInterval} />
           
+          {marketId && (
+            <div className="w-full px-4 pb-6">
+              <QADisplay marketId={marketId} marketQuestion={displayedMarkets.find(m => m.market_id === marketId)?.question || ''} />
+            </div>
+          )}
+
           <TopMoversContent
             isLoading={activeQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
-            topMovers={displayedMarkets}
+            topMovers={sortedMarkets}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
