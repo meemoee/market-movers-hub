@@ -14,7 +14,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
 
@@ -24,6 +24,8 @@ interface QANode {
   analysis: string;
   citations?: string[];
   children: QANode[];
+  isExtendedRoot?: boolean;
+  originalNodeId?: string;
 }
 
 interface StreamingContent {
@@ -45,46 +47,6 @@ interface QADisplayProps {
   marketQuestion: string;
 }
 
-const MarkdownComponents = {
-  p: ({ children }: { children: React.ReactNode }) => <p className="mb-3 last:mb-0">{children}</p>,
-  code: ({ inline, children }: { inline: boolean; children: React.ReactNode }) =>
-    inline ? (
-      <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
-    ) : (
-      <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
-        {children}
-      </code>
-    ),
-  ul: ({ children }: { children: React.ReactNode }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-  ol: ({ children }: { children: React.ReactNode }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-  li: ({ children }: { children: React.ReactNode }) => <li className="leading-relaxed">{children}</li>,
-  blockquote: ({ children }: { children: React.ReactNode }) => (
-    <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-  ),
-  a: ({ href, children }: { href?: string; children: React.ReactNode }) => (
-    <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-      {children}
-    </a>
-  ),
-  em: ({ children }: { children: React.ReactNode }) => <em className="italic">{children}</em>,
-  strong: ({ children }: { children: React.ReactNode }) => <strong className="font-semibold">{children}</strong>,
-  h1: ({ children }: { children: React.ReactNode }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-  h2: ({ children }: { children: React.ReactNode }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-  h3: ({ children }: { children: React.ReactNode }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-  hr: () => <hr className="my-4 border-muted" />,
-  table: ({ children }: { children: React.ReactNode }) => (
-    <div className="overflow-x-auto my-4">
-      <table className="min-w-full divide-y divide-border">{children}</table>
-    </div>
-  ),
-  th: ({ children }: { children: React.ReactNode }) => (
-    <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-      {children}
-    </th>
-  ),
-  td: ({ children }: { children: React.ReactNode }) => <td className="px-3 py-2 whitespace-nowrap text-sm">{children}</td>,
-};
-
 export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -94,6 +56,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
+  const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const queryClient = useQueryClient();
 
   const { data: savedResearch } = useQuery<SavedResearch[]>({
@@ -159,13 +122,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
+      // Combine main tree and all root extensions
+      const completeTreeData = [...qaData, ...rootExtensions];
+
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
           user_id: user.user.id,
           market_id: marketId,
           title: marketQuestion,
-          tree_data: qaData as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
+          tree_data: completeTreeData as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
         })
         .select()
         .single();
@@ -174,7 +140,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       toast({
         title: "Analysis saved",
-        description: "Your QA tree has been saved successfully.",
+        description: `Saved QA tree with ${rootExtensions.length} question expansions`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
@@ -187,6 +153,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         description: error instanceof Error ? error.message : "Failed to save the QA tree",
       });
     }
+  }
+
+  function getExtensionInfo(node: QANode): string {
+    if (!node.isExtendedRoot) return '';
+    const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.originalNodeId).length;
+    return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
   }
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
@@ -428,9 +400,14 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const loadSavedQATree = (treeData: QANode[]) => {
-    setQaData(treeData);
+    // Split tree data into main tree and extensions
+    const mainTree = treeData.filter(node => !node.isExtendedRoot);
+    const extensions = treeData.filter(node => node.isExtendedRoot);
+    
+    setQaData(mainTree);
+    setRootExtensions(extensions);
     setStreamingContent({});  // Reset first
-    populateStreamingContent(treeData);  // Then populate with all nodes
+    populateStreamingContent([...mainTree, ...extensions]);  // Then populate with all nodes
     setExpandedNodes(new Set());  // Reset expanded state
     setCurrentNodeId(null);
   };
@@ -463,10 +440,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const handleExpandQuestion = async (node: QANode) => {
-    setQaData([]);
-    setStreamingContent({});
-    setExpandedNodes(new Set());
-    
     const parentNodes = findParentNodes(node.id, qaData) || [];
     const historyContext = buildHistoryContext(node, parentNodes);
     
@@ -476,12 +449,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       setCurrentNodeId(nodeId);
       setExpandedNodes(prev => new Set([...prev, nodeId]));
 
-      setQaData([{
+      const newRootNode: QANode = {
         id: nodeId,
         question: node.question,
         analysis: '',
-        children: []
-      }]);
+        children: [],
+        isExtendedRoot: true,
+        originalNodeId: node.id
+      };
+
+      setRootExtensions(prev => [...prev, newRootNode]);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
@@ -600,7 +577,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-2">
-                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">{node.question}</h3>
+                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
+                  {node.question}
+                  <span className="text-muted-foreground ml-1 text-xs">
+                    {getExtensionInfo(node)}
+                  </span>
+                </h3>
                 {depth > 0 && (
                   <button 
                     onClick={(e) => {
