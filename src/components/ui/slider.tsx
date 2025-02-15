@@ -11,14 +11,13 @@ interface SliderProps extends React.ComponentPropsWithoutRef<typeof SliderPrimit
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   SliderProps
->(({ className, showMinThumb = true, showMaxThumb = true, value, ...props }, ref) => {
-  const values = value as number[];
-  const [min, max] = [props.min || 0, props.max || 100];
+>(({ className, showMinThumb = true, showMaxThumb = true, value, defaultValue, ...props }, ref) => {
+  // For max-only mode, treat it as a single value slider
+  const isMaxOnly = !showMinThumb && showMaxThumb;
   
-  // When only max thumb is shown, we treat the max value as a single value slider
-  const displayValues = !showMinThumb && showMaxThumb ? 
-    [values[1]] :  // For max-only mode, just use the max value
-    values;        // Otherwise use both values
+  // Handle both array and single value cases
+  const values = Array.isArray(value) ? value : [value];
+  const displayValue = isMaxOnly ? [values[0]] : values;
 
   return (
     <SliderPrimitive.Root
@@ -28,31 +27,21 @@ const Slider = React.forwardRef<
         className
       )}
       {...props}
-      value={displayValues}
+      value={displayValue}
     >
       <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary">
         <SliderPrimitive.Range className="absolute h-full bg-primary" />
       </SliderPrimitive.Track>
 
-      {/* For max-only mode, we only render one thumb */}
-      {!showMinThumb && showMaxThumb ? (
+      {showMaxThumb && (
         <SliderPrimitive.Thumb
           className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
         />
-      ) : (
-        // For all other modes, render thumbs normally
-        <>
-          {showMinThumb && (
-            <SliderPrimitive.Thumb
-              className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-            />
-          )}
-          {showMaxThumb && (
-            <SliderPrimitive.Thumb
-              className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-            />
-          )}
-        </>
+      )}
+      {!isMaxOnly && showMinThumb && (
+        <SliderPrimitive.Thumb
+          className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+        />
       )}
     </SliderPrimitive.Root>
   )

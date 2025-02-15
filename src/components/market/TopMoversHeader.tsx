@@ -47,24 +47,13 @@ export function TopMoversHeader({
   const isMobile = useIsMobile();
 
   const handleRangeChange = (newValue: number[]) => {
-    // For max-only mode, we receive a single value
+    // If only max thumb is shown, treat it as a single value slider
     if (!showMinThumb && showMaxThumb) {
       setProbabilityRange([0, newValue[0]]);
-      return;
+    } else {
+      setProbabilityRange([newValue[0], newValue[1]]);
     }
-    
-    // Normal mode with both or min-only
-    const [newMin, newMax] = newValue;
-    setProbabilityRange([
-      showMinThumb ? newMin : 0,
-      showMaxThumb ? newMax : 100
-    ]);
   };
-
-  // In max-only mode, we only pass the max value
-  const displayValue = !showMinThumb && showMaxThumb ? 
-    [probabilityRange[1]] :  // Max-only: single value
-    probabilityRange;        // Normal: both values
 
   return (
     <div className="p-4 w-full relative">
@@ -133,7 +122,7 @@ export function TopMoversHeader({
                 </output>
               </div>
               <Slider 
-                value={displayValue}
+                value={!showMinThumb && showMaxThumb ? [probabilityRange[1]] : probabilityRange}
                 onValueChange={handleRangeChange} 
                 className="w-full" 
                 min={0} 
@@ -156,7 +145,7 @@ export function TopMoversHeader({
                   />
                   <Label htmlFor="min-thumb" className="text-sm">Min</Label>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-4">
                   <Checkbox 
                     id="max-thumb"
                     checked={showMaxThumb}
@@ -164,9 +153,6 @@ export function TopMoversHeader({
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([probabilityRange[0], 100]);
-                      } else if (!showMinThumb) {
-                        // When enabling max thumb alone, set it to render on the right
-                        setProbabilityRange([0, 100]);
                       }
                     }}
                   />
