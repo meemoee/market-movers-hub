@@ -270,10 +270,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          // When the stream is done, evaluate the complete Q&A pair
+          // When stream is done, find the node and evaluate it
           const node = qaData.find(n => n.id === nodeId) || 
                       rootExtensions.find(n => n.id === nodeId);
-          if (node) {
+          if (node && node.analysis) {
+            console.log('Evaluating node after stream completion:', nodeId);
             await evaluateQAPair(node);
           }
           break;
@@ -296,7 +297,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       console.error('Error processing stream:', error);
       throw error;
     }
-    return accumulatedContent;
 
     function processPart(text: string) {
       const lines = text.split('\n').filter(line => line.startsWith('data: '));
@@ -336,6 +336,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         }
       }
     }
+
+    return accumulatedContent;
   }
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
@@ -482,15 +484,34 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     });
   };
 
-  const loadSavedQATree = (treeData: QANode[]) => {
+  const loadSavedQATree = async (treeData: QANode[]) => {
+    console.log('Loading saved QA tree:', treeData);
+    
     const mainRoots = treeData.filter(node => !node.isExtendedRoot);
     const extensions = treeData.filter(node => node.isExtendedRoot);
+    
     setRootExtensions(extensions);
     setQaData(mainRoots);
-    setStreamingContent({}); // Clear existing streaming content
+    setStreamingContent({});
     
     // Populate streaming content for both main roots and extensions
     populateStreamingContent([...mainRoots, ...extensions]);
+    
+    // Evaluate all nodes that don't have evaluations
+    const evaluateAllNodes = async (nodes: QANode[]) => {
+      console.log('Evaluating nodes:', nodes.length);
+      for (const node of nodes) {
+        if (node.analysis && !node.evaluation) {
+          console.log('Evaluating saved node:', node.id);
+          await evaluateQAPair(node);
+        }
+        if (node.children.length > 0) {
+          await evaluateAllNodes(node.children);
+        }
+      }
+    };
+
+    await evaluateAllNodes([...mainRoots, ...extensions]);
     
     const allNodeIds = new Set<string>();
     const addNodeIds = (nodes: QANode[]) => {
@@ -504,11 +525,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     addNodeIds([...mainRoots, ...extensions]);
     setExpandedNodes(allNodeIds);
     setCurrentNodeId(null);
-    console.log('Loaded tree structure:', {
+    
+    console.log('Finished loading tree structure:', {
       mainRoots,
       extensions,
-      totalNodes: [...mainRoots, ...extensions].length,
-      streamingContent: streamingContent
+      totalNodes: [...mainRoots, ...extensions].length
     });
   };
 
@@ -636,7 +657,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const evaluateQAPair = async (node: QANode) => {
-    if (!node.analysis || node.evaluation) return; // Skip if no analysis or already evaluated
+    if (!node.analysis || node.evaluation) {
+      console.log('Skipping evaluation:', { nodeId: node.id, hasAnalysis: !!node.analysis, hasEvaluation: !!node.evaluation });
+      return;
+    }
+
+    console.log('Starting evaluation for node:', node.id);
 
     try {
       const { data, error } = await supabase.functions.invoke('evaluate-qa-pair', {
@@ -648,6 +674,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
 
+      console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
+
+      // Update qaData
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -662,7 +691,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         return updateNode(prev);
       });
 
-      // Also update extensions if needed
+      // Update rootExtensions if needed
       setRootExtensions(prev => 
         prev.map(ext => 
           ext.id === node.id ? { ...ext, evaluation: data } : ext
