@@ -10,6 +10,7 @@ interface Market {
   price: number;
   price_change: number;
   volume: number;
+  total_volume: number;  // Added this property
   image: string;
   yes_sub_title?: string;
   final_last_traded_price: number;
