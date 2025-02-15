@@ -71,13 +71,15 @@ export default function Index() {
             }`}
           >
             <div className={`${isMobile ? 'h-full overflow-y-auto' : 'sticky top-0 h-screen pt-3 overflow-y-auto'}`}>
-              <a href="/" className="block ml-6 mb-3">
-                <img 
-                  src="/hunchex-logo.svg" 
-                  alt="Hunchex" 
-                  className="h-12 hover:opacity-80 transition-opacity"
-                />
-              </a>
+              <div className="ml-6 mb-3">
+                <a href="/" className="inline-block">
+                  <img 
+                    src="/hunchex-logo.svg" 
+                    alt="Hunchex" 
+                    className="h-12 hover:opacity-80 transition-opacity"
+                  />
+                </a>
+              </div>
               <AccountIsland />
             </div>
           </aside>
