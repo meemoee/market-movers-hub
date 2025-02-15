@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -8,6 +9,7 @@ import { TopMoversContent } from './market/TopMoversContent';
 import { TransactionDialog } from './market/TransactionDialog';
 import { MarketStatsBento } from './market/MarketStatsBento';
 import { InsightPostBox } from './market/InsightPostBox';
+import { QADisplay } from './market/QADisplay';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
