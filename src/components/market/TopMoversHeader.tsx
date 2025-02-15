@@ -1,4 +1,3 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { Card } from '../ui/card';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -47,12 +46,7 @@ export function TopMoversHeader({
   const isMobile = useIsMobile();
 
   const handleRangeChange = (newValue: number[]) => {
-    // If only max thumb is shown, treat it as a single value slider
-    if (!showMinThumb && showMaxThumb) {
-      setProbabilityRange([0, newValue[0]]);
-    } else {
-      setProbabilityRange([newValue[0], newValue[1]]);
-    }
+    setProbabilityRange([newValue[0], newValue[1]]);
   };
 
   return (
@@ -122,7 +116,7 @@ export function TopMoversHeader({
                 </output>
               </div>
               <Slider 
-                value={!showMinThumb && showMaxThumb ? [probabilityRange[1]] : probabilityRange}
+                value={probabilityRange}
                 onValueChange={handleRangeChange} 
                 className="w-full" 
                 min={0} 
@@ -137,11 +131,10 @@ export function TopMoversHeader({
                     id="min-thumb"
                     checked={showMinThumb}
                     onCheckedChange={(checked) => {
-                      if (checked) {
-                        // When enabling min thumb, set it to 0 while maintaining max value
+                      setShowMinThumb(checked as boolean);
+                      if (!checked) {
                         setProbabilityRange([0, probabilityRange[1]]);
                       }
-                      setShowMinThumb(checked as boolean);
                     }}
                   />
                   <Label htmlFor="min-thumb" className="text-sm">Min</Label>
@@ -151,10 +144,6 @@ export function TopMoversHeader({
                     id="max-thumb"
                     checked={showMaxThumb}
                     onCheckedChange={(checked) => {
-                      if (checked && !showMinThumb) {
-                        // When enabling max thumb alone, set it to 100
-                        setProbabilityRange([0, 100]);
-                      }
                       setShowMaxThumb(checked as boolean);
                       if (!checked) {
                         setProbabilityRange([probabilityRange[0], 100]);
