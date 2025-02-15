@@ -1,4 +1,5 @@
-import { useState } from 'react';
+<lov-code>
+import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -111,25 +112,135 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     },
   });
 
-  function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
-    try {
-      const parsed = JSON.parse(chunk);
-      const content = parsed.choices?.[0]?.delta?.content ||
-                      parsed.choices?.[0]?.message?.content || '';
-      const citations = parsed.citations || [];
-      console.log('Parsed stream chunk:', { content, citations });
-      return { content, citations };
-    } catch (e) {
-      console.error('Error parsing stream chunk:', e);
-      return { content: '', citations: [] };
+  // Improved function to check markdown formatting completeness
+  const isCompleteMarkdown = (text: string): boolean => {
+    const stack: string[] = [];
+    let inCode = false;
+    let inList = false;
+    let currentNumber = '';
+    
+    // Check for incomplete sentences
+    if (text.match(/[a-zA-Z]$/)) return false; // Ends with a letter
+    if (text.match(/\([^)]*$/)) return false; // Unclosed parenthesis
+    if (text.match(/\[[^\]]*$/)) return false; // Unclosed square bracket
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      const prevChar = text[i - 1];
+      
+      // Handle code blocks
+      if (char === '`' && nextChar === '`' && text[i + 2] === '`') {
+        inCode = !inCode;
+        i += 2;
+        continue;
+      }
+      
+      if (inCode) continue;
+      
+      // Handle numbered lists
+      if (/^\d$/.test(char)) {
+        currentNumber += char;
+        continue;
+      }
+      if (char === '.' && currentNumber !== '') {
+        inList = true;
+        currentNumber = '';
+        continue;
+      }
+      
+      if (char === '\n') {
+        inList = false;
+        currentNumber = '';
+      }
+      
+      // Handle bold/italic markers
+      if ((char === '*' || char === '_')) {
+        if (nextChar === char) {
+          // Double markers (bold)
+          if (stack.length > 0 && stack[stack.length - 1] === char + char) {
+            stack.pop();
+          } else {
+            stack.push(char + char);
+          }
+          i++; // Skip next character
+        } else {
+          // Single markers (italic)
+          if (stack.length > 0 && stack[stack.length - 1] === char) {
+            stack.pop();
+          } else {
+            stack.push(char);
+          }
+        }
+      }
     }
-  }
+    
+    return stack.length === 0 && !inCode && !inList;
+  };
 
-  function isLineComplete(line: string): boolean {
-    if (/^(\d+\.)\S/.test(line)) return false;
-    if (/^(#+)\S/.test(line)) return false;
-    return true;
-  }
+  const cleanStreamContent = (chunk: string): { content: string } => {
+    try {
+      let dataStr = chunk;
+      if (dataStr.startsWith('data: ')) {
+        dataStr = dataStr.slice(6);
+      }
+      dataStr = dataStr.trim();
+      
+      if (dataStr === '[DONE]') {
+        return { content: '' };
+      }
+      
+      const parsed = JSON.parse(dataStr);
+      const content = parsed.choices?.[0]?.delta?.content || 
+                     parsed.choices?.[0]?.message?.content || '';
+      return { content };
+    } catch (e) {
+      console.debug('Chunk parse error (expected during streaming):', e);
+      return { content: '' };
+    }
+  };
+
+  // Modified function to handle streaming content
+  const processStreamContent = (content: string, prevContent: string = ''): string => {
+    // Combine with previous content to check for complete formatting
+    let combinedContent = prevContent + content;
+    
+    // Clean up any unmatched formatting
+    combinedContent = combinedContent
+      // Fix common markdown issues
+      .replace(/\*\*\s*\*\*/g, '') // Remove empty bold tags
+      .replace(/\*\s*\*/g, '') // Remove empty italic tags
+      .replace(/`\s*`/g, '') // Remove empty code tags
+      .replace(/\[\s*\]/g, '') // Remove empty links
+      .replace(/\(\s*\)/g, '') // Remove empty parentheses
+      .replace(/:{2,}/g, ':') // Fix multiple colons
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .trim();
+    
+    // Ensure complete sentences
+    if (combinedContent.match(/[a-zA-Z]$/)) {
+      combinedContent += '.';
+    }
+    
+    return combinedContent;
+  };
+
+  // In your component where you process the stream
+  useEffect(() => {
+    if (currentNodeId && streamingContent[currentNodeId]) {
+      const { content } = streamingContent[currentNodeId];
+      if (content) {
+        const processedContent = processStreamContent(content);
+        setStreamingContent(prev => ({
+          ...prev,
+          [currentNodeId]: {
+            ...prev[currentNodeId],
+            content: processedContent
+          }
+        }));
+      }
+    }
+  }, [currentNodeId, streamingContent]);
 
   async function saveQATree() {
     try {
@@ -789,12 +900,4 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   );
 }
 
-function findOriginalNode(nodeId: string, nodes: QANode[]): QANode | null {
-  for (const node of nodes) {
-    if (node.id === nodeId) return node;
-    if (node.children.length > 0) {
-      const found = findOriginalNode(nodeId, node.children);
-      if (found) return found;
-    }
-  }
-}
+function findOriginalNode(
