@@ -102,7 +102,7 @@ export function TopMoversHeader({
               </div>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <div className="px-4 py-6 space-y-6">
+            <div className="px-4 py-6 space-y-8">
               <div className="flex items-center justify-between gap-2">
                 <Label className="leading-6">Probability Range</Label>
                 <output className="text-sm font-medium tabular-nums">
