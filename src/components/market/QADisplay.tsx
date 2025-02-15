@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -583,7 +582,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             <div className="absolute left-[12px] sm:left-[24px] top-0">
               <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
                 <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-3 w-3 sm:h-4 sm:w-4 text-primary" />
+                  <MessageSquare className="h-3 w-3" />
                 </AvatarFallback>
               </Avatar>
             </div>
@@ -700,7 +699,35 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       </div>
       <ScrollArea className="h-[500px] pr-4">
         {qaData.map(node => renderQANode(node))}
+        {rootExtensions.length > 0 && (
+          <div className="mt-8 pt-8 border-t border-border">
+            <h3 className="text-sm font-medium mb-4">Extended Analyses</h3>
+            {rootExtensions.map(node => {
+              if (!node.isExtendedRoot) return null;
+              const originalNode = findOriginalNode(node.originalNodeId || '', qaData);
+              return (
+                <div key={node.id} className="mb-6">
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Extended from: {originalNode?.question || 'Unknown question'}
+                  </div>
+                  {renderQANode(node)}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </ScrollArea>
     </Card>
   );
+}
+
+function findOriginalNode(nodeId: string, nodes: QANode[]): QANode | null {
+  for (const node of nodes) {
+    if (node.id === nodeId) return node;
+    if (node.children.length > 0) {
+      const found = findOriginalNode(nodeId, node.children);
+      if (found) return found;
+    }
+  }
+  return null;
 }
