@@ -30,11 +30,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Output only valid JSON in the format: {\"score\": number, \"reason\": string}. The score should be between 0 and 100."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format, nothing else: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown, explanations, or other text."
           },
           {
             role: "user",
-            content: `Please evaluate how well this analysis answers the question and provide a score from 0-100:\n\nQuestion: ${question}\n\nAnalysis: ${analysis}`
+            content: `Please evaluate how well this analysis answers the question:\n\nQuestion: ${question}\n\nAnalysis: ${analysis}`
           }
         ]
       })
@@ -48,12 +48,23 @@ serve(async (req) => {
     const evaluationText = data.choices[0].message.content
 
     try {
+      console.log('Raw evaluation text:', evaluationText)
       const evaluation = JSON.parse(evaluationText)
+      
+      // Validate the evaluation object structure
+      if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
+        throw new Error('Invalid evaluation format: missing required fields')
+      }
+      
+      // Ensure score is between 0 and 100
+      evaluation.score = Math.max(0, Math.min(100, evaluation.score))
+      
       return new Response(JSON.stringify(evaluation), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } catch (error) {
       console.error('Error parsing evaluation JSON:', error)
+      console.error('Received content:', evaluationText)
       throw new Error('Invalid evaluation format received')
     }
 
@@ -68,3 +79,4 @@ serve(async (req) => {
     )
   }
 })
+
