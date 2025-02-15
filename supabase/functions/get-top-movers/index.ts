@@ -31,8 +31,8 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}`);
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}`);
     
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
@@ -310,6 +310,17 @@ serve(async (req) => {
         return meetsMin && meetsMax;
       });
       console.log(`Filtered to ${allMarkets.length} markets within probability range ${probabilityMin}% - ${probabilityMax}%`);
+    }
+
+    // Apply price change filters if they exist
+    if (priceChangeMin !== undefined || priceChangeMax !== undefined) {
+      allMarkets = allMarkets.filter(market => {
+        const priceChange = market.price_change * 100; // Convert to percentage
+        const meetsMin = priceChangeMin === undefined || priceChange >= priceChangeMin;
+        const meetsMax = priceChangeMax === undefined || priceChange <= priceChangeMax;
+        return meetsMin && meetsMax;
+      });
+      console.log(`Filtered to ${allMarkets.length} markets within price change range ${priceChangeMin}% - ${priceChangeMax}%`);
     }
 
     // Then apply openOnly filter
