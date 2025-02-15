@@ -5,7 +5,7 @@ interface MarketStatsProps {
   lastTradedPrice: number;
   priceChange: number;
   volume: number;
-  totalVolume: number;  // Added this prop
+  totalVolume: number;
   isExpanded: boolean;
 }
 
@@ -13,7 +13,7 @@ export function MarketStats({
   lastTradedPrice, 
   priceChange, 
   volume,
-  totalVolume,  // Added this prop
+  totalVolume,
   isExpanded,
 }: MarketStatsProps) {
   const formatPrice = (price: number): string => {
@@ -27,13 +27,31 @@ export function MarketStats({
 
   const formatVolume = (vol: number): string => {
     if (!vol && vol !== 0) return '$0';
-    if (vol >= 1e6) return `$${(vol / 1e6).toFixed(1)}M`;
-    if (vol >= 1e3) return `$${(vol / 1e3).toFixed(1)}K`;
-    return `$${vol.toFixed(0)}`;
+    const prefix = vol >= 0 ? '+' : '';
+    if (vol >= 1e6) return `${prefix}$${(vol / 1e6).toFixed(1)}M`;
+    if (vol >= 1e3) return `${prefix}$${(vol / 1e3).toFixed(1)}K`;
+    return `${prefix}$${vol.toFixed(0)}`;
   };
 
   const calculatePosition = (price: number): number => {
     return price * 100;
+  };
+
+  // Calculate color intensity based on volume metrics
+  const getVolumeColor = (change: number, total: number) => {
+    // Calculate volume score (0-1) based on proximity to 10k
+    const volumeScore = Math.min(total / 10000, 1);
+    
+    // Calculate change percentage (0-1)
+    const changePercent = Math.abs(change) / (total || 1);
+    const changeScore = Math.min(changePercent, 1);
+    
+    // Combined score (0-1) weighing both factors
+    const combinedScore = (volumeScore * 0.5) + (changeScore * 0.5);
+    
+    // Convert score to hex color from white (#FFFFFF) to yellow (#F97316)
+    const intensity = Math.floor(combinedScore * 255);
+    return `rgb(255, ${255 - (intensity * 0.3)}, ${255 - (intensity * 0.7)})`;
   };
 
   return (
@@ -55,7 +73,10 @@ export function MarketStats({
           </span>
         </div>
         <div className="flex flex-col items-end">
-          <span className="text-xl font-semibold">
+          <span 
+            className="text-xl font-semibold"
+            style={{ color: getVolumeColor(volume, totalVolume) }}
+          >
             {formatVolume(volume)}
           </span>
           <span className="text-sm text-muted-foreground">
