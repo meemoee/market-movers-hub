@@ -400,16 +400,45 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const loadSavedQATree = (treeData: QANode[]) => {
-    // Split tree data into main tree and extensions
-    const mainTree = treeData.filter(node => !node.isExtendedRoot);
+    // First, find all root nodes (nodes that were original starting points)
+    const mainRoots = treeData.filter(node => !node.isExtendedRoot);
+    
+    // Find all extension nodes (nodes that were created by clicking the arrow)
     const extensions = treeData.filter(node => node.isExtendedRoot);
     
-    setQaData(mainTree);
+    // Group extensions by their original node ID for easier reference
+    const extensionsByOriginal = extensions.reduce((acc, node) => {
+      if (node.originalNodeId) {
+        if (!acc[node.originalNodeId]) {
+          acc[node.originalNodeId] = [];
+        }
+        acc[node.originalNodeId].push(node);
+      }
+      return acc;
+    }, {} as Record<string, QANode[]>);
+
+    // Set the main QA tree
+    setQaData(mainRoots);
+    
+    // Set all extensions
     setRootExtensions(extensions);
-    setStreamingContent({});  // Reset first
-    populateStreamingContent([...mainTree, ...extensions]);  // Then populate with all nodes
-    setExpandedNodes(new Set());  // Reset expanded state
+    
+    // Reset streaming content
+    setStreamingContent({});
+    
+    // Populate streaming content for all nodes
+    populateStreamingContent([...mainRoots, ...extensions]);
+    
+    // Reset expanded state
+    setExpandedNodes(new Set());
     setCurrentNodeId(null);
+
+    // Log the loaded tree structure for debugging
+    console.log('Loaded tree structure:', {
+      mainRoots,
+      extensions,
+      extensionsByOriginal
+    });
   };
 
   const getPreviewText = (text: string) => {
@@ -458,10 +487,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         originalNodeId: node.id
       };
 
-      // Store this in root extensions for saving later
+      // Add to root extensions first
       setRootExtensions(prev => [...prev, newRootNode]);
 
-      // Create new QA display with this node as root
+      // Set as current QA display
       setQaData([newRootNode]);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
@@ -503,7 +532,8 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       });
       
       if (followUpError) throw followUpError;
-      
+
+      // Process follow-up questions
       for (const item of followUpData) {
         if (item?.question) {
           await analyzeQuestion(item.question, nodeId, 1);
@@ -729,5 +759,4 @@ function findOriginalNode(nodeId: string, nodes: QANode[]): QANode | null {
       if (found) return found;
     }
   }
-  return null;
 }
