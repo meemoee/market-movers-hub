@@ -5,18 +5,63 @@ import { cn } from "@/lib/utils"
 interface SliderProps extends React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> {
   showMinThumb?: boolean;
   showMaxThumb?: boolean;
+  value?: number[];
+  defaultValue?: number[];
+  onValueChange?: (value: number[]) => void;
 }
 
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   SliderProps
->(({ className, showMinThumb = true, showMaxThumb = true, ...props }, ref) => {
-  // Manage the values array based on which thumbs are enabled
-  const getValues = () => {
-    const values: number[] = [];
-    if (showMinThumb) values.push(props.value?.[0] ?? props.defaultValue?.[0] ?? 0);
-    if (showMaxThumb) values.push(props.value?.[1] ?? props.defaultValue?.[1] ?? 100);
-    return values;
+>(({ 
+  className, 
+  showMinThumb = true, 
+  showMaxThumb = true,
+  value,
+  defaultValue,
+  onValueChange,
+  ...props 
+}, ref) => {
+  // Keep track of full values internally
+  const [internalValues, setInternalValues] = React.useState([0, 100]);
+
+  // Update internal values when props change
+  React.useEffect(() => {
+    if (value) {
+      setInternalValues(value);
+    } else if (defaultValue) {
+      setInternalValues(defaultValue);
+    }
+  }, [value, defaultValue]);
+
+  // Get displayed values based on which thumbs are shown
+  const getDisplayedValues = React.useCallback(() => {
+    if (showMinThumb && showMaxThumb) {
+      return [internalValues[0], internalValues[1]];
+    }
+    if (showMinThumb) {
+      return [internalValues[0]];
+    }
+    if (showMaxThumb) {
+      return [internalValues[1]];
+    }
+    return [];
+  }, [showMinThumb, showMaxThumb, internalValues]);
+
+  // Handle value changes from the slider
+  const handleValueChange = (newValues: number[]) => {
+    let updatedValues = [...internalValues];
+    
+    if (showMinThumb && showMaxThumb) {
+      updatedValues = newValues;
+    } else if (showMinThumb) {
+      updatedValues[0] = newValues[0];
+    } else if (showMaxThumb) {
+      updatedValues[1] = newValues[0];
+    }
+
+    setInternalValues(updatedValues);
+    onValueChange?.(updatedValues);
   };
 
   return (
@@ -27,7 +72,8 @@ const Slider = React.forwardRef<
         className
       )}
       {...props}
-      value={getValues()}
+      value={getDisplayedValues()}
+      onValueChange={handleValueChange}
     >
       <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary">
         <SliderPrimitive.Range className="absolute h-full bg-primary" />
