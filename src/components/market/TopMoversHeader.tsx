@@ -116,23 +116,25 @@ export function TopMoversHeader({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-4 py-6 space-y-8">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="leading-6">Probability Range</Label>
-                  <output className="text-sm font-medium tabular-nums">
-                    {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
-                  </output>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="leading-6">Probability Range</Label>
+                    <output className="text-sm font-medium tabular-nums">
+                      {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
+                    </output>
+                  </div>
+                  <MultiRangeSlider
+                    min={0}
+                    max={100}
+                    value={probabilityRange}
+                    onChange={setProbabilityRange}
+                    showMinThumb={showMinThumb}
+                    showMaxThumb={showMaxThumb}
+                    className="w-full mt-6"
+                  />
                 </div>
-                <MultiRangeSlider
-                  min={0}
-                  max={100}
-                  value={probabilityRange}
-                  onChange={setProbabilityRange}
-                  showMinThumb={showMinThumb}
-                  showMaxThumb={showMaxThumb}
-                  className="w-full"
-                />
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 mt-2">
                   <div className="flex items-center gap-2">
                     <Checkbox 
                       id="min-thumb"
@@ -162,29 +164,31 @@ export function TopMoversHeader({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex items-center justify-between gap-2">
-                  <Label className="leading-6">Price Change Range</Label>
-                  <output className="text-sm font-medium tabular-nums">
-                    {showPriceChangeMinThumb ? priceChangeRange[0] : -100}% - {showPriceChangeMaxThumb ? priceChangeRange[1] : 100}%
-                  </output>
-                </div>
-                <div className="relative">
-                  <div className="absolute inset-0 flex">
-                    <div className="w-1/2 bg-red-500/20" />
-                    <div className="w-1/2 bg-green-500/20" />
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label className="leading-6">Price Change Range</Label>
+                    <output className="text-sm font-medium tabular-nums">
+                      {showPriceChangeMinThumb ? priceChangeRange[0] : -100}% - {showPriceChangeMaxThumb ? priceChangeRange[1] : 100}%
+                    </output>
                   </div>
-                  <MultiRangeSlider
-                    min={-100}
-                    max={100}
-                    value={priceChangeRange}
-                    onChange={setPriceChangeRange}
-                    showMinThumb={showPriceChangeMinThumb}
-                    showMaxThumb={showPriceChangeMaxThumb}
-                    className="w-full relative z-10"
-                  />
+                  <div className="relative mt-6">
+                    <div className="absolute inset-0 flex">
+                      <div className="w-1/2 bg-red-500/20" />
+                      <div className="w-1/2 bg-green-500/20" />
+                    </div>
+                    <MultiRangeSlider
+                      min={-100}
+                      max={100}
+                      value={priceChangeRange}
+                      onChange={setPriceChangeRange}
+                      showMinThumb={showPriceChangeMinThumb}
+                      showMaxThumb={showPriceChangeMaxThumb}
+                      className="w-full relative z-10"
+                    />
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-4 mt-2">
                   <div className="flex items-center gap-2">
                     <Checkbox 
                       id="price-change-min-thumb"
