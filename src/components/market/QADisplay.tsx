@@ -26,6 +26,10 @@ interface QANode {
   children: QANode[];
   isExtendedRoot?: boolean;
   originalNodeId?: string;
+  evaluation?: {
+    score: number;
+    reason: string;
+  };
 }
 
 interface StreamingContent {
@@ -623,6 +627,48 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return rootExtensions.filter(ext => ext.originalNodeId === nodeId);
   };
 
+  const evaluateQAPair = async (node: QANode) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('evaluate-qa-pair', {
+        body: { 
+          question: node.question,
+          analysis: node.analysis
+        }
+      })
+
+      if (error) throw error;
+
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(n => {
+            if (n.id === node.id) {
+              return { ...n, evaluation: data };
+            }
+            if (n.children.length > 0) {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
+      });
+
+      // Also update extensions if needed
+      setRootExtensions(prev => 
+        prev.map(ext => 
+          ext.id === node.id ? { ...ext, evaluation: data } : ext
+        )
+      );
+
+    } catch (error) {
+      console.error('Error evaluating QA pair:', error);
+      toast({
+        title: "Evaluation Error",
+        description: "Failed to evaluate Q&A pair",
+        variant: "destructive"
+      });
+    }
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -716,6 +762,32 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                           {analysisContent}
                         </ReactMarkdown>
                         {renderCitations(citations)}
+                        
+                        <div className="mt-4 flex items-center gap-2">
+                          {node.evaluation ? (
+                            <div className="flex items-center gap-2">
+                              <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
+                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
+                                'bg-red-500/20 text-red-500'
+                              }`}>
+                                Score: {node.evaluation.score}%
+                              </div>
+                              <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
+                            </div>
+                          ) : (
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                evaluateQAPair(node);
+                              }}
+                            >
+                              Evaluate Answer
+                            </Button>
+                          )}
+                        </div>
                         
                         {nodeExtensions.length > 0 && (
                           <div className="mt-4 space-y-2">
