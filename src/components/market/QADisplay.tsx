@@ -307,61 +307,60 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           }
         }
       }
-    }
-  } catch (error) {
-    console.error('Error processing stream:', error);
-    throw error;
-  }
 
-  async function processPart(text: string) {
-    const lines = text.split('\n').filter(line => line.startsWith('data: '));
-    for (const line of lines) {
-      const jsonStr = line.slice(6).trim();
-      if (jsonStr === '[DONE]') continue;
-      const { content, citations } = cleanStreamContent(jsonStr);
-      if (content) {
-        accumulatedContent += content;
-        accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+      async function processPart(text: string) {
+        const lines = text.split('\n').filter(line => line.startsWith('data: '));
+        for (const line of lines) {
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === '[DONE]') continue;
+          const { content, citations } = cleanStreamContent(jsonStr);
+          if (content) {
+            accumulatedContent += content;
+            accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-        setStreamingContent(prev => ({
-          ...prev,
-          [nodeId]: {
-            content: accumulatedContent,
-            citations: accumulatedCitations,
-          },
-        }));
-        
-        // Update the node with accumulated content
-        setQaData(prev => {
-          const updateNode = (nodes: QANode[]): QANode[] =>
-            nodes.map(node => {
-              if (node.id === nodeId) {
-                const updatedNode = {
-                  ...node,
-                  analysis: accumulatedContent,
-                  citations: accumulatedCitations,
-                };
-                // If we have a complete sentence, try to evaluate
-                if (isCompleteMarkdown(accumulatedContent)) {
-                  evaluateQAPair(updatedNode).catch(console.error);
-                }
-                return updatedNode;
-              }
-              if (node.children.length > 0) {
-                return { ...node, children: updateNode(node.children) };
-              }
-              return node;
+            setStreamingContent(prev => ({
+              ...prev,
+              [nodeId]: {
+                content: accumulatedContent,
+                citations: accumulatedCitations,
+              },
+            }));
+            
+            // Update the node with accumulated content
+            setQaData(prev => {
+              const updateNode = (nodes: QANode[]): QANode[] =>
+                nodes.map(node => {
+                  if (node.id === nodeId) {
+                    const updatedNode = {
+                      ...node,
+                      analysis: accumulatedContent,
+                      citations: accumulatedCitations,
+                    };
+                    // If we have a complete sentence, try to evaluate
+                    if (isCompleteMarkdown(accumulatedContent)) {
+                      evaluateQAPair(updatedNode).catch(console.error);
+                    }
+                    return updatedNode;
+                  }
+                  if (node.children.length > 0) {
+                    return { ...node, children: updateNode(node.children) };
+                  }
+                  return node;
+                });
+              return updateNode(prev);
             });
-          return updateNode(prev);
-        });
+          }
+        }
       }
+
+      return accumulatedContent;
+    } catch (error) {
+      console.error('Error processing stream:', error);
+      throw error;
     }
   }
 
-  return accumulatedContent;
-}
-
-  const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
+  async function analyzeQuestion(question: string, parentId: string | null = null, depth: number = 0) {
     if (depth >= 3) return;
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
@@ -898,4 +897,18 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             </div>
             {node.children.length > 0 && isExpanded && (
               <div className="mt-6">
-                {
+                {node.children.map(child => renderQANode(child, depth + 1))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {renderQANode(qaData[0], 0)}
+    </div>
+  );
+}
