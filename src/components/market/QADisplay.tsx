@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -7,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
 import type { Components as MarkdownComponents } from 'react-markdown';
-import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
@@ -46,7 +45,6 @@ interface QADisplayProps {
   marketQuestion: string;
 }
 
-// Custom components for ReactMarkdown
 const MarkdownComponents = {
   p: ({ children }: { children: React.ReactNode }) => <p className="mb-3 last:mb-0">{children}</p>,
   code: ({ inline, children }: { inline: boolean; children: React.ReactNode }) =>
@@ -98,7 +96,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
   const queryClient = useQueryClient();
 
-  // Query to fetch saved research
   const { data: savedResearch } = useQuery<SavedResearch[]>({
     queryKey: ['saved-research', marketId],
     queryFn: async () => {
@@ -116,7 +113,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     },
   });
 
-  // Query to fetch saved QA trees
   const { data: savedQATrees } = useQuery<SavedQATree[]>({
     queryKey: ['saved-qa-trees', marketId],
     queryFn: async () => {
@@ -131,7 +127,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
       if (error) throw error;
       
-      // Convert database Json type to QANode[] type
       return (data?.map(tree => ({
         ...tree,
         tree_data: tree.tree_data as unknown as QANode[]
@@ -139,7 +134,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     },
   });
 
-  // Helper functions for parsing stream content
   function cleanStreamContent(chunk: string): { content: string; citations: string[] } {
     try {
       const parsed = JSON.parse(chunk);
@@ -183,7 +177,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         description: "Your QA tree has been saved successfully.",
       });
 
-      // Refetch the saved QA trees to update the dropdown
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
 
     } catch (error) {
@@ -208,24 +201,16 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         const decoded = new TextDecoder().decode(value);
         buffer += decoded;
 
-        // Split by double newline (paragraph breaks)
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
         for (const part of parts) {
-          // If the last line is incomplete, skip it until we have more data.
-          const lines = part.split('\n');
-          if (lines.length > 0 && !isLineComplete(lines[lines.length - 1])) {
-            buffer = lines.pop() + '\n\n' + buffer;
-            const completePart = lines.join('\n');
-            processPart(completePart);
+          if (part.trim() && isLineComplete(part.trim())) {
+            processPart(part);
+            buffer = '';
           } else {
             processPart(part);
           }
         }
-      }
-      if (buffer.trim() && isLineComplete(buffer.trim())) {
-        processPart(buffer);
-        buffer = '';
       }
     } catch (error) {
       console.error('Error processing stream:', error);
@@ -234,7 +219,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return accumulatedContent;
 
     function processPart(text: string) {
-      // Process only lines starting with "data: "
       const lines = text.split('\n').filter(line => line.startsWith('data: '));
       for (const line of lines) {
         const jsonStr = line.slice(6).trim();
@@ -244,7 +228,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          // Use a function replacement to only join lines that are not header lines.
           const fixedContent = accumulatedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
             const preceding = string.slice(0, offset);
             const lastLine = preceding.split('\n').pop() || '';
@@ -254,29 +237,23 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
             return ' ';
           });
 
-          // Instead of using a regex that might misplace newlines, split the content into lines,
-          // then force a double newline after any line that starts with a header.
           const finalContent = fixedContent
             .split('\n')
             .map((line) => {
               if (/^(#{1,6}\s.*)/.test(line)) {
-                // If the line is a header, ensure it ends with a blank line.
                 return line.trim() + '\n';
               }
               return line;
             })
             .join('\n')
-            // Now, ensure that header lines are separated by a blank line.
             .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
 
-          // Log the processed content
           console.log('Updated chunk for node', nodeId, ':', {
             newContent: content,
             fixedContent: finalContent,
             citations,
           });
 
-          // Update state with the final content.
           setStreamingContent(prev => ({
             ...prev,
             [nodeId]: {
@@ -335,7 +312,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         [nodeId]: { content: '', citations: [] },
       }));
 
-      // Get the selected research if any
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
@@ -460,12 +436,109 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   };
 
   const getPreviewText = (text: string) => {
-    // First, strip out any markdown formatting
     const strippedText = text.replace(/[#*`_]/g, '');
-    // Get first 150 characters
     const preview = strippedText.slice(0, 150);
-    // If we truncated the text, add ellipsis
     return preview.length < strippedText.length ? `${preview}...` : preview;
+  };
+
+  const buildHistoryContext = (node: QANode, parentNodes: QANode[] = []): string => {
+    const history = [...parentNodes, node];
+    return history.map((n, index) => {
+      const prefix = index === 0 ? 'Original Question' : `Follow-up Question ${index}`;
+      return `${prefix}: ${n.question}\nAnalysis: ${n.analysis}\n`;
+    }).join('\n');
+  };
+
+  const findParentNodes = (targetNodeId: string, nodes: QANode[], parentNodes: QANode[] = []): QANode[] | null => {
+    for (const node of nodes) {
+      if (node.id === targetNodeId) {
+        return parentNodes;
+      }
+      if (node.children.length > 0) {
+        const found = findParentNodes(targetNodeId, node.children, [...parentNodes, node]);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const handleExpandQuestion = async (node: QANode) => {
+    setQaData([]);
+    setStreamingContent({});
+    setExpandedNodes(new Set());
+    
+    const parentNodes = findParentNodes(node.id, qaData) || [];
+    const historyContext = buildHistoryContext(node, parentNodes);
+    
+    setIsAnalyzing(true);
+    try {
+      const nodeId = `node-${Date.now()}-0`;
+      setCurrentNodeId(nodeId);
+      setExpandedNodes(prev => new Set([...prev, nodeId]));
+
+      setQaData([{
+        id: nodeId,
+        question: node.question,
+        analysis: '',
+        children: []
+      }]);
+
+      const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
+      
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
+        body: JSON.stringify({ 
+          marketId, 
+          question: node.question,
+          isFollowUp: false,
+          historyContext,
+          researchContext: selectedResearchData ? {
+            analysis: selectedResearchData.analysis,
+            probability: selectedResearchData.probability,
+            areasForResearch: selectedResearchData.areas_for_research
+          } : null
+        }),
+      });
+      
+      if (analysisError) throw analysisError;
+
+      const reader = new Response(analysisData.body).body?.getReader();
+      if (!reader) throw new Error('Failed to create reader');
+
+      const analysis = await processStream(reader, nodeId);
+
+      const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
+        body: JSON.stringify({ 
+          marketId, 
+          question: node.question, 
+          parentContent: analysis,
+          historyContext,
+          isFollowUp: true,
+          researchContext: selectedResearchData ? {
+            analysis: selectedResearchData.analysis,
+            probability: selectedResearchData.probability,
+            areasForResearch: selectedResearchData.areas_for_research
+          } : null
+        }),
+      });
+      
+      if (followUpError) throw followUpError;
+      
+      for (const item of followUpData) {
+        if (item?.question) {
+          await analyzeQuestion(item.question, nodeId, 1);
+        }
+      }
+    } catch (error) {
+      console.error('Analysis error:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: error instanceof Error ? error.message : "Failed to analyze the question",
+      });
+    } finally {
+      setIsAnalyzing(false);
+      setCurrentNodeId(null);
+    }
   };
 
   function renderQANode(node: QANode, depth: number = 0) {
@@ -526,7 +599,21 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </Avatar>
             </div>
             <div className="space-y-2">
-              <h3 className="font-medium text-sm leading-none pt-2">{node.question}</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">{node.question}</h3>
+                {depth > 0 && (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExpandQuestion(node);
+                    }}
+                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
+                    title="Expand this question into a new analysis"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
               <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
                 <div className="flex items-start gap-2">
                   <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
