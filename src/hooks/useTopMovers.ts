@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -35,7 +34,16 @@ interface TopMover {
   volume_change_percentage: number;
 }
 
-export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '', marketId?: string, probabilityMin?: number, probabilityMax?: number) {
+export function useTopMovers(
+  interval: string, 
+  openOnly: boolean, 
+  searchQuery: string = '', 
+  marketId?: string, 
+  probabilityMin?: number, 
+  probabilityMax?: number,
+  priceChangeMin?: number,
+  priceChangeMax?: number
+) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
     queryKey: ['market', marketId],
@@ -46,7 +54,7 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: { 
           marketId,
-          interval // Include interval to get the correct time period data
+          interval
         }
       });
 
@@ -54,12 +62,11 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
       
       if (!data?.data?.[0]) {
         console.log('Market not found, trying without filters');
-        // Try one more time without any filters
         const { data: retryData, error: retryError } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
           body: {
             marketId,
             openOnly: false,
-            interval // Include interval here too
+            interval
           }
         });
         
@@ -74,9 +81,18 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax],
     queryFn: async ({ pageParam = 1 }) => {
-      console.log('Fetching top movers list:', { interval, openOnly, page: pageParam, searchQuery, probabilityMin, probabilityMax });
+      console.log('Fetching top movers list:', { 
+        interval, 
+        openOnly, 
+        page: pageParam, 
+        searchQuery, 
+        probabilityMin, 
+        probabilityMax,
+        priceChangeMin,
+        priceChangeMax
+      });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
@@ -86,7 +102,9 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
           limit: 20,
           searchQuery: searchQuery.trim(),
           probabilityMin,
-          probabilityMax
+          probabilityMax,
+          priceChangeMin,
+          priceChangeMax
         }
       });
 
@@ -101,7 +119,7 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
-    enabled: !marketId // Only enable list query when not viewing a single market
+    enabled: !marketId
   });
 
   // Return appropriate data structure based on whether we're viewing a single market

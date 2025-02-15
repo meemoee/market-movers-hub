@@ -101,9 +101,13 @@ export default function TopMoversList({
   const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
   const [showMinThumb, setShowMinThumb] = useState(false);
   const [showMaxThumb, setShowMaxThumb] = useState(false);
+  const [priceChangeRange, setPriceChangeRange] = useState<[number, number]>([-100, 100]);
+  const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
+  const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
+  const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
 
@@ -113,9 +117,11 @@ export default function TopMoversList({
     debouncedSearch, 
     marketId,
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
-    showMaxThumb ? debouncedProbabilityRange[1] : undefined
+    showMaxThumb ? debouncedProbabilityRange[1] : undefined,
+    showPriceChangeMinThumb ? debouncedPriceChangeRange[0] : undefined,
+    showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined
   );
-  
+
   const marketSearchQuery = useMarketSearch(
     debouncedSearch, 
     searchPage, 
@@ -218,6 +224,12 @@ export default function TopMoversList({
           setShowMinThumb={setShowMinThumb}
           showMaxThumb={showMaxThumb}
           setShowMaxThumb={setShowMaxThumb}
+          priceChangeRange={priceChangeRange}
+          setPriceChangeRange={setPriceChangeRange}
+          showPriceChangeMinThumb={showPriceChangeMinThumb}
+          setShowPriceChangeMinThumb={setShowPriceChangeMinThumb}
+          showPriceChangeMaxThumb={showPriceChangeMaxThumb}
+          setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
         />
       </div>
       
