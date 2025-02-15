@@ -656,6 +656,10 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
+  const getNodeExtensions = (nodeId: string) => {
+    return rootExtensions.filter(ext => ext.originalNodeId === nodeId);
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -663,8 +667,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const analysisContent = isStreaming ? streamContent?.content : node.analysis;
     const citations = isStreaming ? streamContent?.citations : node.citations;
     
-    // Get extensions for this node
-    const nodeExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
+    const nodeExtensions = getNodeExtensions(node.id);
     
     const markdownComponents: MarkdownComponents = {
       p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
