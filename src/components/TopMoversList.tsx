@@ -11,7 +11,6 @@ import { InsightPostBox } from './market/InsightPostBox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
-import { QADisplay } from './market/QADisplay';
 
 interface TimeInterval {
   label: string;
@@ -224,11 +223,13 @@ export default function TopMoversList({
           showMinThumb={showMinThumb}
           setShowMinThumb={setShowMinThumb}
           showMaxThumb={showMaxThumb}
-          setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
-          showPriceChangeMinThumb={showPriceChangeMinThumb}
+          setShowMaxThumb={setShowMaxThumb}
           priceChangeRange={priceChangeRange}
           setPriceChangeRange={setPriceChangeRange}
-          setShowMaxThumb={setShowMaxThumb}
+          showPriceChangeMinThumb={showPriceChangeMinThumb}
+          setShowPriceChangeMinThumb={setShowPriceChangeMinThumb}
+          showPriceChangeMaxThumb={showPriceChangeMaxThumb}
+          setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
         />
       </div>
       
@@ -237,12 +238,6 @@ export default function TopMoversList({
           <InsightPostBox />
           <MarketStatsBento selectedInterval={selectedInterval} />
           
-          {marketId && (
-            <div className="w-full px-4 pb-6">
-              <QADisplay marketId={marketId} marketQuestion={displayedMarkets.find(m => m.market_id === marketId)?.question || ''} />
-            </div>
-          )}
-
           <TopMoversContent
             isLoading={activeQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
