@@ -66,6 +66,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           final_best_ask: number;
           final_best_bid: number;
           final_volume: number;
+          volume_change: number;
           price_change: number;
         }>;
       }>('get-top-movers', {
@@ -93,6 +94,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           finalPrice: moverData.final_last_traded_price,
           priceChange: moverData.price_change,
           totalVolume: moverData.final_volume,
+          volume_change: moverData.volume_change,
           best_bid: moverData.final_best_bid,
           best_ask: moverData.final_best_ask,
           clobtokenids,
