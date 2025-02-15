@@ -5,6 +5,7 @@ interface MarketStatsProps {
   lastTradedPrice: number;
   priceChange: number;
   volume: number;
+  totalVolume: number;  // Added this prop
   isExpanded: boolean;
 }
 
@@ -12,6 +13,7 @@ export function MarketStats({
   lastTradedPrice, 
   priceChange, 
   volume,
+  totalVolume,  // Added this prop
   isExpanded,
 }: MarketStatsProps) {
   const formatPrice = (price: number): string => {
@@ -57,7 +59,7 @@ export function MarketStats({
             {formatVolume(volume)}
           </span>
           <span className="text-sm text-muted-foreground">
-            Volume Change
+            {formatVolume(totalVolume)}
           </span>
         </div>
       </div>
