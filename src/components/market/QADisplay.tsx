@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -458,7 +459,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         originalNodeId: node.id
       };
 
+      // Store this in root extensions for saving later
       setRootExtensions(prev => [...prev, newRootNode]);
+
+      // Create new QA display with this node as root
+      setQaData([newRootNode]);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
@@ -505,6 +510,13 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
           await analyzeQuestion(item.question, nodeId, 1);
         }
       }
+
+      // After all follow-up questions are processed, update root extensions with the complete tree
+      setRootExtensions(prev => {
+        const currentTree = qaData[0]; // Get the complete tree after all processing
+        return prev.map(ext => ext.id === nodeId ? currentTree : ext);
+      });
+
     } catch (error) {
       console.error('Analysis error:', error);
       toast({
