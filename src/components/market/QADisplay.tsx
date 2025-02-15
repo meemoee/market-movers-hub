@@ -156,9 +156,11 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
   }
 
   function getExtensionInfo(node: QANode): string {
-    if (!node.isExtendedRoot) return '';
-    const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.originalNodeId).length;
-    return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
+    if (!node.isExtendedRoot) {
+      const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.id).length;
+      return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
+    }
+    return '';
   }
 
   async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
@@ -614,14 +616,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
               </Avatar>
             </div>
             <div className="space-y-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-start gap-2">
                 <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
                   {node.question}
-                  <span className="text-muted-foreground ml-1 text-xs">
-                    {getExtensionInfo(node)}
-                  </span>
+                  {getExtensionInfo(node)}
                 </h3>
-                {depth > 0 && (
+                {!node.isExtendedRoot && (
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -641,16 +641,46 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
                   </button>
                   <div className="flex-1">
                     {isExpanded ? (
-                      <ReactMarkdown
-                        components={markdownComponents}
-                        className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                      >
-                        {analysisContent}
-                      </ReactMarkdown>
+                      <>
+                        <ReactMarkdown
+                          components={markdownComponents}
+                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                        >
+                          {analysisContent}
+                        </ReactMarkdown>
+                        {renderCitations(citations)}
+                        
+                        {/* Show extensions for this node if they exist */}
+                        {nodeExtensions.length > 0 && (
+                          <div className="mt-4 space-y-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Alternative Analyses ({nodeExtensions.length}):
+                            </div>
+                            <div className="space-y-4">
+                              {nodeExtensions.map((extension, index) => (
+                                <div 
+                                  key={extension.id}
+                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setQaData([extension]);
+                                  }}
+                                >
+                                  <div className="text-xs text-muted-foreground mb-2">
+                                    Alternative Analysis #{index + 1}
+                                  </div>
+                                  <div className="line-clamp-3">
+                                    {getPreviewText(extension.analysis)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
                     )}
-                    {isExpanded && renderCitations(citations)}
                   </div>
                 </div>
               </div>
@@ -726,23 +756,6 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       </div>
       <ScrollArea className="h-[500px] pr-4">
         {qaData.map(node => renderQANode(node))}
-        {rootExtensions.length > 0 && (
-          <div className="mt-8 pt-8 border-t border-border">
-            <h3 className="text-sm font-medium mb-4">Extended Analyses ({rootExtensions.length})</h3>
-            {rootExtensions.map(node => {
-              if (!node.isExtendedRoot) return null;
-              const originalNode = findOriginalNode(node.originalNodeId || '', qaData);
-              return (
-                <div key={node.id} className="mb-6">
-                  <div className="text-xs text-muted-foreground mb-2">
-                    Extended from: {originalNode?.question || 'Unknown question'}
-                  </div>
-                  {renderQANode(node)}
-                </div>
-              );
-            })}
-          </div>
-        )}
       </ScrollArea>
     </Card>
   );
