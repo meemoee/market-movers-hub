@@ -908,7 +908,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
 
   return (
     <div>
-      {renderQANode(qaData[0], 0)}
+      {qaData.length > 0 && qaData[0] ? renderQANode(qaData[0], 0) : null}
     </div>
   );
 }
