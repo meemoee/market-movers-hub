@@ -565,6 +565,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     const analysisContent = isStreaming ? streamContent?.content : node.analysis;
     const citations = isStreaming ? streamContent?.citations : node.citations;
     
+    // Find any extensions for this node
+    const nodeExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
+    
     const markdownComponents: MarkdownComponents = {
       p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
       code: ({ children, className }) => {
