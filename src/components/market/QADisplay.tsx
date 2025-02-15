@@ -293,51 +293,24 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
         if (jsonStr === '[DONE]') continue;
         const { content, citations } = cleanStreamContent(jsonStr);
         if (content) {
-          const newContent = accumulatedContent + content;
-          const processedContent = processStreamContent(newContent);
-          accumulatedContent = processedContent;
+          accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-
-          const fixedContent = processedContent.replace(/\n(?!\s*(?:[#]|\d+\.|[-*]))/g, (match, offset, string) => {
-            const preceding = string.slice(0, offset);
-            const lastLine = preceding.split('\n').pop() || '';
-            if (lastLine.trim().startsWith('###')) {
-              return '\n';
-            }
-            return ' ';
-          });
-
-          const finalContent = fixedContent
-            .split('\n')
-            .map((line) => {
-              if (/^(#{1,6}\s.*)/.test(line)) {
-                return line.trim() + '\n';
-              }
-              return line;
-            })
-            .join('\n')
-            .replace(/(#{1,6}\s.*)\n(?!\n)/gm, '$1\n\n');
-
-          console.log('Updated chunk for node', nodeId, ':', {
-            newContent: content,
-            fixedContent: finalContent,
-            citations,
-          });
 
           setStreamingContent(prev => ({
             ...prev,
             [nodeId]: {
-              content: finalContent,
+              content: accumulatedContent,
               citations: accumulatedCitations,
             },
           }));
+          
           setQaData(prev => {
             const updateNode = (nodes: QANode[]): QANode[] =>
               nodes.map(node => {
                 if (node.id === nodeId) {
                   return {
                     ...node,
-                    analysis: finalContent,
+                    analysis: accumulatedContent,
                     citations: accumulatedCitations,
                   };
                 }
