@@ -405,19 +405,12 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     
     // Find all extension nodes (nodes that were created by clicking the arrow)
     const extensions = treeData.filter(node => node.isExtendedRoot);
-
+    
     // Store all extensions for later use
     setRootExtensions(extensions);
     
-    // If there's an active extension in the URL or we want to show the last extension,
-    // we'll show that, otherwise show the main tree
-    if (extensions.length > 0) {
-      // Show the last extension by default
-      const lastExtension = extensions[extensions.length - 1];
-      setQaData([lastExtension]);
-    } else {
-      setQaData(mainRoots);
-    }
+    // Set the main tree as the current display
+    setQaData(mainRoots);
     
     // Reset and populate streaming content for all nodes
     setStreamingContent({});
@@ -441,7 +434,7 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
     console.log('Loaded tree structure:', {
       mainRoots,
       extensions,
-      currentDisplay: extensions.length > 0 ? [extensions[extensions.length - 1]] : mainRoots
+      totalNodes: [...mainRoots, ...extensions].length
     });
   };
 
@@ -733,6 +726,23 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       </div>
       <ScrollArea className="h-[500px] pr-4">
         {qaData.map(node => renderQANode(node))}
+        {rootExtensions.length > 0 && (
+          <div className="mt-8 pt-8 border-t border-border">
+            <h3 className="text-sm font-medium mb-4">Extended Analyses ({rootExtensions.length})</h3>
+            {rootExtensions.map(node => {
+              if (!node.isExtendedRoot) return null;
+              const originalNode = findOriginalNode(node.originalNodeId || '', qaData);
+              return (
+                <div key={node.id} className="mb-6">
+                  <div className="text-xs text-muted-foreground mb-2">
+                    Extended from: {originalNode?.question || 'Unknown question'}
+                  </div>
+                  {renderQANode(node)}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </ScrollArea>
     </Card>
   );
