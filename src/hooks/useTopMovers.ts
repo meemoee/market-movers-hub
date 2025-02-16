@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -42,7 +43,8 @@ export function useTopMovers(
   probabilityMin?: number, 
   probabilityMax?: number,
   priceChangeMin?: number,
-  priceChangeMax?: number
+  priceChangeMax?: number,
+  sortBy: 'price_change' | 'volume' = 'price_change'
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
@@ -81,7 +83,7 @@ export function useTopMovers(
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, sortBy],
     queryFn: async ({ pageParam = 1 }) => {
       console.log('Fetching top movers list:', { 
         interval, 
@@ -91,7 +93,8 @@ export function useTopMovers(
         probabilityMin, 
         probabilityMax,
         priceChangeMin,
-        priceChangeMax
+        priceChangeMax,
+        sortBy
       });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
@@ -104,7 +107,8 @@ export function useTopMovers(
           probabilityMin,
           probabilityMax,
           priceChangeMin,
-          priceChangeMax
+          priceChangeMax,
+          sortBy
         }
       });
 
