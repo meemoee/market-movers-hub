@@ -49,9 +49,10 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
+  initialQATree?: SavedQATree;  // Add this new prop
 }
 
-export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
+export function QADisplay({ marketId, marketQuestion, initialQATree }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
