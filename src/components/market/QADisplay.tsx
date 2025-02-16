@@ -895,4 +895,87 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   }
 
   return (
-    <Card className="col-
+    <Card className="col-span-full">
+      {navigationHistory.length > 0 && (
+        <Button 
+          variant="ghost" 
+          className="mb-4"
+          onClick={navigateBack}
+        >
+          ← Back to previous analysis
+        </Button>
+      )}
+      
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">
+          <Select
+            value={selectedResearch}
+            onValueChange={setSelectedResearch}
+          >
+            <SelectTrigger className="w-[300px]">
+              <SelectValue placeholder="Select research context..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No research context</SelectItem>
+              {savedResearch?.map((research) => (
+                <SelectItem key={research.id} value={research.id}>
+                  {research.title || "Untitled Research"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={selectedQATree}
+            onValueChange={(value) => {
+              setSelectedQATree(value);
+              if (value === 'none') {
+                setQaData([]);
+                setRootExtensions([]);
+                return;
+              }
+              const selectedTree = savedQATrees?.find(tree => tree.id === value);
+              if (selectedTree) {
+                loadSavedQATree(selectedTree.tree_data);
+              }
+            }}
+          >
+            <SelectTrigger className="w-[300px]">
+              <SelectValue placeholder="Load saved analysis..." />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">New analysis</SelectItem>
+              {savedQATrees?.map((tree) => (
+                <SelectItem key={tree.id} value={tree.id}>
+                  {tree.title || "Untitled Analysis"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="flex-1" />
+
+          <Button
+            onClick={handleAnalyze}
+            disabled={isAnalyzing}
+          >
+            {isAnalyzing ? "Analyzing..." : "Start Analysis"}
+          </Button>
+
+          {qaData.length > 0 && (
+            <Button
+              variant="secondary"
+              onClick={saveQATree}
+            >
+              Save Analysis
+            </Button>
+          )}
+        </div>
+
+        <ScrollArea className="h-[800px] pr-4 -mr-4">
+          {qaData.map((node) => renderQANode(node))}
+        </ScrollArea>
+      </div>
+    </Card>
+  );
+}
