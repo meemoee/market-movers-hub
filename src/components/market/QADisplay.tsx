@@ -840,7 +840,93 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   function renderQANode(node: QANode, depth: number = 0) {
-    const isStreaming = currentNodeId === node.id;
+    const isExpanded = expandedNodes.has(node.id);
+    const hasExpansions = node.expansions && node.expansions.length > 0;
+    const latestExpansion = hasExpansions ? node.expansions[node.expansions.length - 1] : null;
+    
+    return (
+      <div key={node.id} className="border border-border rounded-lg p-4 mb-4">
+        <div className="flex items-start justify-between mb-4">
+          <h3 className="font-medium">
+            {node.question}
+            {hasExpansions && (
+              <span className="ml-2 text-xs text-muted-foreground">
+                (Expanded {node.expansions.length} times)
+              </span>
+            )}
+          </h3>
+          <button
+            onClick={() => toggleNode(node.id)}
+            className="p-1 hover:bg-accent/50 rounded-full"
+          >
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
+        </div>
+        
+        {isExpanded && (
+          <div className="space-y-4">
+            <div className="prose prose-sm prose-invert max-w-none">
+              <ReactMarkdown components={markdownComponents}>
+                {node.analysis}
+              </ReactMarkdown>
+            </div>
+            
+            {hasExpansions && latestExpansion && (
+              <div className="mt-4 border-t border-border pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-medium">Latest Analysis</h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleExpandQuestion(node)}
+                    disabled={isAnalyzing}
+                    className="h-8"
+                  >
+                    Regenerate
+                  </Button>
+                </div>
+                <div className="prose prose-sm prose-invert max-w-none">
+                  <ReactMarkdown components={markdownComponents}>
+                    {latestExpansion.analysis}
+                  </ReactMarkdown>
+                </div>
+                {latestExpansion.evaluation && (
+                  <div className="mt-4 p-2 bg-accent/50 rounded">
+                    <div className="text-xs font-medium mb-1">
+                      Score: {latestExpansion.evaluation.score}%
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {latestExpansion.evaluation.reason}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {!hasExpansions && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExpandQuestion(node)}
+                disabled={isAnalyzing}
+              >
+                <ArrowRight className="h-4 w-4 mr-2" />
+                Expand Analysis
+              </Button>
+            )}
+            
+            {node.children.length > 0 && (
+              <div className="mt-4 pl-4 border-l border-border">
+                {node.children.map(child => renderQANode(child))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
     const analysisContent = isStreaming ? streamContent?.content : node.analysis;
@@ -861,56 +947,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         );
       },
       ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-      ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-      li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-      blockquote: ({ children }) => (
-        <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-      ),
-      a: ({ href, children }) => (
-        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-          {children}
-        </a>
-      ),
-      em: ({ children }) => <em className="italic">{children}</em>,
-      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-      h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-      h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-      hr: () => <hr className="my-4 border-muted" />,
-    };
-
-    const getScoreBackgroundColor = (score: number) => {
-      if (score >= 80) return 'bg-green-500/20';
-      if (score >= 60) return 'bg-yellow-500/20';
-      return 'bg-red-500/20';
-    };
-
-    return (
-      <div key={node.id} className="relative flex flex-col">
-        <div className="flex items-stretch">
-          {depth > 0 && (
-            <div className="relative w-6 sm:w-9 flex-shrink-0">
-              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
-            </div>
-          )}
-          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
-            {depth > 0 && (
-              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
-            )}
-            <div className="absolute left-[12px] sm:left-[24px] top-0">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
-                <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start">
-                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
-                  {node.question}
-                  {getExtensionInfo(node)}
-                </h3>
-              </div>
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
-                <div className="flex items-start gap-2">
-                  <button className="mt-1 hover:bg-accent/50 rounded-
+      ol: ({ children })
