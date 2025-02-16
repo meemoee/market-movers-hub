@@ -581,7 +581,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
 
       // First, deserialize all nodes
-      const allNodes = treeData.map(deserializeNode);
+      const allNodes = treeData.map(deserializeNode);\
       
       // Find all extended nodes and their original nodes
       const extensionsByOriginalId = new Map<string, QANode[]>();
@@ -930,14 +930,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     );
   }
 
-  const isStreaming = currentNodeId === node.id;
-  const streamContent = streamingContent[node.id];
-  const isExpanded = expandedNodes.has(node.id);
-  const analysisContent = isStreaming ? streamContent?.content : node.analysis;
-  const citations = isStreaming ? streamContent?.citations : node.citations;
-  
-  const nodeExtensions = getNodeExtensions(node.id);
-  
   const markdownComponents: MarkdownComponents = {
     p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
     code: ({ children, className }) => {
@@ -946,4 +938,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
       ) : (
         <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
-          {
+          {children}
+        </code>
+      );
+    },
+    ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
+    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
