@@ -251,14 +251,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         } : undefined
       });
 
-      const baseTree = navigationHistory.length > 0 ? navigationHistory[0] : qaData;
+      const originalTree = navigationHistory.length > 0 ? navigationHistory[0] : qaData;
+      const mainTreeJson = originalTree.map(convertNodeToJson);
       
-      const mainTreeJson = baseTree.map(convertNodeToJson);
       const extensionsJson = rootExtensions.map(convertNodeToJson);
       
       console.log('Saving QA tree with:', {
         mainTree: mainTreeJson,
-        extensions: extensionsJson
+        extensions: extensionsJson,
+        navigationHistory: navigationHistory.length
       });
 
       const treeDataJson = [...mainTreeJson, ...extensionsJson];
@@ -298,7 +299,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     
     try {
       setStreamingContent({});
-      setExpandedNodes(new Set());
       setCurrentNodeId(null);
       setNavigationHistory([]);
       
@@ -336,18 +336,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         mappedNodes: nodeMap.size
       });
 
-      if (mainRoots.length > 0) {
-        mainRoots.forEach(node => addAllNodes(node));
-        setExpandedNodes(allNodes);
-        setQaData(mainRoots);
-      } else if (extensions.length > 0) {
-        const extensionNode = extensions[extensions.length - 1];
-        addAllNodes(extensionNode);
-        setExpandedNodes(allNodes);
-        setQaData([extensionNode]);
-      }
-
+      mainRoots.forEach(node => addAllNodes(node));
+      setQaData(mainRoots);
+      
       setRootExtensions(extensions);
+      
+      setExpandedNodes(allNodes);
       
       const populateNodeContent = (node: QANode) => {
         console.log('Populating content for node:', {
@@ -373,7 +367,20 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       };
 
-      treeData.forEach(node => {
+      mainRoots.forEach(node => {
+        populateNodeContent(node);
+        const mapChildren = (n: QANode) => {
+          if (n.children) {
+            n.children.forEach(child => {
+              populateNodeContent(child);
+              mapChildren(child);
+            });
+          }
+        };
+        mapChildren(node);
+      });
+
+      extensions.forEach(node => {
         populateNodeContent(node);
         const mapChildren = (n: QANode) => {
           if (n.children) {
@@ -398,10 +405,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       };
 
-      await evaluateNodesIfNeeded(treeData);
+      await evaluateNodesIfNeeded([...mainRoots, ...extensions]);
       
       console.log('Finished loading tree:', {
-        qaData: mainRoots.length > 0 ? mainRoots : [extensions[extensions.length - 1]],
+        qaData: mainRoots,
         rootExtensions: extensions,
         expandedNodes: Array.from(allNodes),
         streamingContentKeys: Object.keys(streamingContent).length,
