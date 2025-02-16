@@ -56,13 +56,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
-  const [streamingContent, setStreamingContent<{ [key: string]: StreamingContent }>({});
-  const [expandedNodes, setExpandedNodes>(new Set());
-  const [currentNodeId, setCurrentNodeId>(null);
-  const [selectedResearch, setSelectedResearch](('none'));
-  const [selectedQATree, setSelectedQATree](('none'));
-  const [rootExtensions, setRootExtensions>([]);
-  const [navigationHistory, setNavigationHistory<QANode[][]>>([]);
+  const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  const [selectedResearch, setSelectedResearch] = useState<string>('none');
+  const [selectedQATree, setSelectedQATree] = useState<string>('none');
+  const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
+  const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
 
   const toggleNode = (nodeId: string) => {
@@ -910,4 +910,92 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                                   href={citation}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-
+                                  className="inline-flex items-center gap-2"
+                                >
+                                  <LinkIcon className="h-4 w-4" />
+                                  {citation}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="text-sm text-muted-foreground">
+                        {getPreviewText(analysisContent)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Select value={selectedResearch} onValueChange={setSelectedResearch}>
+            <SelectTrigger className="w-[300px]">
+              <SelectValue placeholder="Select research context" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No research context</SelectItem>
+              {savedResearch?.map((research) => (
+                <SelectItem key={research.id} value={research.id}>
+                  {research.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={selectedQATree} onValueChange={value => {
+            setSelectedQATree(value);
+            const tree = savedQATrees?.find(t => t.id === value);
+            if (tree) {
+              loadSavedQATree(tree.tree_data);
+            }
+          }}>
+            <SelectTrigger className="w-[300px]">
+              <SelectValue placeholder="Load saved analysis" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">New analysis</SelectItem>
+              {savedQATrees?.map((tree) => (
+                <SelectItem key={tree.id} value={tree.id}>
+                  {tree.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {qaData.length > 0 && (
+          <Button onClick={saveQATree}>
+            Save Analysis
+          </Button>
+        )}
+      </div>
+
+      {navigationHistory.length > 0 && (
+        <Button 
+          variant="outline" 
+          onClick={navigateBack}
+          className="mb-4"
+        >
+          Back to Previous Analysis
+        </Button>
+      )}
+
+      <ScrollArea className="h-[calc(100vh-200px)]">
+        <div className="space-y-6">
+          {qaData.map((node) => renderQANode(node))}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
