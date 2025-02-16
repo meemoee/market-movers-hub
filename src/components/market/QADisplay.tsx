@@ -24,8 +24,15 @@ interface QANode {
   analysis: string;
   citations?: string[];
   children: QANode[];
-  isExtendedRoot?: boolean;
-  originalNodeId?: string;
+  expansions?: {
+    id: string;
+    analysis: string;
+    timestamp: number;
+    evaluation?: {
+      score: number;
+      reason: string;
+    };
+  }[];
   evaluation?: {
     score: number;
     reason: string;
@@ -237,37 +244,23 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return {
           id: node.id,
           question: node.question,
-          analysis: node.analysis || '',
-          children: Array.isArray(node.children) ? node.children.map(serializeNode) : [],
-          citations: Array.isArray(node.citations) ? node.citations : [],
-          isExtendedRoot: Boolean(node.isExtendedRoot),
-          originalNodeId: node.originalNodeId || null,
-          evaluation: node.evaluation ? {
-            score: Number(node.evaluation.score),
-            reason: String(node.evaluation.reason)
-          } : null
+          analysis: node.analysis,
+          children: node.children.map(serializeNode),
+          citations: node.citations || [],
+          evaluation: node.evaluation,
+          expansions: node.expansions || []
         };
       };
 
-      // Prepare all nodes for saving, including main tree and extensions
-      const mainTree = qaData;
-      const allNodes = [...mainTree, ...rootExtensions];
-
-      // Serialize all nodes
-      const serializedData = allNodes.map(serializeNode);
-      
-      console.log('Saving tree data:', {
-        mainTree,
-        rootExtensions,
-        serializedData
-      });
+      // Serialize the tree with expansions
+      const treeDataJson = qaData.map(serializeNode);
 
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
           market_id: marketId,
           title: marketQuestion,
-          tree_data: serializedData,
+          tree_data: treeDataJson,
           user_id: user.user.id
         })
         .select()
@@ -277,11 +270,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${rootExtensions.length} question expansions`,
+        description: "Saved QA tree with all expansions",
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
-
     } catch (error) {
       console.error('Error saving QA tree:', error);
       toast({
@@ -557,111 +549,41 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           analysis: node.analysis || '',
           children: Array.isArray(node.children) ? node.children.map(deserializeNode) : [],
           citations: Array.isArray(node.citations) ? node.citations : [],
-          isExtendedRoot: Boolean(node.isExtendedRoot),
-          originalNodeId: node.originalNodeId || null,
-          evaluation: node.evaluation ? {
-            score: Number(node.evaluation.score),
-            reason: String(node.evaluation.reason)
-          } : null
+          evaluation: node.evaluation,
+          expansions: Array.isArray(node.expansions) ? node.expansions : []
         };
       };
-
-      // Type guard to verify the tree data structure
-      const isValidTreeData = (data: any): data is any[] => {
-        return Array.isArray(data) && data.every(node => 
-          typeof node.id === 'string' && 
-          typeof node.question === 'string' &&
-          (!node.analysis || typeof node.analysis === 'string')
-        );
-      };
-
-      if (!isValidTreeData(treeData)) {
-        console.error('Invalid tree data structure:', treeData);
-        throw new Error('Invalid tree data structure');
-      }
 
       // First, deserialize all nodes
-      const allNodes = treeData.map(deserializeNode);
-      
-      // Find all extended nodes and their original nodes
-      const extensionsByOriginalId = new Map<string, QANode[]>();
-      const mainNodes: QANode[] = [];
-      
-      // First pass: collect all extensions and main nodes
-      allNodes.forEach(node => {
-        if (node.isExtendedRoot && node.originalNodeId) {
-          const extensions = extensionsByOriginalId.get(node.originalNodeId) || [];
-          extensions.push(node);
-          extensionsByOriginalId.set(node.originalNodeId, extensions);
-        } else if (!node.isExtendedRoot) {
-          mainNodes.push(node);
-        }
-      });
-
-      // Function to recursively process a node and its children
-      const processNodeTree = (node: QANode): QANode => {
-        // Process children recursively
-        const processedChildren = node.children.map(child => processNodeTree(child));
-        
-        return {
-          ...node,
-          children: processedChildren,
-        };
-      };
-
-      // Process the main tree
-      const processedMainNodes = mainNodes.map(node => processNodeTree(node));
-
-      // Get all extensions as a flat array
-      const allExtensions = Array.from(extensionsByOriginalId.values()).flat();
-
-      console.log('Processed tree structure:', {
-        mainNodes: processedMainNodes,
-        extensions: allExtensions,
-        extensionMappings: Object.fromEntries(extensionsByOriginalId)
-      });
-
-      // Set the initial tree state
-      if (processedMainNodes.length > 0) {
-        setQaData(processedMainNodes);
-        setRootExtensions(allExtensions);
-      } else if (allExtensions.length > 0) {
-        setQaData([allExtensions[0]]);
-        setRootExtensions(allExtensions.slice(1));
-      }
-
-      // Populate streaming content for all nodes
-      const populateContent = (node: QANode) => {
-        if (node.analysis) {
-          setStreamingContent(prev => ({
-            ...prev,
-            [node.id]: {
-              content: node.analysis,
-              citations: node.citations || [],
-            },
-          }));
-        }
-        node.children.forEach(populateContent);
-      };
-
-      // Process all nodes for streaming content
-      [...processedMainNodes, ...allExtensions].forEach(populateContent);
+      const processedNodes = treeData.map(deserializeNode);
+      setQaData(processedNodes);
 
       // Collect all node IDs for expansion
       const collectNodeIds = (node: QANode): string[] => {
-        return [node.id, ...node.children.flatMap(collectNodeIds)];
+        return [
+          node.id,
+          ...(node.expansions && node.expansions.length > 0 ? [node.id] : []),
+          ...node.children.flatMap(collectNodeIds)
+        ];
       };
 
-      // Expand all nodes from both main tree and extensions
-      const allNodeIds = new Set([...processedMainNodes, ...allExtensions].flatMap(collectNodeIds));
+      // Expand all nodes
+      const allNodeIds = new Set(processedNodes.flatMap(collectNodeIds));
       setExpandedNodes(allNodeIds);
 
-      console.log('Final loaded state:', {
-        qaData: processedMainNodes.length > 0 ? processedMainNodes : [allExtensions[0]],
-        rootExtensions: processedMainNodes.length > 0 ? allExtensions : allExtensions.slice(1),
-        expandedNodes: Array.from(allNodeIds),
-        streamingContent: Object.keys(streamingContent).length
-      });
+      // Populate streaming content for all nodes
+      const populateContent = (node: QANode) => {
+        setStreamingContent(prev => ({
+          ...prev,
+          [node.id]: {
+            content: node.analysis,
+            citations: node.citations || [],
+          },
+        }));
+        node.children.forEach(populateContent);
+      };
+
+      processedNodes.forEach(populateContent);
 
     } catch (error) {
       console.error('Error loading QA tree:', error);
@@ -701,36 +623,18 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const handleExpandQuestion = async (node: QANode) => {
-    const parentNodes = findParentNodes(node.id, qaData) || [];
-    const historyContext = buildHistoryContext(node, parentNodes);
-    
     setIsAnalyzing(true);
     try {
-      const nodeId = `node-${Date.now()}-0`;
-      setCurrentNodeId(nodeId);
-      setExpandedNodes(prev => new Set([...prev, nodeId]));
-
-      const newRootNode: QANode = {
-        id: nodeId,
-        question: node.question,
-        analysis: '',
-        children: [],
-        isExtendedRoot: true,
-        originalNodeId: node.id
-      };
-
-      // Update both states immediately
-      setRootExtensions(prev => [...prev, newRootNode]);
-      setQaData([newRootNode]);
-
+      const expansionId = `expansion-${Date.now()}`;
+      const timestamp = Date.now();
+      
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
           question: node.question,
-          isFollowUp: false,
-          historyContext,
+          isFollowUp: true,
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -744,71 +648,54 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const reader = new Response(analysisData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
-      const analysis = await processStream(reader, nodeId);
+      const analysis = await processStream(reader, expansionId);
 
-      // Create the complete node with analysis
-      const completeNode: QANode = {
-        ...newRootNode,
-        analysis
-      };
-
-      // Evaluate the node before updating the states
       const { data: evaluationData, error: evaluationError } = await supabase.functions.invoke('evaluate-qa-pair', {
         body: { 
-          question: completeNode.question,
-          analysis: completeNode.analysis
+          question: node.question,
+          analysis: analysis
         }
       });
 
       if (evaluationError) throw evaluationError;
 
-      // Add evaluation to the complete node
-      const evaluatedNode: QANode = {
-        ...completeNode,
-        evaluation: evaluationData
-      };
-
-      // Update both states with the evaluated node
-      setQaData([evaluatedNode]);
-      setRootExtensions(prev => 
-        prev.map(ext => ext.id === nodeId ? evaluatedNode : ext)
-      );
-
-      // Generate follow-up questions
-      const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
-        body: JSON.stringify({ 
-          marketId, 
-          question: node.question, 
-          parentContent: analysis,
-          historyContext,
-          isFollowUp: true,
-          researchContext: selectedResearchData ? {
-            analysis: selectedResearchData.analysis,
-            probability: selectedResearchData.probability,
-            areasForResearch: selectedResearchData.areas_for_research
-          } : null
-        }),
+      // Update the node with the new expansion
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(n => {
+            if (n.id === node.id) {
+              return {
+                ...n,
+                expansions: [
+                  ...(n.expansions || []),
+                  {
+                    id: expansionId,
+                    analysis,
+                    timestamp,
+                    evaluation: evaluationData
+                  }
+                ]
+              };
+            }
+            if (n.children.length > 0) {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
       });
-      
-      if (followUpError) throw followUpError;
 
-      // Process follow-up questions
-      for (const item of followUpData) {
-        if (item?.question) {
-          await analyzeQuestion(item.question, nodeId, 1);
-        }
-      }
+      setExpandedNodes(prev => new Set([...prev, node.id]));
 
     } catch (error) {
-      console.error('Analysis error:', error);
+      console.error('Expansion error:', error);
       toast({
         variant: "destructive",
-        title: "Analysis Error",
-        description: error instanceof Error ? error.message : "Failed to analyze the question",
+        title: "Expansion Error",
+        description: error instanceof Error ? error.message : "Failed to expand the analysis",
       });
     } finally {
       setIsAnalyzing(false);
-      setCurrentNodeId(null);
     }
   };
 
@@ -876,51 +763,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   function renderQANode(node: QANode, depth: number = 0) {
-    const isStreaming = currentNodeId === node.id;
-    const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
-    const analysisContent = isStreaming ? streamContent?.content : node.analysis;
-    const citations = isStreaming ? streamContent?.citations : node.citations;
+    const hasExpansions = node.expansions && node.expansions.length > 0;
+    const latestExpansion = hasExpansions ? node.expansions[node.expansions.length - 1] : null;
     
-    const nodeExtensions = getNodeExtensions(node.id);
-    
-    const markdownComponents: MarkdownComponents = {
-      p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-      code: ({ children, className }) => {
-        const isInline = !className;
-        return isInline ? (
-          <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
-        ) : (
-          <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
-            {children}
-          </code>
-        );
-      },
-      ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-      ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-      li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-      blockquote: ({ children }) => (
-        <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-      ),
-      a: ({ href, children }) => (
-        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-          {children}
-        </a>
-      ),
-      em: ({ children }) => <em className="italic">{children}</em>,
-      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-      h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-      h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-      hr: () => <hr className="my-4 border-muted" />,
-    };
-
-    const getScoreBackgroundColor = (score: number) => {
-      if (score >= 80) return 'bg-green-500/20';
-      if (score >= 60) return 'bg-yellow-500/20';
-      return 'bg-red-500/20';
-    };
-
     return (
       <div key={node.id} className="relative flex flex-col">
         <div className="flex items-stretch">
@@ -944,7 +790,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               <div className="flex items-start">
                 <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
                   {node.question}
-                  {getExtensionInfo(node)}
+                  {hasExpansions && (
+                    <span className="ml-2 text-xs text-muted-foreground">
+                      (Expanded {node.expansions.length} times)
+                    </span>
+                  )}
                 </h3>
               </div>
               <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
@@ -955,83 +805,72 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                   <div className="flex-1">
                     {isExpanded ? (
                       <>
-                        <ReactMarkdown
-                          components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent}
+                        <ReactMarkdown components={markdownComponents}>
+                          {node.analysis}
                         </ReactMarkdown>
-                        {renderCitations(citations)}
                         
-                        <div className="mt-4 space-y-2">
-                          {node.evaluation && (
-                            <div className={`rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs font-medium">
-                                  Score: {node.evaluation.score}%
-                                </div>
-                                {!node.isExtendedRoot && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleExpandQuestion(node);
-                                    }}
-                                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                                    title="Expand this question into a follow-up analysis"
-                                  >
-                                    <ArrowRight className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                              <ReactMarkdown
-                                components={markdownComponents}
-                                className="text-xs text-muted-foreground"
+                        {hasExpansions && latestExpansion && (
+                          <div className="mt-4 border-t border-border pt-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <h4 className="text-sm font-medium">Latest Analysis</h4>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleExpandQuestion(node);
+                                }}
+                                disabled={isAnalyzing}
+                                className="h-8"
                               >
-                                {node.evaluation.reason}
-                              </ReactMarkdown>
+                                Regenerate
+                              </Button>
                             </div>
-                          )}
-                        </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
+                            <ReactMarkdown components={markdownComponents}>
+                              {latestExpansion.analysis}
+                            </ReactMarkdown>
+                            {latestExpansion.evaluation && (
+                              <div className="mt-4 p-2 bg-accent/50 rounded">
+                                <div className="text-xs font-medium mb-1">
+                                  Score: {latestExpansion.evaluation.score}%
                                 </div>
-                              ))}
-                            </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {latestExpansion.evaluation.reason}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        {!hasExpansions && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExpandQuestion(node);
+                            }}
+                            disabled={isAnalyzing}
+                            className="mt-4"
+                          >
+                            <ArrowRight className="h-4 w-4 mr-2" />
+                            Expand Analysis
+                          </Button>
+                        )}
+                        
+                        {node.children.length > 0 && (
+                          <div className="mt-4">
+                            {node.children.map(child => renderQANode(child, depth + 1))}
                           </div>
                         )}
                       </>
                     ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
+                      <p className="line-clamp-3">{getPreviewText(node.analysis)}</p>
                     )}
                   </div>
                 </div>
               </div>
             </div>
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
           </div>
         </div>
       </div>

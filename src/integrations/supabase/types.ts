@@ -432,6 +432,7 @@ export type Database = {
       qa_trees: {
         Row: {
           created_at: string
+          expansions: Json | null
           id: string
           market_id: string | null
           title: string
@@ -441,6 +442,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          expansions?: Json | null
           id?: string
           market_id?: string | null
           title: string
@@ -450,6 +452,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          expansions?: Json | null
           id?: string
           market_id?: string | null
           title?: string
