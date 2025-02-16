@@ -411,42 +411,49 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const deserializedNodes = treeData.map(deserializeNode);
       
-      const originalNodes = deserializedNodes.filter(node => node.isOriginalNode && !node.isExtendedRoot);
+      // Consider nodes without any flags as original nodes for backward compatibility
+      const originalNodes = deserializedNodes.filter(node => 
+        node.isOriginalNode || (!node.isExtendedRoot && !node.isOriginalNode)
+      );
       const extensions = deserializedNodes.filter(node => node.isExtendedRoot);
 
       console.log('Load Debug:', {
         totalNodes: deserializedNodes.length,
         originalNodes: originalNodes.map(n => ({ 
           id: n.id, 
-          question: n.question.substring(0, 50) 
+          question: n.question.substring(0, 50),
+          isOriginal: n.isOriginalNode,
+          isExtended: n.isExtendedRoot
         })),
         extensions: extensions.map(n => ({ 
           id: n.id, 
-          question: n.question.substring(0, 50) 
+          question: n.question.substring(0, 50),
+          isExtended: n.isExtendedRoot
         }))
       });
 
-      if (originalNodes.length === 0) {
-        toast({
-          variant: "destructive",
-          title: "Load Error",
-          description: "Could not find the original analysis tree",
-        });
-        return;
+      // Use the tree data as original nodes if we can't identify any
+      if (originalNodes.length === 0 && deserializedNodes.length > 0) {
+        const nonExtendedNodes = deserializedNodes.filter(node => !node.isExtendedRoot);
+        setOriginalTree(nonExtendedNodes);
+        setQaData(nonExtendedNodes);
+      } else {
+        setOriginalTree(originalNodes);
+        setQaData(originalNodes);
       }
-
-      setOriginalTree(originalNodes);
-      setQaData(originalNodes);
+      
       setRootExtensions(extensions);
 
+      // Expand all nodes
       const allNodeIds = new Set<string>();
       const collectNodeIds = (node: QANode) => {
         allNodeIds.add(node.id);
         node.children.forEach(collectNodeIds);
       };
-      originalNodes.forEach(collectNodeIds);
+      deserializedNodes.forEach(collectNodeIds);
       setExpandedNodes(allNodeIds);
 
+      // Set up streaming content
       const streamContent: { [key: string]: StreamingContent } = {};
       const populateContent = (node: QANode) => {
         if (node.analysis) {
@@ -458,7 +465,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(populateContent);
       };
 
-      [...originalNodes, ...extensions].forEach(populateContent);
+      deserializedNodes.forEach(populateContent);
       setStreamingContent(streamContent);
 
     } catch (error) {
