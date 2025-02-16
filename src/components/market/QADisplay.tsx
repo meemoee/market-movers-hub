@@ -241,13 +241,27 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         totalNodes: allNodes.length
       });
 
+      const treeDataJson = allNodes.map(node => ({
+        id: node.id,
+        question: node.question,
+        analysis: node.analysis,
+        citations: node.citations || [],
+        children: node.children,
+        isExtendedRoot: node.isExtendedRoot || false,
+        originalNodeId: node.originalNodeId,
+        evaluation: node.evaluation ? {
+          score: node.evaluation.score,
+          reason: node.evaluation.reason
+        } : undefined
+      }));
+
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
-          user_id: user.user.id,
           market_id: marketId,
           title: marketQuestion,
-          tree_data: allNodes
+          tree_data: treeDataJson,
+          user_id: user.user.id
         })
         .select()
         .single();
