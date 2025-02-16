@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -43,30 +42,23 @@ ${parentContent}
           messages: [
             {
               role: "system",
-              content:
-                "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Return only the JSON array, nothing else."
+              content: "Generate three analytical follow-up questions. Return only an array of objects, each with a 'question' field."
             },
             {
               role: "user",
               content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${researchPrompt}`
             }
-          ]
+          ],
+          response_format: { type: "json_object" }
         })
       });
       if (!followUpResponse.ok) {
         throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
       }
       const data = await followUpResponse.json();
-      let rawContent = data.choices[0].message.content;
-      rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      let parsed;
-      try {
-        parsed = JSON.parse(rawContent);
-      } catch (err) {
-        throw new Error('Failed to parse follow-up questions');
-      }
-      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
-      return new Response(JSON.stringify(parsed), {
+      const questions = data.choices[0].message.content;
+      if (!Array.isArray(questions)) throw new Error('Response is not an array');
+      return new Response(JSON.stringify(questions), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
