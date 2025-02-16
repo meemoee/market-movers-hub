@@ -44,31 +44,51 @@ ${parentContent}
             {
               role: "system",
               content:
-                "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Return only the JSON array, nothing else."
+                "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Your response must be a valid JSON array. Do not include any text before or after the JSON array."
             },
             {
               role: "user",
               content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${researchPrompt}`
             }
-          ]
+          ],
+          response_format: { type: "json_object" }
         })
       });
       if (!followUpResponse.ok) {
         throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
       }
       const data = await followUpResponse.json();
-      let rawContent = data.choices[0].message.content;
-      rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       let parsed;
       try {
-        parsed = JSON.parse(rawContent);
+        // Check if the content is already a JSON array
+        const content = data.choices[0].message.content;
+        parsed = typeof content === 'string' ? JSON.parse(content) : content;
+        
+        // If we got an object with a queries field, extract it
+        if (parsed.queries) {
+          parsed = parsed.queries;
+        }
+        
+        // Ensure we have an array of objects with question fields
+        if (!Array.isArray(parsed)) {
+          throw new Error('Response is not an array');
+        }
+        
+        // Normalize the response format
+        const normalizedQuestions = parsed.map(item => {
+          if (typeof item === 'string') {
+            return { question: item };
+          }
+          return item.question ? item : { question: Object.values(item)[0] };
+        });
+
+        return new Response(JSON.stringify(normalizedQuestions), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
       } catch (err) {
+        console.error('Parse error:', err, 'Raw content:', data.choices[0].message.content);
         throw new Error('Failed to parse follow-up questions');
       }
-      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
-      return new Response(JSON.stringify(parsed), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
     }
 
     const systemPrompt = researchContext 
