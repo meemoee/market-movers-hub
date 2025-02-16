@@ -947,7 +947,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               <SelectItem value="none">No research context</SelectItem>
               {savedResearch?.map((research) => (
                 <SelectItem key={research.id} value={research.id}>
-                  {research.title}
+                  {research.query}
                 </SelectItem>
               ))}
             </SelectContent>
