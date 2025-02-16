@@ -580,36 +580,55 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         throw new Error('Invalid tree data structure');
       }
 
-      // First pass: Create a map of all nodes by their original IDs
-      const originalNodesMap = new Map();
-      const extensionsMap = new Map();
+      // First, deserialize all nodes
+      const allNodes = treeData.map(deserializeNode);
       
-      treeData.forEach(node => {
-        const restored = deserializeNode(node);
-        if (restored.isExtendedRoot) {
-          extensionsMap.set(restored.id, restored);
+      // Group nodes by their relationship
+      const mainTree: QANode[] = [];
+      const extensions: QANode[] = [];
+      
+      // First pass: identify root nodes and their extensions
+      allNodes.forEach(node => {
+        if (node.isExtendedRoot) {
+          // This is an extension of another node
+          extensions.push(node);
         } else {
-          originalNodesMap.set(restored.id, restored);
+          // Find if this node has any extensions
+          const nodeExtensions = allNodes.filter(n => 
+            n.isExtendedRoot && n.originalNodeId === node.id
+          );
+          
+          // Add the node to the main tree if it's not already there
+          if (!mainTree.some(n => n.id === node.id)) {
+            mainTree.push(node);
+          }
         }
       });
 
-      console.log('Initial node processing:', {
-        originalNodes: Array.from(originalNodesMap.values()),
-        extensions: Array.from(extensionsMap.values())
+      console.log('Node classification:', {
+        mainTree,
+        extensions,
+        allNodes: allNodes.length
       });
 
-      // Process main tree nodes first
-      const mainRoots = Array.from(originalNodesMap.values());
-      const extensions = Array.from(extensionsMap.values());
-
-      // If we have a main tree, show it, otherwise show the first extension
-      if (mainRoots.length > 0) {
-        setQaData(mainRoots);
+      // Set the states based on what we found
+      if (mainTree.length > 0) {
+        // We have a main tree, so show it and keep track of extensions
+        setQaData(mainTree);
         setRootExtensions(extensions);
+        console.log('Setting main tree and extensions:', { mainTree, extensions });
       } else if (extensions.length > 0) {
-        const [firstExtension, ...otherExtensions] = extensions;
+        // No main tree, show the first extension
+        const [firstExtension, ...remainingExtensions] = extensions;
         setQaData([firstExtension]);
-        setRootExtensions(otherExtensions);
+        setRootExtensions(remainingExtensions);
+        console.log('Setting extension as main:', { 
+          main: firstExtension, 
+          remainingExtensions 
+        });
+      } else {
+        console.error('No valid tree structure found');
+        return;
       }
 
       // Populate streaming content for all nodes
@@ -627,7 +646,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       };
 
       // Process all nodes for streaming content
-      [...mainRoots, ...extensions].forEach(populateContent);
+      [...mainTree, ...extensions].forEach(populateContent);
 
       // Collect all node IDs for expansion
       const collectNodeIds = (node: QANode): string[] => {
@@ -635,12 +654,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       };
 
       // Expand all nodes from both main tree and extensions
-      const allNodeIds = new Set([...mainRoots, ...extensions].flatMap(collectNodeIds));
+      const allNodeIds = new Set([...mainTree, ...extensions].flatMap(collectNodeIds));
       setExpandedNodes(allNodeIds);
 
-      console.log('Final tree state:', {
-        qaData: mainRoots.length > 0 ? mainRoots : [extensions[0]],
-        rootExtensions: mainRoots.length > 0 ? extensions : extensions.slice(1),
+      console.log('Final loaded state:', {
+        qaData: mainTree.length > 0 ? mainTree : [extensions[0]],
+        rootExtensions: mainTree.length > 0 ? extensions : extensions.slice(1),
         expandedNodes: Array.from(allNodeIds),
         streamingContent: Object.keys(streamingContent).length
       });
