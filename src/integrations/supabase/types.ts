@@ -435,6 +435,7 @@ export type Database = {
           expansions: Json | null
           id: string
           market_id: string | null
+          sequence_data: Json | null
           title: string
           tree_data: Json
           updated_at: string
@@ -445,6 +446,7 @@ export type Database = {
           expansions?: Json | null
           id?: string
           market_id?: string | null
+          sequence_data?: Json | null
           title: string
           tree_data: Json
           updated_at?: string
@@ -455,6 +457,7 @@ export type Database = {
           expansions?: Json | null
           id?: string
           market_id?: string | null
+          sequence_data?: Json | null
           title?: string
           tree_data?: Json
           updated_at?: string
