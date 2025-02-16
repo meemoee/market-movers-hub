@@ -581,7 +581,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
 
       // First, deserialize all nodes
-      const allNodes = treeData.map(deserializeNode);\
+      const allNodes = treeData.map(deserializeNode);
       
       // Find all extended nodes and their original nodes
       const extensionsByOriginalId = new Map<string, QANode[]>();
@@ -945,3 +945,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
     ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
     li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  };
+
+  return (
+    <div>
+      {/* Render the QADisplay component */}
+    </div>
+  );
+}
