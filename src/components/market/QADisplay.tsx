@@ -1,4 +1,3 @@
-<lov-code>
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -582,7 +581,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
 
       // First, deserialize all nodes
-      const allNodes = treeData.map(deserializeNode);
+      const allNodes = treeData.map(deserializeNode);\
       
       // Find all extended nodes and their original nodes
       const extensionsByOriginalId = new Map<string, QANode[]>();
@@ -655,7 +654,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       // Expand all nodes from both main tree and extensions
       const allNodeIds = new Set([...processedMainNodes, ...allExtensions].flatMap(collectNodeIds));
-      setExpandedNodes(allNodeIds);
+      setExpandedNodes(allNodeIds);\
 
       console.log('Final loaded state:', {
         qaData: processedMainNodes.length > 0 ? processedMainNodes : [allExtensions[0]],
@@ -947,3 +946,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
       ) : (
         <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
+          {
