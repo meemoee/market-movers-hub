@@ -336,8 +336,20 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         mappedNodes: nodeMap.size
       });
 
-      mainRoots.forEach(node => addAllNodes(node));
-      setQaData(mainRoots);
+      if (mainRoots.length > 0) {
+        mainRoots.forEach(node => addAllNodes(node));
+        setQaData(mainRoots);
+      } else if (extensions.length > 0) {
+        const sortedExtensions = [...extensions].sort((a, b) => {
+          const timestampA = parseInt(a.id.split('-')[1]);
+          const timestampB = parseInt(b.id.split('-')[1]);
+          return timestampA - timestampB;
+        });
+        
+        const firstExtension = sortedExtensions[0];
+        addAllNodes(firstExtension);
+        setQaData([firstExtension]);
+      }
       
       setRootExtensions(extensions);
       
@@ -367,7 +379,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       };
 
-      mainRoots.forEach(node => {
+      const displayedNodes = mainRoots.length > 0 ? mainRoots : [extensions[0]];
+      displayedNodes.forEach(node => {
         populateNodeContent(node);
         const mapChildren = (n: QANode) => {
           if (n.children) {
@@ -380,18 +393,20 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         mapChildren(node);
       });
 
-      extensions.forEach(node => {
-        populateNodeContent(node);
-        const mapChildren = (n: QANode) => {
-          if (n.children) {
-            n.children.forEach(child => {
-              populateNodeContent(child);
-              mapChildren(child);
-            });
-          }
-        };
-        mapChildren(node);
-      });
+      if (mainRoots.length > 0) {
+        extensions.forEach(node => {
+          populateNodeContent(node);
+          const mapChildren = (n: QANode) => {
+            if (n.children) {
+              n.children.forEach(child => {
+                populateNodeContent(child);
+                mapChildren(child);
+              });
+            }
+          };
+          mapChildren(node);
+        });
+      }
 
       const evaluateNodesIfNeeded = async (nodes: QANode[]) => {
         for (const node of nodes) {
@@ -408,7 +423,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       await evaluateNodesIfNeeded([...mainRoots, ...extensions]);
       
       console.log('Finished loading tree:', {
-        qaData: mainRoots,
+        qaData: displayedNodes,
         rootExtensions: extensions,
         expandedNodes: Array.from(allNodes),
         streamingContentKeys: Object.keys(streamingContent).length,
