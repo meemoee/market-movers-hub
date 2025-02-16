@@ -580,36 +580,36 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         throw new Error('Invalid tree data structure');
       }
 
-      // Restore all nodes and deduplicate by ID
-      const nodesMap = new Map();
+      // First pass: Create a map of all nodes by their original IDs
+      const originalNodesMap = new Map();
+      const extensionsMap = new Map();
+      
       treeData.forEach(node => {
         const restored = deserializeNode(node);
-        // Only update if we don't have this node or if this version is an extension
-        if (!nodesMap.has(node.id) || restored.isExtendedRoot) {
-          nodesMap.set(node.id, restored);
+        if (restored.isExtendedRoot) {
+          extensionsMap.set(restored.id, restored);
+        } else {
+          originalNodesMap.set(restored.id, restored);
         }
       });
-      const restoredNodes = Array.from(nodesMap.values());
-      
-      console.log('Restored nodes after deduplication:', restoredNodes);
-      
-      // First, find the original root nodes (non-extended)
-      const mainRoots = restoredNodes.filter(node => !node.isExtendedRoot);
-      // Then find nodes marked as extended roots
-      const extensions = restoredNodes.filter(node => node.isExtendedRoot);
 
-      console.log('Tree structure after separation:', {
-        mainRoots,
-        extensions,
-        totalNodes: restoredNodes.length
+      console.log('Initial node processing:', {
+        originalNodes: Array.from(originalNodesMap.values()),
+        extensions: Array.from(extensionsMap.values())
       });
 
+      // Process main tree nodes first
+      const mainRoots = Array.from(originalNodesMap.values());
+      const extensions = Array.from(extensionsMap.values());
+
+      // If we have a main tree, show it, otherwise show the first extension
       if (mainRoots.length > 0) {
         setQaData(mainRoots);
+        setRootExtensions(extensions);
       } else if (extensions.length > 0) {
-        // If we only have extensions, show the first one
-        setQaData([extensions[0]]);
-        setRootExtensions(extensions.slice(1));
+        const [firstExtension, ...otherExtensions] = extensions;
+        setQaData([firstExtension]);
+        setRootExtensions(otherExtensions);
       }
 
       // Populate streaming content for all nodes
@@ -626,13 +626,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(populateContent);
       };
 
+      // Process all nodes for streaming content
       [...mainRoots, ...extensions].forEach(populateContent);
 
-      // Expand all nodes
+      // Collect all node IDs for expansion
       const collectNodeIds = (node: QANode): string[] => {
         return [node.id, ...node.children.flatMap(collectNodeIds)];
       };
 
+      // Expand all nodes from both main tree and extensions
       const allNodeIds = new Set([...mainRoots, ...extensions].flatMap(collectNodeIds));
       setExpandedNodes(allNodeIds);
 
