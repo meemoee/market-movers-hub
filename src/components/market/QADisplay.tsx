@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -819,6 +819,40 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return rootExtensions.filter(ext => ext.originalNodeId === nodeId);
   };
 
+  // Function to evaluate QA pairs that was missing
+  async function evaluateQAPair(node: QANode) {
+    try {
+      const { data: evaluationData, error: evaluationError } = await supabase.functions.invoke('evaluate-qa-pair', {
+        body: { 
+          question: node.question,
+          analysis: node.analysis
+        }
+      });
+
+      if (evaluationError) throw evaluationError;
+
+      // Update the node with evaluation data
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(n => {
+            if (n.id === node.id) {
+              return { ...n, evaluation: evaluationData };
+            }
+            if (n.children.length > 0) {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
+      });
+
+      return evaluationData;
+    } catch (error) {
+      console.error('Evaluation error:', error);
+      throw error;
+    }
+  }
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -879,24 +913,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             {depth > 0 && (
               <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
             )}
-            <div className="absolute left-[12px] sm:left-[24px] top-0">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
-                <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start">
-                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
-                  {node.question}
-                  {hasExtensions && (
-                    <span className="ml-2 text-xs text-muted-foreground">
-                      ({nodeExtensions.length} follow-up {nodeExtensions.length === 1 ? 'analysis' : 'analyses'})
-                    </span>
-                  )}
-                </h3>
-              </div>
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
-                <div className="flex items-start gap-2">
-                  <button className="mt-1 hover:bg-accent/5
+            <div className="absolute left-[
