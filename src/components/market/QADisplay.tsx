@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -212,6 +213,155 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
     
     return combinedContent;
+  };
+
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      return newSet;
+    });
+  };
+
+  async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
+    let accumulatedContent = '';
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const decoded = new TextDecoder().decode(value);
+        buffer += decoded;
+
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        
+        for (const part of parts) {
+          if (part.trim()) {
+            const { content } = cleanStreamContent(part);
+            if (content) {
+              accumulatedContent += content;
+              setStreamingContent(prev => ({
+                ...prev,
+                [nodeId]: {
+                  content: accumulatedContent,
+                  citations: [],
+                },
+              }));
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error processing stream:', error);
+      throw error;
+    }
+
+    return accumulatedContent;
+  }
+
+  const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
+    if (depth >= 3) return;
+    const nodeId = `node-${Date.now()}-${depth}`;
+    setCurrentNodeId(nodeId);
+    setExpandedNodes(prev => new Set([...prev, nodeId]));
+
+    try {
+      setQaData(prev => {
+        const newNode: QANode = {
+          id: nodeId,
+          question,
+          analysis: '',
+          children: [],
+        };
+        if (!parentId) return [newNode];
+        const updateChildren = (nodes: QANode[]): QANode[] =>
+          nodes.map(node => {
+            if (node.id === parentId) return { ...node, children: [...node.children, newNode] };
+            if (node.children.length > 0) return { ...node, children: updateChildren(node.children) };
+            return node;
+          });
+        return updateChildren(prev);
+      });
+
+      setStreamingContent(prev => ({
+        ...prev,
+        [nodeId]: { content: '', citations: [] },
+      }));
+
+      const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
+      
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
+        body: JSON.stringify({ 
+          marketId, 
+          question, 
+          isFollowUp: false,
+          researchContext: selectedResearchData ? {
+            analysis: selectedResearchData.analysis,
+            probability: selectedResearchData.probability,
+            areasForResearch: selectedResearchData.areas_for_research
+          } : null
+        }),
+      });
+      
+      if (analysisError) throw analysisError;
+
+      const reader = new Response(analysisData.body).body?.getReader();
+      if (!reader) throw new Error('Failed to create reader');
+
+      const analysis = await processStream(reader, nodeId);
+
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(n => {
+            if (n.id === nodeId) {
+              return { ...n, analysis };
+            }
+            if (n.children.length > 0) {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
+      });
+
+      if (!parentId) {
+        const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
+          body: JSON.stringify({ 
+            marketId, 
+            question, 
+            parentContent: analysis,
+            isFollowUp: true,
+            researchContext: selectedResearchData ? {
+              analysis: selectedResearchData.analysis,
+              probability: selectedResearchData.probability,
+              areasForResearch: selectedResearchData.areas_for_research
+            } : null
+          }),
+        });
+        
+        if (followUpError) throw followUpError;
+
+        for (const item of followUpData) {
+          if (item?.question) {
+            await analyzeQuestion(item.question, nodeId, depth + 1);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Analysis error:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: error instanceof Error ? error.message : "Failed to analyze the question",
+      });
+    }
   };
 
   const handleExpandQuestion = async (node: QANode) => {
