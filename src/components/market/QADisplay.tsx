@@ -106,16 +106,48 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         evaluation: node.evaluation
       });
 
-      const originalTree = navigationHistory[0] || [];
+      const originalTree = navigationHistory.length > 0 ? navigationHistory[0] : [];
       const currentView = qaData;
       
-      const treeToSave = originalTree.length > 0 ? 
-        [...originalTree, ...currentView] : currentView;
+      console.log('Save Debug - Original Tree:', {
+        hasNavigationHistory: navigationHistory.length > 0,
+        originalTreeLength: originalTree.length,
+        originalTreeNodes: originalTree.map(n => ({ id: n.id, question: n.question }))
+      });
 
-      console.log('Saving tree structure:', {
-        originalTreeNodes: originalTree.length,
-        currentViewNodes: currentView.length,
-        totalNodes: treeToSave.length
+      console.log('Save Debug - Current View:', {
+        currentViewLength: currentView.length,
+        currentViewNodes: currentView.map(n => ({ 
+          id: n.id, 
+          question: n.question,
+          isExtendedRoot: n.isExtendedRoot,
+          originalNodeId: n.originalNodeId
+        }))
+      });
+
+      console.log('Save Debug - Root Extensions:', {
+        extensionsLength: rootExtensions.length,
+        extensions: rootExtensions.map(n => ({
+          id: n.id,
+          question: n.question,
+          isExtendedRoot: n.isExtendedRoot,
+          originalNodeId: n.originalNodeId
+        }))
+      });
+
+      const treeToSave = [
+        ...originalTree,
+        ...currentView.filter(node => !originalTree.some(orig => orig.id === node.id))
+      ];
+
+      console.log('Save Debug - Final Tree:', {
+        totalNodes: treeToSave.length,
+        nodes: treeToSave.map(n => ({
+          id: n.id,
+          question: n.question,
+          isExtendedRoot: n.isExtendedRoot,
+          originalNodeId: n.originalNodeId
+        }))
       });
 
       const serializedData = treeToSave.map(serializeNode);
@@ -135,7 +167,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${treeToSave.length} nodes`,
+        description: `Saved QA tree with ${treeToSave.length} nodes (${originalTree.length} original + ${currentView.length} current)`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
@@ -372,7 +404,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const loadSavedQATree = async (treeData: any[]) => {
-    console.log('Loading QA tree with nodes:', treeData.length);
+    console.log('Load Debug - Initial Data:', {
+      totalNodes: treeData.length,
+      nodes: treeData.map(n => ({
+        id: n.id,
+        question: n.question,
+        isExtendedRoot: n.isExtendedRoot,
+        originalNodeId: n.originalNodeId
+      }))
+    });
     
     try {
       setStreamingContent({});
@@ -393,25 +433,39 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const deserializedNodes = treeData.map(deserializeNode);
       
-      const originalNodes = deserializedNodes.filter(node => 
-        !node.originalNodeId && !node.isExtendedRoot
-      );
+      const baseTree = deserializedNodes.filter(node => !node.isExtendedRoot);
+      
+      const isChildNode = (nodeId: string) => {
+        return baseTree.some(node => 
+          node.children.some(child => child.id === nodeId)
+        );
+      };
+      
+      const rootNodes = baseTree.filter(node => !isChildNode(node.id));
+      const extensions = deserializedNodes.filter(node => node.isExtendedRoot);
 
-      const extensions = deserializedNodes.filter(node => 
-        node.isExtendedRoot
-      );
-
-      console.log('Tree structure:', {
+      console.log('Load Debug - Tree Structure:', {
         totalNodes: deserializedNodes.length,
-        originalNodes: originalNodes.length,
-        extensions: extensions.length
+        baseTreeNodes: baseTree.length,
+        rootNodes: rootNodes.length,
+        extensions: extensions.length,
+        rootNodeDetails: rootNodes.map(n => ({
+          id: n.id,
+          question: n.question,
+          childrenCount: n.children.length
+        })),
+        extensionDetails: extensions.map(n => ({
+          id: n.id,
+          question: n.question,
+          originalNodeId: n.originalNodeId
+        }))
       });
 
-      if (originalNodes.length > 0) {
-        setQaData(originalNodes);
-        setRootExtensions(extensions);
-      } else {
-        console.error('No original tree found');
+      if (rootNodes.length === 0) {
+        console.error('Load Error - No root nodes found:', {
+          baseTreeNodes: baseTree,
+          allNodes: deserializedNodes
+        });
         toast({
           variant: "destructive",
           title: "Load Error",
@@ -420,13 +474,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return;
       }
 
+      setQaData(rootNodes);
+      setRootExtensions(extensions);
+
       const allNodeIds = new Set<string>();
       const collectNodeIds = (node: QANode) => {
         allNodeIds.add(node.id);
         node.children.forEach(collectNodeIds);
       };
-
-      originalNodes.forEach(collectNodeIds);
+      rootNodes.forEach(collectNodeIds);
       setExpandedNodes(allNodeIds);
 
       const streamContent: { [key: string]: StreamingContent } = {};
@@ -440,8 +496,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(populateContent);
       };
 
-      [...originalNodes, ...extensions].forEach(populateContent);
+      [...rootNodes, ...extensions].forEach(populateContent);
       setStreamingContent(streamContent);
+
+      console.log('Load Debug - Final State:', {
+        qaDataLength: rootNodes.length,
+        extensionsLength: extensions.length,
+        expandedNodesCount: allNodeIds.size,
+        streamingContentKeys: Object.keys(streamContent).length
+      });
 
     } catch (error) {
       console.error('Error loading QA tree:', error);
