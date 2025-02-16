@@ -249,11 +249,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         } : undefined
       });
 
-      // Combine main tree and extensions while preserving structure
+      // --- UPDATED CODE ---
+      // If we navigated into an extension, use the original (parent) qa tree from navigationHistory.
+      const baseTree = navigationHistory.length > 0 ? navigationHistory[0] : qaData;
+      // Combine the parent's tree with any extension nodes.
       const treeDataJson = [
-        ...qaData.map(convertNodeToJson),
+        ...baseTree.map(convertNodeToJson),
         ...rootExtensions.map(convertNodeToJson)
       ];
+      // ------------------
 
       const { data, error } = await supabase
         .from('qa_trees')
@@ -306,15 +310,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         totalNodes: treeData.length
       });
 
-      // --- NEW CODE ---
-      // If there are no main roots (i.e. the user had navigated into an extended subquestion),
-      // set the current view (qaData) to the most recent extension.
+      // If there are no main roots (i.e. the tree was saved from an extension navigation),
+      // use the extension node(s) for display.
       if (mainRoots.length === 0 && extensions.length > 0) {
         setQaData([extensions[extensions.length - 1]]);
       } else {
         setQaData(mainRoots);
       }
-      // ----------------
 
       setRootExtensions(extensions);
       
