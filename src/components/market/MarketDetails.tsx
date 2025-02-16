@@ -74,24 +74,6 @@ export function MarketDetails({
     enabled: !!marketId
   });
 
-  // Query for saved QA trees to get the most recent one
-  const { data: savedQATrees } = useQuery({
-    queryKey: ['saved-qa-trees', marketId],
-    queryFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('qa_trees')
-        .select('*')
-        .eq('market_id', marketId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return data;
-    },
-  });
-
   const isLoading = isPriceLoading || isEventsLoading;
 
   const formatLastUpdated = (timestamp?: number) => {
@@ -156,19 +138,10 @@ export function MarketDetails({
       {/* QA Tree Section */}
       <div className="mt-6 border-t border-border pt-4">
         <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
-        {savedQATrees && savedQATrees.length > 0 ? (
-          // Show only the most recently created QA tree
-          <QADisplay 
-            marketId={marketId} 
-            marketQuestion={question}
-            initialQATree={savedQATrees[0]}
-          />
-        ) : (
-          <QADisplay 
-            marketId={marketId} 
-            marketQuestion={question}
-          />
-        )}
+        <QADisplay 
+          marketId={marketId} 
+          marketQuestion={question}
+        />
       </div>
 
       {/* Similar Historical Events Section */}
