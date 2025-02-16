@@ -19,14 +19,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
 import { QANode, StreamingContent, QADisplayProps } from './qa/types';
 
-interface SavedResearch = Database['public']['Tables']['web_research']['Row'] & {
+interface SavedResearch extends Database['public']['Tables']['web_research']['Row'] {
   areas_for_research: string[];
   sources: string[];
-};
+}
 
-type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
+interface SavedQATree extends Database['public']['Tables']['qa_trees']['Row'] {
   tree_data: QANode[];
-};
+}
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
   console.log('QADisplay rendered with marketId:', marketId, 'and source component:', new Error().stack);
@@ -803,7 +803,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                   {getExtensionInfo(node)}
                 </h3>
               </div>
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={()={() => toggleNode(node.id)}>
+              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
                 <div className="flex items-start gap-2">
                   <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -895,4 +895,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   }
 
   return (
-    <Card className
+    <Card className="col-
