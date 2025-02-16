@@ -405,7 +405,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
 
       const deserializedNodes = treeData.map(deserializeNode);
-
+      
       const extensionMap = new Map<string, QANode[]>();
       const mainNodes: QANode[] = [];
       const extensions: QANode[] = [];
@@ -416,8 +416,22 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           nodeExtensions.push(node);
           extensionMap.set(node.originalNodeId, nodeExtensions);
           extensions.push(node);
-        } else if (!node.isExtendedRoot) {
-          mainNodes.push(node);
+        }
+      });
+
+      const processNode = (node: QANode): QANode => {
+        const processedNode = { ...node };
+        
+        if (node.children.length > 0) {
+          processedNode.children = node.children.map(processNode);
+        }
+
+        return processedNode;
+      };
+
+      deserializedNodes.forEach(node => {
+        if (!node.isExtendedRoot) {
+          mainNodes.push(processNode(node));
         }
       });
 
@@ -432,40 +446,34 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setQaData(mainNodes);
 
       const allNodeIds = new Set<string>();
-      const collectNodeIds = (nodes: QANode[]) => {
-        nodes.forEach(node => {
-          allNodeIds.add(node.id);
-          if (node.children.length > 0) {
-            collectNodeIds(node.children);
-          }
-          const nodeExtensions = extensionMap.get(node.id);
-          if (nodeExtensions) {
-            nodeExtensions.forEach(ext => allNodeIds.add(ext.id));
-          }
-        });
+      const collectNodeIds = (node: QANode) => {
+        allNodeIds.add(node.id);
+        
+        const nodeExtensions = extensionMap.get(node.id);
+        if (nodeExtensions) {
+          nodeExtensions.forEach(ext => allNodeIds.add(ext.id));
+        }
+
+        node.children.forEach(collectNodeIds);
       };
 
-      collectNodeIds(mainNodes);
-      collectNodeIds(extensions);
+      mainNodes.forEach(collectNodeIds);
+      extensions.forEach(collectNodeIds);
 
       setExpandedNodes(allNodeIds);
 
       const streamContent: { [key: string]: StreamingContent } = {};
-      const populateContent = (nodes: QANode[]) => {
-        nodes.forEach(node => {
-          if (node.analysis) {
-            streamContent[node.id] = {
-              content: node.analysis,
-              citations: node.citations || [],
-            };
-          }
-          if (node.children.length > 0) {
-            populateContent(node.children);
-          }
-        });
+      const populateContent = (node: QANode) => {
+        if (node.analysis) {
+          streamContent[node.id] = {
+            content: node.analysis,
+            citations: node.citations || [],
+          };
+        }
+        node.children.forEach(populateContent);
       };
 
-      populateContent([...mainNodes, ...extensions]);
+      [...mainNodes, ...extensions].forEach(populateContent);
       setStreamingContent(streamContent);
 
       console.log('Loaded tree state:', {
@@ -611,7 +619,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
-  const getNodeExtensions = (nodeId: string) => {
+  const getNodeExtensions = (nodeId: string): QANode[] => {
     return rootExtensions.filter(ext => ext.originalNodeId === nodeId);
   };
 
@@ -675,24 +683,28 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return '';
   };
 
-  function renderQANode(node: QANode, depth: number = 0) {
+  const renderNode = (node: QANode, depth: number) => {
+    const isExpanded = expandedNodes.has(node.id);
+    const nodeExtensions = getNodeExtensions(node.id);
+    const streamContent = streamingContent[node.id];
+
     return (
       <QANodeViewer
         key={node.id}
         node={node}
         depth={depth}
         isStreaming={currentNodeId === node.id}
-        streamContent={streamingContent[node.id]}
-        isExpanded={expandedNodes.has(node.id)}
-        nodeExtensions={getNodeExtensions(node.id)}
-        getExtensionInfo={getExtensionInfo}
+        streamContent={streamContent}
+        isExpanded={isExpanded}
+        nodeExtensions={nodeExtensions}
+        getExtensionInfo={(node) => ''}
         toggleNode={toggleNode}
         navigateToExtension={navigateToExtension}
         handleExpandQuestion={handleExpandQuestion}
-        renderSubNodes={renderQANode}
+        renderSubNodes={renderNode}
       />
     );
-  }
+  };
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
@@ -764,7 +776,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         </div>
       </div>
       <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
+        {qaData.map(node => renderNode(node))}
       </ScrollArea>
     </Card>
   );

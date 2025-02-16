@@ -1,4 +1,3 @@
-
 import { QANode, StreamingContent } from './types';
 import { MessageSquare, ChevronUp, ChevronDown, ArrowRight, ExternalLink } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -106,9 +105,9 @@ export function QANodeViewer({
               {/* Show expansion info and navigation */}
               <div className="flex items-center gap-2">
                 {nodeExtensions.length > 0 && (
-                  <Badge variant="outline" className="flex items-center gap-1">
+                  <Badge variant="outline" className="flex items-center gap-1 hover:bg-accent">
                     <ExternalLink className="h-3 w-3" />
-                    <span>Expanded {nodeExtensions.length}x</span>
+                    <span>View Extended Analysis</span>
                     <Button
                       variant="ghost"
                       size="sm"
