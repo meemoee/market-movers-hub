@@ -4,10 +4,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import ReactMarkdown from 'react-markdown';
-import type { Components as MarkdownComponents } from 'react-markdown';
-import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -16,41 +12,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database } from '@/integrations/supabase/types';
-
-interface QANode {
-  id: string;
-  question: string;
-  analysis: string;
-  citations?: string[];
-  children: QANode[];
-  isExtendedRoot?: boolean;
-  originalNodeId?: string;
-  evaluation?: {
-    score: number;
-    reason: string;
-  };
-}
-
-interface StreamingContent {
-  content: string;
-  citations: string[];
-}
-
-type SavedResearch = Database['public']['Tables']['web_research']['Row'] & {
-  areas_for_research: string[];
-  sources: string[];
-};
-
-type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
-  tree_data: QANode[];
-};
-
-interface QADisplayProps {
-  marketId: string;
-  marketQuestion: string;
-  marketDescription: string;
-}
+import { QANode, StreamingContent, SavedResearch, SavedQATree, QADisplayProps } from './qa/types';
+import { QANodeViewer } from './qa/QANodeViewer';
+import {
+  cleanStreamContent,
+  processStreamContent,
+  isCompleteMarkdown,
+  isLineComplete,
+  buildHistoryContext,
+  findParentNodes,
+  getPreviewText
+} from './qa/utils';
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
   console.log('QADisplay rendered with marketId:', marketId, 'and source component:', new Error().stack);
@@ -117,115 +89,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       })) || []) as SavedQATree[];
     },
   });
-
-  const isCompleteMarkdown = (text: string): boolean => {
-    const stack: string[] = [];
-    let inCode = false;
-    let inList = false;
-    let currentNumber = '';
-    
-    if (text.match(/[a-zA-Z]$/)) return false; // Ends with a letter
-    if (text.match(/\([^)]*$/)) return false; // Unclosed parenthesis
-    if (text.match(/\[[^\]]*$/)) return false; // Unclosed square bracket
-    
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      const nextChar = text[i + 1];
-      const prevChar = text[i - 1];
-      
-      if (char === '`' && nextChar === '`' && text[i + 2] === '`') {
-        inCode = !inCode;
-        i += 2;
-        continue;
-      }
-      
-      if (inCode) continue;
-      
-      if (/^\d$/.test(char)) {
-        currentNumber += char;
-        continue;
-      }
-      if (char === '.' && currentNumber !== '') {
-        inList = true;
-        currentNumber = '';
-        continue;
-      }
-      
-      if (char === '\n') {
-        inList = false;
-        currentNumber = '';
-      }
-      
-      if ((char === '*' || char === '_')) {
-        if (nextChar === char) {
-          if (stack.length > 0 && stack[stack.length - 1] === char + char) {
-            stack.pop();
-          } else {
-            stack.push(char + char);
-          }
-          i++; // Skip next character
-        } else {
-          if (stack.length > 0 && stack[stack.length - 1] === char) {
-            stack.pop();
-          } else {
-            stack.push(char);
-          }
-        }
-      }
-    }
-    
-    return stack.length === 0 && !inCode && !inList;
-  };
-
-  const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
-    try {
-      let dataStr = chunk;
-      if (dataStr.startsWith('data: ')) {
-        dataStr = dataStr.slice(6);
-      }
-      dataStr = dataStr.trim();
-      
-      if (dataStr === '[DONE]') {
-        return { content: '', citations: [] };
-      }
-      
-      const parsed = JSON.parse(dataStr);
-      const content = parsed.choices?.[0]?.delta?.content || 
-                     parsed.choices?.[0]?.message?.content || '';
-      return { content, citations: [] };
-    } catch (e) {
-      console.debug('Chunk parse error (expected during streaming):', e);
-      return { content: '', citations: [] };
-    }
-  };
-
-  const processStreamContent = (content: string, prevContent: string = ''): string => {
-    let combinedContent = prevContent + content;
-    
-    combinedContent = combinedContent
-      .replace(/\*\*\s*\*\*/g, '') // Remove empty bold tags
-      .replace(/\*\s*\*/g, '') // Remove empty italic tags
-      .replace(/`\s*`/g, '') // Remove empty code tags
-      .replace(/\[\s*\]/g, '') // Remove empty links
-      .replace(/\(\s*\)/g, '') // Remove empty parentheses
-      .replace(/:{2,}/g, ':') // Fix multiple colons
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
-    
-    if (combinedContent.match(/[a-zA-Z]$/)) {
-      combinedContent += '.';
-    }
-    
-    return combinedContent;
-  };
-
-  const getExtensionInfo = (node: QANode): string => {
-    if (!node.isExtendedRoot) {
-      const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.id).length;
-      return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
-    }
-    return '';
-  };
 
   async function saveQATree() {
     try {
@@ -501,29 +364,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     });
   };
 
-  const renderCitations = (citations?: string[]) => {
-    if (!citations || citations.length === 0) return null;
-    return (
-      <div className="mt-2 space-y-1">
-        <div className="text-xs text-muted-foreground font-medium">Sources:</div>
-        <div className="flex flex-wrap gap-2">
-          {citations.map((citation, index) => (
-            <a
-              key={index}
-              href={citation}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-            >
-              <LinkIcon className="h-3 w-3" />
-              {`[${index + 1}]`}
-            </a>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   const populateStreamingContent = (nodes: QANode[]) => {
     nodes.forEach(node => {
       setStreamingContent(prev => ({
@@ -653,12 +493,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         description: "Failed to load the QA tree",
       });
     }
-  };
-
-  const getPreviewText = (text: string) => {
-    const strippedText = text.replace(/[#*`_]/g, '');
-    const preview = strippedText.slice(0, 150);
-    return preview.length < strippedText.length ? `${preview}...` : preview;
   };
 
   const buildHistoryContext = (node: QANode, parentNodes: QANode[] = []): string => {
@@ -857,166 +691,30 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
+  const getExtensionInfo = (node: QANode): string => {
+    if (!node.isExtendedRoot) {
+      const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.id).length;
+      return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
+    }
+    return '';
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
-    const isStreaming = currentNodeId === node.id;
-    const streamContent = streamingContent[node.id];
-    const isExpanded = expandedNodes.has(node.id);
-    const analysisContent = isStreaming ? streamContent?.content : node.analysis;
-    const citations = isStreaming ? streamContent?.citations : node.citations;
-    
-    const nodeExtensions = getNodeExtensions(node.id);
-    
-    const markdownComponents: MarkdownComponents = {
-      p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-      code: ({ children, className }) => {
-        const isInline = !className;
-        return isInline ? (
-          <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
-        ) : (
-          <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
-            {children}
-          </code>
-        );
-      },
-      ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-      ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-      li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-      blockquote: ({ children }) => (
-        <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-      ),
-      a: ({ href, children }) => (
-        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-          {children}
-        </a>
-      ),
-      em: ({ children }) => <em className="italic">{children}</em>,
-      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-      h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-      h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-      hr: () => <hr className="my-4 border-muted" />,
-    };
-
-    const getScoreBackgroundColor = (score: number) => {
-      if (score >= 80) return 'bg-green-500/20';
-      if (score >= 60) return 'bg-yellow-500/20';
-      return 'bg-red-500/20';
-    };
-
     return (
-      <div key={node.id} className="relative flex flex-col">
-        <div className="flex items-stretch">
-          {depth > 0 && (
-            <div className="relative w-6 sm:w-9 flex-shrink-0">
-              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
-            </div>
-          )}
-          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
-            {depth > 0 && (
-              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
-            )}
-            <div className="absolute left-[12px] sm:left-[24px] top-0">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
-                <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start">
-                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
-                  {node.question}
-                  {getExtensionInfo(node)}
-                </h3>
-              </div>
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
-                <div className="flex items-start gap-2">
-                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                  <div className="flex-1">
-                    {isExpanded ? (
-                      <>
-                        <ReactMarkdown
-                          components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent}
-                        </ReactMarkdown>
-                        {renderCitations(citations)}
-                        
-                        <div className="mt-4 space-y-2">
-                          {node.evaluation && (
-                            <div className={`rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs font-medium">
-                                  Score: {node.evaluation.score}%
-                                </div>
-                                {!node.isExtendedRoot && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleExpandQuestion(node);
-                                    }}
-                                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                                    title="Expand this question into a follow-up analysis"
-                                  >
-                                    <ArrowRight className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                              <ReactMarkdown
-                                components={markdownComponents}
-                                className="text-xs text-muted-foreground"
-                              >
-                                {node.evaluation.reason}
-                              </ReactMarkdown>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <QANodeViewer
+        key={node.id}
+        node={node}
+        depth={depth}
+        isStreaming={currentNodeId === node.id}
+        streamContent={streamingContent[node.id]}
+        isExpanded={expandedNodes.has(node.id)}
+        nodeExtensions={getNodeExtensions(node.id)}
+        getExtensionInfo={getExtensionInfo}
+        toggleNode={toggleNode}
+        navigateToExtension={navigateToExtension}
+        handleExpandQuestion={handleExpandQuestion}
+        renderSubNodes={renderQANode}
+      />
     );
   }
 
@@ -1056,7 +754,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             value={selectedQATree}
             onValueChange={(value) => {
               setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
+              setNavigationHistory([]);
               if (value !== 'none') {
                 const tree = savedQATrees?.find(t => t.id === value);
                 if (tree) {
