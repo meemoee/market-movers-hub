@@ -306,8 +306,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         totalNodes: treeData.length
       });
 
-      // Set main tree and extensions
-      setQaData(mainRoots);
+      // --- NEW CODE ---
+      // If there are no main roots (i.e. the user had navigated into an extended subquestion),
+      // set the current view (qaData) to the most recent extension.
+      if (mainRoots.length === 0 && extensions.length > 0) {
+        setQaData([extensions[extensions.length - 1]]);
+      } else {
+        setQaData(mainRoots);
+      }
+      // ----------------
+
       setRootExtensions(extensions);
       
       // Helper function to recursively populate streaming content
