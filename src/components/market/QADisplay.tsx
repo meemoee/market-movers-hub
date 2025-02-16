@@ -296,6 +296,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(null);
       setNavigationHistory([]);
       
+      const allNodes = new Set<string>();
+      
+      const addAllNodes = (node: QANode) => {
+        allNodes.add(node.id);
+        if (node.children && node.children.length > 0) {
+          node.children.forEach(child => addAllNodes(child));
+        }
+      };
+
       const mainRoots = treeData.filter(node => !node.isExtendedRoot);
       const extensions = treeData.filter(node => node.isExtendedRoot);
       
@@ -307,32 +316,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       if (mainRoots.length === 0 && extensions.length > 0) {
         const extensionNode = extensions[extensions.length - 1];
-        
-        const allNodes = new Set<string>();
-        
-        const addAllNodes = (node: QANode) => {
-          allNodes.add(node.id);
-          if (node.children && node.children.length > 0) {
-            node.children.forEach(child => addAllNodes(child));
-          }
-        };
-        
         addAllNodes(extensionNode);
         setExpandedNodes(allNodes);
         setQaData([extensionNode]);
       } else {
-        const allNodes = new Set<string>();
-        
-        const addAllNodes = (node: QANode) => {
-          allNodes.add(node.id);
-          if (node.children && node.children.length > 0) {
-            node.children.forEach(child => addAllNodes(child));
-          }
-        };
-        
         mainRoots.forEach(node => addAllNodes(node));
         extensions.forEach(node => addAllNodes(node));
-        
         setExpandedNodes(allNodes);
         setQaData(mainRoots);
       }
