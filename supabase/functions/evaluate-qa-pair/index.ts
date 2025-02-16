@@ -30,11 +30,15 @@ serve(async (req) => {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "google/gemini-pro",
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. Provide a score between 0 and 100 and a brief reason for the score."
+            content: `You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. Your response must be valid JSON in this exact format:
+{
+  "score": number between 0 and 100,
+  "reason": "string explaining the score"
+}`
           },
           {
             role: "user",
@@ -46,10 +50,11 @@ Please evaluate how well this analysis answers the follow-up question:
 
 Question: ${question}
 
-Analysis: ${analysis}`
+Analysis: ${analysis}
+
+Remember to respond with valid JSON only, no other text or formatting.`
           }
-        ],
-        response_format: { type: "json_object" }
+        ]
       })
     })
 
@@ -62,36 +67,52 @@ Analysis: ${analysis}`
     console.log('OpenRouter API response:', JSON.stringify(data))
     
     try {
-      const evaluation = JSON.parse(data.choices[0].message.content)
-      console.log('Parsed evaluation:', evaluation)
+      let evaluation;
+      const content = data.choices[0].message.content;
+      console.log('Raw content:', content);
+
+      try {
+        // First try parsing as is
+        evaluation = JSON.parse(content);
+      } catch (e) {
+        // If that fails, try to extract JSON from the content
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          evaluation = JSON.parse(jsonMatch[0]);
+        } else {
+          throw new Error('No valid JSON found in response');
+        }
+      }
+
+      console.log('Parsed evaluation:', evaluation);
 
       // Validate the evaluation object structure
       if (typeof evaluation !== 'object' || evaluation === null) {
-        throw new Error('Evaluation must be an object')
+        throw new Error('Evaluation must be an object');
       }
 
       if (!('score' in evaluation) || typeof evaluation.score !== 'number') {
-        throw new Error('Invalid score format')
+        throw new Error('Invalid score format');
       }
 
       if (!('reason' in evaluation) || typeof evaluation.reason !== 'string') {
-        throw new Error('Invalid reason format')
+        throw new Error('Invalid reason format');
       }
 
       // Ensure score is between 0 and 100
-      evaluation.score = Math.max(0, Math.min(100, evaluation.score))
+      evaluation.score = Math.max(0, Math.min(100, evaluation.score));
 
       return new Response(JSON.stringify(evaluation), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } catch (error) {
-      console.error('Error parsing evaluation:', error)
-      console.error('Problematic evaluation text:', data.choices[0].message.content)
-      throw new Error(`Invalid evaluation format: ${error.message}`)
+      console.error('Error parsing evaluation:', error);
+      console.error('Problematic evaluation text:', data.choices[0].message.content);
+      throw new Error(`Invalid evaluation format: ${error.message}`);
     }
 
   } catch (error) {
-    console.error('Error in evaluate-qa-pair function:', error)
+    console.error('Error in evaluate-qa-pair function:', error);
     return new Response(
       JSON.stringify({ 
         error: error.message,
