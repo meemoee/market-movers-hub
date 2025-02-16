@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 
 interface QANode {
   id: string;
@@ -51,13 +53,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         } : undefined
       });
 
-      // Get all trees including history and current state
       const allTrees = navigationHistory.length > 0 ? [...navigationHistory] : [];
       if (!allTrees.some(tree => tree[0]?.id === qaData[0]?.id)) {
         allTrees.push(qaData);
       }
 
-      // Create sequence data to track relationships
       const sequenceData = allTrees.map((tree, index) => ({
         treeIndex: index,
         rootNodeId: tree[0]?.id,
@@ -70,7 +70,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           }))
       }));
 
-      // Combine all nodes into a single array
       let treesToSave = allTrees.flatMap(tree => tree);
       rootExtensions.forEach(extension => {
         if (!treesToSave.some(node => node.id === extension.id)) {
@@ -133,7 +132,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(null);
       setNavigationHistory([]);
       
-      // Build node map for quick lookup
       const nodeMap = new Map<string, QANode>();
       treeData.forEach(node => {
         nodeMap.set(node.id, node);
@@ -148,16 +146,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         mapChildren(node);
       });
 
-      // Use sequence data to reconstruct the tree hierarchy
       if (sequenceData && sequenceData.length > 0) {
-        // Start with the main tree
         const mainSequence = sequenceData.find(seq => seq.isMain);
         if (mainSequence && mainSequence.rootNodeId) {
           const mainRoot = nodeMap.get(mainSequence.rootNodeId);
           if (mainRoot) {
             setQaData([mainRoot]);
             
-            // Set up navigation history based on sequence
             const orderedTrees = sequenceData
               .filter(seq => seq.rootNodeId)
               .map(seq => {
@@ -170,7 +165,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           }
         }
 
-        // Set up extensions
         const extensions = treeData.filter(node => 
           node.isExtendedRoot && 
           sequenceData.some(seq => 
@@ -179,7 +173,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         );
         setRootExtensions(extensions);
       } else {
-        // Fallback to previous loading logic
         const mainRoots = treeData.filter(node => !node.isExtendedRoot);
         const extensions = treeData.filter(node => node.isExtendedRoot);
         
@@ -193,7 +186,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         setRootExtensions(extensions);
       }
 
-      // Set up expanded nodes and content
       const allNodes = new Set<string>();
       const populateNodeContent = (node: QANode) => {
         allNodes.add(node.id);
@@ -230,5 +222,71 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
-  return null;
+  const renderNode = (node: QANode) => {
+    const isExpanded = expandedNodes.has(node.id);
+    const content = streamingContent[node.id];
+    const hasChildren = node.children && node.children.length > 0;
+
+    return (
+      <div key={node.id} className="mb-4">
+        <Card className="p-4 hover:shadow-md transition-shadow">
+          <div className="space-y-2">
+            <h3 className="font-medium text-lg">{node.question}</h3>
+            
+            {content && (
+              <div className="prose prose-sm max-w-none dark:prose-invert mt-2">
+                {content.content}
+                {content.citations && content.citations.length > 0 && (
+                  <div className="mt-2">
+                    <h4 className="text-sm font-medium">Citations:</h4>
+                    <ul className="list-disc pl-5 text-sm">
+                      {content.citations.map((citation, index) => (
+                        <li key={index}>{citation}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {node.evaluation && (
+              <div className="mt-2 p-2 bg-muted rounded-md">
+                <p className="text-sm">
+                  <span className="font-medium">Evaluation Score: </span>
+                  {node.evaluation.score}
+                </p>
+                <p className="text-sm mt-1">
+                  <span className="font-medium">Reason: </span>
+                  {node.evaluation.reason}
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {hasChildren && isExpanded && (
+          <div className="ml-8 mt-2 space-y-4 border-l-2 border-muted pl-4">
+            {node.children!.map(child => renderNode(child))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  if (!qaData.length) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-4">
+      {qaData.map(node => renderNode(node))}
+      
+      {rootExtensions.length > 0 && (
+        <div className="mt-8">
+          <h3 className="text-lg font-medium mb-4">Extended Analysis</h3>
+          {rootExtensions.map(node => renderNode(node))}
+        </div>
+      )}
+    </div>
+  );
 }
