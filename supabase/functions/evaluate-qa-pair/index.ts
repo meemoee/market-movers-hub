@@ -34,7 +34,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. Provide a score between 0 and 100 and a brief reason for the score."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. You MUST respond with a JSON object containing a 'score' number between 0 and 100 and a 'reason' string explaining the score. Example format: {\"score\": 85, \"reason\": \"The analysis is thorough...\"}"
           },
           {
             role: "user",
@@ -65,13 +65,22 @@ Analysis: ${analysis}`
       const evaluation = JSON.parse(data.choices[0].message.content)
       console.log('Parsed evaluation:', evaluation)
 
-      // Validate the evaluation object structure
+      // Enhanced validation
       if (typeof evaluation !== 'object' || evaluation === null) {
         throw new Error('Evaluation must be an object')
       }
 
-      if (!('score' in evaluation) || typeof evaluation.score !== 'number') {
-        throw new Error('Invalid score format')
+      if (!('score' in evaluation)) {
+        throw new Error('Missing score field')
+      }
+
+      if (typeof evaluation.score !== 'number') {
+        // Try to convert string to number if possible
+        const numericScore = Number(evaluation.score)
+        if (isNaN(numericScore)) {
+          throw new Error('Invalid score format: must be a number')
+        }
+        evaluation.score = numericScore
       }
 
       if (!('reason' in evaluation) || typeof evaluation.reason !== 'string') {
