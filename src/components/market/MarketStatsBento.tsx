@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,6 +22,7 @@ interface NewsArticle {
   position: number;
   gradient_start_rgb: string | null;
   gradient_end_rgb: string | null;
+  updated_at: string;
 }
 
 const PLACEHOLDER_PROFILES = [
