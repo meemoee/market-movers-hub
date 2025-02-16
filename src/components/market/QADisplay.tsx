@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -19,12 +20,15 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
 import { QANode, StreamingContent, QADisplayProps } from './qa/types';
 
-interface SavedResearch extends Database['public']['Tables']['web_research']['Row'] {
+type WebResearchRow = Database['public']['Tables']['web_research']['Row'];
+type QATreeRow = Database['public']['Tables']['qa_trees']['Row'];
+
+interface SavedResearch extends WebResearchRow {
   areas_for_research: string[];
   sources: string[];
 }
 
-interface SavedQATree extends Database['public']['Tables']['qa_trees']['Row'] {
+interface SavedQATree extends QATreeRow {
   tree_data: QANode[];
 }
 
