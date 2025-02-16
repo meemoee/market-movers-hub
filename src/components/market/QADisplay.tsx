@@ -251,24 +251,31 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         } : undefined
       });
 
-      let treesToSave: QANode[] = [];
-
-      const allTrees = navigationHistory.length > 0 ? [...navigationHistory] : [];
+      const allTrees = [...navigationHistory];
       
-      if (!allTrees.some(tree => tree[0]?.id === qaData[0]?.id)) {
+      if (!allTrees.length || allTrees[allTrees.length - 1][0]?.id !== qaData[0]?.id) {
         allTrees.push(qaData);
       }
 
-      treesToSave = allTrees.flatMap(tree => tree);
+      const processedNodes = new Map<string, QANode>();
+      
+      allTrees.forEach(tree => {
+        tree.forEach(node => {
+          if (!processedNodes.has(node.id)) {
+            processedNodes.set(node.id, node);
+          }
+        });
+      });
 
       rootExtensions.forEach(extension => {
-        if (!treesToSave.some(node => node.id === extension.id)) {
-          treesToSave.push(extension);
+        if (!processedNodes.has(extension.id)) {
+          processedNodes.set(extension.id, extension);
         }
       });
 
+      const treesToSave = Array.from(processedNodes.values());
       const treeDataJson = treesToSave.map(convertNodeToJson);
-      
+
       console.log('Saving complete QA tree structure:', {
         totalNodes: treeDataJson.length,
         navigationHistoryDepth: navigationHistory.length,
@@ -690,6 +697,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const nodeId = `node-${Date.now()}-0`;
       setCurrentNodeId(nodeId);
       setExpandedNodes(prev => new Set([...prev, nodeId]));
+
+      setNavigationHistory(prev => [...prev, qaData]);
 
       const newRootNode: QANode = {
         id: nodeId,
