@@ -95,55 +95,31 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      const serializeNode = (node: QANode): Record<string, any> => {
-        return {
-          id: node.id,
-          question: node.question,
-          analysis: node.analysis || '',
-          children: Array.isArray(node.children) ? node.children.map(serializeNode) : [],
-          citations: Array.isArray(node.citations) ? node.citations : [],
-          isExtendedRoot: Boolean(node.isExtendedRoot),
-          originalNodeId: node.originalNodeId || null,
-          evaluation: node.evaluation ? {
-            score: Number(node.evaluation.score),
-            reason: String(node.evaluation.reason)
-          } : null
-        };
-      };
-
-      const allHistoryNodes = navigationHistory.flatMap(tree => tree);
-      const currentNodes = qaData;
-
-      const allNodes = [
-        ...allHistoryNodes,
-        ...currentNodes,
-        ...rootExtensions
-      ];
-
-      const uniqueNodes = Array.from(
-        new Map(allNodes.map(node => [node.id, node])).values()
-      );
-
-      const getAllChildren = (node: QANode): QANode[] => {
-        const children = node.children || [];
-        return [node, ...children.flatMap(child => getAllChildren(child))];
-      };
-
-      const completeNodeSet = uniqueNodes.flatMap(node => getAllChildren(node));
-      const uniqueCompleteNodes = Array.from(
-        new Map(completeNodeSet.map(node => [node.id, node])).values()
-      );
-      
-      console.log('Saving tree data:', {
-        historyNodesCount: allHistoryNodes.length,
-        currentNodesCount: currentNodes.length,
-        rootExtensionsCount: rootExtensions.length,
-        uniqueNodesCount: uniqueNodes.length,
-        completeNodesCount: uniqueCompleteNodes.length
+      const serializeNode = (node: QANode): Record<string, any> => ({
+        id: node.id,
+        question: node.question,
+        analysis: node.analysis || '',
+        children: node.children.map(serializeNode),
+        citations: node.citations || [],
+        isExtendedRoot: Boolean(node.isExtendedRoot),
+        originalNodeId: node.originalNodeId || null,
+        evaluation: node.evaluation
       });
 
-      const serializedData = uniqueCompleteNodes.map(serializeNode);
+      const originalTree = navigationHistory[0] || [];
+      const currentView = qaData;
       
+      const treeToSave = originalTree.length > 0 ? 
+        [...originalTree, ...currentView] : currentView;
+
+      console.log('Saving tree structure:', {
+        originalTreeNodes: originalTree.length,
+        currentViewNodes: currentView.length,
+        totalNodes: treeToSave.length
+      });
+
+      const serializedData = treeToSave.map(serializeNode);
+
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
@@ -159,7 +135,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved complete QA tree with ${uniqueCompleteNodes.length} nodes`,
+        description: `Saved QA tree with ${treeToSave.length} nodes`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
@@ -396,7 +372,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const loadSavedQATree = async (treeData: any[]) => {
-    console.log('Loading saved QA tree with raw data:', treeData);
+    console.log('Loading QA tree with nodes:', treeData.length);
     
     try {
       setStreamingContent({});
@@ -412,29 +388,30 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         citations: Array.isArray(node.citations) ? node.citations : [],
         isExtendedRoot: Boolean(node.isExtendedRoot),
         originalNodeId: node.originalNodeId || null,
-        evaluation: node.evaluation ? {
-          score: Number(node.evaluation.score),
-          reason: String(node.evaluation.reason)
-        } : null
+        evaluation: node.evaluation
       });
-
-      if (!Array.isArray(treeData)) {
-        throw new Error('Invalid tree data: not an array');
-      }
 
       const deserializedNodes = treeData.map(deserializeNode);
-      console.log('Deserialized nodes:', deserializedNodes);
+      
+      const originalNodes = deserializedNodes.filter(node => 
+        !node.originalNodeId && !node.isExtendedRoot
+      );
 
-      const rootNodes = deserializedNodes.filter(node => {
-        const isRoot = !node.originalNodeId;
-        console.log(`Node ${node.id} is root? ${isRoot}`, node);
-        return isRoot;
+      const extensions = deserializedNodes.filter(node => 
+        node.isExtendedRoot
+      );
+
+      console.log('Tree structure:', {
+        totalNodes: deserializedNodes.length,
+        originalNodes: originalNodes.length,
+        extensions: extensions.length
       });
 
-      console.log('Root nodes found:', rootNodes);
-
-      if (rootNodes.length === 0) {
-        console.error('No root nodes found in tree data:', deserializedNodes);
+      if (originalNodes.length > 0) {
+        setQaData(originalNodes);
+        setRootExtensions(extensions);
+      } else {
+        console.error('No original tree found');
         toast({
           variant: "destructive",
           title: "Load Error",
@@ -443,22 +420,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return;
       }
 
-      const extensions = deserializedNodes.filter(node => node.isExtendedRoot);
-      console.log('Found extensions:', extensions);
-
-      console.log('Setting main tree:', rootNodes);
-      setQaData(rootNodes);
-
-      console.log('Setting extensions:', extensions);
-      setRootExtensions(extensions);
-
       const allNodeIds = new Set<string>();
       const collectNodeIds = (node: QANode) => {
         allNodeIds.add(node.id);
         node.children.forEach(collectNodeIds);
       };
 
-      rootNodes.forEach(collectNodeIds);
+      originalNodes.forEach(collectNodeIds);
       setExpandedNodes(allNodeIds);
 
       const streamContent: { [key: string]: StreamingContent } = {};
@@ -472,15 +440,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(populateContent);
       };
 
-      [...rootNodes, ...extensions].forEach(populateContent);
+      [...originalNodes, ...extensions].forEach(populateContent);
       setStreamingContent(streamContent);
-
-      console.log('Loaded tree state:', {
-        rootNodes,
-        extensions,
-        expandedNodes: Array.from(allNodeIds),
-        streamingContent: Object.keys(streamContent).length
-      });
 
     } catch (error) {
       console.error('Error loading QA tree:', error);
