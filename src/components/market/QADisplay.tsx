@@ -232,38 +232,33 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
+      // Prepare all nodes for saving, including main tree and extensions
       const mainTree = qaData;
       const allNodes = [...mainTree, ...rootExtensions];
 
-      console.log('Saving tree data:', {
-        mainTree,
-        extensions: rootExtensions,
-        totalNodes: allNodes.length
-      });
+      // Helper function to convert a node to a serializable format
+      const serializeNode = (node: QANode): Record<string, any> => {
+        const serialized = {
+          ...node,
+          children: node.children.map(serializeNode),
+          evaluation: node.evaluation ? { ...node.evaluation } : null,
+          citations: node.citations || [],
+          isExtendedRoot: node.isExtendedRoot || false
+        };
+        return serialized;
+      };
 
-      // Helper function to convert QANode to plain object recursively
-      const convertNodeToJson = (node: QANode): Record<string, any> => ({
-        id: node.id,
-        question: node.question,
-        analysis: node.analysis,
-        citations: node.citations || [],
-        children: node.children ? node.children.map(convertNodeToJson) : [],
-        isExtendedRoot: node.isExtendedRoot || false,
-        originalNodeId: node.originalNodeId,
-        evaluation: node.evaluation ? {
-          score: node.evaluation.score,
-          reason: node.evaluation.reason
-        } : undefined
-      });
-
-      const treeDataJson = allNodes.map(convertNodeToJson);
+      // Serialize all nodes
+      const serializedData = allNodes.map(serializeNode);
+      
+      console.log('Saving tree data:', serializedData);
 
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
           market_id: marketId,
           title: marketQuestion,
-          tree_data: treeDataJson,
+          tree_data: serializedData,
           user_id: user.user.id
         })
         .select()
@@ -535,95 +530,75 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     });
   };
 
-  const loadSavedQATree = async (treeData: QANode[]) => {
+  const loadSavedQATree = async (treeData: any[]) => {
     console.log('Loading saved QA tree with raw data:', treeData);
     
     try {
-      // Reset all states first
+      // Reset states
       setStreamingContent({});
       setExpandedNodes(new Set());
       setCurrentNodeId(null);
       setNavigationHistory([]);
-      
-      // Find the main root nodes and extension nodes
-      const mainRoots = treeData.filter(node => !node.isExtendedRoot);
-      const extensions = treeData.filter(node => node.isExtendedRoot);
-      
-      console.log('Processing tree structure:', {
-        mainRoots,
-        extensions,
-        totalNodes: treeData.length
-      });
 
-      // First set the main tree data
-      setQaData(mainRoots);
-      // Then set the extensions
-      setRootExtensions(extensions);
-      
-      // Helper function to recursively populate streaming content
-      const populateNodeContent = (node: QANode) => {
-        console.log('Populating content for node:', {
+      // Helper function to restore node structure
+      const deserializeNode = (node: any): QANode => {
+        return {
           id: node.id,
           question: node.question,
-          hasAnalysis: !!node.analysis,
-          hasChildren: node.children?.length > 0,
-          isExtendedRoot: node.isExtendedRoot,
-          originalNodeId: node.originalNodeId
-        });
+          analysis: node.analysis,
+          children: (node.children || []).map(deserializeNode),
+          citations: node.citations || [],
+          isExtendedRoot: node.isExtendedRoot || false,
+          originalNodeId: node.originalNodeId,
+          evaluation: node.evaluation || null
+        };
+      };
 
+      // Restore all nodes
+      const restoredNodes = treeData.map(deserializeNode);
+      
+      // Separate main tree and extensions
+      const mainRoots = restoredNodes.filter(node => !node.isExtendedRoot);
+      const extensions = restoredNodes.filter(node => node.isExtendedRoot);
+
+      console.log('Restored tree structure:', {
+        mainRoots,
+        extensions,
+        totalNodes: restoredNodes.length
+      });
+
+      // Set the states
+      setQaData(mainRoots);
+      setRootExtensions(extensions);
+
+      // Populate streaming content for all nodes
+      const populateContent = (node: QANode) => {
         setStreamingContent(prev => ({
           ...prev,
           [node.id]: {
-            content: node.analysis || '',
+            content: node.analysis,
             citations: node.citations || [],
           },
         }));
-        
-        if (node.children?.length > 0) {
-          node.children.forEach(child => populateNodeContent(child));
-        }
+        node.children.forEach(populateContent);
       };
 
-      // Populate content for all nodes
-      [...mainRoots, ...extensions].forEach(node => populateNodeContent(node));
-      
-      // Helper function to recursively collect node IDs
-      const collectNodeIds = (node: QANode, ids: Set<string>) => {
-        ids.add(node.id);
-        if (node.children?.length > 0) {
-          node.children.forEach(child => collectNodeIds(child, ids));
-        }
-        return ids;
+      [...mainRoots, ...extensions].forEach(populateContent);
+
+      // Expand all nodes
+      const collectNodeIds = (node: QANode): string[] => {
+        return [node.id, ...node.children.flatMap(collectNodeIds)];
       };
 
-      // Collect and set all node IDs to expand
-      const allNodeIds = new Set<string>();
-      [...mainRoots, ...extensions].forEach(node => collectNodeIds(node, allNodeIds));
-      
-      console.log('Setting expanded nodes:', Array.from(allNodeIds));
+      const allNodeIds = new Set([...mainRoots, ...extensions].flatMap(collectNodeIds));
       setExpandedNodes(allNodeIds);
 
-      // Re-evaluate nodes if needed
-      const evaluateNodesIfNeeded = async (nodes: QANode[]) => {
-        for (const node of nodes) {
-          if (node.analysis && !node.evaluation) {
-            console.log('Re-evaluating node:', node.id);
-            await evaluateQAPair(node);
-          }
-          if (node.children?.length > 0) {
-            await evaluateNodesIfNeeded(node.children);
-          }
-        }
-      };
-
-      await evaluateNodesIfNeeded([...mainRoots, ...extensions]);
-      
       console.log('Finished loading tree:', {
-        qaData: mainRoots,
-        rootExtensions: extensions,
-        expandedNodes: Array.from(allNodeIds),
-        streamingContent: Object.keys(streamingContent).length
+        mainRoots,
+        extensions,
+        expandedNodes: Array.from(allNodeIds)
       });
+
     } catch (error) {
       console.error('Error loading QA tree:', error);
       toast({
