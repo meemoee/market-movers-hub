@@ -49,9 +49,10 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
+  marketDescription: string;
 }
 
-export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
+export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
   console.log('QADisplay rendered with marketId:', marketId, 'and source component:', new Error().stack);
   
   const { toast } = useToast();
@@ -719,7 +720,9 @@ export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
       const { data, error } = await supabase.functions.invoke('evaluate-qa-pair', {
         body: { 
           question: node.question,
-          analysis: node.analysis
+          analysis: node.analysis,
+          marketQuestion: marketQuestion,
+          marketDescription: marketDescription
         }
       });
 
