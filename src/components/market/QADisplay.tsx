@@ -24,6 +24,8 @@ interface QANode {
   analysis: string;
   citations?: string[];
   children: QANode[];
+  isExtendedRoot?: boolean;
+  originalNodeId?: string;
   expansions?: {
     id: string;
     analysis: string;
@@ -73,6 +75,37 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
+
+  const markdownComponents: MarkdownComponents = {
+    p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+    code: ({ children, className }) => {
+      const isInline = !className;
+      return isInline ? (
+        <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
+      ) : (
+        <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
+          {children}
+        </code>
+      );
+    },
+    ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
+    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
+    ),
+    a: ({ href, children }) => (
+      <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    ),
+    em: ({ children }) => <em className="italic">{children}</em>,
+    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+    h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
+    hr: () => <hr className="my-4 border-muted" />,
+  };
 
   const navigateToExtension = (extension: QANode) => {
     setNavigationHistory(prev => [...prev, qaData]);
@@ -239,7 +272,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      // Helper function to convert a node to a serializable format
       const serializeNode = (node: QANode): Record<string, any> => {
         return {
           id: node.id,
@@ -252,7 +284,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         };
       };
 
-      // Serialize the tree with expansions
       const treeDataJson = qaData.map(serializeNode);
 
       const { data, error } = await supabase
@@ -293,7 +324,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          // When stream is done, find the node and evaluate it
           const node = qaData.find(n => n.id === nodeId) || 
                       rootExtensions.find(n => n.id === nodeId);
           if (node && node.analysis) {
@@ -415,7 +445,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const analysis = await processStream(reader, nodeId);
       console.log('Completed analysis for node', nodeId, ':', analysis);
 
-      // Update the node with the complete analysis and trigger evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -430,7 +459,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Create a complete QANode object for evaluation
       const currentNode: QANode = {
         id: nodeId,
         question,
@@ -535,13 +563,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     console.log('Loading saved QA tree with raw data:', treeData);
     
     try {
-      // Reset states
       setStreamingContent({});
       setExpandedNodes(new Set());
       setCurrentNodeId(null);
       setNavigationHistory([]);
 
-      // Helper function to restore node structure with proper typing
       const deserializeNode = (node: any): QANode => {
         return {
           id: node.id,
@@ -554,11 +580,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         };
       };
 
-      // First, deserialize all nodes
       const processedNodes = treeData.map(deserializeNode);
       setQaData(processedNodes);
 
-      // Collect all node IDs for expansion
       const collectNodeIds = (node: QANode): string[] => {
         return [
           node.id,
@@ -567,21 +591,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         ];
       };
 
-      // Expand all nodes
       const allNodeIds = new Set(processedNodes.flatMap(collectNodeIds));
       setExpandedNodes(allNodeIds);
-
-      // Populate streaming content for all nodes
-      const populateContent = (node: QANode) => {
-        setStreamingContent(prev => ({
-          ...prev,
-          [node.id]: {
-            content: node.analysis,
-            citations: node.citations || [],
-          },
-        }));
-        node.children.forEach(populateContent);
-      };
 
       processedNodes.forEach(populateContent);
 
@@ -659,7 +670,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       if (evaluationError) throw evaluationError;
 
-      // Update the node with the new expansion
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -700,7 +710,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const isLineComplete = (line: string): boolean => {
-    // Check if the line ends with a proper sentence ending
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
@@ -730,7 +739,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Update qaData with evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -745,7 +753,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Update rootExtensions with evaluation
       setRootExtensions(prev => 
         prev.map(ext => 
           ext.id === node.id ? { ...ext, evaluation: data } : ext
