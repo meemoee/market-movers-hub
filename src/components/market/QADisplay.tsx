@@ -683,7 +683,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return '';
   };
 
-  const renderNode = (node: QANode, depth: number) => {
+  const renderNode = (node: QANode, depth: number = 0) => {
     const isExpanded = expandedNodes.has(node.id);
     const nodeExtensions = getNodeExtensions(node.id);
     const streamContent = streamingContent[node.id];
@@ -701,7 +701,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         toggleNode={toggleNode}
         navigateToExtension={navigateToExtension}
         handleExpandQuestion={handleExpandQuestion}
-        renderSubNodes={renderNode}
+        renderSubNodes={(childNode, childDepth) => renderNode(childNode, childDepth)}
       />
     );
   };
