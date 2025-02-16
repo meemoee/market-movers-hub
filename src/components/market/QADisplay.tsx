@@ -416,10 +416,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           nodeExtensions.push(node);
           extensionMap.set(node.originalNodeId, nodeExtensions);
           extensions.push(node);
-        } else if (!node.isExtendedRoot) {
-          mainNodes.push(node);
         }
       });
+
+      const originalTree = deserializedNodes.filter(node => {
+        return !node.isExtendedRoot && !node.originalNodeId;
+      });
+
+      console.log('Found original tree nodes:', originalTree.length);
 
       const processNode = (node: QANode): QANode => {
         const processedNode = { ...node };
@@ -429,17 +433,18 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return processedNode;
       };
 
-      const originalRootNodes = deserializedNodes.filter(node => 
-        !node.isExtendedRoot && !node.originalNodeId
-      );
-
-      if (originalRootNodes.length > 0) {
-        setQaData(originalRootNodes.map(processNode));
+      if (originalTree.length > 0) {
+        const processedTree = originalTree.map(processNode);
+        console.log('Setting main tree with nodes:', processedTree);
+        setQaData(processedTree);
       } else {
-        const [firstNode, ...rest] = deserializedNodes;
-        if (firstNode) {
-          setQaData([processNode(firstNode)]);
-        }
+        console.error('No original tree found in data:', deserializedNodes);
+        toast({
+          variant: "destructive",
+          title: "Load Error",
+          description: "Could not find the original analysis tree",
+        });
+        return;
       }
 
       setRootExtensions(extensions);
@@ -450,8 +455,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(collectNodeIds);
       };
 
-      originalRootNodes.forEach(collectNodeIds);
-
+      originalTree.forEach(collectNodeIds);
       setExpandedNodes(allNodeIds);
 
       const streamContent: { [key: string]: StreamingContent } = {};
@@ -465,11 +469,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(populateContent);
       };
 
-      [...originalRootNodes, ...extensions].forEach(populateContent);
+      [...originalTree, ...extensions].forEach(populateContent);
       setStreamingContent(streamContent);
 
       console.log('Loaded tree state:', {
-        mainNodes: originalRootNodes,
+        originalTree,
         extensions,
         extensionMap: Array.from(extensionMap.entries()),
         expandedNodes: Array.from(allNodeIds),
