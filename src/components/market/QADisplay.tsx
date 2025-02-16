@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -23,13 +22,40 @@ import { QANode, StreamingContent, QADisplayProps } from './qa/types';
 type WebResearchRow = Database['public']['Tables']['web_research']['Row'];
 type QATreeRow = Database['public']['Tables']['qa_trees']['Row'];
 
-interface SavedResearch extends WebResearchRow {
+interface SavedResearch extends Omit<WebResearchRow, 'areas_for_research' | 'sources'> {
   areas_for_research: string[];
   sources: string[];
+  query: string; // This becomes the title when displaying
 }
 
-interface SavedQATree extends QATreeRow {
+interface SavedQATree extends Omit<QATreeRow, 'tree_data'> {
   tree_data: QANode[];
+}
+
+async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
+  let result = '';
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = new TextDecoder().decode(value);
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        const { content } = cleanStreamContent(line);
+        if (content) {
+          result = processStreamContent(content, result);
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  
+  return result;
 }
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
@@ -923,7 +949,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               <SelectItem value="none">No research context</SelectItem>
               {savedResearch?.map((research) => (
                 <SelectItem key={research.id} value={research.id}>
-                  {research.title || "Untitled Research"}
+                  {research.query || "Untitled Research"}
                 </SelectItem>
               ))}
             </SelectContent>
