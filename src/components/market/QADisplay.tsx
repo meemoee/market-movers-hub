@@ -580,23 +580,37 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         throw new Error('Invalid tree data structure');
       }
 
-      // Restore all nodes
-      const restoredNodes = treeData.map(deserializeNode);
-      console.log('Restored nodes:', restoredNodes);
+      // Restore all nodes and deduplicate by ID
+      const nodesMap = new Map();
+      treeData.forEach(node => {
+        const restored = deserializeNode(node);
+        // Only update if we don't have this node or if this version is an extension
+        if (!nodesMap.has(node.id) || restored.isExtendedRoot) {
+          nodesMap.set(node.id, restored);
+        }
+      });
+      const restoredNodes = Array.from(nodesMap.values());
       
-      // Separate main tree and extensions
+      console.log('Restored nodes after deduplication:', restoredNodes);
+      
+      // First, find the original root nodes (non-extended)
       const mainRoots = restoredNodes.filter(node => !node.isExtendedRoot);
+      // Then find nodes marked as extended roots
       const extensions = restoredNodes.filter(node => node.isExtendedRoot);
 
-      console.log('Tree structure:', {
+      console.log('Tree structure after separation:', {
         mainRoots,
         extensions,
         totalNodes: restoredNodes.length
       });
 
-      // Set the states
-      setQaData(mainRoots);
-      setRootExtensions(extensions);
+      if (mainRoots.length > 0) {
+        setQaData(mainRoots);
+      } else if (extensions.length > 0) {
+        // If we only have extensions, show the first one
+        setQaData([extensions[0]]);
+        setRootExtensions(extensions.slice(1));
+      }
 
       // Populate streaming content for all nodes
       const populateContent = (node: QANode) => {
@@ -622,9 +636,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const allNodeIds = new Set([...mainRoots, ...extensions].flatMap(collectNodeIds));
       setExpandedNodes(allNodeIds);
 
-      console.log('Finished loading tree:', {
-        mainRoots,
-        extensions,
+      console.log('Final tree state:', {
+        qaData: mainRoots.length > 0 ? mainRoots : [extensions[0]],
+        rootExtensions: mainRoots.length > 0 ? extensions : extensions.slice(1),
         expandedNodes: Array.from(allNodeIds),
         streamingContent: Object.keys(streamingContent).length
       });
