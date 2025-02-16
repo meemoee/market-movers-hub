@@ -583,52 +583,51 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       // First, deserialize all nodes
       const allNodes = treeData.map(deserializeNode);
       
-      // Group nodes by their relationship
-      const mainTree: QANode[] = [];
-      const extensions: QANode[] = [];
+      // Find all extended nodes and their original nodes
+      const extensionsByOriginalId = new Map<string, QANode[]>();
+      const mainNodes: QANode[] = [];
       
-      // First pass: identify root nodes and their extensions
+      // First pass: collect all extensions and main nodes
       allNodes.forEach(node => {
-        if (node.isExtendedRoot) {
-          // This is an extension of another node
+        if (node.isExtendedRoot && node.originalNodeId) {
+          const extensions = extensionsByOriginalId.get(node.originalNodeId) || [];
           extensions.push(node);
-        } else {
-          // Find if this node has any extensions
-          const nodeExtensions = allNodes.filter(n => 
-            n.isExtendedRoot && n.originalNodeId === node.id
-          );
-          
-          // Add the node to the main tree if it's not already there
-          if (!mainTree.some(n => n.id === node.id)) {
-            mainTree.push(node);
-          }
+          extensionsByOriginalId.set(node.originalNodeId, extensions);
+        } else if (!node.isExtendedRoot) {
+          mainNodes.push(node);
         }
       });
 
-      console.log('Node classification:', {
-        mainTree,
-        extensions,
-        allNodes: allNodes.length
+      // Function to recursively process a node and its children
+      const processNodeTree = (node: QANode): QANode => {
+        // Process children recursively
+        const processedChildren = node.children.map(child => processNodeTree(child));
+        
+        return {
+          ...node,
+          children: processedChildren,
+        };
+      };
+
+      // Process the main tree
+      const processedMainNodes = mainNodes.map(node => processNodeTree(node));
+
+      // Get all extensions as a flat array
+      const allExtensions = Array.from(extensionsByOriginalId.values()).flat();
+
+      console.log('Processed tree structure:', {
+        mainNodes: processedMainNodes,
+        extensions: allExtensions,
+        extensionMappings: Object.fromEntries(extensionsByOriginalId)
       });
 
-      // Set the states based on what we found
-      if (mainTree.length > 0) {
-        // We have a main tree, so show it and keep track of extensions
-        setQaData(mainTree);
-        setRootExtensions(extensions);
-        console.log('Setting main tree and extensions:', { mainTree, extensions });
-      } else if (extensions.length > 0) {
-        // No main tree, show the first extension
-        const [firstExtension, ...remainingExtensions] = extensions;
-        setQaData([firstExtension]);
-        setRootExtensions(remainingExtensions);
-        console.log('Setting extension as main:', { 
-          main: firstExtension, 
-          remainingExtensions 
-        });
-      } else {
-        console.error('No valid tree structure found');
-        return;
+      // Set the initial tree state
+      if (processedMainNodes.length > 0) {
+        setQaData(processedMainNodes);
+        setRootExtensions(allExtensions);
+      } else if (allExtensions.length > 0) {
+        setQaData([allExtensions[0]]);
+        setRootExtensions(allExtensions.slice(1));
       }
 
       // Populate streaming content for all nodes
@@ -646,7 +645,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       };
 
       // Process all nodes for streaming content
-      [...mainTree, ...extensions].forEach(populateContent);
+      [...processedMainNodes, ...allExtensions].forEach(populateContent);
 
       // Collect all node IDs for expansion
       const collectNodeIds = (node: QANode): string[] => {
@@ -654,12 +653,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       };
 
       // Expand all nodes from both main tree and extensions
-      const allNodeIds = new Set([...mainTree, ...extensions].flatMap(collectNodeIds));
+      const allNodeIds = new Set([...processedMainNodes, ...allExtensions].flatMap(collectNodeIds));
       setExpandedNodes(allNodeIds);
 
       console.log('Final loaded state:', {
-        qaData: mainTree.length > 0 ? mainTree : [extensions[0]],
-        rootExtensions: mainTree.length > 0 ? extensions : extensions.slice(1),
+        qaData: processedMainNodes.length > 0 ? processedMainNodes : [allExtensions[0]],
+        rootExtensions: processedMainNodes.length > 0 ? allExtensions : allExtensions.slice(1),
         expandedNodes: Array.from(allNodeIds),
         streamingContent: Object.keys(streamingContent).length
       });
