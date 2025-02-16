@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,12 +25,6 @@ interface NewsArticle {
   gradient_end_rgb: string | null;
 }
 
-const PLACEHOLDER_GRADIENTS = [
-  'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
-  'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
-  'linear-gradient(to right, #ee9ca7, #ffdde1)'
-];
-
 const PLACEHOLDER_PROFILES = [
   { name: 'Alex Chen', price: 0.78, change: 0.12 },
   { name: 'Sarah Kim', price: 0.65, change: -0.08 },
@@ -48,20 +43,37 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   useEffect(() => {
     const fetchArticles = async () => {
       console.log('Fetching articles for interval:', selectedInterval);
+      
+      // Use a CTE to get the latest article for each position
       const { data, error } = await supabase
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
-        .order('created_at', { ascending: false })
-        .limit(5);
+        .in('position', [1, 2, 3])  // Only positions 1-3
+        .order('position', { ascending: true })
+        .order('updated_at', { ascending: false }) // Get latest first
+        .limit(3);
 
       if (error) {
         console.error('Error fetching news articles:', error);
         return;
       }
 
-      console.log('Fetched articles:', data);
-      setArticles(data || []);
+      // Process to ensure only the latest article per position
+      const latestByPosition = data?.reduce((acc, article) => {
+        if (!acc[article.position] || 
+            new Date(article.updated_at) > new Date(acc[article.position].updated_at)) {
+          acc[article.position] = article;
+        }
+        return acc;
+      }, {} as Record<number, any>);
+
+      // Convert back to array and sort by position
+      const sortedArticles = Object.values(latestByPosition)
+        .sort((a, b) => a.position - b.position);
+
+      console.log('Fetched and processed articles:', sortedArticles);
+      setArticles(sortedArticles || []);
     };
 
     fetchArticles();
