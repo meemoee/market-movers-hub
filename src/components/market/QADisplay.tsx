@@ -111,21 +111,39 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         };
       };
 
-      const allNodes = [...qaData];
-      rootExtensions.forEach(extension => {
-        if (!allNodes.some(node => node.id === extension.id)) {
-          allNodes.push(extension);
-        }
-      });
+      const allHistoryNodes = navigationHistory.flatMap(tree => tree);
+      const currentNodes = qaData;
 
-      const serializedData = allNodes.map(serializeNode);
+      const allNodes = [
+        ...allHistoryNodes,
+        ...currentNodes,
+        ...rootExtensions
+      ];
+
+      const uniqueNodes = Array.from(
+        new Map(allNodes.map(node => [node.id, node])).values()
+      );
+
+      const getAllChildren = (node: QANode): QANode[] => {
+        const children = node.children || [];
+        return [node, ...children.flatMap(child => getAllChildren(child))];
+      };
+
+      const completeNodeSet = uniqueNodes.flatMap(node => getAllChildren(node));
+      const uniqueCompleteNodes = Array.from(
+        new Map(completeNodeSet.map(node => [node.id, node])).values()
+      );
       
       console.log('Saving tree data:', {
-        mainTree: qaData,
-        rootExtensions,
-        serializedData
+        historyNodesCount: allHistoryNodes.length,
+        currentNodesCount: currentNodes.length,
+        rootExtensionsCount: rootExtensions.length,
+        uniqueNodesCount: uniqueNodes.length,
+        completeNodesCount: uniqueCompleteNodes.length
       });
 
+      const serializedData = uniqueCompleteNodes.map(serializeNode);
+      
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
@@ -141,7 +159,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${rootExtensions.length} question expansions`,
+        description: `Saved complete QA tree with ${uniqueCompleteNodes.length} nodes`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
