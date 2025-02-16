@@ -870,9 +870,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                                   </button>
                                 )}
                               </div>
-                              <span className="text-xs text-muted-foreground block">
+                              <ReactMarkdown
+                                components={markdownComponents}
+                                className="text-xs text-muted-foreground"
+                              >
                                 {node.evaluation.reason}
-                              </span>
+                              </ReactMarkdown>
                             </div>
                           )}
                         </div>
