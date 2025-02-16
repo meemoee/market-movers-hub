@@ -406,13 +406,17 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const deserializedNodes = treeData.map(deserializeNode);
 
+      const extensionMap = new Map<string, QANode[]>();
       const mainNodes: QANode[] = [];
       const extensions: QANode[] = [];
 
       deserializedNodes.forEach(node => {
-        if (node.isExtendedRoot) {
+        if (node.isExtendedRoot && node.originalNodeId) {
+          const nodeExtensions = extensionMap.get(node.originalNodeId) || [];
+          nodeExtensions.push(node);
+          extensionMap.set(node.originalNodeId, nodeExtensions);
           extensions.push(node);
-        } else {
+        } else if (!node.isExtendedRoot) {
           mainNodes.push(node);
         }
       });
@@ -420,11 +424,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       if (mainNodes.length === 0 && extensions.length > 0) {
         const [firstExtension, ...remainingExtensions] = extensions;
         mainNodes.push(firstExtension);
-        extensions.splice(0, 1);
+        setRootExtensions(remainingExtensions);
+      } else {
+        setRootExtensions(extensions);
       }
 
       setQaData(mainNodes);
-      setRootExtensions(extensions);
 
       const allNodeIds = new Set<string>();
       const collectNodeIds = (nodes: QANode[]) => {
@@ -433,10 +438,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           if (node.children.length > 0) {
             collectNodeIds(node.children);
           }
+          const nodeExtensions = extensionMap.get(node.id);
+          if (nodeExtensions) {
+            nodeExtensions.forEach(ext => allNodeIds.add(ext.id));
+          }
         });
       };
 
-      collectNodeIds([...mainNodes, ...extensions]);
+      collectNodeIds(mainNodes);
+      collectNodeIds(extensions);
+
       setExpandedNodes(allNodeIds);
 
       const streamContent: { [key: string]: StreamingContent } = {};
@@ -460,6 +471,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       console.log('Loaded tree state:', {
         mainNodes,
         extensions,
+        extensionMap: Array.from(extensionMap.entries()),
         expandedNodes: Array.from(allNodeIds),
         streamingContent: Object.keys(streamContent).length
       });

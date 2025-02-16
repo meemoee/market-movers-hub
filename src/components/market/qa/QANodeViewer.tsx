@@ -1,11 +1,12 @@
 
 import { QANode, StreamingContent } from './types';
-import { MessageSquare, ChevronUp, ChevronDown, ArrowRight } from "lucide-react";
+import { MessageSquare, ChevronUp, ChevronDown, ArrowRight, ExternalLink } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from 'react-markdown';
 import type { Components as MarkdownComponents } from 'react-markdown';
 import { Citations } from './Citations';
+import { Badge } from "@/components/ui/badge";
 
 interface QANodeViewerProps {
   node: QANode;
@@ -100,18 +101,32 @@ export function QANodeViewer({
                 className="text-sm font-medium hover:underline cursor-pointer"
               >
                 {node.question}
-                {getExtensionInfo(node)}
               </button>
-              {nodeExtensions.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="px-2 h-6"
-                  onClick={() => navigateToExtension(nodeExtensions[0])}
-                >
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              )}
+
+              {/* Show expansion info and navigation */}
+              <div className="flex items-center gap-2">
+                {nodeExtensions.length > 0 && (
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <ExternalLink className="h-3 w-3" />
+                    <span>Expanded {nodeExtensions.length}x</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 px-1"
+                      onClick={() => navigateToExtension(nodeExtensions[0])}
+                    >
+                      <ArrowRight className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                )}
+                {node.isExtendedRoot && node.originalNodeId && (
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <ExternalLink className="h-3 w-3" />
+                    <span>Extended Analysis</span>
+                  </Badge>
+                )}
+              </div>
+
               {isExpanded ? (
                 <ChevronUp className="h-4 w-4 text-muted-foreground" />
               ) : (
