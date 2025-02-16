@@ -259,17 +259,32 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const processedNodes = new Map<string, QANode>();
       
-      allTrees.forEach(tree => {
+      const processTree = (tree: QANode[]) => {
         tree.forEach(node => {
           if (!processedNodes.has(node.id)) {
             processedNodes.set(node.id, node);
+            if (node.children) {
+              node.children.forEach(child => {
+                if (!processedNodes.has(child.id)) {
+                  processedNodes.set(child.id, child);
+                  if (child.children) {
+                    processTree([child]);
+                  }
+                }
+              });
+            }
           }
         });
-      });
+      };
+
+      allTrees.forEach(tree => processTree(tree));
 
       rootExtensions.forEach(extension => {
         if (!processedNodes.has(extension.id)) {
           processedNodes.set(extension.id, extension);
+          if (extension.children) {
+            processTree([extension]);
+          }
         }
       });
 
