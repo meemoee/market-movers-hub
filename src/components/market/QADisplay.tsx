@@ -544,19 +544,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     );
   };
 
-  const populateStreamingContent = (nodes: QANode[]) => {
-    nodes.forEach(node => {
-      setStreamingContent(prev => ({
-        ...prev,
-        [node.id]: {
-          content: node.analysis,
-          citations: node.citations || [],
-        },
-      }));
-      if (node.children.length > 0) {
-        populateStreamingContent(node.children);
-      }
-    });
+  const populateContent = (node: QANode) => {
+    setStreamingContent(prev => ({
+      ...prev,
+      [node.id]: {
+        content: node.analysis,
+        citations: node.citations || [],
+      },
+    }));
+    node.children.forEach(populateContent);
   };
 
   const loadSavedQATree = async (treeData: any[]) => {
