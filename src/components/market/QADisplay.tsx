@@ -423,40 +423,18 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
 
       const deserializedNodes = treeData.map(deserializeNode);
-      
-      const extensionMap = new Map<string, QANode[]>();
-      const mainNodes: QANode[] = [];
-      const extensions: QANode[] = [];
+      console.log('Deserialized nodes:', deserializedNodes);
 
-      deserializedNodes.forEach(node => {
-        if (node.isExtendedRoot && node.originalNodeId) {
-          const nodeExtensions = extensionMap.get(node.originalNodeId) || [];
-          nodeExtensions.push(node);
-          extensionMap.set(node.originalNodeId, nodeExtensions);
-          extensions.push(node);
-        }
+      const rootNodes = deserializedNodes.filter(node => {
+        const isRoot = !node.originalNodeId;
+        console.log(`Node ${node.id} is root? ${isRoot}`, node);
+        return isRoot;
       });
 
-      const originalTree = deserializedNodes.filter(node => {
-        return !node.isExtendedRoot && !node.originalNodeId;
-      });
+      console.log('Root nodes found:', rootNodes);
 
-      console.log('Found original tree nodes:', originalTree.length);
-
-      const processNode = (node: QANode): QANode => {
-        const processedNode = { ...node };
-        if (node.children.length > 0) {
-          processedNode.children = node.children.map(processNode);
-        }
-        return processedNode;
-      };
-
-      if (originalTree.length > 0) {
-        const processedTree = originalTree.map(processNode);
-        console.log('Setting main tree with nodes:', processedTree);
-        setQaData(processedTree);
-      } else {
-        console.error('No original tree found in data:', deserializedNodes);
+      if (rootNodes.length === 0) {
+        console.error('No root nodes found in tree data:', deserializedNodes);
         toast({
           variant: "destructive",
           title: "Load Error",
@@ -465,6 +443,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return;
       }
 
+      const extensions = deserializedNodes.filter(node => node.isExtendedRoot);
+      console.log('Found extensions:', extensions);
+
+      console.log('Setting main tree:', rootNodes);
+      setQaData(rootNodes);
+
+      console.log('Setting extensions:', extensions);
       setRootExtensions(extensions);
 
       const allNodeIds = new Set<string>();
@@ -473,7 +458,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(collectNodeIds);
       };
 
-      originalTree.forEach(collectNodeIds);
+      rootNodes.forEach(collectNodeIds);
       setExpandedNodes(allNodeIds);
 
       const streamContent: { [key: string]: StreamingContent } = {};
@@ -487,13 +472,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(populateContent);
       };
 
-      [...originalTree, ...extensions].forEach(populateContent);
+      [...rootNodes, ...extensions].forEach(populateContent);
       setStreamingContent(streamContent);
 
       console.log('Loaded tree state:', {
-        originalTree,
+        rootNodes,
         extensions,
-        extensionMap: Array.from(extensionMap.entries()),
         expandedNodes: Array.from(allNodeIds),
         streamingContent: Object.keys(streamContent).length
       });
