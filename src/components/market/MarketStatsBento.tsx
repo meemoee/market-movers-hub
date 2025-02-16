@@ -22,8 +22,13 @@ interface NewsArticle {
   position: number;
   gradient_start_rgb: string | null;
   gradient_end_rgb: string | null;
-  updated_at: string;
 }
+
+const PLACEHOLDER_GRADIENTS = [
+  'linear-gradient(135deg, #fdfcfb 0%, #e2d1c3 100%)',
+  'linear-gradient(180deg, rgb(254,100,121) 0%, rgb(251,221,186) 100%)',
+  'linear-gradient(to right, #ee9ca7, #ffdde1)'
+];
 
 const PLACEHOLDER_PROFILES = [
   { name: 'Alex Chen', price: 0.78, change: 0.12 },
@@ -43,41 +48,20 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
   useEffect(() => {
     const fetchArticles = async () => {
       console.log('Fetching articles for interval:', selectedInterval);
-      
       const { data, error } = await supabase
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
-        .in('position', [1, 2, 3])
-        .order('updated_at', { ascending: false })
-        .order('position', { ascending: true });
+        .order('created_at', { ascending: false })
+        .limit(5);
 
       if (error) {
         console.error('Error fetching news articles:', error);
         return;
       }
 
-      // Group articles by position and get the latest for each
-      const latestByPosition = data?.reduce((acc, article) => {
-        const existingArticle = acc[article.position];
-        if (!existingArticle || 
-            new Date(article.updated_at) > new Date(existingArticle.updated_at)) {
-          acc[article.position] = article;
-        }
-        return acc;
-      }, {} as Record<number, NewsArticle>);
-
-      // Convert to array and sort by position
-      const sortedArticles = Object.values(latestByPosition)
-        .sort((a, b) => a.position - b.position);
-
-      console.log('Processed articles:', {
-        total: data?.length,
-        byPosition: latestByPosition,
-        final: sortedArticles
-      });
-      
-      setArticles(sortedArticles);
+      console.log('Fetched articles:', data);
+      setArticles(data || []);
     };
 
     fetchArticles();

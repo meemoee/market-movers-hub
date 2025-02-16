@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
@@ -5,20 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Helper function to clean text fields
-function cleanTextFields(market: any) {
-  const fieldsToClean = ['question', 'subtitle', 'yes_sub_title', 'no_sub_title', 'description', 'event_title'];
-  
-  fieldsToClean.forEach(field => {
-    if (market[field]) {
-      // Replace multiple apostrophes with a single one
-      market[field] = market[field].replace(/'{2,}/g, "'");
-    }
-  });
-  
-  return market;
-}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -44,9 +31,9 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, sortBy = 'price_change' } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, sortBy: ${sortBy}`);
-
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}`);
+    
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
     
@@ -92,7 +79,6 @@ serve(async (req) => {
           const markets = JSON.parse(chunkData);
           foundMarket = markets.find(m => m.market_id === marketId);
           if (foundMarket) {
-            foundMarket = cleanTextFields(foundMarket);
             console.log(`Found market ${marketId} in chunk ${i}`);
             break;
           }
@@ -123,7 +109,6 @@ serve(async (req) => {
               const markets = JSON.parse(chunkData);
               foundMarket = markets.find(m => m.market_id === marketId);
               if (foundMarket) {
-                foundMarket = cleanTextFields(foundMarket);
                 console.log(`Found market ${marketId} in interval ${currentInterval}`);
                 break;
               }
@@ -184,10 +169,8 @@ serve(async (req) => {
         const chunkData = await redis.get(chunkKey);
         if (chunkData) {
           const markets = JSON.parse(chunkData);
-          // Only keep markets that are in our marketIds list and clean their text fields
-          const relevantMarkets = markets
-            .filter(m => marketIds.includes(m.market_id))
-            .map(cleanTextFields);
+          // Only keep markets that are in our marketIds list
+          const relevantMarkets = markets.filter(m => marketIds.includes(m.market_id));
           allMarkets.push(...relevantMarkets);
         }
       }
@@ -203,7 +186,7 @@ serve(async (req) => {
         const intervals = ['5', '10', '30', '60', '240', '480', '1440', '10080'];
         
         for (const currentInterval of intervals) {
-          if (currentInterval === interval) continue;
+          if (currentInterval === interval) continue; // Skip current interval as we already checked it
           
           const otherLatestKey = await redis.get(`topMovers:${currentInterval}:latest`);
           if (!otherLatestKey) continue;
@@ -214,14 +197,13 @@ serve(async (req) => {
           
           const otherManifest = JSON.parse(otherManifestData);
           
+          // Check each chunk for missing markets
           for (let i = 0; i < otherManifest.chunks; i++) {
             const chunkKey = `topMovers:${currentInterval}:${otherLatestKey}:chunk:${i}`;
             const chunkData = await redis.get(chunkKey);
             if (chunkData) {
               const markets = JSON.parse(chunkData);
-              const foundMarkets = markets
-                .filter(m => missingMarketIds.includes(m.market_id))
-                .map(cleanTextFields);
+              const foundMarkets = markets.filter(m => missingMarketIds.includes(m.market_id));
               if (foundMarkets.length > 0) {
                 allMarkets.push(...foundMarkets);
                 // Remove found markets from missing list
@@ -313,7 +295,7 @@ serve(async (req) => {
       const chunkKey = `topMovers:${interval}:${latestKey}:chunk:${i}`;
       const chunkData = await redis.get(chunkKey);
       if (chunkData) {
-        const markets = JSON.parse(chunkData).map(cleanTextFields);
+        const markets = JSON.parse(chunkData);
         allMarkets.push(...markets);
       }
     }
@@ -366,21 +348,14 @@ serve(async (req) => {
       console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
     }
 
-    // Sort all filtered results based on sortBy parameter
-    allMarkets.sort((a, b) => {
-      if (sortBy === 'volume') {
-        // Sort by volume change percentage (which accounts for the relative increase/decrease)
-        return Math.abs(b.volume_change_percentage) - Math.abs(a.volume_change_percentage);
-      }
-      // Default to price change sorting
-      return Math.abs(b.price_change) - Math.abs(a.price_change);
-    });
+    // Then sort all filtered results by absolute price change
+    allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
 
     // Apply pagination to the filtered and sorted results
     const start = (page - 1) * limit;
     const paginatedMarkets = allMarkets.slice(start, start + limit);
     const hasMore = allMarkets.length > start + limit;
-    console.log(`Returning ${paginatedMarkets.length} markets, sorted by ${sortBy === 'volume' ? 'volume change' : 'price change'}, hasMore: ${hasMore}`);
+    console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}`);
 
     await redis.close();
 

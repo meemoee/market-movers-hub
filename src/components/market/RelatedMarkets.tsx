@@ -28,20 +28,6 @@ interface OrderBookData {
   spread: number;
 }
 
-// Helper function to clean text fields
-function cleanTextFields(market: any) {
-  const fieldsToClean = ['question', 'subtitle', 'yes_sub_title', 'no_sub_title', 'description'];
-  
-  fieldsToClean.forEach(field => {
-    if (market[field]) {
-      // Replace multiple apostrophes with a single one
-      market[field] = market[field].replace(/'{2,}/g, "'");
-    }
-  });
-  
-  return market;
-}
-
 export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedMarketsProps) {
   const navigate = useNavigate();
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -80,7 +66,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           final_best_ask: number;
           final_best_bid: number;
           final_volume: number;
-          volume_change: number;
           price_change: number;
         }>;
       }>('get-top-movers', {
@@ -103,20 +88,16 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           ? market.outcomes.map(outcome => String(outcome))
           : [];
 
-        // Clean text fields before returning
-        const cleanedMarket = cleanTextFields({
+        return {
           ...market,
           finalPrice: moverData.final_last_traded_price,
           priceChange: moverData.price_change,
           totalVolume: moverData.final_volume,
-          volume_change: moverData.volume_change,
           best_bid: moverData.final_best_bid,
           best_ask: moverData.final_best_ask,
           clobtokenids,
           outcomes
-        });
-
-        return cleanedMarket;
+        };
       });
 
       const filteredMarkets = marketsWithPriceChanges.filter(Boolean);
@@ -277,10 +258,10 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                 </div>
                 <div className="flex flex-col items-end">
                   <div className="text-xl font-semibold">
-                    ${Math.abs(market.volume_change)?.toFixed(0) || '0'}
+                    ${market.totalVolume?.toFixed(0) || '0'}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    ${market.totalVolume?.toFixed(0) || '0'} Total
+                    24h Volume
                   </div>
                 </div>
               </div>

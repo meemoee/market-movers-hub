@@ -105,7 +105,6 @@ export default function TopMoversList({
   const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
   const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
@@ -120,8 +119,7 @@ export default function TopMoversList({
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
     showMaxThumb ? debouncedProbabilityRange[1] : undefined,
     showPriceChangeMinThumb ? debouncedPriceChangeRange[0] : undefined,
-    showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
-    sortBy
+    showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined
   );
 
   const marketSearchQuery = useMarketSearch(
@@ -194,8 +192,6 @@ export default function TopMoversList({
     ? displayedMarkets.find(m => m.market_id === selectedMarket.id)
     : null;
 
-  const sortedMarkets = displayedMarkets;
-
   return (
     <div className="flex flex-col w-full">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
@@ -234,8 +230,6 @@ export default function TopMoversList({
           setShowPriceChangeMinThumb={setShowPriceChangeMinThumb}
           showPriceChangeMaxThumb={showPriceChangeMaxThumb}
           setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
-          sortBy={sortBy}
-          onSortChange={setSortBy}
         />
       </div>
       
@@ -247,7 +241,7 @@ export default function TopMoversList({
           <TopMoversContent
             isLoading={activeQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
-            topMovers={sortedMarkets}
+            topMovers={displayedMarkets}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
