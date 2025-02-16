@@ -536,7 +536,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const loadSavedQATree = async (treeData: QANode[]) => {
-    console.log('Loading saved QA tree:', treeData);
+    console.log('Loading saved QA tree with raw data:', treeData);
     
     try {
       // Reset all states first
@@ -562,10 +562,19 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       // Helper function to recursively populate streaming content
       const populateNodeContent = (node: QANode) => {
+        console.log('Populating content for node:', {
+          id: node.id,
+          question: node.question,
+          hasAnalysis: !!node.analysis,
+          hasChildren: node.children?.length > 0,
+          isExtendedRoot: node.isExtendedRoot,
+          originalNodeId: node.originalNodeId
+        });
+
         setStreamingContent(prev => ({
           ...prev,
           [node.id]: {
-            content: node.analysis,
+            content: node.analysis || '',
             citations: node.citations || [],
           },
         }));
@@ -590,6 +599,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       // Collect and set all node IDs to expand
       const allNodeIds = new Set<string>();
       [...mainRoots, ...extensions].forEach(node => collectNodeIds(node, allNodeIds));
+      
+      console.log('Setting expanded nodes:', Array.from(allNodeIds));
       setExpandedNodes(allNodeIds);
 
       // Re-evaluate nodes if needed
@@ -607,7 +618,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       await evaluateNodesIfNeeded([...mainRoots, ...extensions]);
       
-      console.log('Finished loading tree with expanded nodes:', allNodeIds);
+      console.log('Finished loading tree:', {
+        qaData: mainRoots,
+        rootExtensions: extensions,
+        expandedNodes: Array.from(allNodeIds),
+        streamingContent: Object.keys(streamingContent).length
+      });
     } catch (error) {
       console.error('Error loading QA tree:', error);
       toast({
