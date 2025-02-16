@@ -62,7 +62,7 @@ export function MarketStats({
           <span className="text-3xl font-bold tracking-tight">
             {formatPrice(lastTradedPrice)}
           </span>
-          <span className={`text-sm font-medium flex items-center gap-1 pb-1.5
+          <span className={`text-sm font-medium flex items-center gap-1
             ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}
           >
             {priceChange >= 0 ? (
@@ -75,7 +75,7 @@ export function MarketStats({
         </div>
         <div className="flex flex-col items-end justify-end h-[60px]">
           <span 
-            className="text-xl font-semibold pb-0.5"
+            className="text-xl font-semibold"
             style={{ color: getVolumeColor(volume, totalVolume) }}
           >
             {formatVolume(volume, true)}
