@@ -16,6 +16,8 @@ serve(async (req) => {
 
   try {
     const { question, analysis } = await req.json()
+    console.log('Received request with question:', question)
+    console.log('Analysis:', analysis)
 
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -30,7 +32,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown or code block syntax, just the raw JSON object."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions. You must provide a score between 0 and 100 and a brief reason for the score. Output ONLY a valid JSON object in this format: {\"score\": number, \"reason\": \"string\"}. Do not include any other text, markdown, or formatting."
           },
           {
             role: "user",
@@ -41,40 +43,62 @@ serve(async (req) => {
     })
 
     if (!openRouterResponse.ok) {
+      console.error('OpenRouter API error:', openRouterResponse.status, await openRouterResponse.text())
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
     const data = await openRouterResponse.json()
+    console.log('OpenRouter API response:', JSON.stringify(data))
+    
     let evaluationText = data.choices[0].message.content
+    console.log('Raw evaluation text:', evaluationText)
+
+    // More robust JSON cleanup
+    evaluationText = evaluationText
+      .replace(/```json\s*/g, '')  // Remove ```json
+      .replace(/```\s*$/g, '')     // Remove closing ```
+      .replace(/^\s*{\s*/, '{')    // Clean start
+      .replace(/\s*}\s*$/, '}')    // Clean end
+      .trim()
+
+    console.log('Cleaned evaluation text:', evaluationText)
 
     try {
-      // Clean up any potential markdown or code block syntax
-      evaluationText = evaluationText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim()
-      console.log('Cleaned evaluation text:', evaluationText)
-      
       const evaluation = JSON.parse(evaluationText)
-      
+      console.log('Parsed evaluation:', evaluation)
+
       // Validate the evaluation object structure
-      if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
-        throw new Error('Invalid evaluation format: missing required fields')
+      if (typeof evaluation !== 'object' || evaluation === null) {
+        throw new Error('Evaluation must be an object')
       }
-      
+
+      if (!('score' in evaluation) || typeof evaluation.score !== 'number') {
+        throw new Error('Invalid score format')
+      }
+
+      if (!('reason' in evaluation) || typeof evaluation.reason !== 'string') {
+        throw new Error('Invalid reason format')
+      }
+
       // Ensure score is between 0 and 100
       evaluation.score = Math.max(0, Math.min(100, evaluation.score))
-      
+
       return new Response(JSON.stringify(evaluation), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } catch (error) {
-      console.error('Error parsing evaluation JSON:', error)
-      console.error('Received content:', evaluationText)
-      throw new Error('Invalid evaluation format received')
+      console.error('Error parsing evaluation:', error)
+      console.error('Problematic evaluation text:', evaluationText)
+      throw new Error(`Invalid evaluation format: ${error.message}`)
     }
 
   } catch (error) {
     console.error('Error in evaluate-qa-pair function:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error instanceof Error ? error.stack : undefined
+      }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
