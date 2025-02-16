@@ -251,23 +251,39 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         } : undefined
       });
 
-      const originalTree = navigationHistory.length > 0 ? navigationHistory[0] : qaData;
+      let treesToSave: QANode[] = [];
+
+      const allTrees = navigationHistory.length > 0 ? [...navigationHistory] : [];
       
-      const mainTreeJson = originalTree.map(convertNodeToJson);
-      const extensionsJson = rootExtensions.map(convertNodeToJson);
-      
-      console.log('Saving QA tree with:', {
-        mainTree: mainTreeJson,
-        extensions: extensionsJson,
-        navigationHistory: navigationHistory.length,
-        originalTree: originalTree.map(n => ({
-          id: n.id,
-          hasChildren: n.children?.length > 0,
-          isExtended: rootExtensions.some(ext => ext.originalNodeId === n.id)
-        }))
+      if (!allTrees.some(tree => tree[0]?.id === qaData[0]?.id)) {
+        allTrees.push(qaData);
+      }
+
+      treesToSave = allTrees.flatMap(tree => tree);
+
+      rootExtensions.forEach(extension => {
+        if (!treesToSave.some(node => node.id === extension.id)) {
+          treesToSave.push(extension);
+        }
       });
 
-      const treeDataJson = [...mainTreeJson, ...extensionsJson];
+      const treeDataJson = treesToSave.map(convertNodeToJson);
+      
+      console.log('Saving complete QA tree structure:', {
+        totalNodes: treeDataJson.length,
+        navigationHistoryDepth: navigationHistory.length,
+        currentTree: qaData.map(n => n.id),
+        extensions: rootExtensions.map(ext => ({
+          id: ext.id,
+          originalNodeId: ext.originalNodeId,
+        })),
+        allSavedNodes: treeDataJson.map(n => ({
+          id: n.id,
+          isExtendedRoot: n.isExtendedRoot,
+          originalNodeId: n.originalNodeId,
+          hasChildren: (n.children || []).length > 0
+        }))
+      });
 
       const { data, error } = await supabase
         .from('qa_trees')
@@ -284,7 +300,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${rootExtensions.length} question expansions`,
+        description: `Saved complete QA tree with ${treesToSave.length} nodes including ${rootExtensions.length} extensions`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
