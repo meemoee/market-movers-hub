@@ -514,14 +514,40 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const loadSavedQATree = async (treeData: QANode[]) => {
     console.log('Loading saved QA tree:', treeData);
     
+    // Reset all states first
+    setStreamingContent({});
+    setExpandedNodes(new Set());
+    setCurrentNodeId(null);
+    
     const mainRoots = treeData.filter(node => !node.isExtendedRoot);
     const extensions = treeData.filter(node => node.isExtendedRoot);
     
+    console.log('Tree structure:', {
+      mainRoots,
+      extensions,
+      totalNodes: treeData.length
+    });
+
+    // Set states in correct order
     setRootExtensions(extensions);
     setQaData(mainRoots);
-    setStreamingContent({});
     
     // Populate streaming content for both main roots and extensions
+    const populateStreamingContent = (nodes: QANode[]) => {
+      nodes.forEach(node => {
+        setStreamingContent(prev => ({
+          ...prev,
+          [node.id]: {
+            content: node.analysis,
+            citations: node.citations || [],
+          },
+        }));
+        if (node.children && node.children.length > 0) {
+          populateStreamingContent(node.children);
+        }
+      });
+    };
+
     populateStreamingContent([...mainRoots, ...extensions]);
     
     // Evaluate all nodes that don't have evaluations
@@ -532,7 +558,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           console.log('Evaluating saved node:', node.id);
           await evaluateQAPair(node);
         }
-        if (node.children.length > 0) {
+        if (node.children && node.children.length > 0) {
           await evaluateAllNodes(node.children);
         }
       }
@@ -540,6 +566,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
     await evaluateAllNodes([...mainRoots, ...extensions]);
     
+    // Expand all nodes
     const allNodeIds = new Set<string>();
     const addNodeIds = (nodes: QANode[]) => {
       nodes.forEach(node => {
@@ -549,15 +576,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       });
     };
+    
     addNodeIds([...mainRoots, ...extensions]);
     setExpandedNodes(allNodeIds);
-    setCurrentNodeId(null);
     
-    console.log('Finished loading tree structure:', {
-      mainRoots,
-      extensions,
-      totalNodes: [...mainRoots, ...extensions].length
-    });
+    console.log('Finished loading tree with expanded nodes:', allNodeIds);
   };
 
   const getPreviewText = (text: string) => {
