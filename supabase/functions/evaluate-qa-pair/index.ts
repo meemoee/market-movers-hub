@@ -15,9 +15,11 @@ serve(async (req) => {
   }
 
   try {
-    const { question, analysis } = await req.json()
+    const { question, analysis, marketQuestion, marketDescription } = await req.json()
     console.log('Received request with question:', question)
     console.log('Analysis:', analysis)
+    console.log('Market question:', marketQuestion)
+    console.log('Market description:', marketDescription)
 
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -32,11 +34,19 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Provide a score between 0 and 100 and a brief reason for the score."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. Provide a score between 0 and 100 and a brief reason for the score."
           },
           {
             role: "user",
-            content: `Please evaluate how well this analysis answers the question:\n\nQuestion: ${question}\n\nAnalysis: ${analysis}`
+            content: `Given this prediction market context:
+Market Question: ${marketQuestion || 'N/A'}
+Market Description: ${marketDescription || 'N/A'}
+
+Please evaluate how well this analysis answers the follow-up question:
+
+Question: ${question}
+
+Analysis: ${analysis}`
           }
         ],
         response_format: { type: "json_object" }
