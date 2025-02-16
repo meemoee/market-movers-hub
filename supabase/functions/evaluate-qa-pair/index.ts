@@ -28,17 +28,18 @@ serve(async (req) => {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "google/gemini-pro",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. You must provide a score between 0 and 100 and a brief reason for the score. Output ONLY a valid JSON object in this format: {\"score\": number, \"reason\": \"string\"}. Do not include any other text, markdown, or formatting."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Provide a score between 0 and 100 and a brief reason for the score."
           },
           {
             role: "user",
             content: `Please evaluate how well this analysis answers the question:\n\nQuestion: ${question}\n\nAnalysis: ${analysis}`
           }
-        ]
+        ],
+        response_format: { type: "json_object" }
       })
     })
 
@@ -50,21 +51,8 @@ serve(async (req) => {
     const data = await openRouterResponse.json()
     console.log('OpenRouter API response:', JSON.stringify(data))
     
-    let evaluationText = data.choices[0].message.content
-    console.log('Raw evaluation text:', evaluationText)
-
-    // More robust JSON cleanup
-    evaluationText = evaluationText
-      .replace(/```json\s*/g, '')  // Remove ```json
-      .replace(/```\s*$/g, '')     // Remove closing ```
-      .replace(/^\s*{\s*/, '{')    // Clean start
-      .replace(/\s*}\s*$/, '}')    // Clean end
-      .trim()
-
-    console.log('Cleaned evaluation text:', evaluationText)
-
     try {
-      const evaluation = JSON.parse(evaluationText)
+      const evaluation = JSON.parse(data.choices[0].message.content)
       console.log('Parsed evaluation:', evaluation)
 
       // Validate the evaluation object structure
@@ -88,7 +76,7 @@ serve(async (req) => {
       })
     } catch (error) {
       console.error('Error parsing evaluation:', error)
-      console.error('Problematic evaluation text:', evaluationText)
+      console.error('Problematic evaluation text:', data.choices[0].message.content)
       throw new Error(`Invalid evaluation format: ${error.message}`)
     }
 
