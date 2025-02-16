@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -42,7 +43,7 @@ ${parentContent}
           messages: [
             {
               role: "system",
-              content: "Generate three analytical follow-up questions. Return only an array of objects, each with a 'question' field."
+              content: "Generate three analytical follow-up questions. Return a JSON object with a 'questions' array where each item has a 'question' field."
             },
             {
               role: "user",
@@ -56,9 +57,16 @@ ${parentContent}
         throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
       }
       const data = await followUpResponse.json();
-      const questions = data.choices[0].message.content;
-      if (!Array.isArray(questions)) throw new Error('Response is not an array');
-      return new Response(JSON.stringify(questions), {
+      const content = data.choices[0].message.content;
+      console.log('Received content:', content);
+
+      // Expect content to be an object with a questions array
+      if (!content.questions || !Array.isArray(content.questions)) {
+        console.error('Invalid response format:', content);
+        throw new Error('Response format is invalid - expected object with questions array');
+      }
+
+      return new Response(JSON.stringify(content.questions), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
