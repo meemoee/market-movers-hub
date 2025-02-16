@@ -56,13 +56,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
-  const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-  const [selectedResearch, setSelectedResearch] = useState<string>('none');
-  const [selectedQATree, setSelectedQATree] = useState<string>('none');
-  const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
-  const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
+  const [streamingContent, setStreamingContent<{ [key: string]: StreamingContent }>({});
+  const [expandedNodes, setExpandedNodes>(new Set());
+  const [currentNodeId, setCurrentNodeId>(null);
+  const [selectedResearch, setSelectedResearch](('none'));
+  const [selectedQATree, setSelectedQATree](('none'));
+  const [rootExtensions, setRootExtensions>([]);
+  const [navigationHistory, setNavigationHistory<QANode[][]>>([]);
   const queryClient = useQueryClient();
 
   const toggleNode = (nodeId: string) => {
@@ -232,6 +232,123 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
+  const loadSavedQATree = async (treeData: QANode[]) => {
+    console.log('Loading saved QA tree with raw data:', treeData);
+    
+    try {
+      setStreamingContent({});
+      setCurrentNodeId(null);
+      setNavigationHistory([]);
+      
+      // Create maps for faster lookups
+      const nodeMap = new Map<string, QANode>();
+      const childParentMap = new Map<string, string>();
+
+      // First pass: map all nodes and track parent-child relationships
+      const mapNodes = (node: QANode) => {
+        nodeMap.set(node.id, { ...node, children: [] }); // Reset children to rebuild tree
+        if (node.children) {
+          node.children.forEach(child => {
+            childParentMap.set(child.id, node.id);
+            mapNodes(child);
+          });
+        }
+      };
+      treeData.forEach(mapNodes);
+
+      // Second pass: rebuild trees
+      const rootNodes: QANode[] = [];
+      const extensions: QANode[] = [];
+
+      treeData.forEach(node => {
+        const mappedNode = nodeMap.get(node.id)!;
+        
+        // If this node has a parent, add it to parent's children
+        const parentId = childParentMap.get(node.id);
+        if (parentId) {
+          const parent = nodeMap.get(parentId);
+          if (parent) {
+            parent.children = [...(parent.children || []), mappedNode];
+          }
+        }
+
+        // Collect root nodes and extensions
+        if (node.isExtendedRoot) {
+          extensions.push(mappedNode);
+          // If this is an extended root with an original node, reconstruct the navigation history
+          if (node.originalNodeId) {
+            const originalNode = nodeMap.get(node.originalNodeId);
+            if (originalNode) {
+              const originalTree = [originalNode];
+              setNavigationHistory(prev => [...prev, originalTree]);
+            }
+          }
+        } else if (!parentId) {
+          rootNodes.push(mappedNode);
+        }
+      });
+
+      console.log('Processing tree structure:', {
+        rootNodes: rootNodes.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
+        extensions: extensions.map(n => ({ 
+          id: n.id, 
+          originalNodeId: n.originalNodeId,
+          parentFound: n.originalNodeId ? nodeMap.has(n.originalNodeId) : false
+        })),
+        totalNodes: treeData.length,
+        mappedNodes: nodeMap.size
+      });
+
+      // Set initial state based on reconstructed trees
+      if (rootNodes.length > 0) {
+        setQaData(rootNodes);
+      } else if (extensions.length > 0) {
+        // If no main roots, start with the first extension
+        setQaData([extensions[0]]);
+      }
+
+      // Store all extensions
+      setRootExtensions(extensions);
+
+      // Expand all nodes for visibility
+      const allNodeIds = new Set([...nodeMap.keys()]);
+      setExpandedNodes(allNodeIds);
+
+      // Populate content for all nodes
+      const populateNodeContent = (node: QANode) => {
+        setStreamingContent(prev => ({
+          ...prev,
+          [node.id]: {
+            content: node.analysis || '',
+            citations: node.citations || [],
+          },
+        }));
+        
+        if (node.children) {
+          node.children.forEach(populateNodeContent);
+        }
+      };
+
+      [...rootNodes, ...extensions].forEach(populateNodeContent);
+
+      console.log('Finished loading tree:', {
+        qaData: rootNodes.length > 0 ? rootNodes : [extensions[0]],
+        rootExtensions: extensions,
+        expandedNodes: Array.from(allNodeIds),
+        streamingContentKeys: Object.keys(streamingContent).length,
+        nodeMapSize: nodeMap.size
+      });
+
+    } catch (error) {
+      console.error('Error loading QA tree:', error);
+      toast({
+        variant: "destructive",
+        title: "Load Error",
+        description: "Failed to load the QA tree",
+      });
+    }
+  };
+
   const saveQATree = async () => {
     try {
       const { data: user } = await supabase.auth.getUser();
@@ -251,27 +368,31 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         } : undefined
       });
 
-      const allTrees = [...navigationHistory];
-      
-      if (!allTrees.length || allTrees[allTrees.length - 1][0]?.id !== qaData[0]?.id) {
-        allTrees.push(qaData);
+      // Create a map to track all nodes we want to save
+      const processedNodes = new Map<string, QANode>();
+
+      // Add all navigation history trees
+      navigationHistory.forEach(tree => {
+        tree.forEach(node => processNodeAndChildren(node));
+      });
+
+      // Add current tree if it's different from the last navigation history tree
+      if (!navigationHistory.length || 
+          navigationHistory[navigationHistory.length - 1][0]?.id !== qaData[0]?.id) {
+        qaData.forEach(node => processNodeAndChildren(node));
       }
 
-      const processedNodes = new Map<string, QANode>();
-      
-      allTrees.forEach(tree => {
-        tree.forEach(node => {
-          if (!processedNodes.has(node.id)) {
-            processedNodes.set(node.id, node);
-          }
-        });
-      });
+      // Add all root extensions
+      rootExtensions.forEach(node => processNodeAndChildren(node));
 
-      rootExtensions.forEach(extension => {
-        if (!processedNodes.has(extension.id)) {
-          processedNodes.set(extension.id, extension);
+      function processNodeAndChildren(node: QANode) {
+        if (!processedNodes.has(node.id)) {
+          processedNodes.set(node.id, node);
+          if (node.children) {
+            node.children.forEach(processNodeAndChildren);
+          }
         }
-      });
+      }
 
       const treesToSave = Array.from(processedNodes.values());
       const treeDataJson = treesToSave.map(convertNodeToJson);
@@ -318,137 +439,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         variant: "destructive",
         title: "Save Error",
         description: error instanceof Error ? error.message : "Failed to save the QA tree",
-      });
-    }
-  };
-
-  const loadSavedQATree = async (treeData: QANode[]) => {
-    console.log('Loading saved QA tree with raw data:', treeData);
-    
-    try {
-      setStreamingContent({});
-      setCurrentNodeId(null);
-      setNavigationHistory([]);
-      
-      const allNodes = new Set<string>();
-      
-      const addAllNodes = (node: QANode) => {
-        allNodes.add(node.id);
-        if (node.children && node.children.length > 0) {
-          node.children.forEach(child => addAllNodes(child));
-        }
-      };
-
-      const nodeMap = new Map<string, QANode>();
-      treeData.forEach(node => {
-        nodeMap.set(node.id, node);
-        
-        const mapChildren = (n: QANode) => {
-          if (n.children) {
-            n.children.forEach(child => {
-              nodeMap.set(child.id, child);
-              mapChildren(child);
-            });
-          }
-        };
-        mapChildren(node);
-      });
-
-      const mainRoots = treeData.filter(node => !node.isExtendedRoot);
-      const extensions = treeData.filter(node => node.isExtendedRoot);
-      
-      console.log('Processing tree structure:', {
-        mainRoots: mainRoots.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
-        extensions: extensions.map(n => ({ 
-          id: n.id, 
-          originalNodeId: n.originalNodeId,
-          parentFound: n.originalNodeId ? mainRoots.some(m => m.id === n.originalNodeId) : false
-        })),
-        totalNodes: treeData.length,
-        mappedNodes: nodeMap.size
-      });
-
-      if (mainRoots.length > 0) {
-        mainRoots.forEach(node => addAllNodes(node));
-        setQaData(mainRoots);
-      } else if (extensions.length > 0) {
-        const baseExtension = extensions.find(ext => 
-          !ext.originalNodeId || 
-          !extensions.some(other => other.originalNodeId === ext.id)
-        );
-        
-        if (baseExtension) {
-          addAllNodes(baseExtension);
-          setQaData([baseExtension]);
-        }
-      }
-      
-      setRootExtensions(extensions);
-      
-      setExpandedNodes(allNodes);
-      
-      const populateNodeContent = (node: QANode) => {
-        console.log('Populating content for node:', {
-          id: node.id,
-          question: node.question,
-          isExtendedRoot: node.isExtendedRoot,
-          originalNodeId: node.originalNodeId,
-          hasChildren: node.children?.length > 0
-        });
-
-        setStreamingContent(prev => ({
-          ...prev,
-          [node.id]: {
-            content: node.analysis || '',
-            citations: node.citations || [],
-          },
-        }));
-        
-        if (node.children && node.children.length > 0) {
-          node.children.forEach(child => populateNodeContent(child));
-        }
-      };
-
-      treeData.forEach(node => {
-        populateNodeContent(node);
-        const mapChildren = (n: QANode) => {
-          if (n.children) {
-            n.children.forEach(child => {
-              populateNodeContent(child);
-              mapChildren(child);
-            });
-          }
-        };
-        mapChildren(node);
-      });
-
-      const evaluateNodesIfNeeded = async (nodes: QANode[]) => {
-        for (const node of nodes) {
-          if (node.analysis && !node.evaluation) {
-            console.log('Re-evaluating node:', node.id);
-            await evaluateQAPair(node);
-          }
-          if (node.children && node.children.length > 0) {
-            await evaluateNodesIfNeeded(node.children);
-          }
-        }
-      };
-
-      await evaluateNodesIfNeeded([...mainRoots, ...extensions]);
-      
-      console.log('Finished loading tree:', {
-        qaData: mainRoots.length > 0 ? mainRoots : [extensions[0]],
-        rootExtensions: extensions,
-        expandedNodes: Array.from(allNodes),
-        streamingContentKeys: Object.keys(streamingContent).length,
-        nodeMapSize: nodeMap.size
-      });
-    } catch (error) {
-      console.error('Error loading QA tree:', error);
-      toast({
-        variant: "destructive",
-        title: "Load Error",
-        description: "Failed to load the QA tree",
       });
     }
   };
@@ -920,178 +910,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                                   href={citation}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                                >
-                                  <LinkIcon className="h-3 w-3" />
-                                  {`[${index + 1}]`}
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="mt-4 space-y-2">
-                          {node.evaluation && (
-                            <div className={`rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs font-medium">
-                                  Score: {node.evaluation.score}%
-                                </div>
-                                {!node.isExtendedRoot && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleExpandQuestion(node);
-                                    }}
-                                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                                    title="Expand this question into a follow-up analysis"
-                                  >
-                                    <ArrowRight className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                              <ReactMarkdown
-                                components={markdownComponents}
-                                className="text-xs text-muted-foreground"
-                              >
-                                {node.evaluation.reason}
-                              </ReactMarkdown>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        {navigationHistory.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button 
-            onClick={async () => {
-              setIsAnalyzing(true);
-              setQaData([]);
-              setStreamingContent({});
-              setExpandedNodes(new Set());
-              try {
-                await analyzeQuestion(marketQuestion);
-              } finally {
-                setIsAnalyzing(false);
-                setCurrentNodeId(null);
-              }
-            }} 
-            disabled={isAnalyzing}
-          >
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
+                                  className="inline-flex items-center gap-
