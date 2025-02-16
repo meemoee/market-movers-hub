@@ -43,7 +43,7 @@ ${parentContent}
           messages: [
             {
               role: "system",
-              content: "Generate three analytical follow-up questions. Return a JSON object with a 'questions' array where each item has a 'question' field."
+              content: "You are a follow-up question generator. Return ONLY a JSON object with a 'questions' array containing exactly three objects, each with a 'question' field. Example: {'questions':[{'question':'First question?'},{'question':'Second question?'},{'question':'Third question?'}]}"
             },
             {
               role: "user",
@@ -53,20 +53,28 @@ ${parentContent}
           response_format: { type: "json_object" }
         })
       });
+      
       if (!followUpResponse.ok) {
         throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
       }
+      
       const data = await followUpResponse.json();
+      console.log('Full API response:', JSON.stringify(data));
+      
       const content = data.choices[0].message.content;
-      console.log('Received content:', content);
+      console.log('Raw content:', typeof content, JSON.stringify(content));
+      
+      // If content is a string, try to parse it
+      let parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
+      console.log('Parsed content:', JSON.stringify(parsedContent));
 
       // Expect content to be an object with a questions array
-      if (!content.questions || !Array.isArray(content.questions)) {
-        console.error('Invalid response format:', content);
+      if (!parsedContent.questions || !Array.isArray(parsedContent.questions)) {
+        console.error('Invalid response format:', parsedContent);
         throw new Error('Response format is invalid - expected object with questions array');
       }
 
-      return new Response(JSON.stringify(content.questions), {
+      return new Response(JSON.stringify(parsedContent.questions), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
