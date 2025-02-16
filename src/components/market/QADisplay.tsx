@@ -314,16 +314,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         totalNodes: treeData.length
       });
 
-      if (mainRoots.length === 0 && extensions.length > 0) {
+      if (mainRoots.length > 0) {
+        mainRoots.forEach(node => addAllNodes(node));
+        setExpandedNodes(allNodes);
+        setQaData(mainRoots);
+      } else if (extensions.length > 0) {
         const extensionNode = extensions[extensions.length - 1];
         addAllNodes(extensionNode);
         setExpandedNodes(allNodes);
         setQaData([extensionNode]);
-      } else {
-        mainRoots.forEach(node => addAllNodes(node));
-        extensions.forEach(node => addAllNodes(node));
-        setExpandedNodes(allNodes);
-        setQaData(mainRoots);
       }
 
       setRootExtensions(extensions);
@@ -369,7 +368,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       await evaluateNodesIfNeeded([...mainRoots, ...extensions]);
       
       console.log('Finished loading tree:', {
-        qaData: mainRoots,
+        qaData: mainRoots.length > 0 ? mainRoots : [extensions[extensions.length - 1]],
         rootExtensions: extensions,
         expandedNodes: Array.from(allNodes),
         streamingContentKeys: Object.keys(streamingContent).length
