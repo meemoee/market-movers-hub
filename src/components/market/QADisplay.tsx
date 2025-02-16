@@ -241,19 +241,22 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         totalNodes: allNodes.length
       });
 
-      const treeDataJson = allNodes.map(node => ({
+      // Helper function to convert QANode to plain object recursively
+      const convertNodeToJson = (node: QANode): Record<string, any> => ({
         id: node.id,
         question: node.question,
         analysis: node.analysis,
         citations: node.citations || [],
-        children: node.children,
+        children: node.children ? node.children.map(convertNodeToJson) : [],
         isExtendedRoot: node.isExtendedRoot || false,
         originalNodeId: node.originalNodeId,
         evaluation: node.evaluation ? {
           score: node.evaluation.score,
           reason: node.evaluation.reason
         } : undefined
-      }));
+      });
+
+      const treeDataJson = allNodes.map(convertNodeToJson);
 
       const { data, error } = await supabase
         .from('qa_trees')
