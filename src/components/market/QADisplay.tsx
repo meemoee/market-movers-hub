@@ -1016,7 +1016,21 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           </Select>
         </div>
         <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={() => handleAnalyze(marketQuestion)} disabled={isAnalyzing}>
+          <Button 
+            onClick={async () => {
+              setIsAnalyzing(true);
+              setQaData([]);
+              setStreamingContent({});
+              setExpandedNodes(new Set());
+              try {
+                await analyzeQuestion(marketQuestion);
+              } finally {
+                setIsAnalyzing(false);
+                setCurrentNodeId(null);
+              }
+            }} 
+            disabled={isAnalyzing}
+          >
             {isAnalyzing ? 'Analyzing...' : 'Analyze'}
           </Button>
           {qaData.length > 0 && !isAnalyzing && (
