@@ -103,18 +103,27 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         children: node.children.map(serializeNode),
         citations: node.citations || [],
         isExtendedRoot: Boolean(node.isExtendedRoot),
+        isOriginalNode: Boolean(node.isOriginalNode),
         originalNodeId: node.originalNodeId || null,
         evaluation: node.evaluation
       });
 
       const treeToSave = [
-        ...originalTree,
+        ...originalTree.map(node => ({ ...node, isOriginalNode: true })),
         ...rootExtensions
       ];
 
       console.log('Save Debug:', {
-        originalTree: originalTree.map(n => ({ id: n.id, question: n.question })),
-        extensions: rootExtensions.map(n => ({ id: n.id, question: n.question })),
+        originalNodes: originalTree.map(n => ({ 
+          id: n.id, 
+          question: n.question.substring(0, 50), 
+          isOriginal: n.isOriginalNode 
+        })),
+        extensions: rootExtensions.map(n => ({ 
+          id: n.id, 
+          question: n.question.substring(0, 50), 
+          isExtended: n.isExtendedRoot 
+        })),
         totalNodes: treeToSave.length
       });
 
@@ -340,9 +349,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setQaData([]);
     setStreamingContent({});
     setExpandedNodes(new Set());
+    setRootExtensions([]);
     try {
       await analyzeQuestion(marketQuestion);
-      setOriginalTree(qaData);
+      setOriginalTree(prevQaData => {
+        console.log('Setting original tree:', prevQaData);
+        return prevQaData.map(node => ({
+          ...node,
+          isOriginalNode: true
+        }));
+      });
     } finally {
       setIsAnalyzing(false);
       setCurrentNodeId(null);
@@ -373,7 +389,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const loadSavedQATree = async (treeData: any[]) => {
-    console.log('Loading tree:', treeData);
+    console.log('Loading tree data:', treeData);
     
     try {
       setStreamingContent({});
@@ -388,21 +404,29 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         children: Array.isArray(node.children) ? node.children.map(deserializeNode) : [],
         citations: Array.isArray(node.citations) ? node.citations : [],
         isExtendedRoot: Boolean(node.isExtendedRoot),
+        isOriginalNode: Boolean(node.isOriginalNode),
         originalNodeId: node.originalNodeId || null,
         evaluation: node.evaluation
       });
 
       const deserializedNodes = treeData.map(deserializeNode);
       
-      const mainTree = deserializedNodes.filter(node => !node.isExtendedRoot);
+      const originalNodes = deserializedNodes.filter(node => node.isOriginalNode && !node.isExtendedRoot);
       const extensions = deserializedNodes.filter(node => node.isExtendedRoot);
 
       console.log('Load Debug:', {
-        mainTreeNodes: mainTree.length,
-        extensionNodes: extensions.length
+        totalNodes: deserializedNodes.length,
+        originalNodes: originalNodes.map(n => ({ 
+          id: n.id, 
+          question: n.question.substring(0, 50) 
+        })),
+        extensions: extensions.map(n => ({ 
+          id: n.id, 
+          question: n.question.substring(0, 50) 
+        }))
       });
 
-      if (mainTree.length === 0) {
+      if (originalNodes.length === 0) {
         toast({
           variant: "destructive",
           title: "Load Error",
@@ -411,8 +435,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return;
       }
 
-      setOriginalTree(mainTree);
-      setQaData(mainTree);
+      setOriginalTree(originalNodes);
+      setQaData(originalNodes);
       setRootExtensions(extensions);
 
       const allNodeIds = new Set<string>();
@@ -420,7 +444,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         allNodeIds.add(node.id);
         node.children.forEach(collectNodeIds);
       };
-      mainTree.forEach(collectNodeIds);
+      originalNodes.forEach(collectNodeIds);
       setExpandedNodes(allNodeIds);
 
       const streamContent: { [key: string]: StreamingContent } = {};
@@ -434,7 +458,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         node.children.forEach(populateContent);
       };
 
-      [...mainTree, ...extensions].forEach(populateContent);
+      [...originalNodes, ...extensions].forEach(populateContent);
       setStreamingContent(streamContent);
 
     } catch (error) {
