@@ -611,7 +611,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           body: JSON.stringify({ 
             marketId, 
             question, 
-            parentContent: analysis, 
+            parentContent: analysis,
             isFollowUp: true,
             researchContext: selectedResearchData ? {
               analysis: selectedResearchData.analysis,
