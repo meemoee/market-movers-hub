@@ -44,36 +44,40 @@ export function MarketStatsBento({ selectedInterval }: MarketStatsBentoProps) {
     const fetchArticles = async () => {
       console.log('Fetching articles for interval:', selectedInterval);
       
-      // Use a CTE to get the latest article for each position
       const { data, error } = await supabase
         .from('news_articles')
         .select('*')
         .eq('time_interval', selectedInterval)
-        .in('position', [1, 2, 3])  // Only positions 1-3
-        .order('position', { ascending: true })
-        .order('updated_at', { ascending: false }) // Get latest first
-        .limit(3);
+        .in('position', [1, 2, 3])
+        .order('updated_at', { ascending: false })
+        .order('position', { ascending: true });
 
       if (error) {
         console.error('Error fetching news articles:', error);
         return;
       }
 
-      // Process to ensure only the latest article per position
+      // Group articles by position and get the latest for each
       const latestByPosition = data?.reduce((acc, article) => {
-        if (!acc[article.position] || 
-            new Date(article.updated_at) > new Date(acc[article.position].updated_at)) {
+        const existingArticle = acc[article.position];
+        if (!existingArticle || 
+            new Date(article.updated_at) > new Date(existingArticle.updated_at)) {
           acc[article.position] = article;
         }
         return acc;
-      }, {} as Record<number, any>);
+      }, {} as Record<number, NewsArticle>);
 
-      // Convert back to array and sort by position
+      // Convert to array and sort by position
       const sortedArticles = Object.values(latestByPosition)
         .sort((a, b) => a.position - b.position);
 
-      console.log('Fetched and processed articles:', sortedArticles);
-      setArticles(sortedArticles || []);
+      console.log('Processed articles:', {
+        total: data?.length,
+        byPosition: latestByPosition,
+        final: sortedArticles
+      });
+      
+      setArticles(sortedArticles);
     };
 
     fetchArticles();
