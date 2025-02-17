@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -56,7 +55,42 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   };
 
   const handleExpandQuestion = async (node: QANode) => {
-    // Implementation omitted for brevity
+    try {
+      // Create a continuation node that extends from the clicked node
+      const continuationNode: QANode = {
+        id: crypto.randomUUID(),
+        question: `Continuation of: ${node.question}`,
+        analysis: node.analysis,
+        citations: node.citations || [],
+        children: [],
+        isExtendedRoot: true,
+        originalNodeId: node.id  // Link to the parent node
+      };
+
+      // Process follow-up questions and ensure they link back to the continuation
+      const followUps = await analyzeQuestion(node.question, node.analysis);
+      const followUpNodes = followUps.map(q => ({
+        id: crypto.randomUUID(),
+        question: q,
+        analysis: '',
+        citations: [],
+        children: [],
+        originalNodeId: continuationNode.id  // Link to the continuation node
+      }));
+
+      continuationNode.children = followUpNodes;
+
+      setRootExtensions(prev => [...prev, continuationNode]);
+      return continuationNode;
+    } catch (error) {
+      console.error('Error expanding question:', error);
+      toast({
+        variant: "destructive",
+        title: "Expansion Error",
+        description: error instanceof Error ? error.message : "Failed to expand the question",
+      });
+      return null;
+    }
   };
 
   const saveQATree = async () => {
@@ -222,18 +256,27 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
   const navigateToExtension = (extension: QANode) => {
     const findAllChildExtensions = (nodeId: string): QANode[] => {
+      // Find direct extensions of this node
       const directExtensions = rootExtensions.filter(ext => ext.originalNodeId === nodeId);
-      const childExtensions = directExtensions.flatMap(ext => 
-        [ext, ...ext.children.flatMap(child => findAllChildExtensions(child.id))]
-      );
+      
+      // For each direct extension, get its children's extensions
+      const childExtensions = directExtensions.flatMap(ext => {
+        // Get extensions for this extension's children
+        const childExts = ext.children.flatMap(child => findAllChildExtensions(child.id));
+        return [ext, ...childExts];
+      });
+
       return childExtensions;
     };
 
     const buildCompleteTree = (node: QANode): QANode => {
+      // Get all extensions for this node and its children
       const allExtensions = findAllChildExtensions(node.id);
       
+      // Process children recursively
       const processedChildren = node.children.map(child => buildCompleteTree(child));
       
+      // Create the complete node with all its extensions
       return {
         ...node,
         children: [
