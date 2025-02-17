@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -59,34 +58,101 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     // Implementation omitted for brevity
   };
 
+  const saveQATree = async () => {
+    try {
+      const { data: user } = await supabase.auth.getUser();
+      if (!user.user) throw new Error('Not authenticated');
+
+      const processedNodes = new Map<string, QANode>();
+      
+      const flattenTree = (node: QANode): void => {
+        if (processedNodes.has(node.id)) {
+          return;
+        }
+        
+        const processedNode: QANode = {
+          id: node.id,
+          question: node.question,
+          analysis: node.analysis || '',
+          citations: node.citations || [],
+          children: node.children.map(child => child.id),
+          isExtendedRoot: node.isExtendedRoot || false,
+          originalNodeId: node.originalNodeId
+        };
+
+        if (node.evaluation) {
+          processedNode.evaluation = {
+            score: Number(node.evaluation.score),
+            reason: String(node.evaluation.reason)
+          };
+        }
+
+        processedNodes.set(node.id, processedNode);
+        
+        node.children.forEach(child => flattenTree(child));
+      };
+
+      qaData.forEach(node => flattenTree(node));
+      rootExtensions.forEach(node => flattenTree(node));
+
+      const allNodes = Array.from(processedNodes.values());
+
+      const { error } = await supabase
+        .from('qa_trees')
+        .insert({
+          market_id: marketId,
+          title: 'QA Analysis',
+          tree_data: allNodes as unknown as Json,
+          user_id: user.user.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Analysis saved",
+        description: `Saved QA tree with ${allNodes.length} nodes including ${rootExtensions.length} extensions`,
+      });
+
+      await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
+
+    } catch (error) {
+      console.error('Error saving QA tree:', error);
+      toast({
+        variant: "destructive",
+        title: "Save Error",
+        description: error instanceof Error ? error.message : "Failed to save the QA tree",
+      });
+    }
+  };
+
   const loadSavedQATree = async (treeData: QANode[]) => {
     console.log('Loading saved QA tree with raw data:', treeData);
     
     try {
       const nodeMap = new Map<string, QANode>();
-      const allNodes = new Set<string>();
       
       treeData.forEach(node => {
-        const newNode: QANode = {
+        nodeMap.set(node.id, {
           ...node,
-          children: [], // Reset children to prevent duplicates
+          children: [],
           isExtendedRoot: node.isExtendedRoot || false,
           originalNodeId: node.originalNodeId
-        };
-        nodeMap.set(node.id, newNode);
-        allNodes.add(node.id);
+        });
       });
 
       treeData.forEach(node => {
         const currentNode = nodeMap.get(node.id);
-        if (currentNode && Array.isArray(node.children)) {
-          currentNode.children = node.children
-            .map(child => {
-              const childId = typeof child === 'string' ? child : child.id;
-              return nodeMap.get(childId);
-            })
-            .filter((child): child is QANode => child !== null);
-        }
+        if (!currentNode) return;
+
+        const childIds = Array.isArray(node.children) 
+          ? node.children.map(child => typeof child === 'string' ? child : child.id)
+          : [];
+
+        currentNode.children = childIds
+          .map(id => nodeMap.get(id))
+          .filter((child): child is QANode => child !== undefined);
       });
 
       const extensions = new Map<string, QANode>();
@@ -135,73 +201,6 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     }
   };
 
-  const saveQATree = async () => {
-    try {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
-
-      const processedNodes = new Map<string, QANode>();
-      
-      const processNode = (node: QANode): QANode => {
-        if (processedNodes.has(node.id)) {
-          return processedNodes.get(node.id)!;
-        }
-        
-        const processedNode: QANode = {
-          id: node.id,
-          question: node.question,
-          analysis: node.analysis || '',
-          citations: node.citations || [],
-          children: node.children.map(child => processNode(child)),
-          isExtendedRoot: node.isExtendedRoot || false,
-          originalNodeId: node.originalNodeId
-        };
-
-        if (node.evaluation) {
-          processedNode.evaluation = {
-            score: Number(node.evaluation.score),
-            reason: String(node.evaluation.reason)
-          };
-        }
-
-        processedNodes.set(node.id, processedNode);
-        return processedNode;
-      };
-
-      const processedMainTree = qaData.map(node => processNode(node));
-      const processedExtensions = rootExtensions.map(ext => processNode(ext));
-      const allNodes = Array.from(processedNodes.values());
-
-      const { error } = await supabase
-        .from('qa_trees')
-        .insert({
-          market_id: marketId,
-          title: 'QA Analysis',
-          tree_data: allNodes as unknown as Json,
-          user_id: user.user.id
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      toast({
-        title: "Analysis saved",
-        description: `Saved QA tree with ${allNodes.length} nodes including ${processedExtensions.length} extensions`,
-      });
-
-      await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
-
-    } catch (error) {
-      console.error('Error saving QA tree:', error);
-      toast({
-        variant: "destructive",
-        title: "Save Error",
-        description: error instanceof Error ? error.message : "Failed to save the QA tree",
-      });
-    }
-  };
-
   const navigateToExtension = (extension: QANode) => {
     const findAllChildExtensions = (nodeId: string): QANode[] => {
       const directExtensions = rootExtensions.filter(ext => ext.originalNodeId === nodeId);
@@ -212,13 +211,10 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     };
 
     const buildCompleteTree = (node: QANode): QANode => {
-      // Get all extensions for this node and its children
       const allExtensions = findAllChildExtensions(node.id);
       
-      // Process children recursively
       const processedChildren = node.children.map(child => buildCompleteTree(child));
       
-      // Create the complete node with all its extensions
       return {
         ...node,
         children: [
