@@ -121,80 +121,83 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
           .filter((child): child is QANode => child !== undefined);
       });
 
-      // Separate extensions and main nodes
+      // Find the mainline tree (non-extension nodes)
+      const mainlineNodes = new Map<string, QANode>();
       const extensions = new Map<string, QANode>();
-      const mainNodes = new Map<string, QANode>();
-      
+
+      // First, separate nodes into mainline and extensions
       nodeMap.forEach(node => {
         if (node.isExtendedRoot) {
           extensions.set(node.id, node);
         } else {
-          mainNodes.set(node.id, node);
+          mainlineNodes.set(node.id, node);
         }
       });
 
-      // Build a map of which nodes are referenced by extensions
-      const isReferencedByExtension = new Map<string, boolean>();
+      // Build a map of nodes referenced by extensions
+      const extensionReferences = new Map<string, QANode[]>();
       extensions.forEach(ext => {
         if (ext.originalNodeId) {
-          isReferencedByExtension.set(ext.originalNodeId, true);
+          const currentRefs = extensionReferences.get(ext.originalNodeId) || [];
+          extensionReferences.set(ext.originalNodeId, [...currentRefs, ext]);
         }
       });
 
-      // Find root nodes (nodes that aren't children of any other node)
-      const allChildIds = new Set(
-        Array.from(nodeMap.values())
-          .flatMap(node => node.children)
-          .map(child => child.id)
-      );
+      // Find the root of the mainline tree
+      const findMainRoot = () => {
+        const allChildIds = new Set(
+          Array.from(mainlineNodes.values())
+            .flatMap(node => node.children)
+            .map(child => child.id)
+        );
 
-      // Find the original root node by:
-      // 1. Looking for nodes that aren't children of any other node
-      // 2. Aren't extensions themselves
-      // 3. Aren't referenced by any extension (meaning they're not part of a continuation)
-      const findOriginalRoot = () => {
-        const potentialRoots = Array.from(mainNodes.values())
-          .filter(node => 
-            !allChildIds.has(node.id) && // Not a child of any node
-            !node.isExtendedRoot && // Not an extension
-            !isReferencedByExtension.has(node.id) // Not referenced by any extension
-          );
+        // Find nodes that aren't children of any other mainline node
+        const rootCandidates = Array.from(mainlineNodes.values())
+          .filter(node => !allChildIds.has(node.id));
 
-        console.log('Found potential root nodes:', {
-          count: potentialRoots.length,
-          ids: potentialRoots.map(n => n.id),
-          questions: potentialRoots.map(n => n.question)
+        console.log('Found mainline root candidates:', {
+          count: rootCandidates.length,
+          ids: rootCandidates.map(n => n.id),
+          questions: rootCandidates.map(n => n.question)
         });
 
-        return potentialRoots[0];
+        return rootCandidates[0];
       };
 
-      const originalRoot = findOriginalRoot();
-      console.log('Found original root:', originalRoot?.id);
+      const mainRoot = findMainRoot();
+      console.log('Found main root:', mainRoot?.id);
 
-      if (originalRoot) {
-        setQaData([originalRoot]);
+      // If we found a main root, use it. Otherwise, try to find the earliest extension.
+      if (mainRoot) {
+        console.log('Setting main tree as root');
+        setQaData([mainRoot]);
       } else {
-        // Fallback: if we can't find the original root, 
-        // use any non-extension node as the root
-        const fallbackRoot = Array.from(mainNodes.values())
-          .find(node => !node.isExtendedRoot);
+        // If no main root, try to find an extension that isn't referenced by other extensions
+        const standaloneExtension = Array.from(extensions.values())
+          .find(ext => !Array.from(extensions.values())
+            .some(other => other.originalNodeId === ext.id));
         
-        if (fallbackRoot) {
-          setQaData([fallbackRoot]);
+        if (standaloneExtension) {
+          console.log('Setting standalone extension as root:', standaloneExtension.id);
+          setQaData([standaloneExtension]);
         } else {
-          // Last resort: use the first node we find
+          console.log('No suitable root found, using first node');
           setQaData([Array.from(nodeMap.values())[0]]);
         }
       }
 
+      // Store all extensions separately
       setRootExtensions(Array.from(extensions.values()));
       setNavigationHistory([]);
 
       console.log('Tree loaded with:', {
-        mainNode: originalRoot?.id,
+        mainRoot: mainRoot?.id,
         extensionCount: extensions.size,
-        totalNodes: nodeMap.size
+        totalNodes: nodeMap.size,
+        extensionReferences: Array.from(extensionReferences.entries()).map(([id, refs]) => ({
+          nodeId: id,
+          refCount: refs.length
+        }))
       });
 
     } catch (error) {
