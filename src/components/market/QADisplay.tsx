@@ -347,30 +347,37 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       const allNodes = new Set<string>();
       
-      const addAllNodes = (node: QANode) => {
-        allNodes.add(node.id);
-        if (node.children && node.children.length > 0) {
-          node.children.forEach(child => addAllNodes(child));
-        }
-      };
-
       const nodeMap = new Map<string, QANode>();
-      treeData.forEach(node => {
-        nodeMap.set(node.id, node);
-        
-        const mapChildren = (n: QANode) => {
-          if (n.children) {
-            n.children.forEach(child => {
-              nodeMap.set(child.id, child);
-              mapChildren(child);
+      
+      const processNode = (node: QANode) => {
+        if (!nodeMap.has(node.id)) {
+          nodeMap.set(node.id, {
+            ...node,
+            children: [] // Reset children to prevent duplicates
+          });
+          
+          if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+              processNode(child);
+              const parent = nodeMap.get(node.id)!;
+              if (!parent.children.some(existingChild => existingChild.id === child.id)) {
+                parent.children.push(nodeMap.get(child.id)!);
+              }
             });
           }
-        };
-        mapChildren(node);
-      });
+        }
+        allNodes.add(node.id);
+      };
 
-      const mainRoots = treeData.filter(node => !node.isExtendedRoot);
-      const extensions = treeData.filter(node => node.isExtendedRoot);
+      treeData.forEach(node => processNode(node));
+
+      const mainRoots = treeData.filter(node => !node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
+      
+      const extensions = treeData.filter(node => node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
       
       console.log('Processing tree structure:', {
         mainRoots: mainRoots.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
@@ -384,7 +391,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       });
 
       if (mainRoots.length > 0) {
-        mainRoots.forEach(node => addAllNodes(node));
         setQaData(mainRoots);
       } else if (extensions.length > 0) {
         const baseExtension = extensions.find(ext => 
@@ -393,7 +399,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         );
         
         if (baseExtension) {
-          addAllNodes(baseExtension);
           setQaData([baseExtension]);
         }
       }
