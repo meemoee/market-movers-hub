@@ -50,8 +50,37 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     },
   });
 
-  const analyzeQuestion = async (question: string, selectedResearchId: string) => {
-    // Implementation omitted for brevity
+  const analyzeQuestion = async (question: string, selectedResearchId: string): Promise<string[]> => {
+    try {
+      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/generate-qa-tree`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.supabaseKey}`
+        },
+        body: JSON.stringify({
+          question,
+          marketId,
+          parentContent: selectedResearchId,
+          isFollowUp: true
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate follow-up questions');
+      }
+
+      const data = await response.json();
+      return data.map((item: { question: string }) => item.question);
+    } catch (error) {
+      console.error('Error analyzing question:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: error instanceof Error ? error.message : "Failed to analyze the question",
+      });
+      return []; // Return empty array instead of throwing
+    }
   };
 
   const handleExpandQuestion = async (node: QANode) => {
