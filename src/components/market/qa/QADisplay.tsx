@@ -11,6 +11,8 @@ import { useStreamingContent } from './useStreamingContent';
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedResearch, setSelectedResearch] = useState<string>('none');
+  const [selectedQATree, setSelectedQATree] = useState<string>('none');
   
   const {
     qaData,
@@ -22,8 +24,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     savedQATrees,
     saveQATree,
     navigateToExtension,
-    navigateBack
-  } = useQAData(marketId);
+    navigateBack,
+    loadSavedQATree,
+    analyzeQuestion,
+    handleExpandQuestion
+  } = useQAData(marketId, marketQuestion, marketDescription);
 
   const {
     streamingContent,
@@ -87,7 +92,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         onResearchSelect={setSelectedResearch}
         onQATreeSelect={(value) => {
           setSelectedQATree(value);
-          setNavigationHistory([]);
           if (value !== 'none') {
             const tree = savedQATrees?.find(t => t.id === value);
             if (tree) {
@@ -101,7 +105,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           setStreamingContent({});
           setExpandedNodes(new Set());
           try {
-            await analyzeQuestion(marketQuestion);
+            await analyzeQuestion(marketQuestion, selectedResearch);
           } finally {
             setIsAnalyzing(false);
             setCurrentNodeId(null);

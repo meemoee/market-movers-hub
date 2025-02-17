@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -6,7 +5,7 @@ import { QANode, SavedResearch, SavedQATree } from "./types";
 import { useToast } from "@/hooks/use-toast";
 import { Json } from '@/integrations/supabase/types';
 
-export function useQAData(marketId: string) {
+export function useQAData(marketId: string, marketQuestion: string, marketDescription: string) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [qaData, setQaData] = useState<QANode[]>([]);
@@ -50,6 +49,90 @@ export function useQAData(marketId: string) {
       })) || []) as SavedQATree[];
     },
   });
+
+  const analyzeQuestion = async (question: string, selectedResearchId: string) => {
+    
+  };
+
+  const handleExpandQuestion = async (node: QANode) => {
+    
+  };
+
+  const loadSavedQATree = async (treeData: QANode[]) => {
+    console.log('Loading saved QA tree with raw data:', treeData);
+    
+    try {
+      const nodeMap = new Map<string, QANode>();
+      const allNodes = new Set<string>();
+      
+      treeData.forEach(node => {
+        const newNode: QANode = {
+          ...node,
+          children: [], // Reset children to prevent duplicates
+          isExtendedRoot: node.isExtendedRoot || false,
+          originalNodeId: node.originalNodeId
+        };
+        nodeMap.set(node.id, newNode);
+        allNodes.add(node.id);
+      });
+
+      treeData.forEach(node => {
+        const currentNode = nodeMap.get(node.id);
+        if (currentNode && Array.isArray(node.children)) {
+          currentNode.children = node.children
+            .map(child => {
+              const childId = typeof child === 'string' ? child : child.id;
+              return nodeMap.get(childId);
+            })
+            .filter((child): child is QANode => child !== null);
+        }
+      });
+
+      const extensions = new Map<string, QANode>();
+      const mainNodes = new Map<string, QANode>();
+      
+      nodeMap.forEach(node => {
+        if (node.isExtendedRoot) {
+          extensions.set(node.id, node);
+        } else {
+          mainNodes.set(node.id, node);
+        }
+      });
+
+      const allChildIds = new Set(
+        Array.from(nodeMap.values())
+          .flatMap(node => node.children)
+          .map(child => child.id)
+      );
+
+      const mainRoots = Array.from(mainNodes.values())
+        .filter(node => !allChildIds.has(node.id));
+
+      if (mainRoots.length > 0) {
+        setQaData(mainRoots);
+      } else {
+        const baseExtension = Array.from(extensions.values())
+          .find(ext => !Array.from(extensions.values())
+            .some(other => other.children
+              .some(child => child.id === ext.id)));
+        
+        if (baseExtension) {
+          setQaData([baseExtension]);
+        }
+      }
+
+      setRootExtensions(Array.from(extensions.values()));
+      setNavigationHistory([]);
+
+    } catch (error) {
+      console.error('Error loading QA tree:', error);
+      toast({
+        variant: "destructive",
+        title: "Load Error",
+        description: "Failed to load the QA tree",
+      });
+    }
+  };
 
   const saveQATree = async () => {
     try {
@@ -155,10 +238,14 @@ export function useQAData(marketId: string) {
     rootExtensions,
     setRootExtensions,
     navigationHistory,
+    setNavigationHistory,
     savedResearch,
     savedQATrees,
     saveQATree,
     navigateToExtension,
-    navigateBack
+    navigateBack,
+    loadSavedQATree,
+    analyzeQuestion,
+    handleExpandQuestion
   };
 }
