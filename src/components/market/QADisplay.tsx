@@ -238,7 +238,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       if (!user.user) throw new Error('Not authenticated');
 
       const processedNodes = new Set<string>();
-      const nodesToSave: QANode[] = [];
+      const nodesToProcess: QANode[] = [];
 
       const processNode = (node: QANode) => {
         if (processedNodes.has(node.id)) {
@@ -259,17 +259,20 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           node.children.forEach(child => processNode(child));
         }
         
-        nodesToSave.push(nodeToSave);
+        nodesToProcess.push(nodeToSave);
       };
 
+      // Process main tree
       qaData.forEach(node => processNode(node));
 
+      // Process extensions
       rootExtensions.forEach(extension => {
         if (!processedNodes.has(extension.id)) {
           processNode(extension);
         }
       });
 
+      // Process navigation history
       navigationHistory.forEach(historyNodes => {
         historyNodes.forEach(node => {
           if (!processedNodes.has(node.id)) {
@@ -277,6 +280,21 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           }
         });
       });
+
+      // Convert nodes to JSON-compatible format
+      const nodesToSave = nodesToProcess.map(node => ({
+        id: node.id,
+        question: node.question,
+        analysis: node.analysis || '',
+        citations: node.citations || [],
+        children: node.children || [],
+        isExtendedRoot: node.isExtendedRoot || false,
+        originalNodeId: node.originalNodeId,
+        evaluation: node.evaluation ? {
+          score: node.evaluation.score,
+          reason: node.evaluation.reason
+        } : undefined
+      }));
 
       console.log('Saving tree structure:', {
         totalNodes: nodesToSave.length,
@@ -292,7 +310,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         .insert({
           market_id: marketId,
           title: marketQuestion,
-          tree_data: nodesToSave,
+          tree_data: nodesToSave as Json,
           user_id: user.user.id
         })
         .select()
