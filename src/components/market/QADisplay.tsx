@@ -281,20 +281,27 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         });
       });
 
-      // Convert nodes to JSON-compatible format
-      const nodesToSave = nodesToProcess.map(node => ({
-        id: node.id,
-        question: node.question,
-        analysis: node.analysis || '',
-        citations: node.citations || [],
-        children: node.children || [],
-        isExtendedRoot: node.isExtendedRoot || false,
-        originalNodeId: node.originalNodeId,
-        evaluation: node.evaluation ? {
-          score: node.evaluation.score,
-          reason: node.evaluation.reason
-        } : undefined
-      }));
+      // Convert nodes to JSON-compatible format with explicit string[] for children
+      const nodesToSave = nodesToProcess.map(node => {
+        const jsonNode: Record<string, unknown> = {
+          id: node.id,
+          question: node.question,
+          analysis: node.analysis || '',
+          citations: (node.citations || []) as string[],
+          children: (node.children || []) as string[],
+          isExtendedRoot: Boolean(node.isExtendedRoot),
+          originalNodeId: node.originalNodeId || null
+        };
+
+        if (node.evaluation) {
+          jsonNode.evaluation = {
+            score: Number(node.evaluation.score),
+            reason: String(node.evaluation.reason)
+          };
+        }
+
+        return jsonNode;
+      });
 
       console.log('Saving tree structure:', {
         totalNodes: nodesToSave.length,
@@ -310,7 +317,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         .insert({
           market_id: marketId,
           title: marketQuestion,
-          tree_data: nodesToSave as Json,
+          tree_data: nodesToSave as unknown as Json,
           user_id: user.user.id
         })
         .select()
