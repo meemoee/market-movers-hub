@@ -346,28 +346,38 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setNavigationHistory([]);
       
       const allNodes = new Set<string>();
+      
       const nodeMap = new Map<string, QANode>();
       
-      // First pass: Map all nodes
-      treeData.forEach(node => {
-        nodeMap.set(node.id, { ...node });
+      const processNode = (node: QANode) => {
+        if (!nodeMap.has(node.id)) {
+          nodeMap.set(node.id, {
+            ...node,
+            children: [] // Reset children to prevent duplicates
+          });
+          
+          if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+              processNode(child);
+              const parent = nodeMap.get(node.id)!;
+              if (!parent.children.some(existingChild => existingChild.id === child.id)) {
+                parent.children.push(nodeMap.get(child.id)!);
+              }
+            });
+          }
+        }
         allNodes.add(node.id);
-      });
+      };
 
-      // Find all nodes that have extensions
-      const nodesWithExtensions = new Set(
-        treeData
-          .filter(node => node.isExtendedRoot)
-          .map(node => node.originalNodeId)
-          .filter((id): id is string => !!id)
-      );
+      treeData.forEach(node => processNode(node));
 
-      // Filter main roots to exclude nodes that have extensions
-      const mainRoots = treeData
-        .filter(node => !node.isExtendedRoot && !nodesWithExtensions.has(node.id));
+      const mainRoots = treeData.filter(node => !node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
       
-      const extensions = treeData
-        .filter(node => node.isExtendedRoot);
+      const extensions = treeData.filter(node => node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
       
       console.log('Processing tree structure:', {
         mainRoots: mainRoots.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
@@ -376,7 +386,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           originalNodeId: n.originalNodeId,
           parentFound: n.originalNodeId ? mainRoots.some(m => m.id === n.originalNodeId) : false
         })),
-        nodesWithExtensions: Array.from(nodesWithExtensions),
         totalNodes: treeData.length,
         mappedNodes: nodeMap.size
       });
@@ -397,7 +406,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setRootExtensions(extensions);
       setExpandedNodes(allNodes);
       
-      // Populate content for each node
       nodeMap.forEach((node, nodeId) => {
         console.log('Populating content for node:', {
           id: nodeId,
@@ -435,8 +443,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         rootExtensions: extensions,
         expandedNodes: Array.from(allNodes),
         streamingContentKeys: Object.keys(streamingContent).length,
-        nodeMapSize: nodeMap.size,
-        nodesExcluded: Array.from(nodesWithExtensions)
+        nodeMapSize: nodeMap.size
       });
     } catch (error) {
       console.error('Error loading QA tree:', error);
