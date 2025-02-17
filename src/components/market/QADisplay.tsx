@@ -353,38 +353,47 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setNavigationHistory([]);
       
       const allNodes = new Set<string>();
-      
       const nodeMap = new Map<string, QANode>();
       
-      const processNode = (node: QANode) => {
-        if (!nodeMap.has(node.id)) {
-          nodeMap.set(node.id, {
-            ...node,
-            children: [] // Reset children to prevent duplicates
-          });
-          
-          if (node.children && node.children.length > 0) {
-            node.children.forEach(child => {
-              processNode(child);
-              const parent = nodeMap.get(node.id)!;
-              if (!parent.children.some(existingChild => existingChild.id === child.id)) {
-                parent.children.push(nodeMap.get(child.id)!);
-              }
-            });
+      // First pass: Create all nodes
+      treeData.forEach(node => {
+        nodeMap.set(node.id, {
+          ...node,
+          children: [], // Reset children to prevent duplicates
+        });
+        allNodes.add(node.id);
+      });
+
+      // Second pass: Build relationships
+      treeData.forEach(node => {
+        if (Array.isArray(node.children)) {
+          const parentNode = nodeMap.get(node.id);
+          if (parentNode) {
+            // Convert string IDs to actual node references
+            parentNode.children = node.children
+              .map(childId => {
+                const childNode = nodeMap.get(typeof childId === 'string' ? childId : childId.id);
+                return childNode || null;
+              })
+              .filter((child): child is QANode => child !== null);
           }
         }
-        allNodes.add(node.id);
-      };
+      });
 
-      treeData.forEach(node => processNode(node));
+      // Find root nodes (nodes that are not children of any other node)
+      const childIds = new Set(
+        Array.from(nodeMap.values())
+          .flatMap(node => node.children)
+          .map(child => child.id)
+      );
 
-      const mainRoots = treeData.filter(node => !node.isExtendedRoot)
-        .map(node => nodeMap.get(node.id)!)
-        .filter(Boolean);
-      
-      const extensions = treeData.filter(node => node.isExtendedRoot)
-        .map(node => nodeMap.get(node.id)!)
-        .filter(Boolean);
+      const mainRoots = Array.from(nodeMap.values()).filter(node => 
+        !node.isExtendedRoot && !childIds.has(node.id)
+      );
+
+      const extensions = Array.from(nodeMap.values()).filter(node => 
+        node.isExtendedRoot
+      );
       
       console.log('Processing tree structure:', {
         mainRoots: mainRoots.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
