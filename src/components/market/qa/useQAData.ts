@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -70,12 +71,13 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
           return;
         }
         
+        // Create a processed version of this node with references to children
         const processedNode: QANode = {
           id: node.id,
           question: node.question,
           analysis: node.analysis || '',
           citations: node.citations || [],
-          children: node.children.map(child => child.id),
+          children: node.children, // Keep the actual QANode[] reference
           isExtendedRoot: node.isExtendedRoot || false,
           originalNodeId: node.originalNodeId
         };
@@ -89,20 +91,28 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
         processedNodes.set(node.id, processedNode);
         
+        // Recursively process all children
         node.children.forEach(child => flattenTree(child));
       };
 
+      // Process main tree and extensions
       qaData.forEach(node => flattenTree(node));
       rootExtensions.forEach(node => flattenTree(node));
 
       const allNodes = Array.from(processedNodes.values());
+
+      // When saving to Supabase, convert to a serializable format
+      const serializableNodes = allNodes.map(node => ({
+        ...node,
+        children: node.children.map(child => child.id) // Convert to IDs for storage
+      }));
 
       const { error } = await supabase
         .from('qa_trees')
         .insert({
           market_id: marketId,
           title: 'QA Analysis',
-          tree_data: allNodes as unknown as Json,
+          tree_data: serializableNodes as unknown as Json,
           user_id: user.user.id
         })
         .select()
@@ -131,30 +141,36 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     console.log('Loading saved QA tree with raw data:', treeData);
     
     try {
+      // Create a map of all nodes first
       const nodeMap = new Map<string, QANode>();
       
+      // First pass: Create all nodes with minimal data
       treeData.forEach(node => {
         nodeMap.set(node.id, {
           ...node,
-          children: [],
+          children: [], // Initialize with empty array, will populate in second pass
           isExtendedRoot: node.isExtendedRoot || false,
           originalNodeId: node.originalNodeId
         });
       });
 
+      // Second pass: Reconstruct the relationships
       treeData.forEach(node => {
         const currentNode = nodeMap.get(node.id);
         if (!currentNode) return;
 
+        // Handle both array of IDs and array of nodes formats
         const childIds = Array.isArray(node.children) 
           ? node.children.map(child => typeof child === 'string' ? child : child.id)
           : [];
 
+        // Reconstruct children array using the node map
         currentNode.children = childIds
           .map(id => nodeMap.get(id))
           .filter((child): child is QANode => child !== undefined);
       });
 
+      // Separate extensions and main nodes
       const extensions = new Map<string, QANode>();
       const mainNodes = new Map<string, QANode>();
       
@@ -166,6 +182,7 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
         }
       });
 
+      // Find root nodes (nodes that aren't children of any other node)
       const allChildIds = new Set(
         Array.from(nodeMap.values())
           .flatMap(node => node.children)
@@ -175,9 +192,11 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
       const mainRoots = Array.from(mainNodes.values())
         .filter(node => !allChildIds.has(node.id));
 
+      // Set the main tree and extensions
       if (mainRoots.length > 0) {
         setQaData(mainRoots);
       } else {
+        // If no main roots, find the base extension
         const baseExtension = Array.from(extensions.values())
           .find(ext => !Array.from(extensions.values())
             .some(other => other.children
