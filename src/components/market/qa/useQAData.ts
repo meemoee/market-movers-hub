@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -140,55 +139,47 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
           .map(child => child.id)
       );
 
-      // Find nodes that aren't referenced as originalNodeId by any extension
-      const allOriginalNodeIds = new Set(
-        Array.from(extensions.values())
-          .map(ext => ext.originalNodeId)
-          .filter((id): id is string => id !== undefined)
-      );
+      // Find the earliest node in the conversation
+      // This will be either:
+      // 1. A node that has no parent and is not an extension
+      // 2. A node that is referenced as originalNodeId but doesn't itself have an originalNodeId
+      const findEarliestNode = () => {
+        // First try to find a non-extension root node
+        const nonExtensionRoots = Array.from(mainNodes.values())
+          .filter(node => !allChildIds.has(node.id) && !node.isExtendedRoot);
 
-      // True root nodes are those that:
-      // 1. Aren't children of any node
-      // 2. Aren't extension nodes themselves
-      // 3. Aren't referenced as originalNodeId by any extension
-      const trueRootNodes = Array.from(mainNodes.values())
-        .filter(node => 
-          !allChildIds.has(node.id) && 
-          !node.isExtendedRoot &&
-          !allOriginalNodeIds.has(node.id)
-        );
-
-      console.log('Processing tree structure:', {
-        trueRootNodes: trueRootNodes.map(n => ({ 
-          id: n.id, 
-          hasChildren: n.children.length > 0,
-          childIds: n.children.map(c => c.id)
-        })),
-        extensions: Array.from(extensions.values()).map(n => ({ 
-          id: n.id, 
-          originalNodeId: n.originalNodeId,
-          hasChildren: n.children.length > 0,
-          childIds: n.children.map(c => c.id)
-        }))
-      });
-
-      // Set the main tree and extensions
-      if (trueRootNodes.length > 0) {
-        setQaData(trueRootNodes);
-      } else {
-        // If no true root nodes found, find the base extension
-        const baseExtension = Array.from(extensions.values())
-          .find(ext => !Array.from(extensions.values())
-            .some(other => other.children
-              .some(child => child.id === ext.id)));
-        
-        if (baseExtension) {
-          setQaData([baseExtension]);
+        if (nonExtensionRoots.length > 0) {
+          return nonExtensionRoots[0];
         }
+
+        // If no non-extension roots found, find the earliest extension
+        // by looking at originalNodeIds that don't exist in our node set
+        const allNodeIds = new Set(nodeMap.keys());
+        const earliestExtension = Array.from(extensions.values())
+          .find(ext => ext.originalNodeId && !allNodeIds.has(ext.originalNodeId));
+
+        return earliestExtension;
+      };
+
+      const earliestNode = findEarliestNode();
+      console.log('Found earliest node:', earliestNode?.id);
+
+      if (earliestNode) {
+        setQaData([earliestNode]);
+      } else {
+        // Fallback: use the first node we find
+        const firstNode = Array.from(nodeMap.values())[0];
+        setQaData([firstNode]);
       }
 
       setRootExtensions(Array.from(extensions.values()));
       setNavigationHistory([]);
+
+      console.log('Tree loaded with:', {
+        mainNode: earliestNode?.id,
+        extensionCount: extensions.size,
+        totalNodes: nodeMap.size
+      });
 
     } catch (error) {
       console.error('Error loading QA tree:', error);
