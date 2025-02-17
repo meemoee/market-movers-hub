@@ -856,6 +856,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     hr: () => <hr className="my-4 border-muted" />,
   };
 
+  const getPreviewText = (text: string | undefined) => {
+    if (!text) return '';
+    const strippedText = text.replace(/[#*`_]/g, '');
+    const preview = strippedText.slice(0, 150);
+    return preview.length < strippedText.length ? `${preview}...` : preview;
+  };
+
   const renderQANode = (node: QANode, depth: number = 0) => {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -869,12 +876,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       if (score >= 80) return 'bg-green-500/20';
       if (score >= 60) return 'bg-yellow-500/20';
       return 'bg-red-500/20';
-    };
-
-    const getPreviewText = (text: string) => {
-      const strippedText = text.replace(/[#*`_]/g, '');
-      const preview = strippedText.slice(0, 150);
-      return preview.length < strippedText.length ? `${preview}...` : preview;
     };
 
     return (
@@ -916,7 +917,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           components={markdownComponents}
                           className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                         >
-                          {analysisContent}
+                          {analysisContent || ''}
                         </ReactMarkdown>
 
                         {citations && citations.length > 0 && (
