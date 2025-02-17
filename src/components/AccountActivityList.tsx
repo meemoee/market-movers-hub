@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Search, Loader2, ChevronDown } from "lucide-react";
 import { Input } from "./ui/input";
@@ -14,7 +15,7 @@ import { useNavigate } from "react-router-dom";
 
 interface ActivityItem {
   id: string;
-  type: 'order' | 'research';
+  type: 'order' | 'research' | 'insight';
   created_at: string;
   details: {
     market_id?: string;
@@ -24,6 +25,8 @@ interface ActivityItem {
     size?: number;
     analysis?: string;
     query?: string;
+    content?: string;
+    is_private?: boolean;
   };
 }
 
@@ -69,7 +72,16 @@ export function AccountActivityList({ userId }: { userId?: string }) {
 
     if (researchError) throw researchError;
 
-    // Combine and format the activity
+    // Fetch user's insights
+    const { data: insights, error: insightsError } = await supabase
+      .from('market_insights')
+      .select('*')
+      .eq('user_id', targetUserId)
+      .order('created_at', { ascending: false });
+
+    if (insightsError) throw insightsError;
+
+    // Format all activities
     const formattedOrders: ActivityItem[] = (orders || []).map(order => ({
       id: order.id,
       type: 'order',
@@ -93,8 +105,18 @@ export function AccountActivityList({ userId }: { userId?: string }) {
       }
     }));
 
+    const formattedInsights: ActivityItem[] = (insights || []).map(insight => ({
+      id: insight.id,
+      type: 'insight',
+      created_at: insight.created_at,
+      details: {
+        content: insight.content,
+        is_private: insight.is_private
+      }
+    }));
+
     // Combine all activities and sort by date
-    const allActivity = [...formattedOrders, ...formattedResearch]
+    const allActivity = [...formattedOrders, ...formattedResearch, ...formattedInsights]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     // Filter by search query if present
@@ -104,9 +126,11 @@ export function AccountActivityList({ userId }: { userId?: string }) {
         if (item.type === 'order') {
           return item.details.question?.toLowerCase().includes(searchLower) ||
                  item.details.outcome?.toLowerCase().includes(searchLower);
-        } else {
+        } else if (item.type === 'research') {
           return item.details.query?.toLowerCase().includes(searchLower) ||
                  item.details.analysis?.toLowerCase().includes(searchLower);
+        } else {
+          return item.details.content?.toLowerCase().includes(searchLower);
         }
       });
     }
@@ -197,11 +221,23 @@ export function AccountActivityList({ userId }: { userId?: string }) {
                             Bought {item.details.size} shares of {item.details.outcome} at {(item.details.price! * 100).toFixed(2)}¢
                           </p>
                         </>
-                      ) : (
+                      ) : item.type === 'research' ? (
                         <>
                           <h3 className="font-medium">Research: {item.details.query}</h3>
                           <p className="text-sm text-muted-foreground line-clamp-2">
                             {item.details.analysis}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <h3 className="font-medium">
+                            Market Insight 
+                            {item.details.is_private && 
+                              <span className="ml-2 text-xs text-muted-foreground">(Private)</span>
+                            }
+                          </h3>
+                          <p className="text-sm text-muted-foreground">
+                            {item.details.content}
                           </p>
                         </>
                       )}
