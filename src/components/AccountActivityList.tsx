@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { Search, Loader2, ChevronDown } from "lucide-react";
 import { Input } from "./ui/input";
@@ -11,6 +10,7 @@ import { formatDistanceToNow } from "date-fns";
 import type { Session } from '@supabase/supabase-js';
 import { TopMoversHeader } from "./market/TopMoversHeader";
 import { Separator } from "./ui/separator";
+import { useNavigate } from "react-router-dom";
 
 interface ActivityItem {
   id: string;
@@ -28,6 +28,7 @@ interface ActivityItem {
 }
 
 export function AccountActivityList({ userId }: { userId?: string }) {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
@@ -143,20 +144,18 @@ export function AccountActivityList({ userId }: { userId?: string }) {
   return (
     <div className="flex flex-col w-full">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
-        {!userId && (
-          <div className="flex items-center w-full px-4 py-3 border-b">
-            <div className="relative flex-1 max-w-2xl mx-auto">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search activity..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 bg-background"
-              />
-            </div>
+        <div className="flex items-center w-full px-4 py-3 border-b">
+          <div className="relative flex-1 max-w-2xl mx-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search activity..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 bg-background"
+            />
           </div>
-        )}
+        </div>
 
         <TopMoversHeader
           timeIntervals={timeIntervals}
@@ -216,7 +215,7 @@ export function AccountActivityList({ userId }: { userId?: string }) {
                       variant="outline"
                       size="sm"
                       className="w-full"
-                      onClick={() => window.location.href = `/market/${item.details.market_id}`}
+                      onClick={() => navigate(`/market/${item.details.market_id}`)}
                     >
                       View Market
                     </Button>
