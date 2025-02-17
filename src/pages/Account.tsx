@@ -1,8 +1,8 @@
 
 import { useEffect, useState } from "react";
-import TopMoversList from "@/components/TopMoversList";
-import AccountIsland from "@/components/AccountIsland";
 import { useParams } from "react-router-dom";
+import { AccountActivityList } from "@/components/AccountActivityList";
+import AccountIsland from "@/components/AccountIsland";
 
 export default function Account() {
   const { userId } = useParams();

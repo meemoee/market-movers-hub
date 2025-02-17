@@ -8,6 +8,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { formatDistanceToNow } from "date-fns";
+import type { Session } from '@supabase/supabase-js';
 
 interface ActivityItem {
   id: string;
@@ -29,8 +30,8 @@ export function AccountActivityList({ userId }: { userId?: string }) {
   const debouncedSearch = useDebounce(searchQuery, 300);
 
   const fetchUserActivity = async () => {
-    const { data: session } = await supabase.auth.getSession();
-    const targetUserId = userId || session?.user?.id;
+    const { data: sessionData } = await supabase.auth.getSession();
+    const targetUserId = userId || sessionData.session?.user?.id;
 
     if (!targetUserId) throw new Error("No user ID provided");
 
