@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -86,6 +85,169 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
       });
       return []; // Return empty array instead of throwing
     }
+  };
+
+  const loadSavedQATree = async (treeData: QANode[]) => {
+    console.log('Loading saved QA tree with raw data:', treeData);
+    
+    try {
+      // Create a map of all nodes first
+      const nodeMap = new Map<string, QANode>();
+      
+      // First pass: Create all nodes with minimal data
+      treeData.forEach(node => {
+        nodeMap.set(node.id, {
+          ...node,
+          children: [], // Initialize with empty array, will populate in second pass
+          isExtendedRoot: node.isExtendedRoot || false,
+          originalNodeId: node.originalNodeId
+        });
+      });
+
+      // Second pass: Reconstruct the relationships
+      treeData.forEach(node => {
+        const currentNode = nodeMap.get(node.id);
+        if (!currentNode) return;
+
+        // Handle both array of IDs and array of nodes formats
+        const childIds = Array.isArray(node.children) 
+          ? node.children.map(child => typeof child === 'string' ? child : child.id)
+          : [];
+
+        // Reconstruct children array using the node map
+        currentNode.children = childIds
+          .map(id => nodeMap.get(id))
+          .filter((child): child is QANode => child !== undefined);
+      });
+
+      // Separate extensions and main nodes
+      const extensions = new Map<string, QANode>();
+      const mainNodes = new Map<string, QANode>();
+      
+      nodeMap.forEach(node => {
+        if (node.isExtendedRoot) {
+          extensions.set(node.id, node);
+        } else {
+          mainNodes.set(node.id, node);
+        }
+      });
+
+      // Find root nodes (nodes that aren't children of any other node)
+      const allChildIds = new Set(
+        Array.from(nodeMap.values())
+          .flatMap(node => node.children)
+          .map(child => child.id)
+      );
+
+      const mainRoots = Array.from(mainNodes.values())
+        .filter(node => !allChildIds.has(node.id));
+
+      console.log('Processing tree structure:', {
+        mainRoots: mainRoots.map(n => ({ 
+          id: n.id, 
+          hasChildren: n.children.length > 0,
+          childIds: n.children.map(c => c.id)
+        })),
+        extensions: Array.from(extensions.values()).map(n => ({ 
+          id: n.id, 
+          originalNodeId: n.originalNodeId,
+          hasChildren: n.children.length > 0,
+          childIds: n.children.map(c => c.id)
+        }))
+      });
+
+      // Set the main tree and extensions
+      if (mainRoots.length > 0) {
+        setQaData(mainRoots);
+      } else {
+        // If no main roots, find the base extension
+        const baseExtension = Array.from(extensions.values())
+          .find(ext => !Array.from(extensions.values())
+            .some(other => other.children
+              .some(child => child.id === ext.id)));
+        
+        if (baseExtension) {
+          setQaData([baseExtension]);
+        }
+      }
+
+      setRootExtensions(Array.from(extensions.values()));
+      setNavigationHistory([]);
+
+    } catch (error) {
+      console.error('Error loading QA tree:', error);
+      toast({
+        variant: "destructive",
+        title: "Load Error",
+        description: "Failed to load the QA tree",
+      });
+    }
+  };
+
+  const navigateToExtension = (extension: QANode) => {
+    const findAllChildExtensions = (nodeId: string): QANode[] => {
+      // Find direct extensions of this node
+      const directExtensions = rootExtensions.filter(ext => ext.originalNodeId === nodeId);
+      
+      // For each direct extension, get its children's extensions
+      const childExtensions = directExtensions.flatMap(ext => {
+        // Get extensions for ALL nodes in the extension's subtree
+        const allSubtreeExtensions = [
+          ext,
+          ...ext.children.flatMap(child => [
+            ...findAllChildExtensions(child.id),
+            ...rootExtensions.filter(e => e.originalNodeId === child.id)
+          ])
+        ];
+        return allSubtreeExtensions;
+      });
+
+      return childExtensions;
+    };
+
+    const buildCompleteTree = (node: QANode): QANode => {
+      // Get all extensions for this node and its entire subtree
+      const allExtensions = findAllChildExtensions(node.id);
+      
+      // Process children recursively
+      const processedChildren = node.children.map(child => buildCompleteTree(child));
+      
+      // Create the complete node with all its extensions
+      return {
+        ...node,
+        children: [
+          ...processedChildren,
+          ...allExtensions
+            .filter(ext => ext.originalNodeId === node.id)
+            .map(buildCompleteTree)
+        ]
+      };
+    };
+
+    console.log('Navigating to extension:', {
+      extensionId: extension.id,
+      originalNodeId: extension.originalNodeId,
+      childCount: extension.children.length,
+      rootExtensionsCount: rootExtensions.length
+    });
+
+    const completeExtensionTree = buildCompleteTree(extension);
+    console.log('Built complete tree:', {
+      rootId: completeExtensionTree.id,
+      childCount: completeExtensionTree.children.length,
+      allNodes: getAllNodes(completeExtensionTree).length
+    });
+
+    setNavigationHistory(prev => [...prev, qaData]);
+    setQaData([completeExtensionTree]);
+  };
+
+  // Helper function to count all nodes in a tree
+  const getAllNodes = (node: QANode): QANode[] => {
+    return [
+      node,
+      ...node.children.flatMap(child => getAllNodes(child))
+    ];
   };
 
   const handleExpandQuestion = async (node: QANode) => {
@@ -202,135 +364,6 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
         title: "Save Error",
         description: error instanceof Error ? error.message : "Failed to save the QA tree",
       });
-    }
-  };
-
-  const loadSavedQATree = async (treeData: QANode[]) => {
-    console.log('Loading saved QA tree with raw data:', treeData);
-    
-    try {
-      // Create a map of all nodes first
-      const nodeMap = new Map<string, QANode>();
-      
-      // First pass: Create all nodes with minimal data
-      treeData.forEach(node => {
-        nodeMap.set(node.id, {
-          ...node,
-          children: [], // Initialize with empty array, will populate in second pass
-          isExtendedRoot: node.isExtendedRoot || false,
-          originalNodeId: node.originalNodeId
-        });
-      });
-
-      // Second pass: Reconstruct the relationships
-      treeData.forEach(node => {
-        const currentNode = nodeMap.get(node.id);
-        if (!currentNode) return;
-
-        // Handle both array of IDs and array of nodes formats
-        const childIds = Array.isArray(node.children) 
-          ? node.children.map(child => typeof child === 'string' ? child : child.id)
-          : [];
-
-        // Reconstruct children array using the node map
-        currentNode.children = childIds
-          .map(id => nodeMap.get(id))
-          .filter((child): child is QANode => child !== undefined);
-      });
-
-      // Separate extensions and main nodes
-      const extensions = new Map<string, QANode>();
-      const mainNodes = new Map<string, QANode>();
-      
-      nodeMap.forEach(node => {
-        if (node.isExtendedRoot) {
-          extensions.set(node.id, node);
-        } else {
-          mainNodes.set(node.id, node);
-        }
-      });
-
-      // Find root nodes (nodes that aren't children of any other node)
-      const allChildIds = new Set(
-        Array.from(nodeMap.values())
-          .flatMap(node => node.children)
-          .map(child => child.id)
-      );
-
-      const mainRoots = Array.from(mainNodes.values())
-        .filter(node => !allChildIds.has(node.id));
-
-      // Set the main tree and extensions
-      if (mainRoots.length > 0) {
-        setQaData(mainRoots);
-      } else {
-        // If no main roots, find the base extension
-        const baseExtension = Array.from(extensions.values())
-          .find(ext => !Array.from(extensions.values())
-            .some(other => other.children
-              .some(child => child.id === ext.id)));
-        
-        if (baseExtension) {
-          setQaData([baseExtension]);
-        }
-      }
-
-      setRootExtensions(Array.from(extensions.values()));
-      setNavigationHistory([]);
-
-    } catch (error) {
-      console.error('Error loading QA tree:', error);
-      toast({
-        variant: "destructive",
-        title: "Load Error",
-        description: "Failed to load the QA tree",
-      });
-    }
-  };
-
-  const navigateToExtension = (extension: QANode) => {
-    const findAllChildExtensions = (nodeId: string): QANode[] => {
-      // Find direct extensions of this node
-      const directExtensions = rootExtensions.filter(ext => ext.originalNodeId === nodeId);
-      
-      // For each direct extension, get its children's extensions
-      const childExtensions = directExtensions.flatMap(ext => {
-        // Get extensions for this extension's children
-        const childExts = ext.children.flatMap(child => findAllChildExtensions(child.id));
-        return [ext, ...childExts];
-      });
-
-      return childExtensions;
-    };
-
-    const buildCompleteTree = (node: QANode): QANode => {
-      // Get all extensions for this node and its children
-      const allExtensions = findAllChildExtensions(node.id);
-      
-      // Process children recursively
-      const processedChildren = node.children.map(child => buildCompleteTree(child));
-      
-      // Create the complete node with all its extensions
-      return {
-        ...node,
-        children: [
-          ...processedChildren,
-          ...allExtensions.filter(ext => ext.originalNodeId === node.id)
-            .map(buildCompleteTree)
-        ]
-      };
-    };
-
-    const completeExtensionTree = buildCompleteTree(extension);
-    setNavigationHistory(prev => [...prev, qaData]);
-    setQaData([completeExtensionTree]);
-  };
-
-  const navigateBack = () => {
-    const previousTree = navigationHistory[navigationHistory.length - 1];
-    if (previousTree) {
-      setQaData(previousTree);
-      setNavigationHistory(prev => prev.slice(0, -1));
     }
   };
 
