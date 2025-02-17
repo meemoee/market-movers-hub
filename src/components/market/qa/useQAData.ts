@@ -132,33 +132,30 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
         }
       });
 
-      // Find nodes that don't have a parent in the tree
-      const allChildIds = new Set(
-        Array.from(nodeMap.values())
-          .flatMap(node => node.children)
-          .map(child => child.id)
-      );
-
-      // Find the earliest node in the conversation
-      // This will be either:
-      // 1. A node that has no parent and is not an extension
-      // 2. A node that is referenced as originalNodeId but doesn't itself have an originalNodeId
+      // Find the earliest node by looking at the node IDs
+      // Since we use timestamps in the IDs (node-timestamp-index), we can sort them
       const findEarliestNode = () => {
-        // First try to find a non-extension root node
-        const nonExtensionRoots = Array.from(mainNodes.values())
-          .filter(node => !allChildIds.has(node.id) && !node.isExtendedRoot);
+        // Get all root nodes (nodes that aren't children of any other node)
+        const allChildIds = new Set(
+          Array.from(nodeMap.values())
+            .flatMap(node => node.children)
+            .map(child => child.id)
+        );
 
-        if (nonExtensionRoots.length > 0) {
-          return nonExtensionRoots[0];
-        }
+        const rootNodes = Array.from(nodeMap.values())
+          .filter(node => !allChildIds.has(node.id));
 
-        // If no non-extension roots found, find the earliest extension
-        // by looking at originalNodeIds that don't exist in our node set
-        const allNodeIds = new Set(nodeMap.keys());
-        const earliestExtension = Array.from(extensions.values())
-          .find(ext => ext.originalNodeId && !allNodeIds.has(ext.originalNodeId));
+        // Sort root nodes by their timestamp (extracted from node ID)
+        const sortedRootNodes = rootNodes.sort((a, b) => {
+          const getTimestamp = (id: string) => {
+            const matches = id.match(/node-(\d+)/);
+            return matches ? parseInt(matches[1]) : 0;
+          };
+          return getTimestamp(a.id) - getTimestamp(b.id);
+        });
 
-        return earliestExtension;
+        // Return the earliest root node
+        return sortedRootNodes[0];
       };
 
       const earliestNode = findEarliestNode();
