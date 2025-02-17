@@ -277,11 +277,16 @@ export function TransactionDialog({
                       />
                     </div>
                     {userBalance && (
-                      <div 
-                        className="text-sm font-medium"
-                        style={{ color: getPercentageColor(investmentPercentage[0]) }}
-                      >
-                        {`$${(userBalance * (investmentPercentage[0] / 100)).toFixed(2)} of $${userBalance.toFixed(2)} available`}
+                      <div className="space-y-2">
+                        <div 
+                          className="text-sm font-medium"
+                          style={{ color: getPercentageColor(investmentPercentage[0]) }}
+                        >
+                          {`$${(userBalance * (investmentPercentage[0] / 100)).toFixed(2)} of $${userBalance.toFixed(2)} available`}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {`${size.toFixed(2)} shares at ${(orderBookData.best_ask * 100).toFixed(2)}¢ per share`}
+                        </div>
                       </div>
                     )}
                   </div>
