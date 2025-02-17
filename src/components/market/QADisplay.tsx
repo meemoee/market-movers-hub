@@ -346,44 +346,38 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setNavigationHistory([]);
       
       const allNodes = new Set<string>();
-      const processedRelationships = new Set<string>();
+      
       const nodeMap = new Map<string, QANode>();
       
-      treeData.forEach(node => {
+      const processNode = (node: QANode) => {
         if (!nodeMap.has(node.id)) {
           nodeMap.set(node.id, {
             ...node,
-            children: []  // Start with empty children array
+            children: [] // Reset children to prevent duplicates
           });
+          
+          if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+              processNode(child);
+              const parent = nodeMap.get(node.id)!;
+              if (!parent.children.some(existingChild => existingChild.id === child.id)) {
+                parent.children.push(nodeMap.get(child.id)!);
+              }
+            });
+          }
         }
         allNodes.add(node.id);
-      });
+      };
 
-      treeData.forEach(node => {
-        if (node.children) {
-          node.children.forEach(child => {
-            const relationshipKey = `${node.id}-${child.id}`;
-            if (!processedRelationships.has(relationshipKey)) {
-              processedRelationships.add(relationshipKey);
-              const parent = nodeMap.get(node.id);
-              const childNode = nodeMap.get(child.id);
-              if (parent && childNode) {
-                parent.children.push(childNode);
-              }
-            }
-          });
-        }
-      });
+      treeData.forEach(node => processNode(node));
 
-      const mainRoots = treeData
-        .filter(node => !node.isExtendedRoot)
-        .map(node => nodeMap.get(node.id))
-        .filter((node): node is QANode => !!node);
+      const mainRoots = treeData.filter(node => !node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
       
-      const extensions = treeData
-        .filter(node => node.isExtendedRoot)
-        .map(node => nodeMap.get(node.id))
-        .filter((node): node is QANode => !!node);
+      const extensions = treeData.filter(node => node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
       
       console.log('Processing tree structure:', {
         mainRoots: mainRoots.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
@@ -393,8 +387,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           parentFound: n.originalNodeId ? mainRoots.some(m => m.id === n.originalNodeId) : false
         })),
         totalNodes: treeData.length,
-        mappedNodes: nodeMap.size,
-        processedRelationships: processedRelationships.size
+        mappedNodes: nodeMap.size
       });
 
       if (mainRoots.length > 0) {
@@ -450,8 +443,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         rootExtensions: extensions,
         expandedNodes: Array.from(allNodes),
         streamingContentKeys: Object.keys(streamingContent).length,
-        nodeMapSize: nodeMap.size,
-        relationshipsProcessed: processedRelationships.size
+        nodeMapSize: nodeMap.size
       });
     } catch (error) {
       console.error('Error loading QA tree:', error);
