@@ -237,73 +237,53 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
-      const convertNodeToJson = (node: QANode): Record<string, any> => ({
-        id: node.id,
-        question: node.question,
-        analysis: node.analysis,
-        citations: node.citations || [],
-        children: node.children ? node.children.map(convertNodeToJson) : [],
-        isExtendedRoot: node.isExtendedRoot || false,
-        originalNodeId: node.originalNodeId,
-        evaluation: node.evaluation ? {
-          score: node.evaluation.score,
-          reason: node.evaluation.reason
-        } : undefined
-      });
+      const processedNodes = new Set<string>();
+      const nodesToSave: QANode[] = [];
 
-      const allTrees = [...navigationHistory];
-      
-      if (!allTrees.length || allTrees[allTrees.length - 1][0]?.id !== qaData[0]?.id) {
-        allTrees.push(qaData);
-      }
-
-      const processedNodes = new Map<string, QANode>();
-      
-      const processTree = (tree: QANode[]) => {
-        tree.forEach(node => {
-          if (!processedNodes.has(node.id)) {
-            processedNodes.set(node.id, node);
-            if (node.children) {
-              node.children.forEach(child => {
-                if (!processedNodes.has(child.id)) {
-                  processedNodes.set(child.id, child);
-                  if (child.children) {
-                    processTree([child]);
-                  }
-                }
-              });
-            }
-          }
-        });
+      const processNode = (node: QANode) => {
+        if (processedNodes.has(node.id)) {
+          return;
+        }
+        
+        processedNodes.add(node.id);
+        
+        const nodeToSave = {
+          ...node,
+          children: [],
+          isExtendedRoot: node.isExtendedRoot || false,
+          originalNodeId: node.originalNodeId
+        };
+        
+        if (node.children && node.children.length > 0) {
+          nodeToSave.children = node.children.map(child => child.id);
+          node.children.forEach(child => processNode(child));
+        }
+        
+        nodesToSave.push(nodeToSave);
       };
 
-      allTrees.forEach(tree => processTree(tree));
+      qaData.forEach(node => processNode(node));
 
       rootExtensions.forEach(extension => {
         if (!processedNodes.has(extension.id)) {
-          processedNodes.set(extension.id, extension);
-          if (extension.children) {
-            processTree([extension]);
-          }
+          processNode(extension);
         }
       });
 
-      const treesToSave = Array.from(processedNodes.values());
-      const treeDataJson = treesToSave.map(convertNodeToJson);
+      navigationHistory.forEach(historyNodes => {
+        historyNodes.forEach(node => {
+          if (!processedNodes.has(node.id)) {
+            processNode(node);
+          }
+        });
+      });
 
-      console.log('Saving complete QA tree structure:', {
-        totalNodes: treeDataJson.length,
-        navigationHistoryDepth: navigationHistory.length,
-        currentTree: qaData.map(n => n.id),
-        extensions: rootExtensions.map(ext => ({
-          id: ext.id,
-          originalNodeId: ext.originalNodeId,
-        })),
-        allSavedNodes: treeDataJson.map(n => ({
+      console.log('Saving tree structure:', {
+        totalNodes: nodesToSave.length,
+        mainRoots: nodesToSave.filter(n => !n.isExtendedRoot).map(n => n.id),
+        extensions: nodesToSave.filter(n => n.isExtendedRoot).map(n => ({
           id: n.id,
-          isExtendedRoot: n.isExtendedRoot,
-          originalNodeId: n.originalNodeId,
-          hasChildren: (n.children || []).length > 0
+          originalNodeId: n.originalNodeId
         }))
       });
 
@@ -312,7 +292,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         .insert({
           market_id: marketId,
           title: marketQuestion,
-          tree_data: treeDataJson,
+          tree_data: nodesToSave,
           user_id: user.user.id
         })
         .select()
@@ -322,7 +302,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved complete QA tree with ${treesToSave.length} nodes including ${rootExtensions.length} extensions`,
+        description: `Saved QA tree with ${nodesToSave.length} nodes including ${rootExtensions.length} extensions`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
