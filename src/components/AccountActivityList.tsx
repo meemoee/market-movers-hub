@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, ChevronDown } from "lucide-react";
 import { Input } from "./ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery } from "@tanstack/react-query";
@@ -9,6 +9,8 @@ import { Card } from "./ui/card";
 import { Button } from "./ui/button";
 import { formatDistanceToNow } from "date-fns";
 import type { Session } from '@supabase/supabase-js';
+import { TopMoversHeader } from "./market/TopMoversHeader";
+import { Separator } from "./ui/separator";
 
 interface ActivityItem {
   id: string;
@@ -28,6 +30,9 @@ interface ActivityItem {
 export function AccountActivityList({ userId }: { userId?: string }) {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 300);
+  const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
+  const [selectedInterval, setSelectedInterval] = useState('1440');
+  const [openMarketsOnly, setOpenMarketsOnly] = useState(false);
 
   const fetchUserActivity = async () => {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -129,62 +134,102 @@ export function AccountActivityList({ userId }: { userId?: string }) {
     );
   }
 
+  const timeIntervals = [
+    { label: '24 hours', value: '1440' },
+    { label: '1 week', value: '10080' },
+    { label: '1 month', value: '43200' },
+  ];
+
   return (
-    <div className="w-full space-y-4">
-      <div className="relative w-full max-w-2xl mx-auto">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          type="text"
-          placeholder="Search activity..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full pl-9 bg-background"
-        />
-      </div>
-
-      <div className="space-y-4">
-        {activity?.map((item) => (
-          <Card key={item.id} className="p-4 space-y-3">
-            <div className="flex items-start justify-between">
-              <div className="space-y-1">
-                {item.type === 'order' ? (
-                  <>
-                    <h3 className="font-medium">{item.details.question}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Bought {item.details.size} shares of {item.details.outcome} at {(item.details.price! * 100).toFixed(2)}¢
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="font-medium">Research: {item.details.query}</h3>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {item.details.analysis}
-                    </p>
-                  </>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
-              </span>
-            </div>
-            {item.type === 'order' && item.details.market_id && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full"
-                onClick={() => window.location.href = `/market/${item.details.market_id}`}
-              >
-                View Market
-              </Button>
-            )}
-          </Card>
-        ))}
-
-        {activity?.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            No activity found
+    <div className="w-full px-0 sm:px-4 -mt-20">
+      <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
+        {/* Search Bar */}
+        <div className="w-full p-4">
+          <div className="relative w-full max-w-2xl mx-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search activity..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 bg-background"
+            />
           </div>
-        )}
+        </div>
+
+        {/* Activity List Header */}
+        <TopMoversHeader
+          timeIntervals={timeIntervals}
+          selectedInterval={selectedInterval}
+          onIntervalChange={setSelectedInterval}
+          openMarketsOnly={openMarketsOnly}
+          onOpenMarketsChange={setOpenMarketsOnly}
+          isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+          setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+          probabilityRange={[0, 100]}
+          setProbabilityRange={() => {}}
+          showMinThumb={false}
+          setShowMinThumb={() => {}}
+          showMaxThumb={false}
+          setShowMaxThumb={() => {}}
+          priceChangeRange={[-100, 100]}
+          setPriceChangeRange={() => {}}
+          showPriceChangeMinThumb={false}
+          setShowPriceChangeMinThumb={() => {}}
+          showPriceChangeMaxThumb={false}
+          setShowPriceChangeMaxThumb={() => {}}
+          sortBy="price_change"
+          onSortChange={() => {}}
+        />
+
+        {/* Activity List */}
+        <div className="w-full">
+          <div className="w-full space-y-3">
+            {activity?.map((item) => (
+              <div key={item.id} className="w-full p-3 space-y-3">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-1">
+                    {item.type === 'order' ? (
+                      <>
+                        <h3 className="font-medium">{item.details.question}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Bought {item.details.size} shares of {item.details.outcome} at {(item.details.price! * 100).toFixed(2)}¢
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="font-medium">Research: {item.details.query}</h3>
+                        <p className="text-sm text-muted-foreground line-clamp-2">
+                          {item.details.analysis}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                  </span>
+                </div>
+                {item.type === 'order' && item.details.market_id && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() => window.location.href = `/market/${item.details.market_id}`}
+                  >
+                    View Market
+                  </Button>
+                )}
+                <Separator />
+              </div>
+            ))}
+
+            {activity?.length === 0 && (
+              <div className="text-center py-12 text-muted-foreground">
+                No activity found
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
