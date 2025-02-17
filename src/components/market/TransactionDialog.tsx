@@ -1,3 +1,4 @@
+
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -12,7 +13,8 @@ import {
 import { LiveOrderBook } from './LiveOrderBook';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { Slider } from "@/components/ui/slider";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -58,6 +60,27 @@ export function TransactionDialog({
   const { toast } = useToast();
   const [size, setSize] = useState(1);
   const [isClosing, setIsClosing] = useState(false);
+  const [userBalance, setUserBalance] = useState<number | null>(null);
+  const [investmentPercentage, setInvestmentPercentage] = useState([25]); // Start at 25%
+
+  useEffect(() => {
+    const fetchUserBalance = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('balance')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!error && data) {
+          setUserBalance(data.balance);
+        }
+      }
+    };
+
+    fetchUserBalance();
+  }, []);
 
   const handleClose = () => {
     setIsClosing(true);
@@ -67,6 +90,21 @@ export function TransactionDialog({
       setIsClosing(false);
     }, 100);
   };
+
+  const calculateInvestmentAmount = () => {
+    if (!userBalance || !orderBookData) return 0;
+    const percentage = investmentPercentage[0];
+    const amount = (userBalance * (percentage / 100));
+    const price = orderBookData.best_ask;
+    return amount / price;
+  };
+
+  // Update size when investment percentage changes
+  useEffect(() => {
+    if (orderBookData) {
+      setSize(calculateInvestmentAmount());
+    }
+  }, [investmentPercentage, orderBookData, userBalance]);
 
   const handleConfirm = async () => {
     if (!selectedMarket || !orderBookData) return;
@@ -121,6 +159,16 @@ export function TransactionDialog({
         description: "Failed to place your order. Please try again.",
       });
     }
+  };
+
+  const getSliderBackground = (percentage: number) => {
+    // Start with a neutral color at 0% and gradually increase intensity
+    const intensity = Math.min(percentage / 100, 1);
+    const baseColor = [139, 92, 246]; // Vivid purple (matches the brand color)
+    const r = Math.round(baseColor[0] * intensity);
+    const g = Math.round(baseColor[1] * intensity);
+    const b = Math.round(baseColor[2] * intensity);
+    return `rgb(${r}, ${g}, ${b})`;
   };
 
   return (
@@ -204,8 +252,34 @@ export function TransactionDialog({
                       </div>
                     </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground mb-4">
                     Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
+                  </div>
+
+                  <div className="space-y-4 bg-accent/20 p-4 rounded-lg">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Investment Size</span>
+                      <span className="text-sm font-medium">{investmentPercentage}% of balance</span>
+                    </div>
+                    <div 
+                      className="p-2 rounded-lg" 
+                      style={{ 
+                        background: `linear-gradient(90deg, ${getSliderBackground(0)} 0%, ${getSliderBackground(100)} 100%)` 
+                      }}
+                    >
+                      <Slider
+                        value={investmentPercentage}
+                        onValueChange={setInvestmentPercentage}
+                        max={100}
+                        step={1}
+                        className="[&>[role=slider]]:h-4 [&>[role=slider]]:w-4"
+                      />
+                    </div>
+                    {userBalance && (
+                      <div className="text-sm text-muted-foreground">
+                        {`$${(userBalance * (investmentPercentage[0] / 100)).toFixed(2)} of $${userBalance.toFixed(2)} available`}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
