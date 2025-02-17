@@ -399,12 +399,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
       
       setRootExtensions(extensions);
-      
       setExpandedNodes(allNodes);
       
-      const populateNodeContent = (node: QANode) => {
+      nodeMap.forEach((node, nodeId) => {
         console.log('Populating content for node:', {
-          id: node.id,
+          id: nodeId,
           question: node.question,
           isExtendedRoot: node.isExtendedRoot,
           originalNodeId: node.originalNodeId,
@@ -413,28 +412,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
         setStreamingContent(prev => ({
           ...prev,
-          [node.id]: {
+          [nodeId]: {
             content: node.analysis || '',
             citations: node.citations || [],
           },
         }));
-        
-        if (node.children && node.children.length > 0) {
-          node.children.forEach(child => populateNodeContent(child));
-        }
-      };
-
-      treeData.forEach(node => {
-        populateNodeContent(node);
-        const mapChildren = (n: QANode) => {
-          if (n.children) {
-            n.children.forEach(child => {
-              populateNodeContent(child);
-              mapChildren(child);
-            });
-          }
-        };
-        mapChildren(node);
       });
 
       const evaluateNodesIfNeeded = async (nodes: QANode[]) => {
