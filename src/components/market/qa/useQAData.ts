@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -132,48 +133,66 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
         }
       });
 
-      // Find the earliest node by looking at the node IDs
-      // Since we use timestamps in the IDs (node-timestamp-index), we can sort them
-      const findEarliestNode = () => {
-        // Get all root nodes (nodes that aren't children of any other node)
-        const allChildIds = new Set(
-          Array.from(nodeMap.values())
-            .flatMap(node => node.children)
-            .map(child => child.id)
-        );
+      // Build a map of which nodes are referenced by extensions
+      const isReferencedByExtension = new Map<string, boolean>();
+      extensions.forEach(ext => {
+        if (ext.originalNodeId) {
+          isReferencedByExtension.set(ext.originalNodeId, true);
+        }
+      });
 
-        const rootNodes = Array.from(nodeMap.values())
-          .filter(node => !allChildIds.has(node.id));
+      // Find root nodes (nodes that aren't children of any other node)
+      const allChildIds = new Set(
+        Array.from(nodeMap.values())
+          .flatMap(node => node.children)
+          .map(child => child.id)
+      );
 
-        // Sort root nodes by their timestamp (extracted from node ID)
-        const sortedRootNodes = rootNodes.sort((a, b) => {
-          const getTimestamp = (id: string) => {
-            const matches = id.match(/node-(\d+)/);
-            return matches ? parseInt(matches[1]) : 0;
-          };
-          return getTimestamp(a.id) - getTimestamp(b.id);
+      // Find the original root node by:
+      // 1. Looking for nodes that aren't children of any other node
+      // 2. Aren't extensions themselves
+      // 3. Aren't referenced by any extension (meaning they're not part of a continuation)
+      const findOriginalRoot = () => {
+        const potentialRoots = Array.from(mainNodes.values())
+          .filter(node => 
+            !allChildIds.has(node.id) && // Not a child of any node
+            !node.isExtendedRoot && // Not an extension
+            !isReferencedByExtension.has(node.id) // Not referenced by any extension
+          );
+
+        console.log('Found potential root nodes:', {
+          count: potentialRoots.length,
+          ids: potentialRoots.map(n => n.id),
+          questions: potentialRoots.map(n => n.question)
         });
 
-        // Return the earliest root node
-        return sortedRootNodes[0];
+        return potentialRoots[0];
       };
 
-      const earliestNode = findEarliestNode();
-      console.log('Found earliest node:', earliestNode?.id);
+      const originalRoot = findOriginalRoot();
+      console.log('Found original root:', originalRoot?.id);
 
-      if (earliestNode) {
-        setQaData([earliestNode]);
+      if (originalRoot) {
+        setQaData([originalRoot]);
       } else {
-        // Fallback: use the first node we find
-        const firstNode = Array.from(nodeMap.values())[0];
-        setQaData([firstNode]);
+        // Fallback: if we can't find the original root, 
+        // use any non-extension node as the root
+        const fallbackRoot = Array.from(mainNodes.values())
+          .find(node => !node.isExtendedRoot);
+        
+        if (fallbackRoot) {
+          setQaData([fallbackRoot]);
+        } else {
+          // Last resort: use the first node we find
+          setQaData([Array.from(nodeMap.values())[0]]);
+        }
       }
 
       setRootExtensions(Array.from(extensions.values()));
       setNavigationHistory([]);
 
       console.log('Tree loaded with:', {
-        mainNode: earliestNode?.id,
+        mainNode: originalRoot?.id,
         extensionCount: extensions.size,
         totalNodes: nodeMap.size
       });
