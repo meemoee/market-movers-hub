@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -99,7 +98,6 @@ export function TransactionDialog({
     return amount / price;
   };
 
-  // Update size when investment percentage changes
   useEffect(() => {
     if (orderBookData) {
       setSize(calculateInvestmentAmount());
@@ -161,13 +159,16 @@ export function TransactionDialog({
     }
   };
 
-  const getSliderBackground = (percentage: number) => {
-    // Start with a neutral color at 0% and gradually increase intensity
-    const intensity = Math.min(percentage / 100, 1);
-    const baseColor = [139, 92, 246]; // Vivid purple (matches the brand color)
-    const r = Math.round(baseColor[0] * intensity);
-    const g = Math.round(baseColor[1] * intensity);
-    const b = Math.round(baseColor[2] * intensity);
+  const getPercentageColor = (percentage: number) => {
+    const value = percentage / 100;
+    
+    const green = [34, 197, 94];
+    const red = [239, 68, 68];
+    
+    const r = Math.round(green[0] + (red[0] - green[0]) * value);
+    const g = Math.round(green[1] + (red[1] - green[1]) * value);
+    const b = Math.round(green[2] + (red[2] - green[2]) * value);
+    
     return `rgb(${r}, ${g}, ${b})`;
   };
 
@@ -259,14 +260,14 @@ export function TransactionDialog({
                   <div className="space-y-4 bg-accent/20 p-4 rounded-lg">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">Investment Size</span>
-                      <span className="text-sm font-medium">{investmentPercentage}% of balance</span>
+                      <span 
+                        className="text-sm font-medium"
+                        style={{ color: getPercentageColor(investmentPercentage[0]) }}
+                      >
+                        {investmentPercentage}% of balance
+                      </span>
                     </div>
-                    <div 
-                      className="p-2 rounded-lg" 
-                      style={{ 
-                        background: `linear-gradient(90deg, ${getSliderBackground(0)} 0%, ${getSliderBackground(100)} 100%)` 
-                      }}
-                    >
+                    <div className="p-2">
                       <Slider
                         value={investmentPercentage}
                         onValueChange={setInvestmentPercentage}
@@ -276,7 +277,10 @@ export function TransactionDialog({
                       />
                     </div>
                     {userBalance && (
-                      <div className="text-sm text-muted-foreground">
+                      <div 
+                        className="text-sm font-medium"
+                        style={{ color: getPercentageColor(investmentPercentage[0]) }}
+                      >
                         {`$${(userBalance * (investmentPercentage[0] / 100)).toFixed(2)} of $${userBalance.toFixed(2)} available`}
                       </div>
                     )}
