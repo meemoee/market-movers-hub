@@ -1,9 +1,14 @@
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import { QANode, SavedResearch, SavedQATree } from "./types";
 import { useToast } from "@/hooks/use-toast";
 import { Json } from '@/integrations/supabase/types';
+
+// Constants from the supabase client configuration
+const SUPABASE_URL = "https://lfmkoismabbhujycnqpn.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
 
 export function useQAData(marketId: string, marketQuestion: string, marketDescription: string) {
   const { toast } = useToast();
@@ -52,11 +57,11 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
   const analyzeQuestion = async (question: string, selectedResearchId: string): Promise<string[]> => {
     try {
-      const response = await fetch(`${supabase.supabaseUrl}/functions/v1/generate-qa-tree`, {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/generate-qa-tree`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.supabaseKey}`
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
         },
         body: JSON.stringify({
           question,
