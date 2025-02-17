@@ -354,31 +354,30 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       const allNodes = new Set<string>();
       const nodeMap = new Map<string, QANode>();
-      
-      // First pass: Create all nodes
-      treeData.forEach(node => {
-        nodeMap.set(node.id, {
-          ...node,
-          children: [], // Reset children to prevent duplicates
-        });
-        allNodes.add(node.id);
-      });
-
-      // Second pass: Build relationships and identify extensions
       const extensions = new Map<string, QANode>();
       const mainNodes = new Map<string, QANode>();
       
+      // First pass: Create all nodes and identify their types
       treeData.forEach(node => {
+        const newNode = {
+          ...node,
+          children: [], // Reset children to prevent duplicates
+        };
+        nodeMap.set(node.id, newNode);
+        allNodes.add(node.id);
+        
         if (node.isExtendedRoot) {
-          extensions.set(node.id, nodeMap.get(node.id)!);
+          extensions.set(node.id, newNode);
         } else {
-          mainNodes.set(node.id, nodeMap.get(node.id)!);
+          mainNodes.set(node.id, newNode);
         }
+      });
 
+      // Second pass: Build relationships
+      treeData.forEach(node => {
         if (Array.isArray(node.children)) {
           const parentNode = nodeMap.get(node.id);
           if (parentNode) {
-            // Convert string IDs to actual node references
             parentNode.children = node.children
               .map(childId => {
                 const childNode = nodeMap.get(typeof childId === 'string' ? childId : childId.id);
@@ -389,70 +388,98 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       });
 
-      // Build extension tree structure
-      const extensionTrees = new Map<string, QANode>();
+      // Build extension hierarchy
+      const extensionHierarchy = new Map<string, QANode>();
       extensions.forEach((extension) => {
         if (extension.originalNodeId) {
           const originalNode = nodeMap.get(extension.originalNodeId);
           if (originalNode) {
-            // Check if this extension is part of another extension tree
-            let isSubExtension = false;
-            extensions.forEach((otherExt) => {
-              if (otherExt.children.some(child => child.id === extension.id)) {
-                isSubExtension = true;
+            // Find the root extension for this branch
+            let currentNode: QANode | undefined = extension;
+            let isPartOfExistingTree = false;
+
+            // Check if this extension is part of an existing extension tree
+            extensions.forEach((ext) => {
+              if (ext.id !== extension.id && ext.children.some(child => child.id === extension.id)) {
+                isPartOfExistingTree = true;
               }
             });
 
-            if (!isSubExtension) {
-              extensionTrees.set(extension.originalNodeId, extension);
+            // If not part of existing tree, add to hierarchy
+            if (!isPartOfExistingTree) {
+              extensionHierarchy.set(originalNode.id, extension);
             }
           }
         }
       });
 
-      // Find root nodes (nodes that are not children of any other node)
-      const childIds = new Set(
-        Array.from(mainNodes.values())
+      // Find root nodes
+      const allChildIds = new Set(
+        Array.from(nodeMap.values())
           .flatMap(node => node.children)
           .map(child => child.id)
       );
 
       const mainRoots = Array.from(mainNodes.values()).filter(node => 
-        !childIds.has(node.id)
+        !allChildIds.has(node.id)
       );
 
       console.log('Processing tree structure:', {
-        mainRoots: mainRoots.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
+        mainRoots: mainRoots.map(n => ({ 
+          id: n.id, 
+          hasChildren: n.children?.length > 0,
+          childIds: n.children.map(c => c.id)
+        })),
         extensions: Array.from(extensions.values()).map(n => ({ 
           id: n.id, 
           originalNodeId: n.originalNodeId,
-          hasChildren: n.children?.length > 0
+          hasChildren: n.children?.length > 0,
+          childIds: n.children.map(c => c.id)
         })),
-        extensionTrees: Array.from(extensionTrees.entries()).map(([originalId, ext]) => ({
+        extensionHierarchy: Array.from(extensionHierarchy.entries()).map(([originalId, ext]) => ({
           originalId,
           extensionId: ext.id,
-          hasChildren: ext.children?.length > 0
+          hasChildren: ext.children?.length > 0,
+          childIds: ext.children.map(c => c.id)
         }))
       });
 
+      // Set initial tree state
       if (mainRoots.length > 0) {
         setQaData(mainRoots);
       } else {
-        // If no main roots, find the base extension
-        const baseExtension = Array.from(extensions.values()).find(ext => 
-          !ext.originalNodeId || 
-          !Array.from(extensions.values()).some(other => 
+        // Find the base extension that isn't a child of any other extension
+        const baseExtension = Array.from(extensions.values()).find(ext => {
+          return !Array.from(extensions.values()).some(other => 
             other.children.some(child => child.id === ext.id)
-          )
-        );
+          );
+        });
         
         if (baseExtension) {
-          setQaData([baseExtension]);
+          // When loading an extension tree, include its full hierarchy
+          const getFullExtensionTree = (node: QANode): QANode => {
+            return {
+              ...node,
+              children: node.children.map(child => getFullExtensionTree(child))
+            };
+          };
+
+          setQaData([getFullExtensionTree(baseExtension)]);
         }
       }
       
-      // Set all extensions, including nested ones
-      setRootExtensions(Array.from(extensions.values()));
+      // Set all extensions with their full hierarchies
+      const extensionsWithHierarchy = Array.from(extensions.values()).map(ext => {
+        const getExtensionWithChildren = (node: QANode): QANode => {
+          return {
+            ...node,
+            children: node.children.map(child => getExtensionWithChildren(child))
+          };
+        };
+        return getExtensionWithChildren(ext);
+      });
+
+      setRootExtensions(extensionsWithHierarchy);
       setExpandedNodes(allNodes);
       
       // Populate content for all nodes
@@ -462,7 +489,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           question: node.question,
           isExtendedRoot: node.isExtendedRoot,
           originalNodeId: node.originalNodeId,
-          hasChildren: node.children?.length > 0
+          hasChildren: node.children?.length > 0,
+          childIds: node.children.map(c => c.id)
         });
 
         setStreamingContent(prev => ({
@@ -487,12 +515,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       };
 
-      await evaluateNodesIfNeeded([...mainRoots, ...Array.from(extensions.values())]);
+      await evaluateNodesIfNeeded([...mainRoots, ...extensionsWithHierarchy]);
       
       console.log('Finished loading tree:', {
-        qaData: mainRoots.length > 0 ? mainRoots : [Array.from(extensions.values())[0]],
-        rootExtensions: Array.from(extensions.values()),
-        extensionTreeCount: extensionTrees.size,
+        qaData: mainRoots.length > 0 ? mainRoots : extensionsWithHierarchy[0],
+        rootExtensions: extensionsWithHierarchy,
+        extensionHierarchySize: extensionHierarchy.size,
         expandedNodes: Array.from(allNodes),
         streamingContentKeys: Object.keys(streamingContent).length,
         nodeMapSize: nodeMap.size
