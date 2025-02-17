@@ -141,23 +141,23 @@ export function AccountActivityList({ userId }: { userId?: string }) {
   ];
 
   return (
-    <div className="w-full px-0 sm:px-4 -mt-20">
-      <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
-        {/* Search Bar */}
-        <div className="w-full p-4">
-          <div className="relative w-full max-w-2xl mx-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search activity..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 bg-background"
-            />
+    <div className="flex flex-col w-full">
+      <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
+        {!userId && (
+          <div className="flex items-center w-full px-4 py-3 border-b">
+            <div className="relative flex-1 max-w-2xl mx-auto">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search activity..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 bg-background"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Activity List Header */}
         <TopMoversHeader
           timeIntervals={timeIntervals}
           selectedInterval={selectedInterval}
@@ -181,53 +181,56 @@ export function AccountActivityList({ userId }: { userId?: string }) {
           sortBy="price_change"
           onSortChange={() => {}}
         />
-
-        {/* Activity List */}
-        <div className="w-full">
-          <div className="w-full space-y-3">
-            {activity?.map((item) => (
-              <div key={item.id} className="w-full p-3 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    {item.type === 'order' ? (
-                      <>
-                        <h3 className="font-medium">{item.details.question}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          Bought {item.details.size} shares of {item.details.outcome} at {(item.details.price! * 100).toFixed(2)}¢
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <h3 className="font-medium">Research: {item.details.query}</h3>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {item.details.analysis}
-                        </p>
-                      </>
-                    )}
+      </div>
+      
+      <div className="w-full px-0 sm:px-4 -mt-20">
+        <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
+          <div className="w-full">
+            <div className="w-full space-y-3">
+              {activity?.map((item) => (
+                <div key={item.id} className="w-full p-3 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      {item.type === 'order' ? (
+                        <>
+                          <h3 className="font-medium">{item.details.question}</h3>
+                          <p className="text-sm text-muted-foreground">
+                            Bought {item.details.size} shares of {item.details.outcome} at {(item.details.price! * 100).toFixed(2)}¢
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <h3 className="font-medium">Research: {item.details.query}</h3>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {item.details.analysis}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
+                    </span>
                   </div>
-                  <span className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}
-                  </span>
+                  {item.type === 'order' && item.details.market_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => window.location.href = `/market/${item.details.market_id}`}
+                    >
+                      View Market
+                    </Button>
+                  )}
+                  <Separator />
                 </div>
-                {item.type === 'order' && item.details.market_id && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full"
-                    onClick={() => window.location.href = `/market/${item.details.market_id}`}
-                  >
-                    View Market
-                  </Button>
-                )}
-                <Separator />
-              </div>
-            ))}
+              ))}
 
-            {activity?.length === 0 && (
-              <div className="text-center py-12 text-muted-foreground">
-                No activity found
-              </div>
-            )}
+              {activity?.length === 0 && (
+                <div className="text-center py-12 text-muted-foreground">
+                  No activity found
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
