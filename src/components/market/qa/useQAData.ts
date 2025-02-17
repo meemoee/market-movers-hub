@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -132,18 +133,33 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
         }
       });
 
-      // Find root nodes (nodes that aren't children of any other node)
+      // Find nodes that don't have a parent in the tree
       const allChildIds = new Set(
         Array.from(nodeMap.values())
           .flatMap(node => node.children)
           .map(child => child.id)
       );
 
-      const mainRoots = Array.from(mainNodes.values())
-        .filter(node => !allChildIds.has(node.id));
+      // Find nodes that aren't referenced as originalNodeId by any extension
+      const allOriginalNodeIds = new Set(
+        Array.from(extensions.values())
+          .map(ext => ext.originalNodeId)
+          .filter((id): id is string => id !== undefined)
+      );
+
+      // True root nodes are those that:
+      // 1. Aren't children of any node
+      // 2. Aren't extension nodes themselves
+      // 3. Aren't referenced as originalNodeId by any extension
+      const trueRootNodes = Array.from(mainNodes.values())
+        .filter(node => 
+          !allChildIds.has(node.id) && 
+          !node.isExtendedRoot &&
+          !allOriginalNodeIds.has(node.id)
+        );
 
       console.log('Processing tree structure:', {
-        mainRoots: mainRoots.map(n => ({ 
+        trueRootNodes: trueRootNodes.map(n => ({ 
           id: n.id, 
           hasChildren: n.children.length > 0,
           childIds: n.children.map(c => c.id)
@@ -157,10 +173,10 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
       });
 
       // Set the main tree and extensions
-      if (mainRoots.length > 0) {
-        setQaData(mainRoots);
+      if (trueRootNodes.length > 0) {
+        setQaData(trueRootNodes);
       } else {
-        // If no main roots, find the base extension
+        // If no true root nodes found, find the base extension
         const baseExtension = Array.from(extensions.values())
           .find(ext => !Array.from(extensions.values())
             .some(other => other.children
