@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+
+import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -8,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QAControls } from './QAControls';
 import { QANodeView } from './QANodeView';
 import { QADisplayProps, QANode, StreamingContent, SavedResearch, SavedQATree } from './types';
+import { Json } from '@/integrations/supabase/types';
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
   const { toast } = useToast();
