@@ -242,6 +242,14 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     setQaData([completeExtensionTree]);
   };
 
+  const navigateBack = () => {
+    const previousTree = navigationHistory[navigationHistory.length - 1];
+    if (previousTree) {
+      setQaData(previousTree);
+      setNavigationHistory(prev => prev.slice(0, -1));
+    }
+  };
+
   // Helper function to count all nodes in a tree
   const getAllNodes = (node: QANode): QANode[] => {
     return [
