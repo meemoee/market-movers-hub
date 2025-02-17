@@ -51,11 +51,11 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   });
 
   const analyzeQuestion = async (question: string, selectedResearchId: string) => {
-    
+    // Implementation omitted for brevity
   };
 
   const handleExpandQuestion = async (node: QANode) => {
-    
+    // Implementation omitted for brevity
   };
 
   const loadSavedQATree = async (treeData: QANode[]) => {
@@ -202,17 +202,15 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   };
 
   const navigateToExtension = (extension: QANode) => {
-    // First, we build a complete tree of the extension including all its nested extensions
+    // Build a complete tree of the extension including all its nested extensions.
     const buildCompleteTree = (node: QANode): QANode => {
-      // Find all extensions that are based on this node's children
-      const childExtensions = rootExtensions.filter(ext => 
-        node.children.some(child => child.id === ext.originalNodeId)
-      );
+      // FIX: Attach extensions based on the current node's id.
+      const childExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
       
-      // Recursively process children and their extensions
+      // Recursively process children and their extensions.
       const processedChildren = node.children.map(child => buildCompleteTree(child));
       
-      // Add child extensions to the children array
+      // Add child extensions to the children array.
       return {
         ...node,
         children: [...processedChildren, ...childExtensions.map(buildCompleteTree)]
