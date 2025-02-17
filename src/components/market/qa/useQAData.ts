@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -202,18 +203,29 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   };
 
   const navigateToExtension = (extension: QANode) => {
-    // Build a complete tree of the extension including all its nested extensions.
+    const findAllChildExtensions = (nodeId: string): QANode[] => {
+      const directExtensions = rootExtensions.filter(ext => ext.originalNodeId === nodeId);
+      const childExtensions = directExtensions.flatMap(ext => 
+        [ext, ...ext.children.flatMap(child => findAllChildExtensions(child.id))]
+      );
+      return childExtensions;
+    };
+
     const buildCompleteTree = (node: QANode): QANode => {
-      // FIX: Attach extensions based on the current node's id.
-      const childExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
+      // Get all extensions for this node and its children
+      const allExtensions = findAllChildExtensions(node.id);
       
-      // Recursively process children and their extensions.
+      // Process children recursively
       const processedChildren = node.children.map(child => buildCompleteTree(child));
       
-      // Add child extensions to the children array.
+      // Create the complete node with all its extensions
       return {
         ...node,
-        children: [...processedChildren, ...childExtensions.map(buildCompleteTree)]
+        children: [
+          ...processedChildren,
+          ...allExtensions.filter(ext => ext.originalNodeId === node.id)
+            .map(buildCompleteTree)
+        ]
       };
     };
 
