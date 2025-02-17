@@ -288,7 +288,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           question: node.question,
           analysis: node.analysis || '',
           citations: (node.citations || []) as string[],
-          children: (node.children || []) as string[],
+          children: Array.isArray(node.children) ? node.children.map(child => 
+            typeof child === 'string' ? child : child.id
+          ) : [],
           isExtendedRoot: Boolean(node.isExtendedRoot),
           originalNodeId: node.originalNodeId || null
         };
