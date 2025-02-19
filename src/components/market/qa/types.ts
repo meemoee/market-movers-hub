@@ -9,6 +9,7 @@ export interface QANode {
   children: QANode[];
   isExtendedRoot?: boolean;
   originalNodeId?: string;
+  parentId?: string | null;
   evaluation?: {
     score: number;
     reason: string;
