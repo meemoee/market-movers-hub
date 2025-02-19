@@ -1,21 +1,22 @@
 
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import ReactMarkdown from 'react-markdown';
-import { MessageSquare, ChevronUp, ChevronDown, ArrowRight, LinkIcon } from "lucide-react";
 import type { Components as MarkdownComponents } from 'react-markdown';
-import { QANode, StreamingContent } from "./types";
+import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon } from "lucide-react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { QANode } from './types';
 
 interface QANodeViewProps {
   node: QANode;
   depth: number;
   isStreaming: boolean;
-  streamContent?: StreamingContent;
+  streamContent?: {
+    content: string;
+    citations: string[];
+  };
   isExpanded: boolean;
   onToggle: (nodeId: string) => void;
-  onExpandQuestion: (node: QANode) => void;
+  onExpandQuestion: (node: QANode) => Promise<void>;
   markdownComponents: MarkdownComponents;
-  nodeExtensions: QANode[];
-  onNavigateToExtension: (extension: QANode) => void;
   getPreviewText: (text: string | undefined) => string;
 }
 
@@ -28,9 +29,7 @@ export function QANodeView({
   onToggle,
   onExpandQuestion,
   markdownComponents,
-  nodeExtensions,
-  onNavigateToExtension,
-  getPreviewText,
+  getPreviewText
 }: QANodeViewProps) {
   const analysisContent = isStreaming ? streamContent?.content : node.analysis;
   const citations = isStreaming ? streamContent?.citations : node.citations;
@@ -103,60 +102,29 @@ export function QANodeView({
                         </div>
                       )}
                       
-                      <div className="mt-4 space-y-2">
-                        {node.evaluation && (
-                          <div className={`rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="text-xs font-medium">
-                                Score: {node.evaluation.score}%
-                              </div>
-                              {!node.isExtendedRoot && (
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onExpandQuestion(node);
-                                  }}
-                                  className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                                  title="Expand this question into a follow-up analysis"
-                                >
-                                  <ArrowRight className="h-4 w-4" />
-                                </button>
-                              )}
+                      {node.evaluation && (
+                        <div className={`mt-4 rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-xs font-medium">
+                              Score: {node.evaluation.score}%
                             </div>
-                            <ReactMarkdown
-                              components={markdownComponents}
-                              className="text-xs text-muted-foreground"
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onExpandQuestion(node);
+                              }}
+                              className="p-1 hover:bg-accent/50 rounded-full transition-colors"
+                              title="Expand this question with follow-up analysis"
                             >
-                              {node.evaluation.reason}
-                            </ReactMarkdown>
+                              <ChevronDown className="h-4 w-4" />
+                            </button>
                           </div>
-                        )}
-                      </div>
-                      
-                      {nodeExtensions.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground">
-                            Follow-up Analyses ({nodeExtensions.length}):
-                          </div>
-                          <div className="space-y-4">
-                            {nodeExtensions.map((extension, index) => (
-                              <div 
-                                key={extension.id}
-                                className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onNavigateToExtension(extension);
-                                }}
-                              >
-                                <div className="text-xs text-muted-foreground mb-2">
-                                  Continuation #{index + 1}
-                                </div>
-                                <div className="line-clamp-3">
-                                  {getPreviewText(extension.analysis)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                          <ReactMarkdown
+                            components={markdownComponents}
+                            className="text-xs text-muted-foreground"
+                          >
+                            {node.evaluation.reason}
+                          </ReactMarkdown>
                         </div>
                       )}
                     </>
@@ -181,8 +149,6 @@ export function QANodeView({
                   onToggle={onToggle}
                   onExpandQuestion={onExpandQuestion}
                   markdownComponents={markdownComponents}
-                  nodeExtensions={nodeExtensions}
-                  onNavigateToExtension={onNavigateToExtension}
                   getPreviewText={getPreviewText}
                 />
               ))}
