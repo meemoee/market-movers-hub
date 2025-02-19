@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -127,22 +126,47 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     }
   };
 
-  const loadSavedQATree = async (treeData: QANode[]) => {
+  const loadSavedQATree = async (treeData: unknown) => {
     try {
-      console.log('Loading tree data:', treeData);
+      console.log('Raw tree data:', treeData);
 
       // Clear current state
       setQaData([]);
       setExpandedNodes(new Set());
 
       // Validate and normalize the tree data
-      if (!Array.isArray(treeData)) {
+      if (!treeData || !Array.isArray(treeData)) {
         console.error('Invalid tree data format:', treeData);
         throw new Error('Invalid tree data format');
       }
 
-      // Build tree from flat data
-      const roots = buildTree(treeData);
+      // Filter out non-node entries and ensure all required properties
+      const validNodes = treeData
+        .filter((node): node is QANode => 
+          node && 
+          typeof node === 'object' &&
+          'id' in node &&
+          typeof node.id === 'string' &&
+          'question' in node &&
+          typeof node.question === 'string'
+        )
+        .map(node => ({
+          id: node.id,
+          parentId: node.parentId || null,
+          question: node.question,
+          analysis: node.analysis || '',
+          citations: Array.isArray(node.citations) ? node.citations : [],
+          children: [],
+          evaluation: node.evaluation ? {
+            score: Number(node.evaluation.score),
+            reason: String(node.evaluation.reason)
+          } : undefined
+        }));
+
+      console.log('Validated nodes:', validNodes);
+
+      // Build tree from validated data
+      const roots = buildTree(validNodes);
       console.log('Built tree structure:', roots);
 
       if (roots.length === 0) {
@@ -156,7 +180,7 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
         nodes.forEach(node => {
           if (node.id) {
             allNodeIds.add(node.id);
-            if (node.children && Array.isArray(node.children)) {
+            if (Array.isArray(node.children)) {
               collectNodeIds(node.children);
             }
           }
@@ -169,7 +193,8 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
       console.log('Successfully loaded QA tree:', {
         rootCount: roots.length,
-        totalNodes: allNodeIds.size
+        totalNodes: allNodeIds.size,
+        expandedNodes: Array.from(allNodeIds)
       });
     } catch (error) {
       console.error('Error loading QA tree:', error);
