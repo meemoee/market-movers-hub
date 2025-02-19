@@ -342,6 +342,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const nodeMap = new Map<string, QANode>();
       const extensionMap = new Map<string, QANode>();
+      const processedNodes = new Set<string>();
       
       // First pass: Create all nodes
       treeData.forEach(rawNode => {
@@ -381,30 +382,35 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               const childNode = typeof childId === 'string' 
                 ? nodeMap.get(childId)
                 : nodeMap.get(childId.id);
+              if (childNode) {
+                processedNodes.add(childNode.id);
+              }
               return childNode;
             })
             .filter((child): child is QANode => child !== undefined);
         }
       });
 
-      // Third pass: Build the main tree and extensions
+      // Third pass: Identify main nodes and extensions
       const mainRoots: QANode[] = [];
       const extensions: QANode[] = [];
 
-      // Helper to check if a node is a root node
-      const isRootNode = (node: QANode): boolean => {
-        return !node.parentId || !nodeMap.has(node.parentId);
-      };
-
-      // Process all nodes
+      // Process each node
       nodeMap.forEach(node => {
         if (node.isExtendedRoot) {
-          // This is an extension node
+          // Add to extensions regardless of being processed
           extensions.push(node);
-        } else if (isRootNode(node)) {
-          // This is a main tree root node
+        } else if (!processedNodes.has(node.id) && !node.parentId) {
+          // Only add to main roots if it's a true root node (no parent)
           mainRoots.push(node);
         }
+      });
+
+      // Sort extensions to maintain continuation order
+      extensions.sort((a, b) => {
+        const aId = Number(a.id.split('-')[1]) || 0;
+        const bId = Number(b.id.split('-')[1]) || 0;
+        return aId - bId;
       });
 
       console.log('Processed tree structure:', {
@@ -412,20 +418,21 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         extensionsCount: extensions.length,
         totalNodes: nodeMap.size,
         nodeMap: Array.from(nodeMap.keys()),
+        processedNodes: Array.from(processedNodes),
         mainRoots: mainRoots.map(n => ({ 
           id: n.id, 
-          childCount: n.children.length,
-          isExtended: !!n.isExtendedRoot
+          childCount: n.children.length
         })),
         extensions: extensions.map(n => ({
           id: n.id,
           originalId: n.originalNodeId,
-          parentId: n.parentId
+          parentId: n.parentId,
+          childCount: n.children.length
         }))
       });
 
       // Set the state
-      setQaData(mainRoots);
+      setQaData(mainRoots.length > 0 ? mainRoots : [extensions[0]]);
       setRootExtensions(extensions);
       
       // Expand all nodes
