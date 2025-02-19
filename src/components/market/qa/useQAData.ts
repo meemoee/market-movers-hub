@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
@@ -51,22 +52,11 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   });
 
   const buildTree = (nodes: QANode[]): QANode[] => {
-    // First, ensure all nodes have the required properties
-    const validNodes = nodes.filter(node => 
-      node && 
-      typeof node.id === 'string' && 
-      typeof node.question === 'string'
-    ).map(node => ({
-      ...node,
-      children: [], // Reset children to prevent duplicates
-      parentId: node.parentId || null // Ensure parentId is always defined
-    }));
-
     const nodeMap = new Map<string, QANode>();
     const roots: QANode[] = [];
 
-    // Create node map first
-    validNodes.forEach(node => {
+    // Initialize nodes with empty children arrays
+    nodes.forEach(node => {
       nodeMap.set(node.id, {
         ...node,
         children: []
@@ -74,14 +64,15 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     });
 
     // Build the tree structure
-    validNodes.forEach(node => {
-      const processedNode = nodeMap.get(node.id);
-      if (!processedNode) return; // Skip invalid nodes
-
-      if (node.parentId && nodeMap.has(node.parentId)) {
+    nodes.forEach(node => {
+      const processedNode = nodeMap.get(node.id)!;
+      if (node.parentId) {
         const parent = nodeMap.get(node.parentId);
         if (parent) {
           parent.children.push(processedNode);
+        } else {
+          console.warn(`Parent node ${node.parentId} not found for node ${node.id}`);
+          roots.push(processedNode);
         }
       } else {
         roots.push(processedNode);
@@ -126,64 +117,21 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     }
   };
 
-  const loadSavedQATree = async (treeData: unknown) => {
+  const loadSavedQATree = async (treeData: QANode[]) => {
     try {
-      console.log('Raw tree data:', treeData);
-
       // Clear current state
       setQaData([]);
       setExpandedNodes(new Set());
 
-      // Validate and normalize the tree data
-      if (!treeData || !Array.isArray(treeData)) {
-        console.error('Invalid tree data format:', treeData);
-        throw new Error('Invalid tree data format');
-      }
-
-      // Filter out non-node entries and ensure all required properties
-      const validNodes = treeData
-        .filter((node): node is QANode => 
-          node && 
-          typeof node === 'object' &&
-          'id' in node &&
-          typeof node.id === 'string' &&
-          'question' in node &&
-          typeof node.question === 'string'
-        )
-        .map(node => ({
-          id: node.id,
-          parentId: node.parentId || null,
-          question: node.question,
-          analysis: node.analysis || '',
-          citations: Array.isArray(node.citations) ? node.citations : [],
-          children: [],
-          evaluation: node.evaluation ? {
-            score: Number(node.evaluation.score),
-            reason: String(node.evaluation.reason)
-          } : undefined
-        }));
-
-      console.log('Validated nodes:', validNodes);
-
-      // Build tree from validated data
-      const roots = buildTree(validNodes);
-      console.log('Built tree structure:', roots);
-
-      if (roots.length === 0) {
-        console.warn('No valid root nodes found in tree data');
-        return;
-      }
+      // Build tree from flat data
+      const roots = buildTree(treeData);
       
       // Set all nodes as expanded initially
       const allNodeIds = new Set<string>();
       const collectNodeIds = (nodes: QANode[]) => {
         nodes.forEach(node => {
-          if (node.id) {
-            allNodeIds.add(node.id);
-            if (Array.isArray(node.children)) {
-              collectNodeIds(node.children);
-            }
-          }
+          allNodeIds.add(node.id);
+          collectNodeIds(node.children);
         });
       };
       collectNodeIds(roots);
@@ -191,10 +139,9 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
       setExpandedNodes(allNodeIds);
       setQaData(roots);
 
-      console.log('Successfully loaded QA tree:', {
+      console.log('Loaded QA tree:', {
         rootCount: roots.length,
-        totalNodes: allNodeIds.size,
-        expandedNodes: Array.from(allNodeIds)
+        totalNodes: allNodeIds.size
       });
     } catch (error) {
       console.error('Error loading QA tree:', error);
@@ -207,11 +154,6 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   };
 
   const handleExpandQuestion = async (node: QANode) => {
-    if (!node.id) {
-      console.error('Invalid node:', node);
-      return;
-    }
-
     setCurrentNodeId(node.id);
     try {
       const followUps = await analyzeQuestion(node.question, node.id);
@@ -274,12 +216,10 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
       // Flatten the tree for storage
       const flattenTree = (node: QANode): QANode[] => {
-        if (!node.id) return [];
         return [node, ...node.children.flatMap(child => flattenTree(child))];
       };
 
       const allNodes = qaData.flatMap(node => flattenTree(node));
-      console.log('Saving tree data:', allNodes);
 
       const { error } = await supabase
         .from('qa_trees')
