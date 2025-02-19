@@ -333,7 +333,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     try {
       setStreamingContent({});
       setCurrentNodeId(null);
-      setNavigationHistory([]);
+      setFocusedNodeId(null);
       
       if (!Array.isArray(treeData)) {
         console.error('Invalid tree data:', treeData);
@@ -353,6 +353,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             children: [],
             isExtendedRoot: rawNode.isExtendedRoot || false,
             originalNodeId: rawNode.originalNodeId,
+            parentId: rawNode.parentId || null,
             evaluation: rawNode.evaluation ? {
               score: Number(rawNode.evaluation.score),
               reason: String(rawNode.evaluation.reason)
