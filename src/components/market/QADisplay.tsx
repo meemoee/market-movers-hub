@@ -62,8 +62,31 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
-  const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const findNodeById = (nodeId: string, nodes: QANode[]): QANode | null => {
+    for (const node of nodes) {
+      if (node.id === nodeId) return node;
+      if (node.children.length > 0) {
+        const found = findNodeById(nodeId, node.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const getFocusedView = (): QANode[] => {
+    if (!focusedNodeId) return qaData;
+    
+    const focusedNode = findNodeById(focusedNodeId, qaData);
+    if (focusedNode) return [focusedNode];
+    
+    const focusedExtension = rootExtensions.find(ext => ext.id === focusedNodeId);
+    if (focusedExtension) return [focusedExtension];
+    
+    return qaData;
+  };
 
   const toggleNode = (nodeId: string) => {
     setExpandedNodes(prev => {
@@ -78,55 +101,23 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const navigateToExtension = (extension: QANode) => {
-    setNavigationHistory(prev => [...prev, qaData]);
-    setQaData([extension]);
+    setFocusedNodeId(extension.id);
   };
 
   const navigateBack = () => {
-    const previousTree = navigationHistory[navigationHistory.length - 1];
-    if (previousTree) {
-      setQaData(previousTree);
-      setNavigationHistory(prev => prev.slice(0, -1));
+    if (focusedNodeId) {
+      const focusedNode = findNodeById(focusedNodeId, qaData) || 
+                         rootExtensions.find(ext => ext.id === focusedNodeId);
+      
+      if (focusedNode?.originalNodeId) {
+        setFocusedNodeId(focusedNode.originalNodeId);
+      } else if (focusedNode?.parentId) {
+        setFocusedNodeId(focusedNode.parentId);
+      } else {
+        setFocusedNodeId(null);
+      }
     }
   };
-
-  const { data: savedResearch } = useQuery<SavedResearch[]>({
-    queryKey: ['saved-research', marketId],
-    queryFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('web_research')
-        .select('*')
-        .eq('market_id', marketId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      return (data as SavedResearch[]) || [];
-    },
-  });
-
-  const { data: savedQATrees } = useQuery<SavedQATree[]>({
-    queryKey: ['saved-qa-trees', marketId],
-    queryFn: async () => {
-      const { data: user } = await supabase.auth.getUser();
-      if (!user.user) throw new Error('Not authenticated');
-
-      const { data, error } = await supabase
-        .from('qa_trees')
-        .select('*')
-        .eq('market_id', marketId)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      
-      return (data?.map(tree => ({
-        ...tree,
-        tree_data: tree.tree_data as unknown as QANode[]
-      })) || []) as SavedQATree[];
-    },
-  });
 
   const isCompleteMarkdown = (text: string): boolean => {
     const stack: string[] = [];
@@ -251,7 +242,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           citations: node.citations || [],
           children: node.children.map(child => processNode(child)),
           isExtendedRoot: node.isExtendedRoot || false,
-          originalNodeId: node.originalNodeId
+          originalNodeId: node.originalNodeId,
+          parentId: node.parentId || null
         };
 
         if (node.evaluation) {
@@ -268,9 +260,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const processedMainTree = qaData.map(node => processNode(node));
       const processedExtensions = rootExtensions.map(ext => processNode(ext));
 
-      const allNodes = Array.from(processedNodes.values());
+      const allNodes = [...processedMainTree, ...processedExtensions];
 
-      console.log('Saving tree structure:', {
+      console.log('Saving complete tree structure:', {
         totalNodes: allNodes.length,
         mainRoots: processedMainTree.map(n => n.id),
         extensions: processedExtensions.map(n => ({
@@ -295,7 +287,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${allNodes.length} nodes including ${processedExtensions.length} extensions`,
+        description: `Saved complete QA tree with ${allNodes.length} nodes including ${processedExtensions.length} extensions`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
@@ -683,19 +675,19 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(nodeId);
       setExpandedNodes(prev => new Set([...prev, nodeId]));
 
-      setNavigationHistory(prev => [...prev, qaData]);
-
       const newRootNode: QANode = {
         id: nodeId,
         question: node.question,
         analysis: '',
         children: [],
         isExtendedRoot: true,
-        originalNodeId: node.id
+        originalNodeId: node.id,
+        parentId: node.id
       };
 
       setRootExtensions(prev => [...prev, newRootNode]);
-      setQaData([newRootNode]);
+      
+      setFocusedNodeId(nodeId);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
@@ -995,16 +987,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        {navigationHistory.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
         <div className="flex-1 min-w-[200px] max-w-[300px]">
           <Select
             value={selectedResearch}
@@ -1028,7 +1010,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             value={selectedQATree}
             onValueChange={(value) => {
               setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
+              setFocusedNodeId(null);
               if (value !== 'none') {
                 const tree = savedQATrees?.find(t => t.id === value);
                 if (tree) {
@@ -1057,6 +1039,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               setQaData([]);
               setStreamingContent({});
               setExpandedNodes(new Set());
+              setFocusedNodeId(null);
               try {
                 await analyzeQuestion(marketQuestion);
               } finally {
@@ -1076,7 +1059,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         </div>
       </div>
       <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
+        {getFocusedView().map(node => renderQANode(node))}
       </ScrollArea>
     </Card>
   );
