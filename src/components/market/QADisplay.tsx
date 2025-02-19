@@ -26,6 +26,7 @@ interface QANode {
   children: QANode[];
   isExtendedRoot?: boolean;
   originalNodeId?: string;
+  parentId?: string | null;
   evaluation?: {
     score: number;
     reason: string;
@@ -64,6 +65,30 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const { data: savedResearch } = useQuery({
+    queryKey: ['saved-research', marketId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('web_research')
+        .select('*')
+        .eq('market_id', marketId);
+      if (error) throw error;
+      return data as SavedResearch[];
+    }
+  });
+
+  const { data: savedQATrees } = useQuery({
+    queryKey: ['saved-qa-trees', marketId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('qa_trees')
+        .select('*')
+        .eq('market_id', marketId);
+      if (error) throw error;
+      return data as SavedQATree[];
+    }
+  });
 
   const findNodeById = (nodeId: string, nodes: QANode[]): QANode | null => {
     for (const node of nodes) {
