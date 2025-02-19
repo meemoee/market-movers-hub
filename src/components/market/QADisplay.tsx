@@ -26,6 +26,7 @@ interface QANode {
   children: QANode[];
   isExtendedRoot?: boolean;
   originalNodeId?: string;
+  parentId?: string | null;
   evaluation?: {
     score: number;
     reason: string;
@@ -62,8 +63,48 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
-  const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
+  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const queryClient = useQueryClient();
+
+  const findNodeById = (nodeId: string, nodes: QANode[]): QANode | null => {
+    for (const node of nodes) {
+      if (node.id === nodeId) return node;
+      if (node.children.length > 0) {
+        const found = findNodeById(nodeId, node.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  const getFocusedView = (): QANode[] => {
+    if (!focusedNodeId) return qaData;
+    
+    const focusedNode = findNodeById(focusedNodeId, qaData);
+    if (focusedNode) return [focusedNode];
+    
+    const focusedExtension = rootExtensions.find(ext => ext.id === focusedNodeId);
+    if (focusedExtension) return [focusedExtension];
+    
+    return qaData;
+  };
+
+  const navigateToExtension = (extension: QANode) => {
+    setFocusedNodeId(extension.id);
+  };
+
+  const navigateBack = () => {
+    if (focusedNodeId) {
+      const focusedNode = findNodeById(focusedNodeId, qaData) || 
+                         rootExtensions.find(ext => ext.id === focusedNodeId);
+      
+      if (focusedNode?.originalNodeId) {
+        setFocusedNodeId(focusedNode.originalNodeId);
+      } else {
+        setFocusedNodeId(null);
+      }
+    }
+  };
 
   const toggleNode = (nodeId: string) => {
     setExpandedNodes(prev => {
@@ -75,19 +116,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
       return newSet;
     });
-  };
-
-  const navigateToExtension = (extension: QANode) => {
-    setNavigationHistory(prev => [...prev, qaData]);
-    setQaData([extension]);
-  };
-
-  const navigateBack = () => {
-    const previousTree = navigationHistory[navigationHistory.length - 1];
-    if (previousTree) {
-      setQaData(previousTree);
-      setNavigationHistory(prev => prev.slice(0, -1));
-    }
   };
 
   const { data: savedResearch } = useQuery<SavedResearch[]>({
@@ -251,7 +279,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           citations: node.citations || [],
           children: node.children.map(child => processNode(child)),
           isExtendedRoot: node.isExtendedRoot || false,
-          originalNodeId: node.originalNodeId
+          originalNodeId: node.originalNodeId,
+          parentId: null
         };
 
         if (node.evaluation) {
@@ -268,7 +297,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const processedMainTree = qaData.map(node => processNode(node));
       const processedExtensions = rootExtensions.map(ext => processNode(ext));
 
-      const allNodes = Array.from(processedNodes.values());
+      const allNodes = [...processedMainTree, ...processedExtensions];
 
       console.log('Saving tree structure:', {
         totalNodes: allNodes.length,
@@ -316,7 +345,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     try {
       setStreamingContent({});
       setCurrentNodeId(null);
-      setNavigationHistory([]);
+      setFocusedNodeId(null);
       
       if (!Array.isArray(treeData)) {
         console.error('Invalid tree data:', treeData);
@@ -325,7 +354,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const nodeMap = new Map<string, QANode>();
       
-      // First pass: Create base nodes
       treeData.forEach(rawNode => {
         if (rawNode && typeof rawNode.id === 'string') {
           const node: QANode = {
@@ -336,6 +364,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             children: [],
             isExtendedRoot: rawNode.isExtendedRoot || false,
             originalNodeId: rawNode.originalNodeId,
+            parentId: rawNode.parentId || null,
             evaluation: rawNode.evaluation ? {
               score: Number(rawNode.evaluation.score),
               reason: String(rawNode.evaluation.reason)
@@ -345,7 +374,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       });
 
-      // Second pass: Build relationships
       const processedNodes = new Set<string>();
       const roots: QANode[] = [];
       
@@ -361,7 +389,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               const childNode = typeof childId === 'string' 
                 ? nodeMap.get(childId)
                 : nodeMap.get(childId.id);
-              if (childNode) processedNodes.add(childNode.id);
+              if (childNode) {
+                childNode.parentId = node.id;
+                processedNodes.add(childNode.id);
+              }
               return childNode;
             })
             .filter((child): child is QANode => child !== undefined);
@@ -373,7 +404,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       });
 
-      // Initialize main tree and extensions
       const mainTree: QANode[] = [];
       const extensions: QANode[] = [];
       
@@ -391,20 +421,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         totalNodes: nodeMap.size
       });
 
-      // Set the initial view
-      if (mainTree.length > 0) {
-        setQaData(mainTree);
-      } else if (extensions.length > 0) {
-        setQaData([extensions[0]]);
-      }
-
+      setQaData(mainTree);
       setRootExtensions(extensions);
       
-      // Expand all nodes
       const allNodeIds = new Set(Array.from(nodeMap.keys()));
       setExpandedNodes(allNodeIds);
       
-      // Initialize streaming content for all nodes
       const initialStreamingContent: { [key: string]: StreamingContent } = {};
       nodeMap.forEach((node, nodeId) => {
         initialStreamingContent[nodeId] = {
@@ -414,7 +436,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       });
       setStreamingContent(initialStreamingContent);
 
-      // Evaluate nodes if needed
       const evaluateNodesIfNeeded = async (nodes: QANode[]) => {
         for (const node of nodes) {
           if (node.analysis && !node.evaluation) {
@@ -849,235 +870,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     const nodeExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
 
     const getScoreBackgroundColor = (score: number) => {
-      if (score >= 80) return 'bg-green-500/20';
-      if (score >= 60) return 'bg-yellow-500/20';
-      return 'bg-red-500/20';
-    };
-
-    return (
-      <div key={node.id} className="relative flex flex-col">
-        <div className="flex items-stretch">
-          {depth > 0 && (
-            <div className="relative w-6 sm:w-9 flex-shrink-0">
-              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
-            </div>
-          )}
-          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
-            {depth > 0 && (
-              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
-            )}
-            <div className="absolute left-[12px] sm:left-[24px] top-0">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
-                <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-start">
-                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
-                  {node.question}
-                </h3>
-              </div>
-              
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
-                <div className="flex items-start gap-2">
-                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                  <div className="flex-1">
-                    {isExpanded ? (
-                      <>
-                        <ReactMarkdown
-                          components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent || ''}
-                        </ReactMarkdown>
-
-                        {citations && citations.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            <div className="text-xs text-muted-foreground font-medium">Sources:</div>
-                            <div className="flex flex-wrap gap-2">
-                              {citations.map((citation, index) => (
-                                <a
-                                  key={index}
-                                  href={citation}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                                >
-                                  <LinkIcon className="h-3 w-3" />
-                                  {`[${index + 1}]`}
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="mt-4 space-y-2">
-                          {node.evaluation && (
-                            <div className={`rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs font-medium">
-                                  Score: {node.evaluation.score}%
-                                </div>
-                                {!node.isExtendedRoot && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleExpandQuestion(node);
-                                    }}
-                                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                                    title="Expand this question into a follow-up analysis"
-                                  >
-                                    <ArrowRight className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                              <ReactMarkdown
-                                components={markdownComponents}
-                                className="text-xs text-muted-foreground"
-                              >
-                                {node.evaluation.reason}
-                              </ReactMarkdown>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        {navigationHistory.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button 
-            onClick={async () => {
-              setIsAnalyzing(true);
-              setQaData([]);
-              setStreamingContent({});
-              setExpandedNodes(new Set());
-              try {
-                await analyzeQuestion(marketQuestion);
-              } finally {
-                setIsAnalyzing(false);
-                setCurrentNodeId(null);
-              }
-            }} 
-            disabled={isAnalyzing}
-          >
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
+      if (score
