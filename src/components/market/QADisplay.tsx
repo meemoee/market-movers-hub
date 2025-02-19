@@ -879,45 +879,73 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return (
       <div className="mb-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <button onClick={() => toggleNode(node.id)} className="mr-2">
-              {isExpanded ? <ChevronUp /> : <ChevronDown />}
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => toggleNode(node.id)} 
+              className="p-1 hover:bg-accent rounded-sm"
+            >
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
-            <div className="flex items-center">
-              <Avatar>
-                <AvatarFallback>{node.id[0]}</AvatarFallback>
+            <div className="flex items-center gap-2">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback>{node.question[0]?.toUpperCase() || '?'}</AvatarFallback>
               </Avatar>
-              <div className="ml-2">
-                <h3 className="text-lg font-bold">{node.question}</h3>
-                <p className="text-sm text-muted">{getScoreBackgroundColor(node.evaluation?.score || 0)}</p>
+              <div>
+                <h3 className="text-sm font-medium">{node.question}</h3>
+                {node.evaluation && (
+                  <div className={`text-xs px-2 py-0.5 rounded-full ${getScoreBackgroundColor(node.evaluation.score)}`}>
+                    Score: {node.evaluation.score}
+                  </div>
+                )}
               </div>
             </div>
           </div>
-          <div className="flex items-center">
-            <button onClick={() => handleExpandQuestion(node)} className="mr-2">
-              <ArrowRight />
-            </button>
-            <button onClick={() => navigateToExtension(node)} className="mr-2">
-              <LinkIcon />
-            </button>
-            <button onClick={() => navigateBack()} className="mr-2">
-              <MessageSquare />
-            </button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => handleExpandQuestion(node)}
+              disabled={isAnalyzing}
+            >
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            {nodeExtensions.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => navigateToExtension(nodeExtensions[0])}
+              >
+                <LinkIcon className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
+
         {isExpanded && (
-          <div className="mt-2">
-            <ReactMarkdown components={markdownComponents}>
-              {analysisContent}
-            </ReactMarkdown>
-            {citations.length > 0 && (
+          <div className="mt-2 ml-10 space-y-2">
+            <div className="prose prose-sm dark:prose-invert">
+              <ReactMarkdown components={markdownComponents}>
+                {analysisContent || ''}
+              </ReactMarkdown>
+            </div>
+            {citations && citations.length > 0 && (
               <div className="mt-2">
-                <h4 className="text-sm font-bold">Citations</h4>
-                <ul className="list-disc pl-4">
+                <h4 className="text-sm font-medium mb-1">Citations</h4>
+                <ul className="list-disc list-inside text-sm text-muted-foreground">
                   {citations.map((citation, index) => (
                     <li key={index}>{citation}</li>
                   ))}
                 </ul>
+              </div>
+            )}
+            {node.evaluation && (
+              <div className="mt-2 text-sm text-muted-foreground">
+                <p>Evaluation: {node.evaluation.reason}</p>
+              </div>
+            )}
+            {node.children.length > 0 && (
+              <div className="mt-4 space-y-4">
+                {node.children.map(child => renderQANode(child, depth + 1))}
               </div>
             )}
           </div>
@@ -927,10 +955,25 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   return (
-    <div>
-      <ScrollArea>
-        {getFocusedView().map(node => renderQANode(node))}
-      </ScrollArea>
+    <div className="space-y-4">
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          {focusedNodeId && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={navigateBack}
+            >
+              ← Back to Previous Analysis
+            </Button>
+          )}
+        </div>
+        <ScrollArea className="h-[600px]">
+          <div className="space-y-4 pr-4">
+            {getFocusedView().map(node => renderQANode(node))}
+          </div>
+        </ScrollArea>
+      </Card>
     </div>
   );
 }
