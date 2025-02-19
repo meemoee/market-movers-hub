@@ -870,4 +870,66 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     const nodeExtensions = rootExtensions.filter(ext => ext.originalNodeId === node.id);
 
     const getScoreBackgroundColor = (score: number) => {
-      if (score
+      if (score >= 80) return 'bg-green-500/20';
+      if (score >= 60) return 'bg-yellow-500/20';
+      return 'bg-red-500/20';
+    };
+
+    return (
+      <div className="mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <button onClick={() => toggleNode(node.id)} className="mr-2">
+              {isExpanded ? <ChevronUp /> : <ChevronDown />}
+            </button>
+            <div className="flex items-center">
+              <Avatar>
+                <AvatarFallback>{node.id[0]}</AvatarFallback>
+              </Avatar>
+              <div className="ml-2">
+                <h3 className="text-lg font-bold">{node.question}</h3>
+                <p className="text-sm text-muted">{getScoreBackgroundColor(node.evaluation?.score || 0)}</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center">
+            <button onClick={() => handleExpandQuestion(node)} className="mr-2">
+              <ArrowRight />
+            </button>
+            <button onClick={() => navigateToExtension(node)} className="mr-2">
+              <LinkIcon />
+            </button>
+            <button onClick={() => navigateBack()} className="mr-2">
+              <MessageSquare />
+            </button>
+          </div>
+        </div>
+        {isExpanded && (
+          <div className="mt-2">
+            <ReactMarkdown components={markdownComponents}>
+              {analysisContent}
+            </ReactMarkdown>
+            {citations.length > 0 && (
+              <div className="mt-2">
+                <h4 className="text-sm font-bold">Citations</h4>
+                <ul className="list-disc pl-4">
+                  {citations.map((citation, index) => (
+                    <li key={index}>{citation}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return (
+    <div>
+      <ScrollArea>
+        {getFocusedView().map(node => renderQANode(node))}
+      </ScrollArea>
+    </div>
+  );
+}
