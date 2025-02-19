@@ -3,12 +3,11 @@ import { Database, Json } from '@/integrations/supabase/types';
 
 export interface QANode {
   id: string;
+  parentId: string | null;
   question: string;
   analysis: string;
   citations?: string[];
   children: QANode[];
-  isExtendedRoot?: boolean;
-  originalNodeId?: string;
   evaluation?: {
     score: number;
     reason: string;
