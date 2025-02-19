@@ -52,11 +52,22 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   });
 
   const buildTree = (nodes: QANode[]): QANode[] => {
+    // First, ensure all nodes have the required properties
+    const validNodes = nodes.filter(node => 
+      node && 
+      typeof node.id === 'string' && 
+      typeof node.question === 'string'
+    ).map(node => ({
+      ...node,
+      children: [], // Reset children to prevent duplicates
+      parentId: node.parentId || null // Ensure parentId is always defined
+    }));
+
     const nodeMap = new Map<string, QANode>();
     const roots: QANode[] = [];
 
-    // Initialize nodes with empty children arrays
-    nodes.forEach(node => {
+    // Create node map first
+    validNodes.forEach(node => {
       nodeMap.set(node.id, {
         ...node,
         children: []
@@ -64,15 +75,14 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     });
 
     // Build the tree structure
-    nodes.forEach(node => {
-      const processedNode = nodeMap.get(node.id)!;
-      if (node.parentId) {
+    validNodes.forEach(node => {
+      const processedNode = nodeMap.get(node.id);
+      if (!processedNode) return; // Skip invalid nodes
+
+      if (node.parentId && nodeMap.has(node.parentId)) {
         const parent = nodeMap.get(node.parentId);
         if (parent) {
           parent.children.push(processedNode);
-        } else {
-          console.warn(`Parent node ${node.parentId} not found for node ${node.id}`);
-          roots.push(processedNode);
         }
       } else {
         roots.push(processedNode);
@@ -119,19 +129,37 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
   const loadSavedQATree = async (treeData: QANode[]) => {
     try {
+      console.log('Loading tree data:', treeData);
+
       // Clear current state
       setQaData([]);
       setExpandedNodes(new Set());
 
+      // Validate and normalize the tree data
+      if (!Array.isArray(treeData)) {
+        console.error('Invalid tree data format:', treeData);
+        throw new Error('Invalid tree data format');
+      }
+
       // Build tree from flat data
       const roots = buildTree(treeData);
+      console.log('Built tree structure:', roots);
+
+      if (roots.length === 0) {
+        console.warn('No valid root nodes found in tree data');
+        return;
+      }
       
       // Set all nodes as expanded initially
       const allNodeIds = new Set<string>();
       const collectNodeIds = (nodes: QANode[]) => {
         nodes.forEach(node => {
-          allNodeIds.add(node.id);
-          collectNodeIds(node.children);
+          if (node.id) {
+            allNodeIds.add(node.id);
+            if (node.children && Array.isArray(node.children)) {
+              collectNodeIds(node.children);
+            }
+          }
         });
       };
       collectNodeIds(roots);
@@ -139,7 +167,7 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
       setExpandedNodes(allNodeIds);
       setQaData(roots);
 
-      console.log('Loaded QA tree:', {
+      console.log('Successfully loaded QA tree:', {
         rootCount: roots.length,
         totalNodes: allNodeIds.size
       });
@@ -154,6 +182,11 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
   };
 
   const handleExpandQuestion = async (node: QANode) => {
+    if (!node.id) {
+      console.error('Invalid node:', node);
+      return;
+    }
+
     setCurrentNodeId(node.id);
     try {
       const followUps = await analyzeQuestion(node.question, node.id);
@@ -216,10 +249,12 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
       // Flatten the tree for storage
       const flattenTree = (node: QANode): QANode[] => {
+        if (!node.id) return [];
         return [node, ...node.children.flatMap(child => flattenTree(child))];
       };
 
       const allNodes = qaData.flatMap(node => flattenTree(node));
+      console.log('Saving tree data:', allNodes);
 
       const { error } = await supabase
         .from('qa_trees')
