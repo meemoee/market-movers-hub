@@ -64,6 +64,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
+  const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
 
   const findNodeById = (nodeId: string, nodes: QANode[]): QANode | null => {
