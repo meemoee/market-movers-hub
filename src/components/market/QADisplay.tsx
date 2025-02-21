@@ -718,6 +718,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(nodeId);
       setExpandedNodes(prev => new Set([...prev, nodeId]));
 
+      // Create new extension node
       const newRootNode: QANode = {
         id: nodeId,
         question: node.question,
@@ -728,8 +729,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         parentId: node.id
       };
 
+      // We update both qaData and rootExtensions states
       setRootExtensions(prev => [...prev, newRootNode]);
-      
       setFocusedNodeId(nodeId);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
@@ -755,15 +756,19 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const analysis = await processStream(reader, nodeId);
 
+      // Update node with the analysis
       const completeNode: QANode = {
         ...newRootNode,
         analysis
       };
 
+      // Evaluate the node
       const { data: evaluationData, error: evaluationError } = await supabase.functions.invoke('evaluate-qa-pair', {
         body: { 
           question: completeNode.question,
-          analysis: completeNode.analysis
+          analysis: completeNode.analysis,
+          marketQuestion,
+          marketDescription
         }
       });
 
@@ -774,11 +779,44 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         evaluation: evaluationData
       };
 
-      setQaData([evaluatedNode]);
+      // Update the tree preserving the existing structure
+      setQaData(prev => {
+        // Helper function to update nodes recursively
+        const updateTreeNodes = (nodes: QANode[]): QANode[] => {
+          return nodes.map(n => {
+            // If this is the original node that we're expanding
+            if (n.id === node.id) {
+              return {
+                ...n,
+                children: [...n.children] // Preserve existing children
+              };
+            }
+            // If this node has children, recursively update them
+            if (n.children.length > 0) {
+              return {
+                ...n,
+                children: updateTreeNodes(n.children)
+              };
+            }
+            return n;
+          });
+        };
+
+        // If we're not focused on a specific node, preserve the entire tree
+        if (!focusedNodeId) {
+          return updateTreeNodes(prev);
+        }
+
+        // If we are focused, we need to update just that branch
+        return prev.map(n => n.id === focusedNodeId ? evaluatedNode : n);
+      });
+
+      // Update the extensions list
       setRootExtensions(prev => 
         prev.map(ext => ext.id === nodeId ? evaluatedNode : ext)
       );
 
+      // Process follow-up questions
       const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
@@ -796,6 +834,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       if (followUpError) throw followUpError;
 
+      // Add follow-up questions as children
       for (const item of followUpData) {
         if (item?.question) {
           await analyzeQuestion(item.question, nodeId, 1);
@@ -894,216 +933,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         <div className="flex items-stretch">
           {depth > 0 && (
             <div className="relative w-6 sm:w-9 flex-shrink-0">
-              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
-            </div>
-          )}
-          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
-            {depth > 0 && (
-              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
-            )}
-            <div className="absolute left-[12px] sm:left-[24px] top-0">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
-                <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex items-start">
-                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
-                  {node.question}
-                </h3>
-              </div>
-              
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
-                <div className="flex items-start gap-2">
-                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                  <div className="flex-1">
-                    {isExpanded ? (
-                      <>
-                        <ReactMarkdown
-                          components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent || ''}
-                        </ReactMarkdown>
-
-                        {citations && citations.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            <div className="text-xs text-muted-foreground font-medium">Sources:</div>
-                            <div className="flex flex-wrap gap-2">
-                              {citations.map((citation, index) => (
-                                <a
-                                  key={index}
-                                  href={citation}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                                >
-                                  <LinkIcon className="h-3 w-3" />
-                                  {`[${index + 1}]`}
-                                </a>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        
-                        <div className="mt-4 space-y-2">
-                          {node.evaluation && (
-                            <div className={`rounded-lg p-2 ${getScoreBackgroundColor(node.evaluation.score)}`}>
-                              <div className="flex items-center justify-between mb-2">
-                                <div className="text-xs font-medium">
-                                  Score: {node.evaluation.score}%
-                                </div>
-                                {!node.isExtendedRoot && (
-                                  <button 
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleExpandQuestion(node);
-                                    }}
-                                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                                    title="Expand this question into a follow-up analysis"
-                                  >
-                                    <ArrowRight className="h-4 w-4" />
-                                  </button>
-                                )}
-                              </div>
-                              <ReactMarkdown
-                                components={markdownComponents}
-                                className="text-xs text-muted-foreground"
-                              >
-                                {node.evaluation.reason}
-                              </ReactMarkdown>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  return (
-    <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setFocusedNodeId(null);
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button 
-            onClick={async () => {
-              setIsAnalyzing(true);
-              setQaData([]);
-              setStreamingContent({});
-              setExpandedNodes(new Set());
-              setFocusedNodeId(null);
-              try {
-                await analyzeQuestion(marketQuestion);
-              } finally {
-                setIsAnalyzing(false);
-                setCurrentNodeId(null);
-              }
-            }} 
-            disabled={isAnalyzing}
-          >
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {getFocusedView().map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
+              <div className="
