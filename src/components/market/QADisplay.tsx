@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -38,6 +39,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     getFocusedView,
     findParentNodes,
     buildHistoryContext,
+    handleExpandQuestion, // Make sure to include this in the destructured values
+    saveQATree,
+    loadSavedQATree,
     queryClient
   } = useQAData(marketId, marketQuestion, marketDescription);
 
@@ -253,7 +257,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Evaluate after completion
       await evaluateQAPair({ id: nodeId, question, analysis, children: [] });
 
     } catch (error) {
@@ -265,10 +268,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       });
       throw error;
     }
-  };
-
-  const saveQATree = async () => {
-    // TODO: Implement save functionality
   };
 
   return (
@@ -310,3 +309,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     </Card>
   );
 }
+
