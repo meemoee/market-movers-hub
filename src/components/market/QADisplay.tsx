@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -730,12 +729,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         parentId: node.id
       };
 
-      // We update both qaData and rootExtensions states
+      // Initialize states for the new node
       setRootExtensions(prev => [...prev, newRootNode]);
       setFocusedNodeId(nodeId);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
+      // Get initial analysis
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
@@ -780,19 +780,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         evaluation: evaluationData
       };
 
-      // Update the tree preserving the existing structure
+      // Update tree preserving structure
       setQaData(prev => {
-        // Helper function to update nodes recursively
         const updateTreeNodes = (nodes: QANode[]): QANode[] => {
           return nodes.map(n => {
-            // If this is the original node that we're expanding
             if (n.id === node.id) {
               return {
                 ...n,
-                children: [...n.children] // Preserve existing children
+                children: [...n.children]
               };
             }
-            // If this node has children, recursively update them
             if (n.children.length > 0) {
               return {
                 ...n,
@@ -803,21 +800,18 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           });
         };
 
-        // If we're not focused on a specific node, preserve the entire tree
         if (!focusedNodeId) {
           return updateTreeNodes(prev);
         }
-
-        // If we are focused, we need to update just that branch
         return prev.map(n => n.id === focusedNodeId ? evaluatedNode : n);
       });
 
-      // Update the extensions list
+      // Update extensions list
       setRootExtensions(prev => 
         prev.map(ext => ext.id === nodeId ? evaluatedNode : ext)
       );
 
-      // Process follow-up questions
+      // Generate follow-up questions
       const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
@@ -835,9 +829,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       if (followUpError) throw followUpError;
 
-      // Add follow-up questions as children
+      console.log('Follow-up questions generated:', followUpData);
+
+      // Process each follow-up question recursively
       for (const item of followUpData) {
         if (item?.question) {
+          const childNodeId = `node-${Date.now()}-${item.question.length}`;
           await analyzeQuestion(item.question, nodeId, 1);
         }
       }
