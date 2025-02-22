@@ -40,7 +40,7 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
   const findNodeById = (nodeId: string, nodes: QANode[]): QANode | null => {
     for (const node of nodes) {
-      if (node.id === targetNodeId) return node;
+      if (node.id === nodeId) return node;
       if (node.children.length > 0) {
         const found = findNodeById(nodeId, node.children);
         if (found) return found;
@@ -80,6 +80,84 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     }).join('\n');
   };
 
+  const saveQATree = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('qa_trees')
+        .insert([
+          {
+            market_id: marketId,
+            title: marketQuestion,
+            tree_data: qaData,
+          }
+        ]);
+      if (error) throw error;
+      await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
+      toast({
+        title: "Success",
+        description: "QA tree saved successfully"
+      });
+    } catch (error) {
+      console.error('Error saving QA tree:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to save QA tree"
+      });
+    }
+  };
+
+  const loadSavedQATree = (treeData: QANode[]) => {
+    setQaData(treeData);
+    setExpandedNodes(new Set());
+    setCurrentNodeId(null);
+  };
+
+  const handleExpandQuestion = async (node: QANode) => {
+    if (!node.analysis) return;
+    
+    const parentNodes = findParentNodes(node.id, qaData) || [];
+    const historyContext = buildHistoryContext(node, parentNodes);
+    
+    const newNodeId = `node-${Date.now()}`;
+    setCurrentNodeId(newNodeId);
+    
+    try {
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
+        body: {
+          marketId,
+          question: node.question,
+          isFollowUp: true,
+          analysisContext: historyContext
+        },
+      });
+      
+      if (analysisError) throw analysisError;
+
+      setRootExtensions(prev => [
+        ...prev,
+        {
+          id: newNodeId,
+          question: node.question,
+          analysis: '',
+          children: [],
+          isExtendedRoot: true,
+          parentNodeId: node.id,
+        },
+      ]);
+
+      // Handle stream processing here...
+      
+    } catch (error) {
+      console.error('Error expanding question:', error);
+      toast({
+        variant: "destructive",
+        title: "Expansion Error",
+        description: "Failed to expand question"
+      });
+    }
+  };
+
   // Return all the state and functions needed by the components
   return {
     qaData,
@@ -98,6 +176,10 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     getFocusedView,
     findParentNodes,
     buildHistoryContext,
+    saveQATree,
+    loadSavedQATree,
+    handleExpandQuestion,
     queryClient
   };
 }
+

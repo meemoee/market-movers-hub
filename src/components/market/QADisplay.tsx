@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -268,6 +267,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
+  const saveQATree = async () => {
+    // TODO: Implement save functionality
+  };
+
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <QAControls
@@ -286,9 +289,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             setIsAnalyzing(false);
           }
         }}
-        onSave={async () => {
-          // TODO: Implement save functionality
-        }}
+        onSave={saveQATree}
         showSave={qaData.length > 0}
       />
       <ScrollArea className="h-[500px] pr-4">
@@ -302,13 +303,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             streamingContent={streamingContent}
             toggleNode={toggleNode}
             evaluateQAPair={evaluateQAPair}
-            onExpandQuestion={async (node: QANode) => {
-              // TODO: Implement expand functionality
-            }}
+            handleExpandQuestion={handleExpandQuestion}
           />
         ))}
       </ScrollArea>
     </Card>
   );
 }
-

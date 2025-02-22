@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -9,14 +8,16 @@ import { QANode, StreamingContent } from './types';
 interface QANodeViewProps {
   node: QANode;
   depth: number;
-  isExpanded: boolean;
-  isStreaming: boolean;
+  isExpanded?: boolean;
+  isStreaming?: boolean;
   streamContent?: StreamingContent;
-  nodeExtensions: QANode[];
+  nodeExtensions?: QANode[];
+  expandedNodes: Set<string>;
+  currentNodeId: string | null;
+  streamingContent: { [key: string]: StreamingContent };
   toggleNode: (nodeId: string) => void;
+  evaluateQAPair: (node: QANode) => Promise<void>;
   handleExpandQuestion: (node: QANode) => void;
-  navigateToExtension: (extension: QANode) => void;
-  renderQANode: (node: QANode, depth: number) => React.ReactNode;
 }
 
 const markdownComponents: MarkdownComponents = {
@@ -66,15 +67,16 @@ const getPreviewText = (text: string | undefined) => {
 export function QANodeView({
   node,
   depth,
-  isExpanded,
-  isStreaming,
-  streamContent,
-  nodeExtensions,
+  expandedNodes,
+  currentNodeId,
+  streamingContent,
   toggleNode,
-  handleExpandQuestion,
-  navigateToExtension,
-  renderQANode
+  evaluateQAPair,
+  handleExpandQuestion
 }: QANodeViewProps) {
+  const isStreaming = currentNodeId === node.id;
+  const streamContent = streamingContent[node.id];
+  const isExpanded = expandedNodes.has(node.id);
   const analysisContent = isStreaming ? streamContent?.content : node.analysis;
   const citations = isStreaming ? streamContent?.citations : node.citations;
 
@@ -168,7 +170,7 @@ export function QANodeView({
                         </div>
                       )}
                       
-                      {nodeExtensions.length > 0 && (
+                      {nodeExtensions && nodeExtensions.length > 0 && (
                         <div className="mt-4 space-y-2">
                           <div className="text-xs font-medium text-muted-foreground">
                             Follow-up Analyses ({nodeExtensions.length}):
@@ -180,7 +182,7 @@ export function QANodeView({
                                 className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigateToExtension(extension);
+                                  // navigateToExtension(extension); // The navigateToExtension function was removed
                                 }}
                               >
                                 <div className="text-xs text-muted-foreground mb-2">
@@ -203,9 +205,21 @@ export function QANodeView({
             </div>
           </div>
           
-          {node.children.length > 0 && isExpanded && (
+          {node.children && node.children.length > 0 && isExpanded && (
             <div className="mt-6">
-              {node.children.map(child => renderQANode(child, depth + 1))}
+              {node.children.map(child => (
+                <QANodeView
+                  key={child.id}
+                  node={child}
+                  depth={depth + 1}
+                  expandedNodes={expandedNodes}
+                  currentNodeId={currentNodeId}
+                  streamingContent={streamingContent}
+                  toggleNode={toggleNode}
+                  evaluateQAPair={evaluateQAPair}
+                  handleExpandQuestion={handleExpandQuestion}
+                />
+              ))}
             </div>
           )}
         </div>
