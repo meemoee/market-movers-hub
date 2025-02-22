@@ -247,4 +247,68 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               return { ...n, analysis };
             }
             if (n.children.length > 0) {
-              return { ...n, children: updateNode(
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
+      });
+
+      // Evaluate after completion
+      await evaluateQAPair({ id: nodeId, question, analysis, children: [] });
+
+    } catch (error) {
+      console.error('Error analyzing question:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: "Failed to analyze question"
+      });
+      throw error;
+    }
+  };
+
+  return (
+    <Card className="p-4 mt-4 bg-card relative">
+      <QAControls
+        isAnalyzing={isAnalyzing}
+        selectedResearch={selectedResearch}
+        setSelectedResearch={setSelectedResearch}
+        selectedQATree={selectedQATree}
+        setSelectedQATree={setSelectedQATree}
+        savedResearch={savedResearch}
+        savedQATrees={savedQATrees}
+        onAnalyze={async () => {
+          setIsAnalyzing(true);
+          try {
+            await analyzeQuestion(marketQuestion);
+          } finally {
+            setIsAnalyzing(false);
+          }
+        }}
+        onSave={async () => {
+          // TODO: Implement save functionality
+        }}
+        showSave={qaData.length > 0}
+      />
+      <ScrollArea className="h-[500px] pr-4">
+        {(getFocusedView() ?? []).map(node => (
+          <QANodeView
+            key={node.id}
+            node={node}
+            depth={0}
+            currentNodeId={currentNodeId}
+            expandedNodes={expandedNodes}
+            streamingContent={streamingContent}
+            toggleNode={toggleNode}
+            evaluateQAPair={evaluateQAPair}
+            onExpandQuestion={async (node: QANode) => {
+              // TODO: Implement expand functionality
+            }}
+          />
+        ))}
+      </ScrollArea>
+    </Card>
+  );
+}
+
