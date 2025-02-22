@@ -1,4 +1,5 @@
 
+import React from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -7,53 +8,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SavedQATree, SavedResearch } from "./types";
+import { SavedResearch, SavedQATree } from './types';
 
 interface QAControlsProps {
-  navigationHistory: any[][];
+  isAnalyzing: boolean;
   selectedResearch: string;
+  setSelectedResearch: (value: string) => void;
   selectedQATree: string;
+  setSelectedQATree: (value: string) => void;
   savedResearch?: SavedResearch[];
   savedQATrees?: SavedQATree[];
-  isAnalyzing: boolean;
-  onBack: () => void;
-  onResearchSelect: (value: string) => void;
-  onQATreeSelect: (value: string) => void;
-  onAnalyze: () => Promise<void>;
-  onSave: () => Promise<void>;
-  qaData: any[];
+  onAnalyze: () => void;
+  onSave: () => void;
+  showSave: boolean;
 }
 
 export function QAControls({
-  navigationHistory,
+  isAnalyzing,
   selectedResearch,
+  setSelectedResearch,
   selectedQATree,
+  setSelectedQATree,
   savedResearch,
   savedQATrees,
-  isAnalyzing,
-  onBack,
-  onResearchSelect,
-  onQATreeSelect,
   onAnalyze,
   onSave,
-  qaData,
+  showSave
 }: QAControlsProps) {
   return (
     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-      {navigationHistory.length > 0 && (
-        <Button 
-          variant="outline" 
-          size="sm"
-          onClick={onBack}
-          className="mb-4 sm:mb-0"
-        >
-          ← Back to Previous Analysis
-        </Button>
-      )}
       <div className="flex-1 min-w-[200px] max-w-[300px]">
         <Select
           value={selectedResearch}
-          onValueChange={onResearchSelect}
+          onValueChange={setSelectedResearch}
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Select saved research" />
@@ -71,7 +58,7 @@ export function QAControls({
       <div className="flex-1 min-w-[200px] max-w-[300px]">
         <Select
           value={selectedQATree}
-          onValueChange={onQATreeSelect}
+          onValueChange={setSelectedQATree}
         >
           <SelectTrigger className="w-full">
             <SelectValue placeholder="Select saved QA tree" />
@@ -93,7 +80,7 @@ export function QAControls({
         >
           {isAnalyzing ? 'Analyzing...' : 'Analyze'}
         </Button>
-        {qaData.length > 0 && !isAnalyzing && (
+        {showSave && !isAnalyzing && (
           <Button onClick={onSave} variant="outline">
             Save Analysis
           </Button>

@@ -4,19 +4,63 @@ import { StreamingContent } from './types';
 
 export function useStreamingContent() {
   const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
-  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
-  const toggleNode = (nodeId: string) => {
-    setExpandedNodes(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
+  const isCompleteMarkdown = (text: string): boolean => {
+    const stack: string[] = [];
+    let inCode = false;
+    let inList = false;
+    let currentNumber = '';
+    
+    if (text.match(/[a-zA-Z]$/)) return false;
+    if (text.match(/\([^)]*$/)) return false;
+    if (text.match(/\[[^\]]*$/)) return false;
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      
+      if (char === '`' && nextChar === '`' && text[i + 2] === '`') {
+        inCode = !inCode;
+        i += 2;
+        continue;
       }
-      return newSet;
-    });
+      
+      if (inCode) continue;
+      
+      if (/^\d$/.test(char)) {
+        currentNumber += char;
+        continue;
+      }
+      if (char === '.' && currentNumber !== '') {
+        inList = true;
+        currentNumber = '';
+        continue;
+      }
+      
+      if (char === '\n') {
+        inList = false;
+        currentNumber = '';
+      }
+      
+      if ((char === '*' || char === '_')) {
+        if (nextChar === char) {
+          if (stack.length > 0 && stack[stack.length - 1] === char + char) {
+            stack.pop();
+          } else {
+            stack.push(char + char);
+          }
+          i++;
+        } else {
+          if (stack.length > 0 && stack[stack.length - 1] === char) {
+            stack.pop();
+          } else {
+            stack.push(char);
+          }
+        }
+      }
+    }
+    
+    return stack.length === 0 && !inCode && !inList;
   };
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
@@ -41,14 +85,36 @@ export function useStreamingContent() {
     }
   };
 
+  const processStreamContent = (content: string, prevContent: string = ''): string => {
+    let combinedContent = prevContent + content;
+    
+    combinedContent = combinedContent
+      .replace(/\*\*\s*\*\*/g, '')
+      .replace(/\*\s*\*/g, '')
+      .replace(/`\s*`/g, '')
+      .replace(/\[\s*\]/g, '')
+      .replace(/\(\s*\)/g, '')
+      .replace(/:{2,}/g, ':')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    if (combinedContent.match(/[a-zA-Z]$/)) {
+      combinedContent += '.';
+    }
+    
+    return combinedContent;
+  };
+
+  const isLineComplete = (line: string): boolean => {
+    return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
+  };
+
   return {
     streamingContent,
     setStreamingContent,
-    currentNodeId,
-    setCurrentNodeId,
-    expandedNodes,
-    setExpandedNodes,
-    toggleNode,
-    cleanStreamContent
+    isCompleteMarkdown,
+    cleanStreamContent,
+    processStreamContent,
+    isLineComplete
   };
 }
