@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QANode, SavedResearch, SavedQATree } from './types';
+import { Json } from '@/integrations/supabase/types';
 
 export function useQAData(marketId: string, marketQuestion: string, marketDescription: string) {
   const { toast } = useToast();
@@ -82,15 +83,15 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
 
   const saveQATree = async () => {
     try {
+      const treeData = qaData as unknown as Json;
       const { data, error } = await supabase
         .from('qa_trees')
-        .insert([
-          {
-            market_id: marketId,
-            title: marketQuestion,
-            tree_data: qaData,
-          }
-        ]);
+        .insert({
+          market_id: marketId,
+          title: marketQuestion,
+          tree_data: treeData,
+        });
+      
       if (error) throw error;
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
       toast({
@@ -111,6 +112,63 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     setQaData(treeData);
     setExpandedNodes(new Set());
     setCurrentNodeId(null);
+  };
+
+  const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
+    if (depth >= 3) return;
+    const nodeId = `node-${Date.now()}-${depth}`;
+    setCurrentNodeId(nodeId);
+    setExpandedNodes(prev => new Set([...prev, nodeId]));
+
+    try {
+      setQaData(prev => {
+        const newNode: QANode = {
+          id: nodeId,
+          question,
+          analysis: '',
+          children: [],
+        };
+        if (!parentId) return [newNode];
+        const updateChildren = (nodes: QANode[]): QANode[] =>
+          nodes.map(node => {
+            if (node.id === parentId) return { ...node, children: [...node.children, newNode] };
+            if (node.children.length > 0) return { ...node, children: updateChildren(node.children) };
+            return node;
+          });
+        return updateChildren(prev);
+      });
+
+      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
+        body: {
+          marketId,
+          question,
+          isFollowUp: false,
+        },
+      });
+
+      if (analysisError) throw analysisError;
+
+      const analysis = analysisData.analysis;
+      
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(node => {
+            if (node.id === nodeId) return { ...node, analysis };
+            if (node.children.length > 0) return { ...node, children: updateNode(node.children) };
+            return node;
+          });
+        return updateNode(prev);
+      });
+
+    } catch (error) {
+      console.error('Error analyzing question:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: "Failed to analyze question"
+      });
+      throw error;
+    }
   };
 
   const handleExpandQuestion = async (node: QANode) => {
@@ -145,8 +203,6 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
           parentNodeId: node.id,
         },
       ]);
-
-      // Handle stream processing here...
       
     } catch (error) {
       console.error('Error expanding question:', error);
@@ -158,7 +214,6 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     }
   };
 
-  // Return all the state and functions needed by the components
   return {
     qaData,
     setQaData,
@@ -179,7 +234,7 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     saveQATree,
     loadSavedQATree,
     handleExpandQuestion,
+    analyzeQuestion,
     queryClient
   };
 }
-

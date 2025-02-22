@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -8,12 +9,8 @@ import { QANode, StreamingContent } from './types';
 interface QANodeViewProps {
   node: QANode;
   depth: number;
-  isExpanded?: boolean;
-  isStreaming?: boolean;
-  streamContent?: StreamingContent;
-  nodeExtensions?: QANode[];
-  expandedNodes: Set<string>;
   currentNodeId: string | null;
+  expandedNodes: Set<string>;
   streamingContent: { [key: string]: StreamingContent };
   toggleNode: (nodeId: string) => void;
   evaluateQAPair: (node: QANode) => Promise<void>;
@@ -167,33 +164,6 @@ export function QANodeView({
                           >
                             {node.evaluation.reason}
                           </ReactMarkdown>
-                        </div>
-                      )}
-                      
-                      {nodeExtensions && nodeExtensions.length > 0 && (
-                        <div className="mt-4 space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground">
-                            Follow-up Analyses ({nodeExtensions.length}):
-                          </div>
-                          <div className="space-y-4">
-                            {nodeExtensions.map((extension, index) => (
-                              <div 
-                                key={extension.id}
-                                className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  // navigateToExtension(extension); // The navigateToExtension function was removed
-                                }}
-                              >
-                                <div className="text-xs text-muted-foreground mb-2">
-                                  Continuation #{index + 1}
-                                </div>
-                                <div className="line-clamp-3">
-                                  {getPreviewText(extension.analysis)}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
                         </div>
                       )}
                     </>
