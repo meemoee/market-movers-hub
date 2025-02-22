@@ -757,17 +757,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const analysis = await processStream(reader, nodeId);
 
-      // Update node with the analysis
-      const completeNode: QANode = {
-        ...newRootNode,
-        analysis
-      };
-
       // Evaluate the node
       const { data: evaluationData, error: evaluationError } = await supabase.functions.invoke('evaluate-qa-pair', {
         body: { 
-          question: completeNode.question,
-          analysis: completeNode.analysis,
+          question: newRootNode.question,
+          analysis: analysis,
           marketQuestion,
           marketDescription
         }
@@ -776,7 +770,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       if (evaluationError) throw evaluationError;
 
       const evaluatedNode: QANode = {
-        ...completeNode,
+        ...newRootNode,
+        analysis,
         evaluation: evaluationData
       };
 
@@ -811,33 +806,128 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         prev.map(ext => ext.id === nodeId ? evaluatedNode : ext)
       );
 
-      // Generate follow-up questions
-      const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
-        body: JSON.stringify({ 
-          marketId, 
-          question: node.question, 
-          parentContent: analysis,
-          historyContext,
-          isFollowUp: true,
-          researchContext: selectedResearchData ? {
-            analysis: selectedResearchData.analysis,
-            probability: selectedResearchData.probability,
-            areasForResearch: selectedResearchData.areas_for_research
-          } : null
-        }),
-      });
-      
-      if (followUpError) throw followUpError;
+      // Generate follow-up questions recursively
+      const generateFollowUps = async (parentNodeId: string, parentAnalysis: string, depth: number = 0) => {
+        if (depth >= 2) return; // Limit depth to prevent infinite recursion
 
-      console.log('Follow-up questions generated:', followUpData);
+        console.log(`Generating follow-ups for node ${parentNodeId} at depth ${depth}`);
 
-      // Process each follow-up question recursively
-      for (const item of followUpData) {
-        if (item?.question) {
-          const childNodeId = `node-${Date.now()}-${item.question.length}`;
-          await analyzeQuestion(item.question, nodeId, 1);
+        const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
+          body: JSON.stringify({ 
+            marketId, 
+            question: node.question, 
+            parentContent: parentAnalysis,
+            historyContext,
+            isFollowUp: true,
+            researchContext: selectedResearchData ? {
+              analysis: selectedResearchData.analysis,
+              probability: selectedResearchData.probability,
+              areasForResearch: selectedResearchData.areas_for_research
+            } : null
+          }),
+        });
+        
+        if (followUpError) throw followUpError;
+
+        console.log('Follow-up questions generated:', followUpData);
+
+        // Process each follow-up question
+        for (const item of followUpData) {
+          if (item?.question) {
+            const childNodeId = `node-${Date.now()}-${Math.random()}`;
+            setCurrentNodeId(childNodeId);
+
+            // Create child node
+            const childNode: QANode = {
+              id: childNodeId,
+              question: item.question,
+              analysis: '',
+              children: [],
+              parentId: parentNodeId
+            };
+
+            // Get analysis for the child node
+            const { data: childAnalysisData, error: childAnalysisError } = await supabase.functions.invoke('generate-qa-tree', {
+              body: JSON.stringify({ 
+                marketId, 
+                question: item.question,
+                isFollowUp: true,
+                historyContext: buildHistoryContext(childNode, [...parentNodes, node]),
+                researchContext: selectedResearchData ? {
+                  analysis: selectedResearchData.analysis,
+                  probability: selectedResearchData.probability,
+                  areasForResearch: selectedResearchData.areas_for_research
+                } : null
+              }),
+            });
+
+            if (childAnalysisError) throw childAnalysisError;
+
+            const childReader = new Response(childAnalysisData.body).body?.getReader();
+            if (!childReader) throw new Error('Failed to create reader');
+
+            const childAnalysis = await processStream(childReader, childNodeId);
+
+            // Evaluate child node
+            const { data: childEvaluation } = await supabase.functions.invoke('evaluate-qa-pair', {
+              body: { 
+                question: item.question,
+                analysis: childAnalysis,
+                marketQuestion,
+                marketDescription
+              }
+            });
+
+            // Update the child node with analysis and evaluation
+            const updatedChildNode: QANode = {
+              ...childNode,
+              analysis: childAnalysis,
+              evaluation: childEvaluation
+            };
+
+            // Update the tree structure
+            setQaData(prev => {
+              const updateNodeChildren = (nodes: QANode[]): QANode[] => {
+                return nodes.map(n => {
+                  if (n.id === parentNodeId) {
+                    return {
+                      ...n,
+                      children: [...n.children, updatedChildNode]
+                    };
+                  }
+                  if (n.children.length > 0) {
+                    return {
+                      ...n,
+                      children: updateNodeChildren(n.children)
+                    };
+                  }
+                  return n;
+                });
+              };
+              return updateNodeChildren(prev);
+            });
+
+            // Update extensions list
+            setRootExtensions(prev => 
+              prev.map(ext => {
+                if (ext.id === parentNodeId) {
+                  return {
+                    ...ext,
+                    children: [...ext.children, updatedChildNode]
+                  };
+                }
+                return ext;
+              })
+            );
+
+            // Generate follow-ups for this child node
+            await generateFollowUps(childNodeId, childAnalysis, depth + 1);
+          }
         }
-      }
+      };
+
+      // Start generating follow-up questions from the root extension
+      await generateFollowUps(nodeId, analysis);
 
     } catch (error) {
       console.error('Analysis error:', error);
