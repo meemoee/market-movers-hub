@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -6,8 +5,6 @@ import { Separator } from "@/components/ui/separator";
 import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Sparkle } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import * as React from "react"
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
 
 const TextareaAutosize = React.forwardRef<
   HTMLTextAreaElement,
@@ -30,8 +27,6 @@ export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -44,44 +39,9 @@ export function InsightPostBox() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [isPrivacyOpen]);
 
-  const handlePost = async () => {
-    setIsLoading(true);
-    try {
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-      if (!sessionData.session?.user) {
-        toast({
-          title: "Authentication required",
-          description: "Please sign in to post insights",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      const { error } = await supabase.from('market_insights').insert({
-        content,
-        is_private: isPrivate,
-        user_id: sessionData.session.user.id
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Your insight has been posted"
-      });
-      
-      setContent("");
-    } catch (error) {
-      console.error('Error posting insight:', error);
-      toast({
-        title: "Error",
-        description: "Failed to post insight. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const handlePost = () => {
+    console.log("Posting insight:", { content, isPrivate });
+    setContent("");
   };
 
   const handleGeneratePortfolio = () => {
@@ -187,11 +147,11 @@ export function InsightPostBox() {
               
               <Button 
                 onClick={handlePost}
-                disabled={!content.trim() || isLoading}
+                disabled={!content.trim()}
                 className="h-7 px-3 text-xs font-medium rounded-full"
                 size="sm"
               >
-                {isLoading ? "Posting..." : "Post"}
+                Post
               </Button>
             </div>
           </div>

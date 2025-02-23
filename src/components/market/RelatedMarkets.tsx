@@ -28,20 +28,6 @@ interface OrderBookData {
   spread: number;
 }
 
-// Helper function to clean text fields
-function cleanTextFields(market: any) {
-  const fieldsToClean = ['question', 'subtitle', 'yes_sub_title', 'no_sub_title', 'description'];
-  
-  fieldsToClean.forEach(field => {
-    if (market[field]) {
-      // Replace multiple apostrophes with a single one
-      market[field] = market[field].replace(/'{2,}/g, "'");
-    }
-  });
-  
-  return market;
-}
-
 export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedMarketsProps) {
   const navigate = useNavigate();
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -103,8 +89,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           ? market.outcomes.map(outcome => String(outcome))
           : [];
 
-        // Clean text fields before returning
-        const cleanedMarket = cleanTextFields({
+        return {
           ...market,
           finalPrice: moverData.final_last_traded_price,
           priceChange: moverData.price_change,
@@ -114,9 +99,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           best_ask: moverData.final_best_ask,
           clobtokenids,
           outcomes
-        });
-
-        return cleanedMarket;
+        };
       });
 
       const filteredMarkets = marketsWithPriceChanges.filter(Boolean);
