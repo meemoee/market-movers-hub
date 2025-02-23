@@ -1,3 +1,4 @@
+
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -43,7 +44,6 @@ export function useTopMovers(
   probabilityMax?: number,
   priceChangeMin?: number,
   priceChangeMax?: number,
-  // NEW: Total volume filter parameters
   totalVolumeMin?: number,
   totalVolumeMax?: number,
   sortBy: 'price_change' | 'volume' = 'price_change'
@@ -103,8 +103,8 @@ export function useTopMovers(
         interval, 
         openOnly, 
         page: pageParam, 
-        searchQuery, 
-        probabilityMin, 
+        searchQuery,
+        probabilityMin,
         probabilityMax,
         priceChangeMin,
         priceChangeMax,
@@ -124,8 +124,8 @@ export function useTopMovers(
           probabilityMax,
           priceChangeMin,
           priceChangeMax,
-          totalVolumeMin,
-          totalVolumeMax,
+          totalVolumeMin: totalVolumeMin !== undefined ? Math.max(0, totalVolumeMin) : undefined,
+          totalVolumeMax: totalVolumeMax !== undefined ? Math.max(0, totalVolumeMax) : undefined,
           sortBy
         }
       });
