@@ -34,7 +34,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. You MUST respond with a JSON object containing a 'score' number between 0 and 100 and a 'reason' string explaining the score. Do not include any periods or punctuation at the end of the reason string that would make the JSON invalid. Example format: {\"score\": 85, \"reason\": \"The analysis is thorough\"}"
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. You MUST respond with a JSON object containing a 'score' number between 0 and 100 and a 'reason' string explaining the score. Example format: {\"score\": 85, \"reason\": \"The analysis is thorough...\"}"
           },
           {
             role: "user",
@@ -62,15 +62,7 @@ Analysis: ${analysis}`
     console.log('OpenRouter API response:', JSON.stringify(data))
     
     try {
-      // Clean up the content string before parsing
-      const contentStr = data.choices[0].message.content.trim()
-      console.log('Raw content string:', contentStr)
-      
-      // Remove any trailing periods that might break JSON
-      const cleanContent = contentStr.replace(/\.\}$/, '}')
-      console.log('Cleaned content string:', cleanContent)
-
-      const evaluation = JSON.parse(cleanContent)
+      const evaluation = JSON.parse(data.choices[0].message.content)
       console.log('Parsed evaluation:', evaluation)
 
       // Enhanced validation
@@ -94,9 +86,6 @@ Analysis: ${analysis}`
       if (!('reason' in evaluation) || typeof evaluation.reason !== 'string') {
         throw new Error('Invalid reason format')
       }
-
-      // Clean up the reason string
-      evaluation.reason = evaluation.reason.trim().replace(/\.$/, '')
 
       // Ensure score is between 0 and 100
       evaluation.score = Math.max(0, Math.min(100, evaluation.score))

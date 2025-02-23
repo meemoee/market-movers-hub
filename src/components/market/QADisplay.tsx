@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Database, Json } from '@/integrations/supabase/types';
+import { Database } from '@/integrations/supabase/types';
 
 interface QANode {
   id: string;
@@ -237,46 +237,73 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
+      const convertNodeToJson = (node: QANode): Record<string, any> => ({
+        id: node.id,
+        question: node.question,
+        analysis: node.analysis,
+        citations: node.citations || [],
+        children: node.children ? node.children.map(convertNodeToJson) : [],
+        isExtendedRoot: node.isExtendedRoot || false,
+        originalNodeId: node.originalNodeId,
+        evaluation: node.evaluation ? {
+          score: node.evaluation.score,
+          reason: node.evaluation.reason
+        } : undefined
+      });
+
+      const allTrees = [...navigationHistory];
+      
+      if (!allTrees.length || allTrees[allTrees.length - 1][0]?.id !== qaData[0]?.id) {
+        allTrees.push(qaData);
+      }
+
       const processedNodes = new Map<string, QANode>();
       
-      const processNode = (node: QANode): QANode => {
-        if (processedNodes.has(node.id)) {
-          return processedNodes.get(node.id)!;
-        }
-        
-        const processedNode: QANode = {
-          id: node.id,
-          question: node.question,
-          analysis: node.analysis || '',
-          citations: node.citations || [],
-          children: node.children.map(child => processNode(child)),
-          isExtendedRoot: node.isExtendedRoot || false,
-          originalNodeId: node.originalNodeId
-        };
-
-        if (node.evaluation) {
-          processedNode.evaluation = {
-            score: Number(node.evaluation.score),
-            reason: String(node.evaluation.reason)
-          };
-        }
-
-        processedNodes.set(node.id, processedNode);
-        return processedNode;
+      const processTree = (tree: QANode[]) => {
+        tree.forEach(node => {
+          if (!processedNodes.has(node.id)) {
+            processedNodes.set(node.id, node);
+            if (node.children) {
+              node.children.forEach(child => {
+                if (!processedNodes.has(child.id)) {
+                  processedNodes.set(child.id, child);
+                  if (child.children) {
+                    processTree([child]);
+                  }
+                }
+              });
+            }
+          }
+        });
       };
 
-      const processedMainTree = qaData.map(node => processNode(node));
-      const processedExtensions = rootExtensions.map(ext => processNode(ext));
+      allTrees.forEach(tree => processTree(tree));
 
-      const allNodes = Array.from(processedNodes.values());
+      rootExtensions.forEach(extension => {
+        if (!processedNodes.has(extension.id)) {
+          processedNodes.set(extension.id, extension);
+          if (extension.children) {
+            processTree([extension]);
+          }
+        }
+      });
 
-      console.log('Saving tree structure:', {
-        totalNodes: allNodes.length,
-        mainRoots: processedMainTree.map(n => n.id),
-        extensions: processedExtensions.map(n => ({
+      const treesToSave = Array.from(processedNodes.values());
+      const treeDataJson = treesToSave.map(convertNodeToJson);
+
+      console.log('Saving complete QA tree structure:', {
+        totalNodes: treeDataJson.length,
+        navigationHistoryDepth: navigationHistory.length,
+        currentTree: qaData.map(n => n.id),
+        extensions: rootExtensions.map(ext => ({
+          id: ext.id,
+          originalNodeId: ext.originalNodeId,
+        })),
+        allSavedNodes: treeDataJson.map(n => ({
           id: n.id,
+          isExtendedRoot: n.isExtendedRoot,
           originalNodeId: n.originalNodeId,
-          childrenCount: n.children.length
+          hasChildren: (n.children || []).length > 0
         }))
       });
 
@@ -285,7 +312,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         .insert({
           market_id: marketId,
           title: marketQuestion,
-          tree_data: allNodes as unknown as Json,
+          tree_data: treeDataJson,
           user_id: user.user.id
         })
         .select()
@@ -295,7 +322,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${allNodes.length} nodes including ${processedExtensions.length} extensions`,
+        description: `Saved complete QA tree with ${treesToSave.length} nodes including ${rootExtensions.length} extensions`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
@@ -318,122 +345,112 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(null);
       setNavigationHistory([]);
       
-      if (!Array.isArray(treeData)) {
-        console.error('Invalid tree data:', treeData);
-        throw new Error('Invalid tree data format');
-      }
-
+      const allNodes = new Set<string>();
+      
       const nodeMap = new Map<string, QANode>();
       
-      // First pass: Create base nodes
-      treeData.forEach(rawNode => {
-        if (rawNode && typeof rawNode.id === 'string') {
-          const node: QANode = {
-            id: rawNode.id,
-            question: rawNode.question || '',
-            analysis: rawNode.analysis || '',
-            citations: Array.isArray(rawNode.citations) ? rawNode.citations : [],
-            children: [],
-            isExtendedRoot: rawNode.isExtendedRoot || false,
-            originalNodeId: rawNode.originalNodeId,
-            evaluation: rawNode.evaluation ? {
-              score: Number(rawNode.evaluation.score),
-              reason: String(rawNode.evaluation.reason)
-            } : undefined
-          };
-          nodeMap.set(node.id, node);
+      const processNode = (node: QANode) => {
+        if (!nodeMap.has(node.id)) {
+          nodeMap.set(node.id, {
+            ...node,
+            children: [] // Reset children to prevent duplicates
+          });
+          
+          if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+              processNode(child);
+              const parent = nodeMap.get(node.id)!;
+              if (!parent.children.some(existingChild => existingChild.id === child.id)) {
+                parent.children.push(nodeMap.get(child.id)!);
+              }
+            });
+          }
         }
-      });
+        allNodes.add(node.id);
+      };
 
-      // Second pass: Build relationships
-      const processedNodes = new Set<string>();
-      const roots: QANode[] = [];
+      treeData.forEach(node => processNode(node));
+
+      const mainRoots = treeData.filter(node => !node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
       
-      treeData.forEach(rawNode => {
-        if (!rawNode || !rawNode.id || processedNodes.has(rawNode.id)) return;
-        
-        const node = nodeMap.get(rawNode.id);
-        if (!node) return;
-        
-        if (Array.isArray(rawNode.children)) {
-          node.children = rawNode.children
-            .map(childId => {
-              const childNode = typeof childId === 'string' 
-                ? nodeMap.get(childId)
-                : nodeMap.get(childId.id);
-              if (childNode) processedNodes.add(childNode.id);
-              return childNode;
-            })
-            .filter((child): child is QANode => child !== undefined);
-        }
-        
-        if (!processedNodes.has(node.id)) {
-          roots.push(node);
-          processedNodes.add(node.id);
-        }
-      });
-
-      // Initialize main tree and extensions
-      const mainTree: QANode[] = [];
-      const extensions: QANode[] = [];
+      const extensions = treeData.filter(node => node.isExtendedRoot)
+        .map(node => nodeMap.get(node.id)!)
+        .filter(Boolean);
       
-      roots.forEach(node => {
-        if (node.isExtendedRoot) {
-          extensions.push(node);
-        } else {
-          mainTree.push(node);
-        }
+      console.log('Processing tree structure:', {
+        mainRoots: mainRoots.map(n => ({ id: n.id, hasChildren: n.children?.length > 0 })),
+        extensions: extensions.map(n => ({ 
+          id: n.id, 
+          originalNodeId: n.originalNodeId,
+          parentFound: n.originalNodeId ? mainRoots.some(m => m.id === n.originalNodeId) : false
+        })),
+        totalNodes: treeData.length,
+        mappedNodes: nodeMap.size
       });
 
-      console.log('Processed tree structure:', {
-        mainTreeCount: mainTree.length,
-        extensionsCount: extensions.length,
-        totalNodes: nodeMap.size
-      });
-
-      // Set the initial view
-      if (mainTree.length > 0) {
-        setQaData(mainTree);
+      if (mainRoots.length > 0) {
+        setQaData(mainRoots);
       } else if (extensions.length > 0) {
-        setQaData([extensions[0]]);
+        const baseExtension = extensions.find(ext => 
+          !ext.originalNodeId || 
+          !extensions.some(other => other.originalNodeId === ext.id)
+        );
+        
+        if (baseExtension) {
+          setQaData([baseExtension]);
+        }
       }
-
+      
       setRootExtensions(extensions);
+      setExpandedNodes(allNodes);
       
-      // Expand all nodes
-      const allNodeIds = new Set(Array.from(nodeMap.keys()));
-      setExpandedNodes(allNodeIds);
-      
-      // Initialize streaming content for all nodes
-      const initialStreamingContent: { [key: string]: StreamingContent } = {};
       nodeMap.forEach((node, nodeId) => {
-        initialStreamingContent[nodeId] = {
-          content: node.analysis || '',
-          citations: node.citations || [],
-        };
-      });
-      setStreamingContent(initialStreamingContent);
+        console.log('Populating content for node:', {
+          id: nodeId,
+          question: node.question,
+          isExtendedRoot: node.isExtendedRoot,
+          originalNodeId: node.originalNodeId,
+          hasChildren: node.children?.length > 0
+        });
 
-      // Evaluate nodes if needed
+        setStreamingContent(prev => ({
+          ...prev,
+          [nodeId]: {
+            content: node.analysis || '',
+            citations: node.citations || [],
+          },
+        }));
+      });
+
       const evaluateNodesIfNeeded = async (nodes: QANode[]) => {
         for (const node of nodes) {
           if (node.analysis && !node.evaluation) {
+            console.log('Re-evaluating node:', node.id);
             await evaluateQAPair(node);
           }
-          if (node.children.length > 0) {
+          if (node.children && node.children.length > 0) {
             await evaluateNodesIfNeeded(node.children);
           }
         }
       };
 
-      await evaluateNodesIfNeeded([...mainTree, ...extensions]);
-
+      await evaluateNodesIfNeeded([...mainRoots, ...extensions]);
+      
+      console.log('Finished loading tree:', {
+        qaData: mainRoots.length > 0 ? mainRoots : [extensions[0]],
+        rootExtensions: extensions,
+        expandedNodes: Array.from(allNodes),
+        streamingContentKeys: Object.keys(streamingContent).length,
+        nodeMapSize: nodeMap.size
+      });
     } catch (error) {
       console.error('Error loading QA tree:', error);
       toast({
         variant: "destructive",
         title: "Load Error",
-        description: "Failed to load the QA tree. Please try again.",
+        description: "Failed to load the QA tree",
       });
     }
   };
@@ -832,13 +849,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     hr: () => <hr className="my-4 border-muted" />,
   };
 
-  const getPreviewText = (text: string | undefined) => {
-    if (!text) return '';
-    const strippedText = text.replace(/[#*`_]/g, '');
-    const preview = strippedText.slice(0, 150);
-    return preview.length < strippedText.length ? `${preview}...` : preview;
-  };
-
   const renderQANode = (node: QANode, depth: number = 0) => {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -852,6 +862,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       if (score >= 80) return 'bg-green-500/20';
       if (score >= 60) return 'bg-yellow-500/20';
       return 'bg-red-500/20';
+    };
+
+    const getPreviewText = (text: string) => {
+      const strippedText = text.replace(/[#*`_]/g, '');
+      const preview = strippedText.slice(0, 150);
+      return preview.length < strippedText.length ? `${preview}...` : preview;
     };
 
     return (
@@ -893,7 +909,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           components={markdownComponents}
                           className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                         >
-                          {analysisContent || ''}
+                          {analysisContent}
                         </ReactMarkdown>
 
                         {citations && citations.length > 0 && (
