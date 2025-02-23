@@ -44,8 +44,6 @@ export function useTopMovers(
   probabilityMax?: number,
   priceChangeMin?: number,
   priceChangeMax?: number,
-  volumeMin?: number,
-  volumeMax?: number,
   sortBy: 'price_change' | 'volume' = 'price_change'
 ) {
   // For single market view, use a simple query instead of infinite query
@@ -85,7 +83,7 @@ export function useTopMovers(
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, sortBy],
     queryFn: async ({ pageParam = 1 }) => {
       console.log('Fetching top movers list:', { 
         interval, 
@@ -96,8 +94,6 @@ export function useTopMovers(
         probabilityMax,
         priceChangeMin,
         priceChangeMax,
-        volumeMin,
-        volumeMax,
         sortBy
       });
       
@@ -112,8 +108,6 @@ export function useTopMovers(
           probabilityMax,
           priceChangeMin,
           priceChangeMax,
-          volumeMin,
-          volumeMax,
           sortBy
         }
       });
