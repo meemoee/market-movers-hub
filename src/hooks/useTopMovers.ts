@@ -120,17 +120,8 @@ export function useTopMovers(
 
       if (error) throw error;
       
-      // Filter the results client-side as well to ensure volume constraints are met
-      let filteredData = data?.data || [];
-      if (volumeMin !== undefined) {
-        filteredData = filteredData.filter(market => market.final_volume >= volumeMin);
-      }
-      if (volumeMax !== undefined) {
-        filteredData = filteredData.filter(market => market.final_volume <= volumeMax);
-      }
-      
       return {
-        data: filteredData,
+        data: data?.data || [],
         hasMore: data?.hasMore || false,
         total: data?.total,
         nextPage: data?.hasMore ? pageParam + 1 : undefined
@@ -156,3 +147,4 @@ export function useTopMovers(
 
   return listQuery;
 }
+
