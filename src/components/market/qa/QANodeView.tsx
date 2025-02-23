@@ -74,8 +74,24 @@ export function QANodeView({
   const isStreaming = currentNodeId === node.id;
   const streamContent = streamingContent[node.id];
   const isExpanded = expandedNodes.has(node.id);
-  const analysisContent = isStreaming ? streamContent?.content : node.analysis;
-  const citations = isStreaming ? streamContent?.citations : node.citations;
+
+  // Use streamContent if available, otherwise use node.analysis
+  const analysisContent = isStreaming ? (streamContent?.content || '') : node.analysis;
+  const citations = isStreaming ? (streamContent?.citations || []) : node.citations;
+
+  React.useEffect(() => {
+    // Automatically evaluate QA pair when streaming is complete
+    if (!isStreaming && analysisContent && !node.evaluation) {
+      evaluateQAPair(node);
+    }
+  }, [isStreaming, analysisContent, node, evaluateQAPair]);
+
+  // If this node is currently streaming, always show its content expanded
+  React.useEffect(() => {
+    if (isStreaming && !isExpanded) {
+      toggleNode(node.id);
+    }
+  }, [isStreaming, isExpanded, node.id, toggleNode]);
 
   return (
     <div key={node.id} className="relative flex flex-col">
@@ -110,7 +126,7 @@ export function QANodeView({
                   {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
                 <div className="flex-1">
-                  {isExpanded ? (
+                  {isExpanded || isStreaming ? (
                     <>
                       <ReactMarkdown
                         components={markdownComponents}
@@ -197,3 +213,4 @@ export function QANodeView({
     </div>
   );
 }
+
