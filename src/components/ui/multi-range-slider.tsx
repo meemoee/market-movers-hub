@@ -15,16 +15,16 @@ interface MultiRangeSliderProps {
 export const MultiRangeSlider = ({
   min,
   max,
-  value = [0, 100] as [number, number],
+  value,
   onChange,
   showMinThumb = true,
   showMaxThumb = true,
   className = "",
 }: MultiRangeSliderProps) => {
-  const [minVal, setMinVal] = useState(value?.[0] ?? min);
-  const [maxVal, setMaxVal] = useState(value?.[1] ?? max);
-  const minValRef = useRef(value?.[0] ?? min);
-  const maxValRef = useRef(value?.[1] ?? max);
+  const [minVal, setMinVal] = useState(value[0]);
+  const [maxVal, setMaxVal] = useState(value[1]);
+  const minValRef = useRef(value[0]);
+  const maxValRef = useRef(value[1]);
   const range = useRef<HTMLDivElement>(null);
 
   // Convert to percentage
@@ -64,12 +64,10 @@ export const MultiRangeSlider = ({
 
   // Update local state when props change
   useEffect(() => {
-    if (value && Array.isArray(value) && value.length === 2) {
-      setMinVal(value[0]);
-      setMaxVal(value[1]);
-      minValRef.current = value[0];
-      maxValRef.current = value[1];
-    }
+    setMinVal(value[0]);
+    setMaxVal(value[1]);
+    minValRef.current = value[0];
+    maxValRef.current = value[1];
   }, [value]);
 
   return (

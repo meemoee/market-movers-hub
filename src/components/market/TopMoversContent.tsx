@@ -1,18 +1,39 @@
 
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
-import type { TopMover } from '../TopMoversList';
+import { TopMover } from '../TopMoversList';
 
 interface TopMoversContentProps {
   isLoading: boolean;
-  movers: TopMover[];
+  error: string | null;
+  topMovers: TopMover[];
+  expandedMarkets: Set<string>;
+  toggleMarket: (marketId: string) => void;
+  setSelectedMarket: (market: { 
+    id: string; 
+    action: 'buy' | 'sell'; 
+    clobTokenId: string;
+    selectedOutcome: string;
+  } | null) => void;
+  onLoadMore: () => void;
+  hasMore: boolean;
+  isLoadingMore?: boolean;
+  selectedInterval: string;
 }
 
 export function TopMoversContent({
   isLoading,
-  movers
+  error,
+  topMovers,
+  expandedMarkets,
+  toggleMarket,
+  setSelectedMarket,
+  onLoadMore,
+  hasMore,
+  isLoadingMore,
+  selectedInterval,
 }: TopMoversContentProps) {
-  if (isLoading) {
+  if (isLoading || (topMovers.length === 0 && isLoadingMore)) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="w-8 h-8 animate-spin" />
@@ -20,7 +41,15 @@ export function TopMoversContent({
     );
   }
 
-  if (movers.length === 0) {
+  if (error) {
+    return (
+      <div className="text-center py-12 text-destructive">
+        {error}
+      </div>
+    );
+  }
+
+  if (topMovers.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 space-y-4">
         <p className="text-lg text-muted-foreground">
@@ -36,7 +65,7 @@ export function TopMoversContent({
   return (
     <div className="w-full">
       <div className="w-full space-y-3">
-        {movers.map((mover) => (
+        {topMovers.map((mover) => (
           <div key={mover.market_id} className="w-full first:mt-0">
             <MarketCard
               market={{
@@ -55,16 +84,55 @@ export function TopMoversContent({
                 outcomes: mover.outcomes || ["Yes", "No"],
                 event_id: mover.event_id,
               }}
-              isExpanded={false}
-              onToggleExpand={() => {}}
-              onBuy={() => {}}
-              onSell={() => {}}
-              selectedInterval="1440"
+              isExpanded={expandedMarkets.has(mover.market_id)}
+              onToggleExpand={() => toggleMarket(mover.market_id)}
+              onBuy={() => {
+                const clobTokenId = mover.clobtokenids?.[0];
+                if (clobTokenId) {
+                  setSelectedMarket({ 
+                    id: mover.market_id, 
+                    action: 'buy', 
+                    clobTokenId,
+                    selectedOutcome: "Yes"
+                  });
+                }
+              }}
+              onSell={() => {
+                const clobTokenId = mover.clobtokenids?.[1];
+                if (clobTokenId) {
+                  setSelectedMarket({ 
+                    id: mover.market_id, 
+                    action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
+                    clobTokenId,
+                    selectedOutcome: "No"
+                  });
+                }
+              }}
+              selectedInterval={selectedInterval}
             />
           </div>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="mt-3 h-[52px]">
+          <button
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="w-full py-3 bg-accent/50 hover:bg-accent/70 rounded-lg transition-colors
+              flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            {isLoadingMore ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading more...
+              </>
+            ) : (
+              'Load More'
+            )}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
-
