@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -214,6 +213,56 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     }
   };
 
+  const evaluateQAPair = async (node: QANode) => {
+    if (!node.analysis || node.evaluation) {
+      console.log('Skipping evaluation:', { nodeId: node.id, hasAnalysis: !!node.analysis, hasEvaluation: !!node.evaluation });
+      return;
+    }
+
+    console.log('Starting evaluation for node:', node.id);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('evaluate-qa-pair', {
+        body: { 
+          question: node.question,
+          analysis: node.analysis,
+          marketQuestion: marketQuestion,
+          marketDescription: marketDescription
+        }
+      });
+
+      if (error) throw error;
+
+      console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
+
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(n => {
+            if (n.id === node.id) {
+              return { ...n, evaluation: data };
+            }
+            if (n.children.length > 0) {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
+      });
+
+      setRootExtensions(prev => 
+        prev.map(ext => ext.id === node.id ? { ...ext, evaluation: data } : ext)
+      );
+
+    } catch (error) {
+      console.error('Error evaluating QA pair:', error);
+      toast({
+        variant: "destructive",
+        title: "Evaluation Error",
+        description: "Failed to evaluate Q&A pair"
+      });
+    }
+  };
+
   return {
     qaData,
     setQaData,
@@ -231,9 +280,10 @@ export function useQAData(marketId: string, marketQuestion: string, marketDescri
     getFocusedView,
     findParentNodes,
     buildHistoryContext,
+    handleExpandQuestion,
     saveQATree,
     loadSavedQATree,
-    handleExpandQuestion,
+    evaluateQAPair,
     analyzeQuestion,
     queryClient
   };
