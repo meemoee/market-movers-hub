@@ -1,5 +1,5 @@
+
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
 import { Search } from 'lucide-react';
 import { Input } from './ui/input';
@@ -35,7 +35,7 @@ const TIME_INTERVALS: TimeInterval[] = [
   { label: formatInterval(480), value: '480' },
   { label: formatInterval(1440), value: '1440' },
   { label: formatInterval(10080), value: '10080' },
-] as const;
+];
 
 export interface TopMover {
   market_id: string;
@@ -93,7 +93,6 @@ export default function TopMoversList({
     id: string; 
     action: 'buy' | 'sell';
     clobTokenId: string;
-    selectedOutcome: string;
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
@@ -101,23 +100,42 @@ export default function TopMoversList({
   const [searchPage, setSearchPage] = useState(1);
   const debouncedSearch = useDebounce(searchQuery, 300);
   const { toast } = useToast();
-  const { marketId } = useParams();
 
-  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, debouncedSearch, marketId);
+  // Use infinite query for top movers
+  const topMoversQuery = useTopMovers(selectedInterval, openMarketsOnly, '');
   const marketSearchQuery = useMarketSearch(debouncedSearch, searchPage);
 
-  useEffect(() => {
-    if (marketId) {
-      setExpandedMarkets(new Set([marketId]));
-      setSearchQuery('');
-    } else {
-      setExpandedMarkets(new Set());
-    }
-  }, [marketId]);
-
+  // Reset search page when search query changes
   useEffect(() => {
     setSearchPage(1);
   }, [debouncedSearch]);
+
+  const isSearching = debouncedSearch.length > 0;
+  const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
+
+  // For search results, we need to maintain a list of all loaded markets
+  const [loadedSearchResults, setLoadedSearchResults] = useState<TopMover[]>([]);
+
+  // Update loaded search results when we get new data
+  useEffect(() => {
+    if (isSearching && marketSearchQuery.data) {
+      if (searchPage === 1) {
+        // Reset results for new search
+        setLoadedSearchResults(marketSearchQuery.data.data);
+      } else {
+        // Append new results for pagination
+        setLoadedSearchResults(prev => [...prev, ...marketSearchQuery.data.data]);
+      }
+    }
+  }, [isSearching, marketSearchQuery.data, searchPage]);
+
+  const allTopMovers = isSearching 
+    ? loadedSearchResults
+    : topMoversQuery.data?.pages.flatMap(page => page.data) || [];
+  
+  const hasMore = isSearching 
+    ? marketSearchQuery.data?.hasMore || false 
+    : topMoversQuery.hasNextPage || false;
 
   useEffect(() => {
     if (!selectedMarket) {
@@ -126,11 +144,6 @@ export default function TopMoversList({
     }
     setIsOrderBookLoading(true);
   }, [selectedMarket]);
-
-  const isSearching = debouncedSearch.length > 0 && !marketId;
-  const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
-  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
-  const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
 
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;
@@ -159,33 +172,33 @@ export default function TopMoversList({
 
   const handleLoadMore = () => {
     if (isSearching) {
+      // For search, increment page number and fetch next page
       setSearchPage(prev => prev + 1);
     } else {
+      // For infinite scroll, use fetchNextPage
       topMoversQuery.fetchNextPage();
     }
   };
 
   const selectedTopMover = selectedMarket 
-    ? displayedMarkets.find(m => m.market_id === selectedMarket.id)
+    ? allTopMovers.find(m => m.market_id === selectedMarket.id)
     : null;
 
   return (
     <div className="flex flex-col w-full">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
-        {!marketId && (
-          <div className="flex items-center w-full px-4 py-3 border-b">
-            <div className="relative flex-1 max-w-2xl mx-auto">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search markets..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 bg-background"
-              />
-            </div>
+        <div className="flex items-center w-full px-4 py-3 border-b">
+          <div className="relative flex-1 max-w-2xl mx-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search markets..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 bg-background"
+            />
           </div>
-        )}
+        </div>
 
         <TopMoversHeader
           timeIntervals={timeIntervals}
@@ -201,12 +214,13 @@ export default function TopMoversList({
       <div className="w-full px-0 sm:px-4 -mt-20">
         <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
           <InsightPostBox />
-          <MarketStatsBento selectedInterval={selectedInterval} />
           
+          <MarketStatsBento selectedInterval={selectedInterval} />
+
           <TopMoversContent
-            isLoading={activeQuery.isLoading}
+            isLoading={!isSearching && !topMoversQuery.data && topMoversQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
-            topMovers={displayedMarkets}
+            topMovers={allTopMovers}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}

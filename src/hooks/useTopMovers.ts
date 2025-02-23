@@ -1,5 +1,5 @@
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
 interface TopMoversResponse {
@@ -35,44 +35,11 @@ interface TopMover {
   volume_change_percentage: number;
 }
 
-export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '', marketId?: string) {
-  // For single market view, use a simple query instead of infinite query
-  const singleMarketQuery = useQuery({
-    queryKey: ['market', marketId],
-    queryFn: async () => {
-      if (!marketId) return null;
-      
-      console.log('Fetching single market:', marketId);
-      const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
-        body: { marketId }
-      });
-
-      if (error) throw error;
-      
-      if (!data?.data?.[0]) {
-        console.log('Market not found, trying without filters');
-        // Try one more time without any filters
-        const { data: retryData, error: retryError } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
-          body: {
-            marketId,
-            openOnly: false
-          }
-        });
-        
-        if (retryError) throw retryError;
-        return retryData?.data?.[0] || null;
-      }
-      
-      return data.data[0];
-    },
-    enabled: !!marketId
-  });
-
-  // For list view, use infinite query
-  const listQuery = useInfiniteQuery({
+export function useTopMovers(interval: string, openOnly: boolean, searchQuery: string = '') {
+  return useInfiniteQuery({
     queryKey: ['topMovers', interval, openOnly, searchQuery],
     queryFn: async ({ pageParam = 1 }) => {
-      console.log('Fetching top movers list:', { interval, openOnly, page: pageParam, searchQuery });
+      console.log('Fetching top movers with:', { interval, openOnly, page: pageParam, searchQuery });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: {
@@ -82,34 +49,27 @@ export function useTopMovers(interval: string, openOnly: boolean, searchQuery: s
           limit: 20,
           searchQuery: searchQuery.trim()
         }
-      });
+      })
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching top movers:', error);
+        throw error;
+      }
+      
+      console.log('Received top movers response:', data);
       
       return {
         data: data?.data || [],
         hasMore: data?.hasMore || false,
         total: data?.total,
         nextPage: data?.hasMore ? pageParam + 1 : undefined
-      };
+      }
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
-    enabled: !marketId // Only enable list query when not viewing a single market
-  });
-
-  // Return appropriate data structure based on whether we're viewing a single market
-  if (marketId) {
-    return {
-      data: { pages: [{ data: singleMarketQuery.data ? [singleMarketQuery.data] : [] }] },
-      isLoading: singleMarketQuery.isLoading,
-      error: singleMarketQuery.error,
-      hasNextPage: false,
-      fetchNextPage: () => Promise.resolve(),
-      isFetchingNextPage: false,
-      isFetching: singleMarketQuery.isFetching // Add this line
-    };
-  }
-
-  return listQuery;
+    staleTime: 0,
+    retry: 2,
+    retryDelay: 1000,
+    refetchOnWindowFocus: false
+  })
 }
