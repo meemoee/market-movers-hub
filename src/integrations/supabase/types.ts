@@ -137,6 +137,33 @@ export type Database = {
           },
         ]
       }
+      market_insights: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_private: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_private?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_private?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       market_prices: {
         Row: {
           best_ask: number | null
@@ -432,8 +459,10 @@ export type Database = {
       qa_trees: {
         Row: {
           created_at: string
+          expansions: Json | null
           id: string
           market_id: string | null
+          sequence_data: Json | null
           title: string
           tree_data: Json
           updated_at: string
@@ -441,8 +470,10 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          expansions?: Json | null
           id?: string
           market_id?: string | null
+          sequence_data?: Json | null
           title: string
           tree_data: Json
           updated_at?: string
@@ -450,8 +481,10 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          expansions?: Json | null
           id?: string
           market_id?: string | null
+          sequence_data?: Json | null
           title?: string
           tree_data?: Json
           updated_at?: string

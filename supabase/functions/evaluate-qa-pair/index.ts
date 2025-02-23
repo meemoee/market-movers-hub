@@ -15,7 +15,11 @@ serve(async (req) => {
   }
 
   try {
-    const { question, analysis } = await req.json()
+    const { question, analysis, marketQuestion, marketDescription } = await req.json()
+    console.log('Received request with question:', question)
+    console.log('Analysis:', analysis)
+    console.log('Market question:', marketQuestion)
+    console.log('Market description:', marketDescription)
 
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -26,55 +30,93 @@ serve(async (req) => {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "google/gemini-pro",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown or code block syntax, just the raw JSON object."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions in the context of prediction market analysis. You MUST respond with a JSON object containing a 'score' number between 0 and 100 and a 'reason' string explaining the score. Do not include any periods or punctuation at the end of the reason string that would make the JSON invalid. Example format: {\"score\": 85, \"reason\": \"The analysis is thorough\"}"
           },
           {
             role: "user",
-            content: `Please evaluate how well this analysis answers the question:\n\nQuestion: ${question}\n\nAnalysis: ${analysis}`
+            content: `Given this prediction market context:
+Market Question: ${marketQuestion || 'N/A'}
+Market Description: ${marketDescription || 'N/A'}
+
+Please evaluate how well this analysis answers the follow-up question:
+
+Question: ${question}
+
+Analysis: ${analysis}`
           }
-        ]
+        ],
+        response_format: { type: "json_object" }
       })
     })
 
     if (!openRouterResponse.ok) {
+      console.error('OpenRouter API error:', openRouterResponse.status, await openRouterResponse.text())
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
     const data = await openRouterResponse.json()
-    let evaluationText = data.choices[0].message.content
-
+    console.log('OpenRouter API response:', JSON.stringify(data))
+    
     try {
-      // Clean up any potential markdown or code block syntax
-      evaluationText = evaluationText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim()
-      console.log('Cleaned evaluation text:', evaluationText)
+      // Clean up the content string before parsing
+      const contentStr = data.choices[0].message.content.trim()
+      console.log('Raw content string:', contentStr)
       
-      const evaluation = JSON.parse(evaluationText)
-      
-      // Validate the evaluation object structure
-      if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
-        throw new Error('Invalid evaluation format: missing required fields')
+      // Remove any trailing periods that might break JSON
+      const cleanContent = contentStr.replace(/\.\}$/, '}')
+      console.log('Cleaned content string:', cleanContent)
+
+      const evaluation = JSON.parse(cleanContent)
+      console.log('Parsed evaluation:', evaluation)
+
+      // Enhanced validation
+      if (typeof evaluation !== 'object' || evaluation === null) {
+        throw new Error('Evaluation must be an object')
       }
-      
+
+      if (!('score' in evaluation)) {
+        throw new Error('Missing score field')
+      }
+
+      if (typeof evaluation.score !== 'number') {
+        // Try to convert string to number if possible
+        const numericScore = Number(evaluation.score)
+        if (isNaN(numericScore)) {
+          throw new Error('Invalid score format: must be a number')
+        }
+        evaluation.score = numericScore
+      }
+
+      if (!('reason' in evaluation) || typeof evaluation.reason !== 'string') {
+        throw new Error('Invalid reason format')
+      }
+
+      // Clean up the reason string
+      evaluation.reason = evaluation.reason.trim().replace(/\.$/, '')
+
       // Ensure score is between 0 and 100
       evaluation.score = Math.max(0, Math.min(100, evaluation.score))
-      
+
       return new Response(JSON.stringify(evaluation), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     } catch (error) {
-      console.error('Error parsing evaluation JSON:', error)
-      console.error('Received content:', evaluationText)
-      throw new Error('Invalid evaluation format received')
+      console.error('Error parsing evaluation:', error)
+      console.error('Problematic evaluation text:', data.choices[0].message.content)
+      throw new Error(`Invalid evaluation format: ${error.message}`)
     }
 
   } catch (error) {
     console.error('Error in evaluate-qa-pair function:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error instanceof Error ? error.stack : undefined
+      }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

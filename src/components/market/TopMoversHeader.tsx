@@ -1,9 +1,11 @@
+
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { Label } from '@/components/ui/label';
 import { MultiRangeSlider } from '@/components/ui/multi-range-slider';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface TimeInterval {
   label: string;
@@ -30,6 +32,8 @@ interface TopMoversHeaderProps {
   setShowPriceChangeMinThumb: (show: boolean) => void;
   showPriceChangeMaxThumb: boolean;
   setShowPriceChangeMaxThumb: (show: boolean) => void;
+  sortBy: 'price_change' | 'volume';
+  onSortChange: (value: 'price_change' | 'volume') => void;
 }
 
 export function TopMoversHeader({
@@ -52,6 +56,8 @@ export function TopMoversHeader({
   setShowPriceChangeMinThumb,
   showPriceChangeMaxThumb,
   setShowPriceChangeMaxThumb,
+  sortBy,
+  onSortChange,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
 
@@ -88,137 +94,154 @@ export function TopMoversHeader({
           </div>
         </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent/20 transition-colors">
-              <SlidersHorizontal className="w-4 h-4" />
-              <span className="text-sm">Filters</span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
-            <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
-              className="flex items-center gap-2 cursor-pointer"
-              onClick={() => onOpenMarketsChange(!openMarketsOnly)}
-            >
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={openMarketsOnly}
-                  onChange={(e) => onOpenMarketsChange(e.target.checked)}
-                  className="rounded border-border bg-transparent"
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <span className="text-sm">Open Markets Only</span>
+        <div className="flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent/20 transition-colors">
+                <SlidersHorizontal className="w-4 h-4" />
+                <span className="text-sm">Filters</span>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
+              <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <div className="p-2">
+                <Select
+                  value={sortBy}
+                  onValueChange={(value: 'price_change' | 'volume') => onSortChange(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="price_change">Price Change</SelectItem>
+                    <SelectItem value="volume">Volume Change</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <div className="px-4 py-6 space-y-12">
-              <div className="space-y-8">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="leading-6">Probability Range</Label>
-                    <output className="text-sm font-medium tabular-nums">
-                      {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
-                    </output>
-                  </div>
-                  <MultiRangeSlider
-                    min={0}
-                    max={100}
-                    value={probabilityRange}
-                    onChange={setProbabilityRange}
-                    showMinThumb={showMinThumb}
-                    showMaxThumb={showMaxThumb}
-                    className="w-full mb-4"
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={() => onOpenMarketsChange(!openMarketsOnly)}
+              >
+                <div className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={openMarketsOnly}
+                    onChange={(e) => onOpenMarketsChange(e.target.checked)}
+                    className="rounded border-border bg-transparent"
+                    onClick={(e) => e.stopPropagation()}
                   />
+                  <span className="text-sm">Open Markets Only</span>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Checkbox 
-                      id="min-thumb"
-                      checked={showMinThumb}
-                      onCheckedChange={(checked) => {
-                        setShowMinThumb(checked as boolean);
-                        if (!checked) {
-                          setProbabilityRange([0, probabilityRange[1]]);
-                        }
-                      }}
-                    />
-                    <Label htmlFor="min-thumb" className="text-sm">Min</Label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox 
-                      id="max-thumb"
-                      checked={showMaxThumb}
-                      onCheckedChange={(checked) => {
-                        setShowMaxThumb(checked as boolean);
-                        if (!checked) {
-                          setProbabilityRange([probabilityRange[0], 100]);
-                        }
-                      }}
-                    />
-                    <Label htmlFor="max-thumb" className="text-sm">Max</Label>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-8">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label className="leading-6">Price Change Range</Label>
-                    <output className="text-sm font-medium tabular-nums">
-                      {showPriceChangeMinThumb ? priceChangeRange[0] : -100}% - {showPriceChangeMaxThumb ? priceChangeRange[1] : 100}%
-                    </output>
-                  </div>
-                  <div className="relative">
-                    <div className="absolute inset-0 flex">
-                      <div className="w-1/2 bg-red-500/20" />
-                      <div className="w-1/2 bg-green-500/20" />
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className="px-4 py-6 space-y-12">
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="leading-6">Probability Range</Label>
+                      <output className="text-sm font-medium tabular-nums">
+                        {showMinThumb ? probabilityRange[0] : 0}% - {showMaxThumb ? probabilityRange[1] : 100}%
+                      </output>
                     </div>
                     <MultiRangeSlider
-                      min={-100}
+                      min={0}
                       max={100}
-                      value={priceChangeRange}
-                      onChange={setPriceChangeRange}
-                      showMinThumb={showPriceChangeMinThumb}
-                      showMaxThumb={showPriceChangeMaxThumb}
-                      className="w-full relative z-10 mb-4"
+                      value={probabilityRange}
+                      onChange={setProbabilityRange}
+                      showMinThumb={showMinThumb}
+                      showMaxThumb={showMaxThumb}
+                      className="w-full mb-4"
                     />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="min-thumb"
+                        checked={showMinThumb}
+                        onCheckedChange={(checked) => {
+                          setShowMinThumb(checked as boolean);
+                          if (!checked) {
+                            setProbabilityRange([0, probabilityRange[1]]);
+                          }
+                        }}
+                      />
+                      <Label htmlFor="min-thumb" className="text-sm">Min</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="max-thumb"
+                        checked={showMaxThumb}
+                        onCheckedChange={(checked) => {
+                          setShowMaxThumb(checked as boolean);
+                          if (!checked) {
+                            setProbabilityRange([probabilityRange[0], 100]);
+                          }
+                        }}
+                      />
+                      <Label htmlFor="max-thumb" className="text-sm">Max</Label>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Checkbox 
-                      id="price-change-min-thumb"
-                      checked={showPriceChangeMinThumb}
-                      onCheckedChange={(checked) => {
-                        setShowPriceChangeMinThumb(checked as boolean);
-                        if (!checked) {
-                          setPriceChangeRange([-100, priceChangeRange[1]]);
-                        }
-                      }}
-                    />
-                    <Label htmlFor="price-change-min-thumb" className="text-sm">Min</Label>
+
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="leading-6">Price Change Range</Label>
+                      <output className="text-sm font-medium tabular-nums">
+                        {showPriceChangeMinThumb ? priceChangeRange[0] : -100}% - {showPriceChangeMaxThumb ? priceChangeRange[1] : 100}%
+                      </output>
+                    </div>
+                    <div className="relative">
+                      <div className="absolute inset-0 flex">
+                        <div className="w-1/2 bg-red-500/20" />
+                        <div className="w-1/2 bg-green-500/20" />
+                      </div>
+                      <MultiRangeSlider
+                        min={-100}
+                        max={100}
+                        value={priceChangeRange}
+                        onChange={setPriceChangeRange}
+                        showMinThumb={showPriceChangeMinThumb}
+                        showMaxThumb={showPriceChangeMaxThumb}
+                        className="w-full relative z-10 mb-4"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Checkbox 
-                      id="price-change-max-thumb"
-                      checked={showPriceChangeMaxThumb}
-                      onCheckedChange={(checked) => {
-                        setShowPriceChangeMaxThumb(checked as boolean);
-                        if (!checked) {
-                          setPriceChangeRange([priceChangeRange[0], 100]);
-                        }
-                      }}
-                    />
-                    <Label htmlFor="price-change-max-thumb" className="text-sm">Max</Label>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="price-change-min-thumb"
+                        checked={showPriceChangeMinThumb}
+                        onCheckedChange={(checked) => {
+                          setShowPriceChangeMinThumb(checked as boolean);
+                          if (!checked) {
+                            setPriceChangeRange([-100, priceChangeRange[1]]);
+                          }
+                        }}
+                      />
+                      <Label htmlFor="price-change-min-thumb" className="text-sm">Min</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="price-change-max-thumb"
+                        checked={showPriceChangeMaxThumb}
+                        onCheckedChange={(checked) => {
+                          setShowPriceChangeMaxThumb(checked as boolean);
+                          if (!checked) {
+                            setPriceChangeRange([priceChangeRange[0], 100]);
+                          }
+                        }}
+                      />
+                      <Label htmlFor="price-change-max-thumb" className="text-sm">Max</Label>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
     </div>
   );
