@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
@@ -44,8 +45,8 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, sortBy = 'price_change' } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, sortBy: ${sortBy}`);
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy = 'price_change' } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, volumeMin: ${volumeMin}, volumeMax: ${volumeMax}, sortBy: ${sortBy}`);
 
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
@@ -339,6 +340,20 @@ serve(async (req) => {
         return meetsMin && meetsMax;
       });
       console.log(`Filtered to ${allMarkets.length} markets within price change range ${priceChangeMin}% - ${priceChangeMax}%`);
+    }
+
+    // Apply volume filters if they exist
+    if (volumeMin !== undefined || volumeMax !== undefined) {
+      console.log(`Applying volume filters: min=${volumeMin}, max=${volumeMax}`);
+      allMarkets = allMarkets.filter(market => {
+        const volume = market.final_volume;
+        const meetsMin = volumeMin === undefined || volume >= volumeMin;
+        const meetsMax = volumeMax === undefined || volume <= volumeMax;
+        const result = meetsMin && meetsMax;
+        console.log(`Market ${market.market_id} volume=${volume}, meetsMin=${meetsMin}, meetsMax=${meetsMax}, kept=${result}`);
+        return result;
+      });
+      console.log(`Filtered to ${allMarkets.length} markets within volume range ${volumeMin} - ${volumeMax}`);
     }
 
     // Then apply openOnly filter
