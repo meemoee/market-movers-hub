@@ -145,7 +145,7 @@ export function MarketDetails({
           <QADisplay 
             marketId={marketId} 
             marketQuestion={question}
-            marketDescription={description || 'No description available'}
+            description={description || 'No description available'}
           />
         </div>
       )}
