@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -104,6 +105,9 @@ export default function TopMoversList({
   const [priceChangeRange, setPriceChangeRange] = useState<[number, number]>([-100, 100]);
   const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
   const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
+  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000]);
+  const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
+  const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
   const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
@@ -234,6 +238,12 @@ export default function TopMoversList({
           setShowPriceChangeMinThumb={setShowPriceChangeMinThumb}
           showPriceChangeMaxThumb={showPriceChangeMaxThumb}
           setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
+          volumeRange={volumeRange}
+          setVolumeRange={setVolumeRange}
+          showVolumeMinThumb={showVolumeMinThumb}
+          setShowVolumeMinThumb={setShowVolumeMinThumb}
+          showVolumeMaxThumb={showVolumeMaxThumb}
+          setShowVolumeMaxThumb={setShowVolumeMaxThumb}
           sortBy={sortBy}
           onSortChange={setSortBy}
         />

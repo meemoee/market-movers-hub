@@ -15,7 +15,7 @@ interface MultiRangeSliderProps {
 export const MultiRangeSlider = ({
   min,
   max,
-  value,
+  value = [0, 100] as [number, number],
   onChange,
   showMinThumb = true,
   showMaxThumb = true,
