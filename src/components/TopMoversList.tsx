@@ -104,15 +104,11 @@ export default function TopMoversList({
   const [priceChangeRange, setPriceChangeRange] = useState<[number, number]>([-100, 100]);
   const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
   const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
-  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000]);
-  const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
-  const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
   const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
-  const debouncedVolumeRange = useDebounce(volumeRange, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
 
@@ -125,8 +121,6 @@ export default function TopMoversList({
     showMaxThumb ? debouncedProbabilityRange[1] : undefined,
     showPriceChangeMinThumb ? debouncedPriceChangeRange[0] : undefined,
     showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
-    showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
-    showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
     sortBy
   );
 
@@ -242,12 +236,6 @@ export default function TopMoversList({
           setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
           sortBy={sortBy}
           onSortChange={setSortBy}
-          volumeRange={volumeRange}
-          setVolumeRange={setVolumeRange}
-          showVolumeMinThumb={showVolumeMinThumb}
-          setShowVolumeMinThumb={setShowVolumeMinThumb}
-          showVolumeMaxThumb={showVolumeMaxThumb}
-          setShowVolumeMaxThumb={setShowVolumeMaxThumb}
         />
       </div>
       

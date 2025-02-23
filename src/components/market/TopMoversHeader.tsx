@@ -1,3 +1,4 @@
+
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -33,13 +34,6 @@ interface TopMoversHeaderProps {
   setShowPriceChangeMaxThumb: (show: boolean) => void;
   sortBy: 'price_change' | 'volume';
   onSortChange: (value: 'price_change' | 'volume') => void;
-  // NEW: Total volume filter props
-  volumeRange: [number, number];
-  setVolumeRange: (range: [number, number]) => void;
-  showVolumeMinThumb: boolean;
-  setShowVolumeMinThumb: (show: boolean) => void;
-  showVolumeMaxThumb: boolean;
-  setShowVolumeMaxThumb: (show: boolean) => void;
 }
 
 export function TopMoversHeader({
@@ -64,13 +58,6 @@ export function TopMoversHeader({
   setShowPriceChangeMaxThumb,
   sortBy,
   onSortChange,
-  // NEW: Destructure volume filter props
-  volumeRange,
-  setVolumeRange,
-  showVolumeMinThumb,
-  setShowVolumeMinThumb,
-  showVolumeMaxThumb,
-  setShowVolumeMaxThumb,
 }: TopMoversHeaderProps) {
   const isMobile = useIsMobile();
 
@@ -150,7 +137,6 @@ export function TopMoversHeader({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <div className="px-4 py-6 space-y-12">
-                {/* Probability Range */}
                 <div className="space-y-8">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -199,7 +185,6 @@ export function TopMoversHeader({
                   </div>
                 </div>
 
-                {/* Price Change Range */}
                 <div className="space-y-8">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between gap-2">
@@ -250,55 +235,6 @@ export function TopMoversHeader({
                         }}
                       />
                       <Label htmlFor="price-change-max-thumb" className="text-sm">Max</Label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* NEW: Total Volume Range */}
-                <div className="space-y-8">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <Label className="leading-6">Total Volume Range</Label>
-                      <output className="text-sm font-medium tabular-nums">
-                        {showVolumeMinThumb ? volumeRange[0] : 0} - {showVolumeMaxThumb ? volumeRange[1] : 1000}
-                      </output>
-                    </div>
-                    <MultiRangeSlider
-                      min={0}
-                      max={1000}
-                      value={volumeRange}
-                      onChange={setVolumeRange}
-                      showMinThumb={showVolumeMinThumb}
-                      showMaxThumb={showVolumeMaxThumb}
-                      className="w-full mb-4"
-                    />
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <Checkbox 
-                        id="volume-min-thumb"
-                        checked={showVolumeMinThumb}
-                        onCheckedChange={(checked) => {
-                          setShowVolumeMinThumb(checked as boolean);
-                          if (!checked) {
-                            setVolumeRange([0, volumeRange[1]]);
-                          }
-                        }}
-                      />
-                      <Label htmlFor="volume-min-thumb" className="text-sm">Min</Label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Checkbox 
-                        id="volume-max-thumb"
-                        checked={showVolumeMaxThumb}
-                        onCheckedChange={(checked) => {
-                          setShowVolumeMaxThumb(checked as boolean);
-                          if (!checked) {
-                            setVolumeRange([volumeRange[0], 1000]);
-                          }
-                        }}
-                      />
-                      <Label htmlFor="volume-max-thumb" className="text-sm">Max</Label>
                     </div>
                   </div>
                 </div>
