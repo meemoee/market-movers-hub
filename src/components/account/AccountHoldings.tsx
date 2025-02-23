@@ -39,16 +39,21 @@ export function AccountHoldings() {
         .from('market_prices')
         .select('market_id, last_traded_price, timestamp')
         .in('market_id', holdings.map(h => h.market_id))
-        .order('timestamp', { ascending: false })
-        .limit(1);
+        .order('timestamp', { ascending: false });
 
       if (topMoversError) throw topMoversError;
 
-      // Convert to map for easy lookup
-      return (topMoversData || []).reduce((acc, price) => ({
-        ...acc,
-        [price.market_id]: price.last_traded_price
-      }), {});
+      // Convert to map for easy lookup, keeping the latest price for each market
+      // regardless of whether it's zero or not
+      const priceMap: Record<string, number> = {};
+      (topMoversData || []).forEach(price => {
+        // If we haven't seen this market yet, use its price (even if zero)
+        if (!(price.market_id in priceMap)) {
+          priceMap[price.market_id] = price.last_traded_price;
+        }
+      });
+
+      return priceMap;
     },
     enabled: holdings.length > 0,
     refetchInterval: 30000 // Refresh every 30 seconds
@@ -173,16 +178,14 @@ export function AccountHoldings() {
                       <p className="text-sm text-muted-foreground">
                         Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}
                       </p>
-                      {currentPrice && (
-                        <p className="text-sm">
-                          Current Price: ${currentPrice.toFixed(2)}
-                          {priceChange && (
-                            <span className={`ml-2 ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                              ({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%)
-                            </span>
-                          )}
-                        </p>
-                      )}
+                      <p className="text-sm">
+                        Current Price: ${currentPrice?.toFixed(2) || (holding.entry_price?.toFixed(2) || '0.00')}
+                        {priceChange && (
+                          <span className={`ml-2 ${priceChange >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            ({priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%)
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </div>
                 </div>

@@ -14,13 +14,14 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query } = await req.json()
+    const { content, query, question } = await req.json()
     
     if (!content || content.length === 0) {
       throw new Error('No content provided for analysis')
     }
 
     console.log(`Analyzing content for query: ${query}`)
+    console.log(`Market question: ${question}`)
     console.log(`Content length: ${content.length} characters`)
 
     const response = await fetch(OPENROUTER_URL, {
@@ -40,14 +41,95 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}\n\nContent:\n${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
+            content: `Market Question: "${question}"
+
+Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}
+
+Content:
+${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
           }
         ],
         stream: true
       })
     })
 
-    return new Response(response.body, {
+    // A simple TransformStream that buffers incoming text until full SSE events are available
+    let buffer = ""
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk)
+        buffer += text
+        
+        // Keep processing the buffer until we can't find any more complete messages
+        while (true) {
+          const nlIndex = buffer.indexOf('\n')
+          if (nlIndex === -1) break
+          
+          const line = buffer.slice(0, nlIndex)
+          buffer = buffer.slice(nlIndex + 1)
+          
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') continue
+            
+            try {
+              const parsed = JSON.parse(data)
+              const content = parsed.choices?.[0]?.delta?.content || 
+                            parsed.choices?.[0]?.message?.content || ""
+              
+              if (content) {
+                const event = {
+                  choices: [{
+                    delta: { content },
+                    message: { content }
+                  }]
+                }
+                controller.enqueue(
+                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
+                )
+              }
+            } catch (err) {
+              console.debug('Parsing chunk (expected during streaming):', err)
+            }
+          }
+        }
+      },
+      flush(controller) {
+        // Process any remaining complete messages in the buffer
+        if (buffer.trim()) {
+          const lines = buffer.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim()
+              if (data === '[DONE]') continue
+              
+              try {
+                const parsed = JSON.parse(data)
+                const content = parsed.choices?.[0]?.delta?.content || 
+                              parsed.choices?.[0]?.message?.content || ""
+                
+                if (content) {
+                  const event = {
+                    choices: [{
+                      delta: { content },
+                      message: { content }
+                    }]
+                  }
+                  controller.enqueue(
+                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
+                  )
+                }
+              } catch (err) {
+                console.debug('Parsing final chunk (expected):', err)
+              }
+            }
+          }
+        }
+        buffer = ""
+      }
+    })
+
+    return new Response(response.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

@@ -600,6 +600,23 @@ export type Database = {
               final_price: number
             }[]
           }
+        | {
+            Args: {
+              start_time: string
+              end_time: string
+              p_limit?: number
+              p_offset?: number
+              p_probability_min?: number
+              p_probability_max?: number
+              p_price_change_min?: number
+              p_price_change_max?: number
+            }
+            Returns: {
+              output_market_id: string
+              initial_price: number
+              final_price: number
+            }[]
+          }
       get_active_markets_with_prices_full: {
         Args: {
           start_time: string

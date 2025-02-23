@@ -9,7 +9,12 @@ interface TopMoversContentProps {
   topMovers: TopMover[];
   expandedMarkets: Set<string>;
   toggleMarket: (marketId: string) => void;
-  setSelectedMarket: (market: { id: string; action: 'buy' | 'sell'; clobTokenId: string; } | null) => void;
+  setSelectedMarket: (market: { 
+    id: string; 
+    action: 'buy' | 'sell'; 
+    clobTokenId: string;
+    selectedOutcome: string;
+  } | null) => void;
   onLoadMore: () => void;
   hasMore: boolean;
   isLoadingMore?: boolean;
@@ -86,7 +91,8 @@ export function TopMoversContent({
                   setSelectedMarket({ 
                     id: mover.market_id, 
                     action: 'buy', 
-                    clobTokenId 
+                    clobTokenId,
+                    selectedOutcome: "Yes"
                   });
                 }
               }}
@@ -96,7 +102,8 @@ export function TopMoversContent({
                   setSelectedMarket({ 
                     id: mover.market_id, 
                     action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
-                    clobTokenId 
+                    clobTokenId,
+                    selectedOutcome: "No"
                   });
                 }
               }}

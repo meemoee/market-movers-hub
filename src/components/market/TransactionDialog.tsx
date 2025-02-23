@@ -28,6 +28,7 @@ interface TopMover {
   image: string;
   clobtokenids?: string[];
   outcomes?: string[];
+  selectedOutcome?: string;
 }
 
 interface TransactionDialogProps {
@@ -35,6 +36,7 @@ interface TransactionDialogProps {
     id: string; 
     action: 'buy' | 'sell';
     clobTokenId: string;
+    selectedOutcome: string;
   } | null;
   topMover: TopMover | null;
   onClose: () => void;
@@ -55,9 +57,19 @@ export function TransactionDialog({
 }: TransactionDialogProps) {
   const { toast } = useToast();
   const [size, setSize] = useState(1);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onOrderBookData(null);
+      onClose();
+      setIsClosing(false);
+    }, 100);
+  };
 
   const handleConfirm = async () => {
-    if (!selectedMarket || !orderBookData || !topMover?.outcomes) return;
+    if (!selectedMarket || !orderBookData) return;
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -72,16 +84,14 @@ export function TransactionDialog({
       }
 
       const price = orderBookData.best_ask;
-      const isFirstOutcome = selectedMarket.clobTokenId === topMover.clobtokenids?.[0];
-      const selectedOutcome = isFirstOutcome ? topMover.outcomes[0] : topMover.outcomes[1];
       
       const { data, error } = await supabase.functions.invoke('execute-market-order', {
         body: {
           user_id: session.user.id,
           market_id: selectedMarket.id,
           token_id: selectedMarket.clobTokenId,
-          outcome: selectedOutcome, // Store the actual outcome title
-          side: 'buy', // Always 'buy' since we're buying the respective outcome
+          outcome: selectedMarket.selectedOutcome,
+          side: 'buy',
           size,
           price
         }
@@ -99,7 +109,7 @@ export function TransactionDialog({
 
       toast({
         title: "Order confirmed",
-        description: `Your order to buy ${selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
+        description: `Your order to buy ${selectedMarket.selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
       });
       
       onConfirm();
@@ -116,7 +126,7 @@ export function TransactionDialog({
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
-      onOpenChange={onClose}
+      onOpenChange={handleClose}
     >
       <AlertDialogContent>
         <AlertDialogHeader>
@@ -130,7 +140,7 @@ export function TransactionDialog({
                 />
                 <div className="flex-1 min-w-0">
                   <AlertDialogTitle className="text-lg font-semibold mb-1">
-                    {selectedMarket?.action === 'buy' ? 'Buy' : 'Sell'}
+                    Buy {selectedMarket?.selectedOutcome}
                   </AlertDialogTitle>
                   <p className="text-sm text-muted-foreground line-clamp-2">
                     {topMover.question}
@@ -144,67 +154,70 @@ export function TransactionDialog({
               onOrderBookData={onOrderBookData}
               isLoading={isOrderBookLoading}
               clobTokenId={selectedMarket?.clobTokenId}
+              isClosing={isClosing}
             />
             
-            {orderBookData && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Bids</div>
-                    <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                      {Object.entries(orderBookData.bids)
-                        .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
-                        .slice(0, 5)
-                        .map(([price, size]) => (
-                          <div key={price} className="flex justify-between text-sm">
-                            <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                            <span>{size.toFixed(2)}</span>
-                          </div>
-                        ))}
+            <div className="space-y-4 min-h-[280px]">
+              {orderBookData && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Bids</div>
+                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                        {Object.entries(orderBookData.bids)
+                          .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
+                          .slice(0, 5)
+                          .map(([price, size]) => (
+                            <div key={price} className="flex justify-between text-sm">
+                              <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                              <span>{size.toFixed(2)}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="text-sm font-medium">Asks</div>
+                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
+                        {Object.entries(orderBookData.asks)
+                          .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
+                          .slice(0, 5)
+                          .map(([price, size]) => (
+                            <div key={price} className="flex justify-between text-sm">
+                              <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
+                              <span>{size.toFixed(2)}</span>
+                            </div>
+                          ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Asks</div>
-                    <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                      {Object.entries(orderBookData.asks)
-                        .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
-                        .slice(0, 5)
-                        .map(([price, size]) => (
-                          <div key={price} className="flex justify-between text-sm">
-                            <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                            <span>{size.toFixed(2)}</span>
-                          </div>
-                        ))}
+                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
+                    <div>
+                      <div className="text-sm text-muted-foreground">Best Bid</div>
+                      <div className="text-lg font-medium text-green-500">
+                        {(orderBookData.best_bid * 100).toFixed(2)}¢
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Best Ask</div>
+                      <div className="text-lg font-medium text-red-500">
+                        {(orderBookData.best_ask * 100).toFixed(2)}¢
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
-                  <div>
-                    <div className="text-sm text-muted-foreground">Best Bid</div>
-                    <div className="text-lg font-medium text-green-500">
-                      {(orderBookData.best_bid * 100).toFixed(2)}¢
-                    </div>
+                  <div className="text-sm text-muted-foreground">
+                    Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
                   </div>
-                  <div>
-                    <div className="text-sm text-muted-foreground">Best Ask</div>
-                    <div className="text-lg font-medium text-red-500">
-                      {(orderBookData.best_ask * 100).toFixed(2)}¢
-                    </div>
-                  </div>
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
-                </div>
-              </div>
-            )}
+                </>
+              )}
+            </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             disabled={!orderBookData || isOrderBookLoading}
-            className={selectedMarket?.action === 'buy' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'}
+            className="bg-green-500 hover:bg-green-600"
           >
             {isOrderBookLoading ? (
               <>
@@ -212,7 +225,7 @@ export function TransactionDialog({
                 Connecting...
               </>
             ) : (
-              `Confirm ${selectedMarket?.action}`
+              `Confirm purchase of ${selectedMarket?.selectedOutcome}`
             )}
           </AlertDialogAction>
         </AlertDialogFooter>
