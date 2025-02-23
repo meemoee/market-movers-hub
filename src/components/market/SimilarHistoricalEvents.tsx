@@ -1,24 +1,23 @@
 
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { useState } from 'react';
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { History } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronDown, ChevronUp, History } from 'lucide-react';
 
-interface HistoricalEvent {
+interface Event {
   id: string;
   title: string;
   date: string;
-  image: string;
   similarities: string[];
   differences: string[];
 }
 
-const PLACEHOLDER_EVENTS: HistoricalEvent[] = [
+const EVENTS: Event[] = [
   {
     id: '1',
-    title: 'Tech Bubble (2000)',
+    title: 'Tech Bubble Burst',
     date: 'March 2000',
-    image: 'https://images.unsplash.com/photo-1605810230434-7631ac76ec81',
     similarities: [
       'Rapid market valuation increase',
       'High investor speculation',
@@ -36,9 +35,8 @@ const PLACEHOLDER_EVENTS: HistoricalEvent[] = [
   },
   {
     id: '2',
-    title: 'Financial Crisis (2008)',
+    title: 'Financial Crisis',
     date: 'September 2008',
-    image: 'https://images.unsplash.com/photo-1487058792275-0ad4aaf24ca7',
     similarities: [
       'Systemic risk concerns',
       'Market confidence issues',
@@ -53,59 +51,123 @@ const PLACEHOLDER_EVENTS: HistoricalEvent[] = [
       'Alternative resolution mechanisms',
       'Unique economic context'
     ]
+  },
+  {
+    id: '3',
+    title: 'Black Monday',
+    date: 'October 1987',
+    similarities: [
+      'Sudden market decline',
+      'Global market panic',
+      'Technical trading impact',
+      'Regulatory response',
+      'Recovery pattern'
+    ],
+    differences: [
+      'Different market structure',
+      'Trading technology differences',
+      'Regulatory environment',
+      'Market participants',
+      'Global connectivity'
+    ]
   }
 ];
 
 export function SimilarHistoricalEvents() {
+  const [openItems, setOpenItems] = useState<string[]>([]);
+
+  const toggleItem = (id: string) => {
+    setOpenItems(current => 
+      current.includes(id) 
+        ? current.filter(item => item !== id)
+        : [...current, id]
+    );
+  };
+
   return (
-    <Card className="p-6 bg-card">
+    <Card className="p-6">
       <div className="flex items-center gap-2 mb-4">
         <History className="w-5 h-5 text-primary" />
         <h3 className="text-lg font-semibold">Similar Historical Events</h3>
       </div>
-      <ScrollArea className="max-h-[400px]">
-        <Accordion type="single" collapsible className="w-full">
-          {PLACEHOLDER_EVENTS.map((event) => (
-            <AccordionItem key={event.id} value={event.id} className="border-0">
-              <AccordionTrigger className="px-4 py-2 rounded-lg hover:bg-accent/50 [&[data-state=open]>div]:pb-2 transition-colors">
-                <div className="flex items-center gap-3 w-full">
-                  <img 
-                    src={event.image} 
-                    alt={event.title}
-                    width={32}
-                    height={32}
-                    className="w-8 h-8 object-cover rounded" 
-                  />
-                  <div>
-                    <p className="font-semibold">{event.title}</p>
-                    <p className="text-xs text-muted-foreground">{event.date}</p>
-                  </div>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="px-4 pb-2 overflow-hidden">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <h5 className="text-sm font-medium text-primary mb-2">Similarities</h5>
+
+      <div className="grid grid-cols-2 gap-6">
+        {/* Similarities Column */}
+        <div>
+          <h4 className="text-sm font-medium text-primary mb-3">Similarities</h4>
+          <ScrollArea className="h-[400px] pr-4">
+            <div className="space-y-2">
+              {EVENTS.map((event) => (
+                <Collapsible
+                  key={`sim-${event.id}`}
+                  open={openItems.includes(event.id)}
+                  onOpenChange={() => toggleItem(event.id)}
+                  className="border rounded-md"
+                >
+                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-accent rounded-md text-sm">
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{event.title}</span>
+                      <span className="text-xs text-muted-foreground">{event.date}</span>
+                    </div>
+                    {openItems.includes(event.id) ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="p-3 pt-0">
                     <ul className="space-y-1">
-                      {event.similarities.map((similarity, index) => (
-                        <li key={index} className="text-sm text-muted-foreground">• {similarity}</li>
+                      {event.similarities.map((item, index) => (
+                        <li key={index} className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-primary">
+                          {item}
+                        </li>
                       ))}
                     </ul>
-                  </div>
-                  <div>
-                    <h5 className="text-sm font-medium text-destructive mb-2">Differences</h5>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* Differences Column */}
+        <div>
+          <h4 className="text-sm font-medium text-destructive mb-3">Differences</h4>
+          <ScrollArea className="h-[400px] pr-4">
+            <div className="space-y-2">
+              {EVENTS.map((event) => (
+                <Collapsible
+                  key={`diff-${event.id}`}
+                  open={openItems.includes(event.id)}
+                  onOpenChange={() => toggleItem(event.id)}
+                  className="border rounded-md"
+                >
+                  <CollapsibleTrigger className="flex items-center justify-between w-full p-3 hover:bg-accent rounded-md text-sm">
+                    <div className="flex flex-col items-start">
+                      <span className="font-medium">{event.title}</span>
+                      <span className="text-xs text-muted-foreground">{event.date}</span>
+                    </div>
+                    {openItems.includes(event.id) ? (
+                      <ChevronUp className="h-4 w-4" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4" />
+                    )}
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="p-3 pt-0">
                     <ul className="space-y-1">
-                      {event.differences.map((difference, index) => (
-                        <li key={index} className="text-sm text-muted-foreground">• {difference}</li>
+                      {event.differences.map((item, index) => (
+                        <li key={index} className="text-sm text-muted-foreground pl-4 before:content-['•'] before:mr-2 before:text-destructive">
+                          {item}
+                        </li>
                       ))}
                     </ul>
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
-      </ScrollArea>
+                  </CollapsibleContent>
+                </Collapsible>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
     </Card>
   );
 }

@@ -1,18 +1,10 @@
-
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { TransactionDialog } from './TransactionDialog';
-import { TrendingUp, TrendingDown, SortAsc } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+import { TrendingUp, TrendingDown } from "lucide-react";
 
 interface RelatedMarketsProps {
   eventId: string;
@@ -28,20 +20,6 @@ interface OrderBookData {
   spread: number;
 }
 
-// Helper function to clean text fields
-function cleanTextFields(market: any) {
-  const fieldsToClean = ['question', 'subtitle', 'yes_sub_title', 'no_sub_title', 'description'];
-  
-  fieldsToClean.forEach(field => {
-    if (market[field]) {
-      // Replace multiple apostrophes with a single one
-      market[field] = market[field].replace(/'{2,}/g, "'");
-    }
-  });
-  
-  return market;
-}
-
 export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedMarketsProps) {
   const navigate = useNavigate();
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -52,10 +30,9 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   } | null>(null);
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isOrderBookLoading, setIsOrderBookLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'priceChange' | 'likelihood'>('priceChange');
 
   const { data: relatedMarkets, isLoading } = useQuery({
-    queryKey: ['relatedMarkets', eventId, marketId, selectedInterval, sortBy],
+    queryKey: ['relatedMarkets', eventId, marketId, selectedInterval],
     queryFn: async () => {
       const { data: markets, error } = await supabase
         .from('markets')
@@ -80,7 +57,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           final_best_ask: number;
           final_best_bid: number;
           final_volume: number;
-          volume_change: number;
           price_change: number;
         }>;
       }>('get-top-movers', {
@@ -103,31 +79,21 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           ? market.outcomes.map(outcome => String(outcome))
           : [];
 
-        // Clean text fields before returning
-        const cleanedMarket = cleanTextFields({
+        return {
           ...market,
           finalPrice: moverData.final_last_traded_price,
           priceChange: moverData.price_change,
           totalVolume: moverData.final_volume,
-          volume_change: moverData.volume_change,
           best_bid: moverData.final_best_bid,
           best_ask: moverData.final_best_ask,
           clobtokenids,
           outcomes
-        });
-
-        return cleanedMarket;
+        };
       });
 
-      const filteredMarkets = marketsWithPriceChanges.filter(Boolean);
-      
-      return filteredMarkets.sort((a, b) => {
-        if (sortBy === 'priceChange') {
-          return Math.abs((b?.priceChange || 0)) - Math.abs((a?.priceChange || 0));
-        } else {
-          return (b?.finalPrice || 0) - (a?.finalPrice || 0);
-        }
-      });
+      return marketsWithPriceChanges
+        .filter(Boolean)
+        .sort((a, b) => Math.abs((b?.priceChange || 0)) - Math.abs((a?.priceChange || 0)));
     },
     enabled: !!eventId && !!marketId,
   });
@@ -164,26 +130,8 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
 
   return (
     <div className="space-y-4 border-t border-border pt-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm text-muted-foreground">Related Markets</div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 gap-2">
-              <SortAsc className="h-4 w-4" />
-              Sort by {sortBy === 'priceChange' ? 'Price Change' : 'Likelihood'}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[200px]">
-            <DropdownMenuItem onClick={() => setSortBy('priceChange')}>
-              Price Change
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setSortBy('likelihood')}>
-              Likelihood
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-      <div className="max-h-[600px] overflow-y-auto pr-2 -mr-2 space-y-4">
+      <div className="text-sm text-muted-foreground mb-2">Related Markets</div>
+      <div className="space-y-4">
         {relatedMarkets.map((market) => (
           <div 
             key={market.id} 
@@ -277,10 +225,10 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
                 </div>
                 <div className="flex flex-col items-end">
                   <div className="text-xl font-semibold">
-                    ${Math.abs(market.volume_change)?.toFixed(0) || '0'}
+                    ${market.totalVolume?.toFixed(0) || '0'}
                   </div>
                   <div className="text-sm text-muted-foreground">
-                    ${market.totalVolume?.toFixed(0) || '0'} Total
+                    24h Volume
                   </div>
                 </div>
               </div>

@@ -6,20 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper function to clean text fields
-function cleanTextFields(market: any) {
-  const fieldsToClean = ['question', 'subtitle', 'yes_sub_title', 'no_sub_title', 'description', 'event_title'];
-  
-  fieldsToClean.forEach(field => {
-    if (market[field]) {
-      // Replace multiple apostrophes with a single one
-      market[field] = market[field].replace(/'{2,}/g, "'");
-    }
-  });
-  
-  return market;
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -44,108 +30,12 @@ serve(async (req) => {
     
     console.log('Connected to Redis successfully');
     
-    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, sortBy = 'price_change' } = await req.json();
-    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}, probabilityMin: ${probabilityMin}, probabilityMax: ${probabilityMax}, priceChangeMin: ${priceChangeMin}, priceChangeMax: ${priceChangeMax}, sortBy: ${sortBy}`);
-
+    const { interval = '1440', openOnly = false, page = 1, limit = 20, searchQuery = '', marketId, marketIds } = await req.json();
+    console.log(`Fetching top movers for interval: ${interval} minutes, page: ${page}, limit: ${limit}, openOnly: ${openOnly}, searchQuery: ${searchQuery}, marketId: ${marketId}, marketIds: ${marketIds?.length}`);
+    
     // If specific marketIds are provided, prioritize fetching their data
     let allMarkets = [];
     
-    // Handle single marketId request first
-    if (marketId) {
-      console.log(`Fetching single market with ID: ${marketId}`);
-      const latestKey = await redis.get(`topMovers:${interval}:latest`);
-      
-      if (!latestKey) {
-        console.log('No latest key found for marketId request');
-        return new Response(
-          JSON.stringify({
-            data: [],
-            hasMore: false
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Get manifest for the specific market
-      const manifestKey = `topMovers:${interval}:${latestKey}:manifest`;
-      const manifestData = await redis.get(manifestKey);
-      
-      if (!manifestData) {
-        console.log('No manifest found for marketId request');
-        return new Response(
-          JSON.stringify({
-            data: [],
-            hasMore: false
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const manifest = JSON.parse(manifestData);
-      let foundMarket = null;
-      
-      // Search through chunks until we find the specific market
-      for (let i = 0; i < manifest.chunks; i++) {
-        const chunkKey = `topMovers:${interval}:${latestKey}:chunk:${i}`;
-        const chunkData = await redis.get(chunkKey);
-        if (chunkData) {
-          const markets = JSON.parse(chunkData);
-          foundMarket = markets.find(m => m.market_id === marketId);
-          if (foundMarket) {
-            foundMarket = cleanTextFields(foundMarket);
-            console.log(`Found market ${marketId} in chunk ${i}`);
-            break;
-          }
-        }
-      }
-
-      // If market not found in current interval, try other intervals
-      if (!foundMarket) {
-        console.log(`Market ${marketId} not found in interval ${interval}, trying other intervals`);
-        const intervals = ['5', '10', '30', '60', '240', '480', '1440', '10080'];
-        
-        for (const currentInterval of intervals) {
-          if (currentInterval === interval) continue;
-          
-          const otherLatestKey = await redis.get(`topMovers:${currentInterval}:latest`);
-          if (!otherLatestKey) continue;
-          
-          const otherManifestKey = `topMovers:${currentInterval}:${otherLatestKey}:manifest`;
-          const otherManifestData = await redis.get(otherManifestKey);
-          if (!otherManifestData) continue;
-          
-          const otherManifest = JSON.parse(otherManifestData);
-          
-          for (let i = 0; i < otherManifest.chunks; i++) {
-            const chunkKey = `topMovers:${currentInterval}:${otherLatestKey}:chunk:${i}`;
-            const chunkData = await redis.get(chunkKey);
-            if (chunkData) {
-              const markets = JSON.parse(chunkData);
-              foundMarket = markets.find(m => m.market_id === marketId);
-              if (foundMarket) {
-                foundMarket = cleanTextFields(foundMarket);
-                console.log(`Found market ${marketId} in interval ${currentInterval}`);
-                break;
-              }
-            }
-          }
-          
-          if (foundMarket) break;
-        }
-      }
-
-      await redis.close();
-      
-      return new Response(
-        JSON.stringify({
-          data: foundMarket ? [foundMarket] : [],
-          hasMore: false
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // If specific marketIds are provided, prioritize fetching their data
     if (marketIds?.length) {
       console.log(`Fetching data for ${marketIds.length} specific markets`);
       const latestKey = await redis.get(`topMovers:${interval}:latest`);
@@ -184,10 +74,8 @@ serve(async (req) => {
         const chunkData = await redis.get(chunkKey);
         if (chunkData) {
           const markets = JSON.parse(chunkData);
-          // Only keep markets that are in our marketIds list and clean their text fields
-          const relevantMarkets = markets
-            .filter(m => marketIds.includes(m.market_id))
-            .map(cleanTextFields);
+          // Only keep markets that are in our marketIds list
+          const relevantMarkets = markets.filter(m => marketIds.includes(m.market_id));
           allMarkets.push(...relevantMarkets);
         }
       }
@@ -203,7 +91,7 @@ serve(async (req) => {
         const intervals = ['5', '10', '30', '60', '240', '480', '1440', '10080'];
         
         for (const currentInterval of intervals) {
-          if (currentInterval === interval) continue;
+          if (currentInterval === interval) continue; // Skip current interval as we already checked it
           
           const otherLatestKey = await redis.get(`topMovers:${currentInterval}:latest`);
           if (!otherLatestKey) continue;
@@ -214,14 +102,13 @@ serve(async (req) => {
           
           const otherManifest = JSON.parse(otherManifestData);
           
+          // Check each chunk for missing markets
           for (let i = 0; i < otherManifest.chunks; i++) {
             const chunkKey = `topMovers:${currentInterval}:${otherLatestKey}:chunk:${i}`;
             const chunkData = await redis.get(chunkKey);
             if (chunkData) {
               const markets = JSON.parse(chunkData);
-              const foundMarkets = markets
-                .filter(m => missingMarketIds.includes(m.market_id))
-                .map(cleanTextFields);
+              const foundMarkets = markets.filter(m => missingMarketIds.includes(m.market_id));
               if (foundMarkets.length > 0) {
                 allMarkets.push(...foundMarkets);
                 // Remove found markets from missing list
@@ -313,35 +200,13 @@ serve(async (req) => {
       const chunkKey = `topMovers:${interval}:${latestKey}:chunk:${i}`;
       const chunkData = await redis.get(chunkKey);
       if (chunkData) {
-        const markets = JSON.parse(chunkData).map(cleanTextFields);
+        const markets = JSON.parse(chunkData);
         allMarkets.push(...markets);
       }
     }
     console.log(`Retrieved ${allMarkets.length} markets total for interval ${interval}`);
 
-    // First apply probability filters if they exist
-    if (probabilityMin !== undefined || probabilityMax !== undefined) {
-      allMarkets = allMarkets.filter(market => {
-        const probability = market.final_last_traded_price * 100; // Convert to percentage
-        const meetsMin = probabilityMin === undefined || probability >= probabilityMin;
-        const meetsMax = probabilityMax === undefined || probability <= probabilityMax;
-        return meetsMin && meetsMax;
-      });
-      console.log(`Filtered to ${allMarkets.length} markets within probability range ${probabilityMin}% - ${probabilityMax}%`);
-    }
-
-    // Apply price change filters if they exist
-    if (priceChangeMin !== undefined || priceChangeMax !== undefined) {
-      allMarkets = allMarkets.filter(market => {
-        const priceChange = market.price_change * 100; // Convert to percentage
-        const meetsMin = priceChangeMin === undefined || priceChange >= priceChangeMin;
-        const meetsMax = priceChangeMax === undefined || priceChange <= priceChangeMax;
-        return meetsMin && meetsMax;
-      });
-      console.log(`Filtered to ${allMarkets.length} markets within price change range ${priceChangeMin}% - ${priceChangeMax}%`);
-    }
-
-    // Then apply openOnly filter
+    // First apply filters (openOnly)
     if (openOnly) {
       allMarkets = allMarkets.filter(m => m.active && !m.archived);
       console.log(`Filtered to ${allMarkets.length} open markets for interval ${interval}`);
@@ -366,21 +231,14 @@ serve(async (req) => {
       console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
     }
 
-    // Sort all filtered results based on sortBy parameter
-    allMarkets.sort((a, b) => {
-      if (sortBy === 'volume') {
-        // Sort by volume change percentage (which accounts for the relative increase/decrease)
-        return Math.abs(b.volume_change_percentage) - Math.abs(a.volume_change_percentage);
-      }
-      // Default to price change sorting
-      return Math.abs(b.price_change) - Math.abs(a.price_change);
-    });
+    // Then sort all filtered results by absolute price change
+    allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
 
     // Apply pagination to the filtered and sorted results
     const start = (page - 1) * limit;
     const paginatedMarkets = allMarkets.slice(start, start + limit);
     const hasMore = allMarkets.length > start + limit;
-    console.log(`Returning ${paginatedMarkets.length} markets, sorted by ${sortBy === 'volume' ? 'volume change' : 'price change'}, hasMore: ${hasMore}`);
+    console.log(`Returning ${paginatedMarkets.length} markets, hasMore: ${hasMore}`);
 
     await redis.close();
 

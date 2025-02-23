@@ -432,10 +432,8 @@ export type Database = {
       qa_trees: {
         Row: {
           created_at: string
-          expansions: Json | null
           id: string
           market_id: string | null
-          sequence_data: Json | null
           title: string
           tree_data: Json
           updated_at: string
@@ -443,10 +441,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
-          expansions?: Json | null
           id?: string
           market_id?: string | null
-          sequence_data?: Json | null
           title: string
           tree_data: Json
           updated_at?: string
@@ -454,10 +450,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
-          expansions?: Json | null
           id?: string
           market_id?: string | null
-          sequence_data?: Json | null
           title?: string
           tree_data?: Json
           updated_at?: string
@@ -599,23 +593,6 @@ export type Database = {
               end_time: string
               p_limit?: number
               p_offset?: number
-            }
-            Returns: {
-              output_market_id: string
-              initial_price: number
-              final_price: number
-            }[]
-          }
-        | {
-            Args: {
-              start_time: string
-              end_time: string
-              p_limit?: number
-              p_offset?: number
-              p_probability_min?: number
-              p_probability_max?: number
-              p_price_change_min?: number
-              p_price_change_max?: number
             }
             Returns: {
               output_market_id: string

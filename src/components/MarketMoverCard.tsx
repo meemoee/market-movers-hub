@@ -1,4 +1,3 @@
-
 import { Card } from "./ui/card";
 import { ArrowUpCircle, ArrowDownCircle } from "lucide-react";
 

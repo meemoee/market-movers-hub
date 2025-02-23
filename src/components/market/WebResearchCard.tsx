@@ -171,22 +171,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
   const cleanStreamContent = (chunk: string): { content: string } => {
     try {
-      let dataStr = chunk;
-      if (dataStr.startsWith('data: ')) {
-        dataStr = dataStr.slice(6);
-      }
-      dataStr = dataStr.trim();
-      
-      if (dataStr === '[DONE]') {
-        return { content: '' };
-      }
-      
-      const parsed = JSON.parse(dataStr);
-      const content = parsed.choices?.[0]?.delta?.content || 
-                     parsed.choices?.[0]?.message?.content || '';
+      const parsed = JSON.parse(chunk);
+      const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || '';
       return { content };
     } catch (e) {
-      console.debug('Chunk parse error (expected during streaming):', e);
+      console.error('Error parsing stream chunk:', e);
       return { content: '' };
     }
   };
@@ -323,8 +312,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: { 
           content: allContent.join('\n\n'),
-          query: description,
-          question: description
+          query: description
         }
       })
 

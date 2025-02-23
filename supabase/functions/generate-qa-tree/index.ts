@@ -43,38 +43,30 @@ ${parentContent}
           messages: [
             {
               role: "system",
-              content: "You are a follow-up question generator. Return ONLY a JSON object with a 'questions' array containing exactly three objects, each with a 'question' field. Example: {'questions':[{'question':'First question?'},{'question':'Second question?'},{'question':'Third question?'}]}"
+              content:
+                "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Return only the JSON array, nothing else."
             },
             {
               role: "user",
               content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${researchPrompt}`
             }
-          ],
-          response_format: { type: "json_object" }
+          ]
         })
       });
-      
       if (!followUpResponse.ok) {
         throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
       }
-      
       const data = await followUpResponse.json();
-      console.log('Full API response:', JSON.stringify(data));
-      
-      const content = data.choices[0].message.content;
-      console.log('Raw content:', typeof content, JSON.stringify(content));
-      
-      // If content is a string, try to parse it
-      let parsedContent = typeof content === 'string' ? JSON.parse(content) : content;
-      console.log('Parsed content:', JSON.stringify(parsedContent));
-
-      // Expect content to be an object with a questions array
-      if (!parsedContent.questions || !Array.isArray(parsedContent.questions)) {
-        console.error('Invalid response format:', parsedContent);
-        throw new Error('Response format is invalid - expected object with questions array');
+      let rawContent = data.choices[0].message.content;
+      rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+      let parsed;
+      try {
+        parsed = JSON.parse(rawContent);
+      } catch (err) {
+        throw new Error('Failed to parse follow-up questions');
       }
-
-      return new Response(JSON.stringify(parsedContent.questions), {
+      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
+      return new Response(JSON.stringify(parsed), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
