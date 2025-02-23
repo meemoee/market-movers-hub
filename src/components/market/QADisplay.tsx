@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -49,9 +50,10 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
+  marketDescription?: string;  // Added this prop definition
 }
 
-export function QADisplay({ marketId, marketQuestion }: QADisplayProps) {
+export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
