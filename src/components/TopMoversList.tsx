@@ -8,7 +8,6 @@ import { TopMoversContent } from './market/TopMoversContent';
 import { TransactionDialog } from './market/TransactionDialog';
 import { MarketStatsBento } from './market/MarketStatsBento';
 import { InsightPostBox } from './market/InsightPostBox';
-import { QADisplay } from './market/QADisplay';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
@@ -245,12 +244,6 @@ export default function TopMoversList({
           <InsightPostBox />
           <MarketStatsBento selectedInterval={selectedInterval} />
           
-          {marketId && (
-            <div className="w-full px-4 pb-6">
-              <QADisplay marketId={marketId} marketQuestion={displayedMarkets.find(m => m.market_id === marketId)?.question || ''} />
-            </div>
-          )}
-
           <TopMoversContent
             isLoading={activeQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
