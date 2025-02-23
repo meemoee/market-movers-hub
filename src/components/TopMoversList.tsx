@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -105,7 +104,7 @@ export default function TopMoversList({
   const [priceChangeRange, setPriceChangeRange] = useState<[number, number]>([-100, 100]);
   const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
   const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
-  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000]);
+  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 10000000]);
   const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
@@ -113,6 +112,7 @@ export default function TopMoversList({
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
+  const debouncedVolumeRange = useDebounce(volumeRange, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
 
@@ -125,6 +125,8 @@ export default function TopMoversList({
     showMaxThumb ? debouncedProbabilityRange[1] : undefined,
     showPriceChangeMinThumb ? debouncedPriceChangeRange[0] : undefined,
     showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
+    showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
+    showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
     sortBy
   );
 
