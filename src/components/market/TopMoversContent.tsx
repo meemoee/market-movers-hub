@@ -1,7 +1,7 @@
 
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
-import { TopMover } from '../TopMoversList';
+import { TopMover } from '@/types/market';
 
 interface TopMoversContentProps {
   isLoading: boolean;
