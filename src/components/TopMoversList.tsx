@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -109,7 +108,7 @@ export default function TopMoversList({
   const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'price_change' | 'volume' | 'volume_price_change'>('price_change');
+  const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
@@ -130,14 +129,6 @@ export default function TopMoversList({
     showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
     sortBy
   );
-
-  // Add console log to debug loading state
-  console.log('TopMovers state:', {
-    isLoading: topMoversQuery.isLoading,
-    isFetching: topMoversQuery.isFetching,
-    error: topMoversQuery.error,
-    data: topMoversQuery.data
-  });
 
   const marketSearchQuery = useMarketSearch(
     debouncedSearch, 
@@ -169,7 +160,7 @@ export default function TopMoversList({
 
   const isSearching = debouncedSearch.length > 0 && !marketId;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
-  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages?.flatMap(page => page.data)) || [];
+  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
   const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
 
   const handleTransaction = () => {

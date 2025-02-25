@@ -1,6 +1,6 @@
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { supabase } from '@/integrations/supabase/client'
 
 interface TopMoversResponse {
   data: TopMover[];
@@ -46,7 +46,7 @@ export function useTopMovers(
   priceChangeMax?: number,
   volumeMin?: number,
   volumeMax?: number,
-  sortBy: 'price_change' | 'volume' | 'volume_price_change' = 'price_change'
+  sortBy: 'price_change' | 'volume' = 'price_change'
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
@@ -62,10 +62,7 @@ export function useTopMovers(
         }
       });
 
-      if (error) {
-        console.error('Error fetching single market:', error);
-        throw error;
-      }
+      if (error) throw error;
       
       if (!data?.data?.[0]) {
         console.log('Market not found, trying without filters');
@@ -77,10 +74,7 @@ export function useTopMovers(
           }
         });
         
-        if (retryError) {
-          console.error('Error in retry fetch:', retryError);
-          throw retryError;
-        }
+        if (retryError) throw retryError;
         return retryData?.data?.[0] || null;
       }
       
@@ -118,19 +112,13 @@ export function useTopMovers(
           probabilityMax,
           priceChangeMin,
           priceChangeMax,
-          volumeMin,
-          volumeMax,
+          volumeMin: volumeMin !== undefined ? Number(volumeMin) : undefined,
+          volumeMax: volumeMax !== undefined ? Number(volumeMax) : undefined,
           sortBy
         }
       });
 
-      if (error) {
-        console.error('Error fetching top movers:', error);
-        throw error;
-      }
-      
-      // Add debug logging
-      console.log('Received response:', data);
+      if (error) throw error;
       
       return {
         data: data?.data || [],
@@ -141,8 +129,7 @@ export function useTopMovers(
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
-    enabled: !marketId,
-    retry: 2
+    enabled: !marketId
   });
 
   // Return appropriate data structure based on whether we're viewing a single market
@@ -160,3 +147,4 @@ export function useTopMovers(
 
   return listQuery;
 }
+
