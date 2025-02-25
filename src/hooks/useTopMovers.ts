@@ -1,4 +1,3 @@
-
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 
@@ -46,7 +45,7 @@ export function useTopMovers(
   priceChangeMax?: number,
   volumeMin?: number,
   volumeMax?: number,
-  sortBy: 'price_change' | 'volume' = 'price_change'
+  sortBy: 'price_change' | 'volume' | 'combined' = 'price_change'
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
@@ -147,4 +146,3 @@ export function useTopMovers(
 
   return listQuery;
 }
-
