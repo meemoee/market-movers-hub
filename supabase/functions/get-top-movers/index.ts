@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { connect } from "https://deno.land/x/redis@v0.29.0/mod.ts";
 
@@ -27,21 +26,8 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  let redis;
   try {
-    const redisUrl = Deno.env.get('REDIS_URL');
-    if (!redisUrl) {
-      console.error('REDIS_URL environment variable is not set');
-      throw new Error('Redis configuration is missing');
-    }
-
-    console.log('Attempting to connect to Redis...');
-    redis = await connect({
-      hostname: new URL(redisUrl).hostname,
-      port: parseInt(new URL(redisUrl).port),
-      password: new URL(redisUrl).password,
-      tls: redisUrl.startsWith('rediss://')
-    });
+    const redis = await connect({ hostname: Deno.env.get('REDIS_HOST'), port: parseInt(Deno.env.get('REDIS_PORT')), password: Deno.env.get('REDIS_PASSWORD') });
     
     console.log('Connected to Redis successfully');
     
@@ -381,15 +367,19 @@ serve(async (req) => {
       console.log(`Found ${allMarkets.length} markets matching search query "${searchQuery}"`);
     }
 
-    // Sort all filtered results based on sortBy parameter
-    allMarkets.sort((a, b) => {
-      if (sortBy === 'volume') {
-        // Sort by volume change percentage (which accounts for the relative increase/decrease)
-        return Math.abs(b.volume_change_percentage) - Math.abs(a.volume_change_percentage);
-      }
-      // Default to price change sorting
-      return Math.abs(b.price_change) - Math.abs(a.price_change);
-    });
+    // Sort markets based on the selected criteria
+    if (sortBy === 'volume') {
+      allMarkets.sort((a, b) => Math.abs(b.volume_change_percentage) - Math.abs(a.volume_change_percentage));
+    } else if (sortBy === 'volume_price_change') {
+      allMarkets.sort((a, b) => {
+        const scoreA = Math.abs(a.price_change) * Math.abs(a.volume_change_percentage);
+        const scoreB = Math.abs(b.price_change) * Math.abs(b.volume_change_percentage);
+        return scoreB - scoreA;
+      });
+    } else {
+      // Default to price_change sorting
+      allMarkets.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change));
+    }
 
     // Apply pagination to the filtered and sorted results
     const start = (page - 1) * limit;
@@ -412,19 +402,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error:', error);
-    if (redis) {
-      await redis.close();
-    }
-    return new Response(
-      JSON.stringify({
-        data: [],
-        hasMore: false,
-        error: error.message
-      }),
-      { 
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
   }
 });

@@ -38,8 +38,8 @@ interface TopMoversHeaderProps {
   setShowVolumeMinThumb: (show: boolean) => void;
   showVolumeMaxThumb: boolean;
   setShowVolumeMaxThumb: (show: boolean) => void;
-  sortBy: 'price_change' | 'volume';
-  onSortChange: (value: 'price_change' | 'volume') => void;
+  sortBy: 'price_change' | 'volume' | 'volume_price_change';
+  onSortChange: (value: 'price_change' | 'volume' | 'volume_price_change') => void;
 }
 
 export function TopMoversHeader({
@@ -117,10 +117,11 @@ export function TopMoversHeader({
             <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
               <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <div className="p-2">
+              <div className="p-2 space-y-2">
+                <Label className="text-xs text-muted-foreground">Sort by</Label>
                 <Select
                   value={sortBy}
-                  onValueChange={(value: 'price_change' | 'volume') => onSortChange(value)}
+                  onValueChange={(value: 'price_change' | 'volume' | 'volume_price_change') => onSortChange(value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Sort by" />
@@ -128,6 +129,7 @@ export function TopMoversHeader({
                   <SelectContent>
                     <SelectItem value="price_change">Price Change</SelectItem>
                     <SelectItem value="volume">Volume Change</SelectItem>
+                    <SelectItem value="volume_price_change">Volume Change × Price Change</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
