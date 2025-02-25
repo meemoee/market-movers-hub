@@ -107,23 +107,19 @@ export default function TopMoversList({
   const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 1000000]);
   const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
-  const [priceVolumeImpactRange, setPriceVolumeImpactRange] = useState<[number, number]>([-100000, 100000]);
-  const [showPriceVolumeImpactMinThumb, setShowPriceVolumeImpactMinThumb] = useState(false);
-  const [showPriceVolumeImpactMaxThumb, setShowPriceVolumeImpactMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
   const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
   const debouncedVolumeRange = useDebounce(volumeRange, 300);
-  const debouncedPriceVolumeImpactRange = useDebounce(priceVolumeImpactRange, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
 
   const topMoversQuery = useTopMovers(
-    selectedInterval,
-    openMarketsOnly,
-    debouncedSearch,
+    selectedInterval, 
+    openMarketsOnly, 
+    debouncedSearch, 
     marketId,
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
     showMaxThumb ? debouncedProbabilityRange[1] : undefined,
@@ -131,8 +127,6 @@ export default function TopMoversList({
     showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
     showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
     showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
-    showPriceVolumeImpactMinThumb ? debouncedPriceVolumeImpactRange[0] : undefined,
-    showPriceVolumeImpactMaxThumb ? debouncedPriceVolumeImpactRange[1] : undefined,
     sortBy
   );
 
@@ -252,12 +246,6 @@ export default function TopMoversList({
           setShowVolumeMinThumb={setShowVolumeMinThumb}
           showVolumeMaxThumb={showVolumeMaxThumb}
           setShowVolumeMaxThumb={setShowVolumeMaxThumb}
-          priceVolumeImpactRange={priceVolumeImpactRange}
-          setPriceVolumeImpactRange={setPriceVolumeImpactRange}
-          showPriceVolumeImpactMinThumb={showPriceVolumeImpactMinThumb}
-          setShowPriceVolumeImpactMinThumb={setShowPriceVolumeImpactMinThumb}
-          showPriceVolumeImpactMaxThumb={showPriceVolumeImpactMaxThumb}
-          setShowPriceVolumeImpactMaxThumb={setShowPriceVolumeImpactMaxThumb}
           sortBy={sortBy}
           onSortChange={setSortBy}
         />
