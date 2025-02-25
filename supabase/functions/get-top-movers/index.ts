@@ -1,43 +1,14 @@
 
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { format, subMinutes } from 'https://esm.sh/date-fns@2.30.0'
 import { corsHeaders } from '../_shared/cors.ts'
-import { Knex, knex } from '@supabase/postgres-js'
-import { format, subMinutes } from 'date-fns'
+import { createClient } from '@supabase/supabase-js'
 
-interface TopMoversResponse {
-  data: TopMover[];
-  hasMore: boolean;
-  total?: number;
-}
+const supabaseUrl = Deno.env.get('SUPABASE_URL')
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+const supabase = createClient(supabaseUrl, supabaseKey)
 
-interface TopMover {
-  market_id: string;
-  question: string;
-  url: string;
-  subtitle?: string;
-  yes_sub_title?: string;
-  no_sub_title?: string;
-  description?: string;
-  clobtokenids?: any;
-  outcomes?: any;
-  active: boolean;
-  closed: boolean;
-  archived: boolean;
-  image: string;
-  event_id: string;
-  event_title?: string;
-  final_last_traded_price: number;
-  final_best_ask: number;
-  final_best_bid: number;
-  final_volume: number;
-  initial_last_traded_price: number;
-  initial_volume: number;
-  price_change: number;
-  volume_change: number;
-  volume_change_percentage: number;
-  price_volume_impact: number;
-}
-
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -46,14 +17,14 @@ Deno.serve(async (req) => {
   try {
     const { marketId, interval, openOnly = true, page = 1, limit = 20, searchQuery = '', probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, priceVolumeImpactMin, priceVolumeImpactMax, sortBy = 'price_change' } = await req.json()
 
-    console.log('Received request:', { 
-      marketId, 
-      interval, 
-      openOnly, 
-      page, 
-      limit, 
-      searchQuery, 
-      probabilityMin, 
+    console.log('Received request:', {
+      marketId,
+      interval,
+      openOnly,
+      page,
+      limit,
+      searchQuery,
+      probabilityMin,
       probabilityMax,
       priceChangeMin,
       priceChangeMax,
@@ -62,206 +33,134 @@ Deno.serve(async (req) => {
       priceVolumeImpactMin,
       priceVolumeImpactMax,
       sortBy
-    });
+    })
 
-    const connection = knex({
-      client: 'postgres',
-      connection: Deno.env.get('SUPABASE_DB_URL'),
-    } as Knex.Config)
-
+    const offset = (page - 1) * limit
     const now = new Date()
     const startTime = subMinutes(now, parseInt(interval))
     const formattedStartTime = format(startTime, 'yyyy-MM-dd HH:mm:ss')
     const formattedEndTime = format(now, 'yyyy-MM-dd HH:mm:ss')
 
-    const offset = (page - 1) * limit
+    let query = supabase
+      .from('markets')
+      .select(`
+        id:market_id,
+        question,
+        url,
+        subtitle,
+        yes_sub_title,
+        no_sub_title,
+        description,
+        clobtokenids,
+        outcomes,
+        active,
+        closed,
+        archived,
+        image,
+        event_id,
+        events (
+          title
+        )
+      `)
 
-    let query = connection('markets as m')
-      .join('market_prices as mp_start', function() {
-        this.on('m.id', '=', 'mp_start.market_id')
-          .andOn('mp_start.timestamp', '=', 
-            connection('market_prices as mp2')
-              .where('mp2.market_id', '=', 'm.id')
-              .where('mp2.timestamp', '>=', formattedStartTime)
-              .orderBy('mp2.timestamp', 'asc')
-              .limit(1)
-              .select('mp2.timestamp')
-          )
-      })
-      .join('market_prices as mp_end', function() {
-        this.on('m.id', '=', 'mp_end.market_id')
-          .andOn('mp_end.timestamp', '=', 
-            connection('market_prices as mp3')
-              .where('mp3.market_id', '=', 'm.id')
-              .where('mp3.timestamp', '<=', formattedEndTime)
-              .orderBy('mp3.timestamp', 'desc')
-              .limit(1)
-              .select('mp3.timestamp')
-          )
-      })
-      .leftJoin('events as e', 'm.event_id', 'e.id')
-
-    // Single market query
     if (marketId) {
-      query = query.where('m.id', marketId)
+      // For single market view
+      query = query.eq('market_id', marketId)
     } else {
-      // Apply filters for list view
+      // For list view with filters
       if (openOnly) {
-        query = query.where('m.active', true)
-          .where('m.archived', false)
+        query = query.eq('active', true).eq('archived', false)
       }
 
       if (searchQuery) {
-        query = query.where(function() {
-          this.whereILike('m.question', `%${searchQuery}%`)
-            .orWhereILike('m.description', `%${searchQuery}%`)
-            .orWhereILike('e.title', `%${searchQuery}%`)
-        })
+        query = query.ilike('question', `%${searchQuery}%`)
       }
-
-      if (probabilityMin !== undefined) {
-        query = query.where('mp_end.last_traded_price', '>=', probabilityMin / 100)
-      }
-
-      if (probabilityMax !== undefined) {
-        query = query.where('mp_end.last_traded_price', '<=', probabilityMax / 100)
-      }
-
-      if (priceChangeMin !== undefined) {
-        query = query.whereRaw(`
-          ((mp_end.last_traded_price - mp_start.last_traded_price) / mp_start.last_traded_price * 100) >= ?
-        `, [priceChangeMin])
-      }
-
-      if (priceChangeMax !== undefined) {
-        query = query.whereRaw(`
-          ((mp_end.last_traded_price - mp_start.last_traded_price) / mp_start.last_traded_price * 100) <= ?
-        `, [priceChangeMax])
-      }
-
-      if (volumeMin !== undefined) {
-        query = query.where('mp_end.volume', '>=', volumeMin)
-      }
-
-      if (volumeMax !== undefined) {
-        query = query.where('mp_end.volume', '<=', volumeMax)
-      }
-
-      // Add price volume impact filters
-      if (priceVolumeImpactMin !== undefined) {
-        query = query.whereRaw(`
-          ((mp_end.last_traded_price - mp_start.last_traded_price) / mp_start.last_traded_price * 100) * (mp_end.volume - mp_start.volume) >= ?
-        `, [priceVolumeImpactMin])
-      }
-
-      if (priceVolumeImpactMax !== undefined) {
-        query = query.whereRaw(`
-          ((mp_end.last_traded_price - mp_start.last_traded_price) / mp_start.last_traded_price * 100) * (mp_end.volume - mp_start.volume) <= ?
-        `, [priceVolumeImpactMax])
-      }
-
-      // Sort by the selected metric
-      if (sortBy === 'volume') {
-        query = query.orderByRaw('(mp_end.volume - mp_start.volume) DESC')
-      } else { // default to price_change
-        query = query.orderByRaw('ABS((mp_end.last_traded_price - mp_start.last_traded_price) / mp_start.last_traded_price) DESC')
-      }
-
-      query = query.limit(limit).offset(offset)
+      
+      query = query.range(offset, offset + limit - 1)
     }
 
-    // Select all required fields
-    query = query.select(
-      'm.id as market_id',
-      'm.question',
-      'm.url',
-      'm.subtitle',
-      'm.yes_sub_title',
-      'm.no_sub_title',
-      'm.description',
-      'm.clobtokenids',
-      'm.outcomes',
-      'm.active',
-      'm.closed',
-      'm.archived',
-      'm.image',
-      'm.event_id',
-      'e.title as event_title',
-      'mp_end.last_traded_price as final_last_traded_price',
-      'mp_end.best_ask as final_best_ask',
-      'mp_end.best_bid as final_best_bid',
-      'mp_end.volume as final_volume',
-      'mp_start.last_traded_price as initial_last_traded_price',
-      'mp_start.volume as initial_volume'
+    const { data: markets, error: marketsError } = await query
+
+    if (marketsError) throw marketsError
+
+    // Get market prices for time range
+    const { data: priceData, error: priceError } = await supabase
+      .rpc('get_active_markets_with_prices', {
+        start_time: formattedStartTime,
+        end_time: formattedEndTime,
+        p_limit: limit,
+        p_offset: offset,
+        p_probability_min: probabilityMin,
+        p_probability_max: probabilityMax,
+        p_price_change_min: priceChangeMin,
+        p_price_change_max: priceChangeMax
+      })
+
+    if (priceError) throw priceError
+
+    // Combine market details with price data
+    const combinedData = markets
+      .map(market => {
+        const priceInfo = priceData.find(p => p.output_market_id === market.id)
+        if (!priceInfo) return null
+
+        const initial_last_traded_price = priceInfo.initial_price
+        const final_last_traded_price = priceInfo.final_price
+        const price_change = ((final_last_traded_price - initial_last_traded_price) / initial_last_traded_price) * 100
+
+        // Apply volume filters if provided
+        if (volumeMin !== undefined && priceInfo.volume < volumeMin) return null
+        if (volumeMax !== undefined && priceInfo.volume > volumeMax) return null
+
+        // Calculate price_volume_impact
+        const price_volume_impact = price_change * (priceInfo.final_volume - priceInfo.initial_volume)
+
+        // Apply price volume impact filters if provided
+        if (priceVolumeImpactMin !== undefined && price_volume_impact < priceVolumeImpactMin) return null
+        if (priceVolumeImpactMax !== undefined && price_volume_impact > priceVolumeImpactMax) return null
+
+        return {
+          ...market,
+          event_title: market.events?.title,
+          final_last_traded_price,
+          final_best_ask: priceInfo.final_best_ask,
+          final_best_bid: priceInfo.final_best_bid,
+          final_volume: priceInfo.final_volume,
+          initial_last_traded_price,
+          initial_volume: priceInfo.initial_volume,
+          price_change,
+          volume_change: priceInfo.final_volume - priceInfo.initial_volume,
+          volume_change_percentage: ((priceInfo.final_volume - priceInfo.initial_volume) / priceInfo.initial_volume) * 100,
+          price_volume_impact
+        }
+      })
+      .filter(Boolean)
+
+    // Sort the data
+    let sortedData = [...combinedData]
+    if (sortBy === 'price_change') {
+      sortedData.sort((a, b) => Math.abs(b.price_change) - Math.abs(a.price_change))
+    } else if (sortBy === 'volume') {
+      sortedData.sort((a, b) => b.volume_change - a.volume_change)
+    }
+
+    // Check if there are more results
+    const totalCount = combinedData.length
+    const hasMore = totalCount === limit
+
+    return new Response(
+      JSON.stringify({
+        data: sortedData,
+        hasMore,
+        total: totalCount
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      },
     )
-
-    console.log('Executing query...');
-    const results = await query
-
-    // Calculate additional fields
-    const transformedResults = results.map(row => ({
-      ...row,
-      price_change: row.final_last_traded_price && row.initial_last_traded_price
-        ? ((row.final_last_traded_price - row.initial_last_traded_price) / row.initial_last_traded_price) * 100
-        : 0,
-      volume_change: row.final_volume && row.initial_volume
-        ? row.final_volume - row.initial_volume
-        : 0,
-      volume_change_percentage: row.final_volume && row.initial_volume
-        ? ((row.final_volume - row.initial_volume) / row.initial_volume) * 100
-        : 0,
-      price_volume_impact: row.final_last_traded_price && row.initial_last_traded_price && row.final_volume && row.initial_volume
-        ? (((row.final_last_traded_price - row.initial_last_traded_price) / row.initial_last_traded_price) * 100) * (row.final_volume - row.initial_volume)
-        : 0
-    }))
-
-    // For list view, check if there are more results
-    let hasMore = false
-    if (!marketId) {
-      const nextPage = await connection('markets as m')
-        .join('market_prices as mp_start', function() {
-          this.on('m.id', '=', 'mp_start.market_id')
-            .andOn('mp_start.timestamp', '=', 
-              connection('market_prices as mp2')
-                .where('mp2.market_id', '=', 'm.id')
-                .where('mp2.timestamp', '>=', formattedStartTime)
-                .orderBy('mp2.timestamp', 'asc')
-                .limit(1)
-                .select('mp2.timestamp')
-            )
-        })
-        .join('market_prices as mp_end', function() {
-          this.on('m.id', '=', 'mp_end.market_id')
-            .andOn('mp_end.timestamp', '=', 
-              connection('market_prices as mp3')
-                .where('mp3.market_id', '=', 'm.id')
-                .where('mp3.timestamp', '<=', formattedEndTime)
-                .orderBy('mp3.timestamp', 'desc')
-                .limit(1)
-                .select('mp3.timestamp')
-            )
-        })
-        .count('* as count')
-        .first()
-
-      hasMore = (nextPage?.count || 0) > offset + limit
-    }
-
-    const response: TopMoversResponse = {
-      data: transformedResults,
-      hasMore,
-      total: results.length
-    }
-
-    await connection.destroy()
-
-    return new Response(JSON.stringify(response), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
-
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error:', error)
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
