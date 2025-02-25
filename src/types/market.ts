@@ -33,3 +33,5 @@ export interface TopMover {
   volume_change: number;
   volume_change_percentage: number;
 }
+
+export type SortByOption = 'price_change' | 'volume' | 'combined';
