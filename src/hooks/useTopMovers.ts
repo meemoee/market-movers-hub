@@ -33,6 +33,7 @@ interface TopMover {
   price_change: number;
   volume_change: number;
   volume_change_percentage: number;
+  price_volume_impact?: number;
 }
 
 export function useTopMovers(
@@ -46,6 +47,8 @@ export function useTopMovers(
   priceChangeMax?: number,
   volumeMin?: number,
   volumeMax?: number,
+  priceVolumeImpactMin?: number,
+  priceVolumeImpactMax?: number,
   sortBy: 'price_change' | 'volume' = 'price_change'
 ) {
   // For single market view, use a simple query instead of infinite query
@@ -85,7 +88,7 @@ export function useTopMovers(
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, priceVolumeImpactMin, priceVolumeImpactMax, sortBy],
     queryFn: async ({ pageParam = 1 }) => {
       console.log('Fetching top movers list:', { 
         interval, 
@@ -98,6 +101,8 @@ export function useTopMovers(
         priceChangeMax,
         volumeMin,
         volumeMax,
+        priceVolumeImpactMin,
+        priceVolumeImpactMax,
         sortBy
       });
       
@@ -114,6 +119,8 @@ export function useTopMovers(
           priceChangeMax,
           volumeMin: volumeMin !== undefined ? Number(volumeMin) : undefined,
           volumeMax: volumeMax !== undefined ? Number(volumeMax) : undefined,
+          priceVolumeImpactMin: priceVolumeImpactMin !== undefined ? Number(priceVolumeImpactMin) : undefined,
+          priceVolumeImpactMax: priceVolumeImpactMax !== undefined ? Number(priceVolumeImpactMax) : undefined,
           sortBy
         }
       });
@@ -147,4 +154,3 @@ export function useTopMovers(
 
   return listQuery;
 }
-

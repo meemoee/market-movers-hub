@@ -1,4 +1,3 @@
-
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -38,6 +37,12 @@ interface TopMoversHeaderProps {
   setShowVolumeMinThumb: (show: boolean) => void;
   showVolumeMaxThumb: boolean;
   setShowVolumeMaxThumb: (show: boolean) => void;
+  priceVolumeImpactRange: [number, number];
+  setPriceVolumeImpactRange: (range: [number, number]) => void;
+  showPriceVolumeImpactMinThumb: boolean;
+  setShowPriceVolumeImpactMinThumb: (show: boolean) => void;
+  showPriceVolumeImpactMaxThumb: boolean;
+  setShowPriceVolumeImpactMaxThumb: (show: boolean) => void;
   sortBy: 'price_change' | 'volume';
   onSortChange: (value: 'price_change' | 'volume') => void;
 }
@@ -68,6 +73,12 @@ export function TopMoversHeader({
   setShowVolumeMinThumb,
   showVolumeMaxThumb,
   setShowVolumeMaxThumb,
+  priceVolumeImpactRange,
+  setPriceVolumeImpactRange,
+  showPriceVolumeImpactMinThumb,
+  setShowPriceVolumeImpactMinThumb,
+  showPriceVolumeImpactMaxThumb,
+  setShowPriceVolumeImpactMaxThumb,
   sortBy,
   onSortChange,
 }: TopMoversHeaderProps) {
@@ -296,6 +307,54 @@ export function TopMoversHeader({
                         }}
                       />
                       <Label htmlFor="volume-max-thumb" className="text-sm">Max</Label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-8">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label className="leading-6">Price-Volume Impact Range</Label>
+                      <output className="text-sm font-medium tabular-nums">
+                        {showPriceVolumeImpactMinThumb ? priceVolumeImpactRange[0] : -100000} - {showPriceVolumeImpactMaxThumb ? priceVolumeImpactRange[1] : 100000}
+                      </output>
+                    </div>
+                    <MultiRangeSlider
+                      min={-100000}
+                      max={100000}
+                      value={priceVolumeImpactRange}
+                      onChange={setPriceVolumeImpactRange}
+                      showMinThumb={showPriceVolumeImpactMinThumb}
+                      showMaxThumb={showPriceVolumeImpactMaxThumb}
+                      className="w-full mb-4"
+                    />
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="price-volume-impact-min-thumb"
+                        checked={showPriceVolumeImpactMinThumb}
+                        onCheckedChange={(checked) => {
+                          setShowPriceVolumeImpactMinThumb(checked as boolean);
+                          if (!checked) {
+                            setPriceVolumeImpactRange([-100000, priceVolumeImpactRange[1]]);
+                          }
+                        }}
+                      />
+                      <Label htmlFor="price-volume-impact-min-thumb" className="text-sm">Min</Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox 
+                        id="price-volume-impact-max-thumb"
+                        checked={showPriceVolumeImpactMaxThumb}
+                        onCheckedChange={(checked) => {
+                          setShowPriceVolumeImpactMaxThumb(checked as boolean);
+                          if (!checked) {
+                            setPriceVolumeImpactRange([priceVolumeImpactRange[0], 100000]);
+                          }
+                        }}
+                      />
+                      <Label htmlFor="price-volume-impact-max-thumb" className="text-sm">Max</Label>
                     </div>
                   </div>
                 </div>
