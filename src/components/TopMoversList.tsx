@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -130,6 +131,14 @@ export default function TopMoversList({
     sortBy
   );
 
+  // Add console log to debug loading state
+  console.log('TopMovers state:', {
+    isLoading: topMoversQuery.isLoading,
+    isFetching: topMoversQuery.isFetching,
+    error: topMoversQuery.error,
+    data: topMoversQuery.data
+  });
+
   const marketSearchQuery = useMarketSearch(
     debouncedSearch, 
     searchPage, 
@@ -160,7 +169,7 @@ export default function TopMoversList({
 
   const isSearching = debouncedSearch.length > 0 && !marketId;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
-  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
+  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages?.flatMap(page => page.data)) || [];
   const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
 
   const handleTransaction = () => {
