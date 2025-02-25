@@ -117,7 +117,8 @@ export function TopMoversHeader({
             <DropdownMenuContent align="end" className="w-[300px] bg-background/95 backdrop-blur-sm border-border">
               <DropdownMenuLabel>Market Filters</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <div className="p-2">
+              <div className="p-2 space-y-1">
+                <Label className="text-xs text-muted-foreground">Sort by</Label>
                 <Select
                   value={sortBy}
                   onValueChange={(value: 'price_change' | 'volume') => onSortChange(value)}
