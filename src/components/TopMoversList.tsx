@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +17,15 @@ interface TimeInterval {
   value: string;
 }
 
+const formatInterval = (minutes: number): string => {
+  if (minutes < 60) return `${minutes} mins`;
+  if (minutes === 60) return '1 hour';
+  if (minutes < 1440) return `${minutes / 60} hours`;
+  if (minutes === 1440) return '1 day';
+  if (minutes === 10080) return '1 week';
+  return `${minutes / 1440} days`;
+};
+
 const TIME_INTERVALS: TimeInterval[] = [
   { label: formatInterval(5), value: '5' },
   { label: formatInterval(10), value: '10' },
@@ -28,15 +36,6 @@ const TIME_INTERVALS: TimeInterval[] = [
   { label: formatInterval(1440), value: '1440' },
   { label: formatInterval(10080), value: '10080' },
 ] as const;
-
-const formatInterval = (minutes: number): string => {
-  if (minutes < 60) return `${minutes} mins`;
-  if (minutes === 60) return '1 hour';
-  if (minutes < 1440) return `${minutes / 60} hours`;
-  if (minutes === 1440) return '1 day';
-  if (minutes === 10080) return '1 week';
-  return `${minutes / 1440} days`;
-};
 
 export interface TopMover {
   market_id: string;
