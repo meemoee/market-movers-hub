@@ -33,6 +33,7 @@ interface TopMover {
   price_change: number;
   volume_change: number;
   volume_change_percentage: number;
+  price_volume_impact: number;
 }
 
 export function useTopMovers(
@@ -46,7 +47,9 @@ export function useTopMovers(
   priceChangeMax?: number,
   volumeMin?: number,
   volumeMax?: number,
-  sortBy: 'price_change' | 'volume' = 'price_change'
+  sortBy: 'price_change' | 'volume' | 'price_volume_impact' = 'price_change',
+  priceVolumeImpactMin?: number,
+  priceVolumeImpactMax?: number,
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
@@ -85,7 +88,7 @@ export function useTopMovers(
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
-    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy],
+    queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy, priceVolumeImpactMin, priceVolumeImpactMax],
     queryFn: async ({ pageParam = 1 }) => {
       console.log('Fetching top movers list:', { 
         interval, 
@@ -98,7 +101,9 @@ export function useTopMovers(
         priceChangeMax,
         volumeMin,
         volumeMax,
-        sortBy
+        sortBy,
+        priceVolumeImpactMin,
+        priceVolumeImpactMax
       });
       
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
@@ -114,7 +119,9 @@ export function useTopMovers(
           priceChangeMax,
           volumeMin: volumeMin !== undefined ? Number(volumeMin) : undefined,
           volumeMax: volumeMax !== undefined ? Number(volumeMax) : undefined,
-          sortBy
+          sortBy,
+          priceVolumeImpactMin,
+          priceVolumeImpactMax
         }
       });
 
@@ -147,4 +154,3 @@ export function useTopMovers(
 
   return listQuery;
 }
-
