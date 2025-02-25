@@ -1,6 +1,6 @@
-
-import { corsHeaders } from '../_shared/cors'
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/cors.ts'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 interface TopMoversParams {
   interval: string;
@@ -18,9 +18,9 @@ interface TopMoversParams {
   sortBy: 'price_change' | 'volume' | 'combined';
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
+    return new Response('ok', { headers: corsHeaders });
   }
 
   try {
@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    );
 
     const offset = (page - 1) * limit;
     const searchQueryLower = searchQuery.toLowerCase();
@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json'
         }
       }
-    )
+    );
   } catch (error) {
     console.error('Error processing request:', error);
     return new Response(JSON.stringify({ error: error.message }), {
@@ -175,6 +175,6 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json'
       },
       status: 400
-    })
+    });
   }
-})
+});
