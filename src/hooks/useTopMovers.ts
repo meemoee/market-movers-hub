@@ -1,12 +1,38 @@
 
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
-import { TopMover, SortByOption } from '@/types/market'
 
 interface TopMoversResponse {
   data: TopMover[];
   hasMore: boolean;
   total?: number;
+}
+
+interface TopMover {
+  market_id: string;
+  question: string;
+  url: string;
+  subtitle?: string;
+  yes_sub_title?: string;
+  no_sub_title?: string;
+  description?: string;
+  clobtokenids?: any;
+  outcomes?: any;
+  active: boolean;
+  closed: boolean;
+  archived: boolean;
+  image: string;
+  event_id: string;
+  event_title?: string;
+  final_last_traded_price: number;
+  final_best_ask: number;
+  final_best_bid: number;
+  final_volume: number;
+  initial_last_traded_price: number;
+  initial_volume: number;
+  price_change: number;
+  volume_change: number;
+  volume_change_percentage: number;
 }
 
 export function useTopMovers(
@@ -20,9 +46,9 @@ export function useTopMovers(
   priceChangeMax?: number,
   volumeMin?: number,
   volumeMax?: number,
-  sortBy: SortByOption = 'price_change'
+  sortBy: 'price_change' | 'volume' = 'price_change'
 ) {
-  // For single market view, use a simple query
+  // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
     queryKey: ['market', marketId],
     queryFn: async () => {
@@ -36,10 +62,7 @@ export function useTopMovers(
         }
       });
 
-      if (error) {
-        console.error('Error fetching single market:', error);
-        throw error;
-      }
+      if (error) throw error;
       
       if (!data?.data?.[0]) {
         console.log('Market not found, trying without filters');
@@ -51,24 +74,20 @@ export function useTopMovers(
           }
         });
         
-        if (retryError) {
-          console.error('Error in retry fetch:', retryError);
-          throw retryError;
-        }
+        if (retryError) throw retryError;
         return retryData?.data?.[0] || null;
       }
       
       return data.data[0];
     },
-    enabled: !!marketId,
-    retry: 1
+    enabled: !!marketId
   });
 
   // For list view, use infinite query
   const listQuery = useInfiniteQuery({
     queryKey: ['topMovers', interval, openOnly, searchQuery, probabilityMin, probabilityMax, priceChangeMin, priceChangeMax, volumeMin, volumeMax, sortBy],
     queryFn: async ({ pageParam = 1 }) => {
-      console.log('Fetching top movers list with params:', { 
+      console.log('Fetching top movers list:', { 
         interval, 
         openOnly, 
         page: pageParam, 
@@ -99,30 +118,18 @@ export function useTopMovers(
         }
       });
 
-      if (error) {
-        console.error('Error fetching top movers list:', error, error.message);
-        throw new Error(`Failed to fetch top movers: ${error.message}`);
-      }
-      
-      if (!data) {
-        console.error('No data received from get-top-movers');
-        throw new Error('No data received from server');
-      }
-
-      console.log('Received top movers response:', data);
+      if (error) throw error;
       
       return {
-        data: data.data || [],
-        hasMore: data.hasMore || false,
-        total: data.total,
-        nextPage: data.hasMore ? pageParam + 1 : undefined
+        data: data?.data || [],
+        hasMore: data?.hasMore || false,
+        total: data?.total,
+        nextPage: data?.hasMore ? pageParam + 1 : undefined
       };
     },
     getNextPageParam: (lastPage) => lastPage.nextPage,
     initialPageParam: 1,
-    enabled: !marketId,
-    retry: 1,
-    retryDelay: 1000
+    enabled: !marketId
   });
 
   // Return appropriate data structure based on whether we're viewing a single market
@@ -140,3 +147,4 @@ export function useTopMovers(
 
   return listQuery;
 }
+

@@ -1,7 +1,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
-import { TopMover } from '@/types/market'
+import { TopMover } from '@/components/TopMoversList'
 
 interface MarketSearchResponse {
   data: TopMover[];

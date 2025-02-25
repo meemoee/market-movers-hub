@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -12,7 +11,11 @@ import { InsightPostBox } from './market/InsightPostBox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
-import { OrderBookData } from '@/types/market';
+
+interface TimeInterval {
+  label: string;
+  value: string;
+}
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} mins`;
@@ -23,7 +26,7 @@ const formatInterval = (minutes: number): string => {
   return `${minutes / 1440} days`;
 };
 
-const TIME_INTERVALS = [
+const TIME_INTERVALS: TimeInterval[] = [
   { label: formatInterval(5), value: '5' },
   { label: formatInterval(10), value: '10' },
   { label: formatInterval(30), value: '30' },
@@ -34,19 +37,56 @@ const TIME_INTERVALS = [
   { label: formatInterval(10080), value: '10080' },
 ] as const;
 
+export interface TopMover {
+  market_id: string;
+  question: string;
+  url: string;
+  subtitle?: string;
+  yes_sub_title?: string;
+  no_sub_title?: string;
+  description?: string;
+  clobtokenids?: string[];
+  outcomes?: string[];
+  active: boolean;
+  closed: boolean;
+  archived: boolean;
+  image: string;
+  event_id: string;
+  event_title?: string;
+  final_last_traded_price: number;
+  final_best_ask: number;
+  final_best_bid: number;
+  final_volume: number;
+  initial_last_traded_price: number;
+  initial_volume: number;
+  price_change: number;
+  volume_change: number;
+  volume_change_percentage: number;
+}
+
+interface TopMoversListProps {
+  timeIntervals: readonly TimeInterval[];
+  selectedInterval: string;
+  onIntervalChange: (interval: string) => void;
+  openMarketsOnly: boolean;
+  onOpenMarketsChange: (value: boolean) => void;
+}
+
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
+
 export default function TopMoversList({
   timeIntervals = TIME_INTERVALS,
   selectedInterval,
   onIntervalChange,
   openMarketsOnly,
   onOpenMarketsChange,
-}: {
-  timeIntervals?: readonly typeof TIME_INTERVALS[number][];
-  selectedInterval: string;
-  onIntervalChange: (interval: string) => void;
-  openMarketsOnly: boolean;
-  onOpenMarketsChange: (value: boolean) => void;
-}) {
+}: TopMoversListProps) {
   const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
   const [expandedMarkets, setExpandedMarkets] = useState<Set<string>>(new Set());
   const [selectedMarket, setSelectedMarket] = useState<{ 
@@ -68,7 +108,7 @@ export default function TopMoversList({
   const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'price_change' | 'volume' | 'combined'>('price_change');
+  const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
