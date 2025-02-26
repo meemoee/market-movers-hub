@@ -46,7 +46,7 @@ export function useTopMovers(
   priceChangeMax?: number,
   volumeMin?: number,
   volumeMax?: number,
-  sortBy: 'price_change' | 'volume' = 'price_change'
+  sortBy: 'price_change' | 'volume' | 'price_volume_impact' = 'price_change'
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
