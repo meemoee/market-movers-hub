@@ -27,7 +27,19 @@ Deno.serve(async (req) => {
     // Create Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const supabase = createClient(supabaseUrl!, supabaseKey!)
+
+    if (!supabaseUrl || !supabaseKey) {
+      console.error('Missing env variables')
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
     // Get time window
     const endTime = new Date().toISOString()
@@ -56,12 +68,18 @@ Deno.serve(async (req) => {
 
     if (marketError) {
       console.error('Error fetching market data:', marketError)
-      throw marketError
+      return new Response(
+        JSON.stringify({ error: marketError.message }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
     }
 
     if (!marketData?.length) {
       return new Response(
-        JSON.stringify({ data: [], hasMore: false }),
+        JSON.stringify({ data: [], hasMore: false, total: 0 }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -86,16 +104,21 @@ Deno.serve(async (req) => {
 
     if (marketsError) {
       console.error('Error fetching markets:', marketsError)
-      throw marketsError
+      return new Response(
+        JSON.stringify({ error: marketsError.message }),
+        { 
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      )
     }
 
-    // Combine market data with market details and calculate volume changes
+    // Combine market data with market details and calculate changes
     const enrichedMarkets = markets?.map(market => {
       const priceData = marketData.find((m: any) => m.output_market_id === market.id)
       const volumeChange = priceData?.volume_change || 0
       const volumeChangePercentage = priceData?.volume_change_percentage || 0
       const priceChange = ((priceData?.final_price - priceData?.initial_price) / priceData?.initial_price) * 100
-      const priceVolumeImpact = Math.abs(priceChange) * Math.abs(volumeChangePercentage)
 
       return {
         ...market,
@@ -108,17 +131,18 @@ Deno.serve(async (req) => {
         price_change: priceChange,
         volume_change: volumeChange,
         volume_change_percentage: volumeChangePercentage,
-        price_volume_impact: priceVolumeImpact
+        price_volume_impact: Math.abs(priceChange) * Math.abs(volumeChangePercentage)
       }
     }).filter(market => {
+      if (!market) return false
       // Apply volume filters if provided
       if (volumeMin !== undefined && market.volume_change < volumeMin) return false
       if (volumeMax !== undefined && market.volume_change > volumeMax) return false
       return true
-    })
+    }) || []
 
     // Sort the markets based on the selected criteria
-    const sortedMarkets = enrichedMarkets?.sort((a, b) => {
+    const sortedMarkets = [...enrichedMarkets].sort((a, b) => {
       switch (sortBy) {
         case 'volume':
           return Math.abs(b.volume_change) - Math.abs(a.volume_change)
@@ -146,9 +170,10 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
-        status: 400,
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     )
   }
 })
+
