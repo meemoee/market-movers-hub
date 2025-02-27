@@ -154,6 +154,15 @@ export function MarketDetails({
       <div className="mt-6">
         <SimilarHistoricalEvents />
       </div>
+
+      {/* Market Description Section */}
+      {description && (
+        <div className="mt-6 border-t border-border pt-4">
+          <p className="text-xs text-muted-foreground">
+            {description}
+          </p>
+        </div>
+      )}
     </div>
   );
 }
