@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -14,14 +15,13 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query, question } = await req.json()
+    const { content, query } = await req.json()
     
     if (!content || content.length === 0) {
       throw new Error('No content provided for analysis')
     }
 
     console.log(`Analyzing content for query: ${query}`)
-    console.log(`Market question: ${question}`)
     console.log(`Content length: ${content.length} characters`)
 
     const response = await fetch(OPENROUTER_URL, {
@@ -41,95 +41,46 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Market Question: "${question}"
-
-Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}
-
-Content:
-${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
+            content: `Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}\n\nContent:\n${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
           }
         ],
         stream: true
       })
     })
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available
-    let buffer = ""
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
+    // Create a TransformStream to handle accumulating text chunks
+    const transformer = new TransformStream({
+      start() {},
+      transform(chunk: Uint8Array, controller) {
+        // Convert chunk to string
         const text = new TextDecoder().decode(chunk)
-        buffer += text
+        const lines = text.split('\n').filter(line => line.trim())
         
-        // Keep processing the buffer until we can't find any more complete messages
-        while (true) {
-          const nlIndex = buffer.indexOf('\n')
-          if (nlIndex === -1) break
-          
-          const line = buffer.slice(0, nlIndex)
-          buffer = buffer.slice(nlIndex + 1)
-          
+        for (const line of lines) {
           if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data === '[DONE]') continue
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
             
             try {
-              const parsed = JSON.parse(data)
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || ""
-              
-              if (content) {
-                const event = {
-                  choices: [{
-                    delta: { content },
-                    message: { content }
-                  }]
-                }
-                controller.enqueue(
-                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                )
-              }
-            } catch (err) {
-              console.debug('Parsing chunk (expected during streaming):', err)
+              // Append each chunk to the stream
+              controller.enqueue(chunk)
+            } catch (e) {
+              console.error('Transform error:', e)
             }
           }
         }
       },
-      flush(controller) {
-        // Process any remaining complete messages in the buffer
-        if (buffer.trim()) {
-          const lines = buffer.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim()
-              if (data === '[DONE]') continue
-              
-              try {
-                const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || 
-                              parsed.choices?.[0]?.message?.content || ""
-                
-                if (content) {
-                  const event = {
-                    choices: [{
-                      delta: { content },
-                      message: { content }
-                    }]
-                  }
-                  controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                  )
-                }
-              } catch (err) {
-                console.debug('Parsing final chunk (expected):', err)
-              }
-            }
-          }
-        }
-        buffer = ""
-      }
+      flush() {}
     })
 
-    return new Response(response.body?.pipeThrough(transformStream), {
+    // Pipe the response through our transformer
+    const transformedStream = response.body?.pipeThrough(transformer)
+
+    if (!transformedStream) {
+      throw new Error('Failed to create stream')
+    }
+
+    return new Response(transformedStream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

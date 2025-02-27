@@ -70,16 +70,12 @@ export default function Index() {
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
           >
-            <div className={`${isMobile ? 'h-full overflow-y-auto' : 'sticky top-0 h-screen pt-3 overflow-y-auto'}`}>
-              <div className="ml-6 mb-3">
-                <a href="/" className="inline-block">
-                  <img 
-                    src="/hunchex-logo.svg" 
-                    alt="Hunchex" 
-                    className="h-12 hover:opacity-80 transition-opacity"
-                  />
-                </a>
-              </div>
+            <div className={`${isMobile ? 'h-full overflow-y-auto' : 'sticky top-0 h-screen pt-6 overflow-y-auto'}`}>
+              <img 
+                src="/hunchex-logo.svg" 
+                alt="Hunchex" 
+                className="h-8 mb-4 ml-6"
+              />
               <AccountIsland />
             </div>
           </aside>
