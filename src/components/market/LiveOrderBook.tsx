@@ -21,6 +21,17 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef<boolean>(true);
+
+  useEffect(() => {
+    // Set mounted flag to true when component mounts
+    mountedRef.current = true;
+    
+    return () => {
+      // Set mounted flag to false when component unmounts
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     // Clear any existing error when closing
@@ -36,24 +47,22 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       return;
     }
 
-    let isCleanupInitiated = false;
+    // Clean up any existing connection first
+    if (wsRef.current) {
+      console.log('[LiveOrderBook] Closing existing WebSocket connection before creating a new one');
+      wsRef.current.close();
+      wsRef.current = null;
+    }
 
-    const connectWebSocket = async () => {
+    // Clear any existing reconnect timeout
+    if (reconnectTimeoutRef.current) {
+      console.log('[LiveOrderBook] Clearing existing reconnect timeout');
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+
+    const connectWebSocket = () => {
       try {
-        // Clean up any existing connection first
-        if (wsRef.current) {
-          console.log('[LiveOrderBook] Closing existing WebSocket connection before creating a new one');
-          wsRef.current.close();
-          wsRef.current = null;
-        }
-
-        // Clear any existing reconnect timeout
-        if (reconnectTimeoutRef.current) {
-          console.log('[LiveOrderBook] Clearing existing reconnect timeout');
-          clearTimeout(reconnectTimeoutRef.current);
-          reconnectTimeoutRef.current = null;
-        }
-
         const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${clobTokenId}`;
         console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
         
@@ -61,14 +70,14 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         wsRef.current = ws;
 
         ws.onopen = () => {
-          if (!isCleanupInitiated) {
+          if (mountedRef.current) {
             console.log('[LiveOrderBook] WebSocket connected successfully');
             setError(null);
           }
         };
 
         ws.onmessage = (event) => {
-          if (!isCleanupInitiated) {
+          if (mountedRef.current) {
             try {
               console.log('[LiveOrderBook] Received WebSocket message:', event.data);
               const data = JSON.parse(event.data);
@@ -82,7 +91,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
               }
             } catch (err) {
               console.error('[LiveOrderBook] Error parsing WebSocket message:', err, 'Raw data:', event.data);
-              if (!isCleanupInitiated) {
+              if (mountedRef.current) {
                 setError('Failed to parse orderbook data');
               }
             }
@@ -91,14 +100,14 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
         ws.onerror = (event) => {
           console.error('[LiveOrderBook] WebSocket error:', event);
-          if (!isCleanupInitiated) {
+          if (mountedRef.current) {
             setError('WebSocket connection error');
             
             // Try to reconnect on error
-            if (!reconnectTimeoutRef.current && !isCleanupInitiated) {
+            if (!reconnectTimeoutRef.current && mountedRef.current) {
               console.log('[LiveOrderBook] Scheduling reconnect attempt after error');
               reconnectTimeoutRef.current = setTimeout(() => {
-                if (!isCleanupInitiated) {
+                if (mountedRef.current) {
                   console.log('[LiveOrderBook] Attempting to reconnect after error');
                   connectWebSocket();
                 }
@@ -111,10 +120,10 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
           
           // Try to reconnect on unexpected close if not during cleanup
-          if (!isCleanupInitiated && !reconnectTimeoutRef.current) {
+          if (mountedRef.current && !reconnectTimeoutRef.current) {
             console.log('[LiveOrderBook] Scheduling reconnect attempt after close');
             reconnectTimeoutRef.current = setTimeout(() => {
-              if (!isCleanupInitiated) {
+              if (mountedRef.current) {
                 console.log('[LiveOrderBook] Attempting to reconnect after close');
                 connectWebSocket();
               }
@@ -124,14 +133,14 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       } catch (err) {
         console.error('[LiveOrderBook] Error setting up WebSocket:', err);
-        if (!isCleanupInitiated) {
+        if (mountedRef.current) {
           setError('Failed to connect to orderbook service');
           
           // Try to reconnect after error in setup
           if (!reconnectTimeoutRef.current) {
             console.log('[LiveOrderBook] Scheduling reconnect attempt after setup error');
             reconnectTimeoutRef.current = setTimeout(() => {
-              if (!isCleanupInitiated) {
+              if (mountedRef.current) {
                 console.log('[LiveOrderBook] Attempting to reconnect after setup error');
                 connectWebSocket();
               }
@@ -146,8 +155,10 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
     // Cleanup function
     return () => {
-      isCleanupInitiated = true;
       console.log('[LiveOrderBook] Cleanup initiated, closing WebSocket connection');
+      
+      // Set mounted ref to false to prevent any further state updates
+      mountedRef.current = false;
       
       setError(null);
       
