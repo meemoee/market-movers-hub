@@ -10,7 +10,6 @@ interface Market {
   price: number;
   price_change: number;
   volume: number;
-  total_volume: number;
   image: string;
   yes_sub_title?: string;
   final_last_traded_price: number;
@@ -55,7 +54,6 @@ export function MarketCard({
         lastTradedPrice={market.final_last_traded_price}
         priceChange={market.price_change}
         volume={market.volume}
-        totalVolume={market.total_volume}
         isExpanded={isExpanded}
       />
       {isExpanded && (

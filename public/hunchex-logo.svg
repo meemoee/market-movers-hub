@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1788 638.6">
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1492 638.6">
   <defs>
     <style>
       .cls-1 {
-        letter-spacing: -.03em;
+        letter-spacing: 0em;
       }
 
       .cls-2 {
         fill: #fff;
         font-family: MADECarvingSoftPERSONALUSE-Bold, 'MADE Carving Soft PERSONAL USE';
-        font-size: 336.47px;
+        font-size: 369.36px;
         font-weight: 700;
       }
 
       .cls-3 {
-        letter-spacing: 0em;
+        letter-spacing: -.03em;
       }
     </style>
   </defs>
-  <text class="cls-2" transform="translate(56.51 411.88) scale(.98 1)"><tspan x="0" y="0">hunch</tspan><tspan class="cls-1" x="954.2" y="0">e</tspan><tspan class="cls-3" x="1138.58" y="0">x</tspan></text>
+  <text class="cls-2" transform="translate(0 457.03)"><tspan x="0" y="0">hunch</tspan><tspan class="cls-3" x="1047.5" y="0">e</tspan><tspan class="cls-1" x="1249.91" y="0">x</tspan></text>
 </svg>

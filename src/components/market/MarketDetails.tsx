@@ -88,9 +88,6 @@ export function MarketDetails({
     }).format(date);
   };
 
-  // Prevent rendering duplicate QADisplay components
-  const shouldShowQADisplay = marketId && question;
-
   return (
     <div className="space-y-4">
       {/* Price History Section */}
@@ -138,31 +135,19 @@ export function MarketDetails({
         />
       )}
 
-      {/* QA Tree Section - Only render if we have required props */}
-      {shouldShowQADisplay && (
-        <div className="mt-6 border-t border-border pt-4">
-          <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
-          <QADisplay 
-            marketId={marketId} 
-            marketQuestion={question}
-            marketDescription={description || 'No description available'}
-          />
-        </div>
-      )}
+      {/* QA Tree Section */}
+      <div className="mt-6 border-t border-border pt-4">
+        <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
+        <QADisplay 
+          marketId={marketId} 
+          marketQuestion={question}
+        />
+      </div>
 
       {/* Similar Historical Events Section */}
       <div className="mt-6">
         <SimilarHistoricalEvents />
       </div>
-
-      {/* Market Description Section */}
-      {description && (
-        <div className="mt-6 border-t border-border pt-4">
-          <p className="text-xs text-muted-foreground">
-            {description}
-          </p>
-        </div>
-      )}
     </div>
   );
 }
