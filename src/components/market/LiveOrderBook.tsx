@@ -22,6 +22,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef<boolean>(true);
+  const initialConnectRef = useRef<boolean>(false);
 
   useEffect(() => {
     // Set mounted flag to true when component mounts
@@ -47,6 +48,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       return;
     }
 
+    // Prevent multiple connection attempts for the same token ID
+    if (initialConnectRef.current && wsRef.current) {
+      console.log('[LiveOrderBook] Already connected to WebSocket for token:', clobTokenId);
+      return;
+    }
+
     // Clean up any existing connection first
     if (wsRef.current) {
       console.log('[LiveOrderBook] Closing existing WebSocket connection before creating a new one');
@@ -68,6 +75,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
+        initialConnectRef.current = true;
 
         ws.onopen = () => {
           if (mountedRef.current) {
@@ -100,14 +108,15 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
         ws.onerror = (event) => {
           console.error('[LiveOrderBook] WebSocket error:', event);
-          if (mountedRef.current) {
+          if (mountedRef.current && !isClosing) {
             setError('WebSocket connection error');
             
             // Try to reconnect on error
             if (!reconnectTimeoutRef.current && mountedRef.current) {
               console.log('[LiveOrderBook] Scheduling reconnect attempt after error');
               reconnectTimeoutRef.current = setTimeout(() => {
-                if (mountedRef.current) {
+                reconnectTimeoutRef.current = null;
+                if (mountedRef.current && !isClosing) {
                   console.log('[LiveOrderBook] Attempting to reconnect after error');
                   connectWebSocket();
                 }
@@ -120,10 +129,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
           
           // Try to reconnect on unexpected close if not during cleanup
-          if (mountedRef.current && !reconnectTimeoutRef.current) {
+          if (mountedRef.current && !reconnectTimeoutRef.current && !isClosing) {
             console.log('[LiveOrderBook] Scheduling reconnect attempt after close');
             reconnectTimeoutRef.current = setTimeout(() => {
-              if (mountedRef.current) {
+              reconnectTimeoutRef.current = null;
+              if (mountedRef.current && !isClosing) {
                 console.log('[LiveOrderBook] Attempting to reconnect after close');
                 connectWebSocket();
               }
@@ -133,14 +143,15 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       } catch (err) {
         console.error('[LiveOrderBook] Error setting up WebSocket:', err);
-        if (mountedRef.current) {
+        if (mountedRef.current && !isClosing) {
           setError('Failed to connect to orderbook service');
           
           // Try to reconnect after error in setup
           if (!reconnectTimeoutRef.current) {
             console.log('[LiveOrderBook] Scheduling reconnect attempt after setup error');
             reconnectTimeoutRef.current = setTimeout(() => {
-              if (mountedRef.current) {
+              reconnectTimeoutRef.current = null;
+              if (mountedRef.current && !isClosing) {
                 console.log('[LiveOrderBook] Attempting to reconnect after setup error');
                 connectWebSocket();
               }
@@ -157,11 +168,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     return () => {
       console.log('[LiveOrderBook] Cleanup initiated, closing WebSocket connection');
       
-      // Set mounted ref to false to prevent any further state updates
-      mountedRef.current = false;
-      
-      setError(null);
-      
       if (reconnectTimeoutRef.current) {
         console.log('[LiveOrderBook] Clearing reconnect timeout during cleanup');
         clearTimeout(reconnectTimeoutRef.current);
@@ -173,6 +179,10 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         wsRef.current.close();
         wsRef.current = null;
       }
+      
+      // Set mounted ref to false to prevent any further state updates
+      // This should be the last operation in the cleanup
+      mountedRef.current = false;
     };
   }, [clobTokenId, onOrderBookData, isClosing]);
 

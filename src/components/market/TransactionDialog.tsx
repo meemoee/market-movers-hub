@@ -182,14 +182,14 @@ export function TransactionDialog({
                   <AlertDialogTitle className="text-lg font-semibold mb-1">
                     Buy {selectedMarket?.selectedOutcome}
                   </AlertDialogTitle>
-                  <p className="text-sm text-muted-foreground line-clamp-2">
+                  <AlertDialogDescription className="text-sm line-clamp-2">
                     {topMover.question}
-                  </p>
+                  </AlertDialogDescription>
                 </div>
               </>
             )}
           </div>
-          <AlertDialogDescription className="space-y-4">
+          <div className="space-y-4">
             <LiveOrderBook 
               onOrderBookData={(data) => {
                 console.log('[TransactionDialog] Received orderbook data from LiveOrderBook:', data);
@@ -253,7 +253,7 @@ export function TransactionDialog({
                 </>
               )}
             </div>
-          </AlertDialogDescription>
+          </div>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
