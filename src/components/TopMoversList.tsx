@@ -101,9 +101,18 @@ export default function TopMoversList({
   const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
   const [showMinThumb, setShowMinThumb] = useState(false);
   const [showMaxThumb, setShowMaxThumb] = useState(false);
+  const [priceChangeRange, setPriceChangeRange] = useState<[number, number]>([-100, 100]);
+  const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
+  const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
+  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 1000000]);
+  const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
+  const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
+  const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
+  const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);
+  const debouncedVolumeRange = useDebounce(volumeRange, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
 
@@ -113,9 +122,14 @@ export default function TopMoversList({
     debouncedSearch, 
     marketId,
     showMinThumb ? debouncedProbabilityRange[0] : undefined,
-    showMaxThumb ? debouncedProbabilityRange[1] : undefined
+    showMaxThumb ? debouncedProbabilityRange[1] : undefined,
+    showPriceChangeMinThumb ? debouncedPriceChangeRange[0] : undefined,
+    showPriceChangeMaxThumb ? debouncedPriceChangeRange[1] : undefined,
+    showVolumeMinThumb ? debouncedVolumeRange[0] : undefined,
+    showVolumeMaxThumb ? debouncedVolumeRange[1] : undefined,
+    sortBy
   );
-  
+
   const marketSearchQuery = useMarketSearch(
     debouncedSearch, 
     searchPage, 
@@ -186,6 +200,8 @@ export default function TopMoversList({
     ? displayedMarkets.find(m => m.market_id === selectedMarket.id)
     : null;
 
+  const sortedMarkets = displayedMarkets;
+
   return (
     <div className="flex flex-col w-full">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
@@ -218,6 +234,20 @@ export default function TopMoversList({
           setShowMinThumb={setShowMinThumb}
           showMaxThumb={showMaxThumb}
           setShowMaxThumb={setShowMaxThumb}
+          priceChangeRange={priceChangeRange}
+          setPriceChangeRange={setPriceChangeRange}
+          showPriceChangeMinThumb={showPriceChangeMinThumb}
+          setShowPriceChangeMinThumb={setShowPriceChangeMinThumb}
+          showPriceChangeMaxThumb={showPriceChangeMaxThumb}
+          setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
+          volumeRange={volumeRange}
+          setVolumeRange={setVolumeRange}
+          showVolumeMinThumb={showVolumeMinThumb}
+          setShowVolumeMinThumb={setShowVolumeMinThumb}
+          showVolumeMaxThumb={showVolumeMaxThumb}
+          setShowVolumeMaxThumb={setShowVolumeMaxThumb}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
         />
       </div>
       
@@ -229,7 +259,7 @@ export default function TopMoversList({
           <TopMoversContent
             isLoading={activeQuery.isLoading}
             error={activeQuery.error ? String(activeQuery.error) : null}
-            topMovers={displayedMarkets}
+            topMovers={sortedMarkets}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
             setSelectedMarket={setSelectedMarket}
