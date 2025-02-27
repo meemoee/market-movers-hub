@@ -21,6 +21,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const MAX_RECONNECT_ATTEMPTS = 5;
 
   useEffect(() => {
     // Clear any existing error when closing
@@ -54,7 +56,14 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           reconnectTimeoutRef.current = null;
         }
 
-        const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${clobTokenId}`;
+        // Check if we've exceeded max reconnect attempts
+        if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+          console.error('[LiveOrderBook] Maximum reconnection attempts reached. Giving up.');
+          setError('Failed to connect after multiple attempts. Please try again later.');
+          return;
+        }
+
+        const wsUrl = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/functions/v1/polymarket-ws?assetId=${clobTokenId}`;
         console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
         
         const ws = new WebSocket(wsUrl);
@@ -63,6 +72,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         ws.onopen = () => {
           if (!isCleanupInitiated) {
             console.log('[LiveOrderBook] WebSocket connected successfully');
+            reconnectAttemptsRef.current = 0; // Reset reconnect attempts on successful connection
             setError(null);
           }
         };
@@ -96,10 +106,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             
             // Try to reconnect on error
             if (!reconnectTimeoutRef.current && !isCleanupInitiated) {
-              console.log('[LiveOrderBook] Scheduling reconnect attempt after error');
+              reconnectAttemptsRef.current += 1;
+              console.log(`[LiveOrderBook] Scheduling reconnect attempt ${reconnectAttemptsRef.current} after error`);
               reconnectTimeoutRef.current = setTimeout(() => {
                 if (!isCleanupInitiated) {
-                  console.log('[LiveOrderBook] Attempting to reconnect after error');
+                  console.log(`[LiveOrderBook] Attempting to reconnect after error (attempt ${reconnectAttemptsRef.current})`);
                   connectWebSocket();
                 }
               }, 3000);
@@ -112,10 +123,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           
           // Try to reconnect on unexpected close if not during cleanup
           if (!isCleanupInitiated && !reconnectTimeoutRef.current) {
-            console.log('[LiveOrderBook] Scheduling reconnect attempt after close');
+            reconnectAttemptsRef.current += 1;
+            console.log(`[LiveOrderBook] Scheduling reconnect attempt ${reconnectAttemptsRef.current} after close`);
             reconnectTimeoutRef.current = setTimeout(() => {
               if (!isCleanupInitiated) {
-                console.log('[LiveOrderBook] Attempting to reconnect after close');
+                console.log(`[LiveOrderBook] Attempting to reconnect after close (attempt ${reconnectAttemptsRef.current})`);
                 connectWebSocket();
               }
             }, 3000);
@@ -129,10 +141,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           
           // Try to reconnect after error in setup
           if (!reconnectTimeoutRef.current) {
-            console.log('[LiveOrderBook] Scheduling reconnect attempt after setup error');
+            reconnectAttemptsRef.current += 1;
+            console.log(`[LiveOrderBook] Scheduling reconnect attempt ${reconnectAttemptsRef.current} after setup error`);
             reconnectTimeoutRef.current = setTimeout(() => {
               if (!isCleanupInitiated) {
-                console.log('[LiveOrderBook] Attempting to reconnect after setup error');
+                console.log(`[LiveOrderBook] Attempting to reconnect after setup error (attempt ${reconnectAttemptsRef.current})`);
                 connectWebSocket();
               }
             }, 3000);
@@ -176,7 +189,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   if (error && !isClosing) {
     return (
-      <div className="text-center text-red-500">{error}</div>
+      <div className="text-center py-4">
+        <div className="text-red-500 mb-2">{error}</div>
+        <div className="text-sm text-gray-400">
+          Unable to connect to the orderbook service. This could be due to network issues or the service may be temporarily unavailable.
+        </div>
+      </div>
     );
   }
 

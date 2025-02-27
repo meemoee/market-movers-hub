@@ -1,305 +1,165 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-class PolymarketStream {
-  private ws: WebSocket | null = null;
-  private assetId: string;
-  private orderbook: any = null;
-  private clientSocket: WebSocket | null = null;
-  private pingInterval: number | null = null;
-  private reconnectTimeout: number | null = null;
-  private isCleanupInitiated = false;
-
-  constructor(clientSocket: WebSocket, assetId: string) {
-    this.clientSocket = clientSocket;
-    this.assetId = assetId;
-    console.log('[PolymarketStream] Initialized with client socket and asset ID:', assetId);
-  }
-
-  async connect() {
-    if (this.isCleanupInitiated) {
-      console.log('[PolymarketStream] Not connecting because cleanup has been initiated');
-      return;
-    }
-
-    try {
-      // Clean up any existing connection first
-      this.cleanupPolymarketConnection();
-
-      console.log('[PolymarketStream] Connecting to Polymarket WebSocket...');
-      this.ws = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
-      
-      this.ws.onopen = () => {
-        if (this.isCleanupInitiated) return;
-
-        console.log('[PolymarketStream] Connected to Polymarket WebSocket');
-        
-        // Set up ping/pong to keep connection alive
-        this.pingInterval = setInterval(() => {
-          if (this.ws?.readyState === WebSocket.OPEN) {
-            console.log('[PolymarketStream] Sending PING to Polymarket');
-            this.ws.send("PING");
-          }
-        }, 30000);
-
-        // Subscribe to market updates
-        const subscription = {
-          type: "Market",
-          assets_ids: [this.assetId]
-        };
-        
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          console.log('[PolymarketStream] Subscribing to market updates for asset ID:', this.assetId);
-          this.ws.send(JSON.stringify(subscription));
-        }
-
-        // Request initial snapshot
-        const snapshotRequest = {
-          type: "GetMarketSnapshot",
-          asset_id: this.assetId
-        };
-        
-        if (this.ws?.readyState === WebSocket.OPEN) {
-          console.log('[PolymarketStream] Requesting market snapshot for asset ID:', this.assetId);
-          this.ws.send(JSON.stringify(snapshotRequest));
-        }
-      };
-
-      this.ws.onmessage = (event) => {
-        if (this.isCleanupInitiated) return;
-
-        const message = event.data;
-        if (message === "PONG") {
-          console.log('[PolymarketStream] Received PONG from Polymarket');
-          return;
-        }
-
-        try {
-          console.log('[PolymarketStream] Received message from Polymarket:', message);
-          const events = JSON.parse(message);
-          
-          if (!Array.isArray(events) || events.length === 0) {
-            console.log('[PolymarketStream] Received empty or non-array message');
-            return;
-          }
-
-          events.forEach(event => {
-            if (event.event_type === "book") {
-              console.log('[PolymarketStream] Processing orderbook update for asset ID:', this.assetId);
-              const orderbook = this.processOrderbookSnapshot(event);
-              this.sendToClient(orderbook);
-            }
-          });
-        } catch (error) {
-          console.error('[PolymarketStream] Error processing message:', error);
-        }
-      };
-
-      this.ws.onerror = (error) => {
-        console.error('[PolymarketStream] Polymarket WebSocket error:', error);
-        this.handlePolymarketDisconnect("error");
-      };
-
-      this.ws.onclose = (event) => {
-        console.log('[PolymarketStream] Polymarket WebSocket closed with code:', event.code, 'reason:', event.reason);
-        this.handlePolymarketDisconnect("close");
-      };
-
-    } catch (error) {
-      console.error('[PolymarketStream] Error establishing WebSocket connection:', error);
-      this.handlePolymarketDisconnect("connection error");
-    }
-  }
-
-  private handlePolymarketDisconnect(reason: string) {
-    if (this.isCleanupInitiated) return;
-
-    console.log(`[PolymarketStream] Handling Polymarket disconnect due to: ${reason}`);
-    this.cleanupPolymarketConnection();
-
-    // Attempt to reconnect after a delay
-    if (!this.reconnectTimeout && !this.isCleanupInitiated) {
-      console.log('[PolymarketStream] Scheduling reconnect attempt');
-      this.reconnectTimeout = setTimeout(() => {
-        if (!this.isCleanupInitiated) {
-          console.log('[PolymarketStream] Attempting to reconnect to Polymarket');
-          this.connect();
-        }
-      }, 5000);
-    }
-  }
-
-  private cleanupPolymarketConnection() {
-    console.log('[PolymarketStream] Cleaning up Polymarket connection');
-    
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
-    
-    if (this.ws) {
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.close();
-      }
-      this.ws = null;
-    }
-  }
-
-  private sendToClient(orderbook: any) {
-    if (this.clientSocket?.readyState === WebSocket.OPEN) {
-      try {
-        console.log('[PolymarketStream] Sending orderbook to client for asset ID:', this.assetId);
-        const message = JSON.stringify({ orderbook });
-        this.clientSocket.send(message);
-      } catch (error) {
-        console.error('[PolymarketStream] Error sending orderbook to client:', error);
-      }
-    } else {
-      console.warn('[PolymarketStream] Cannot send to client - socket not open');
-    }
-  }
-
-  private processOrderbookSnapshot(book: any) {
-    console.log('[PolymarketStream] Processing orderbook snapshot');
-    
-    const processedBook = {
-      bids: {},
-      asks: {},
-      best_bid: 0,
-      best_ask: 0,
-      spread: 0
-    };
-
-    if (Array.isArray(book.bids)) {
-      book.bids.forEach(bid => {
-        if (bid.price && bid.size) {
-          const size = parseFloat(bid.size);
-          if (size > 0) {
-            processedBook.bids[bid.price] = size;
-          }
-        }
-      });
-    }
-
-    if (Array.isArray(book.asks)) {
-      book.asks.forEach(ask => {
-        if (ask.price && ask.size) {
-          const size = parseFloat(ask.size);
-          if (size > 0) {
-            processedBook.asks[ask.price] = size;
-          }
-        }
-      });
-    }
-
-    const bidPrices = Object.keys(processedBook.bids).map(parseFloat);
-    const askPrices = Object.keys(processedBook.asks).map(parseFloat);
-    
-    processedBook.best_bid = bidPrices.length > 0 ? Math.max(...bidPrices) : 0;
-    processedBook.best_ask = askPrices.length > 0 ? Math.min(...askPrices) : 0;
-    processedBook.spread = processedBook.best_ask - processedBook.best_bid;
-
-    console.log('[PolymarketStream] Processed orderbook:', JSON.stringify({
-      bid_count: Object.keys(processedBook.bids).length,
-      ask_count: Object.keys(processedBook.asks).length,
-      best_bid: processedBook.best_bid,
-      best_ask: processedBook.best_ask,
-      spread: processedBook.spread
-    }));
-
-    return processedBook;
-  }
-
-  cleanup() {
-    console.log('[PolymarketStream] Initiating cleanup');
-    this.isCleanupInitiated = true;
-    
-    this.cleanupPolymarketConnection();
-    
-    if (this.reconnectTimeout) {
-      clearTimeout(this.reconnectTimeout);
-      this.reconnectTimeout = null;
-    }
-    
-    if (this.clientSocket?.readyState === WebSocket.OPEN) {
-      console.log('[PolymarketStream] Closing client WebSocket connection');
-      this.clientSocket.close();
-    }
-    this.clientSocket = null;
-  }
-}
+};
 
 serve(async (req) => {
+  // Log all request details for debugging
+  console.log(`[polymarket-ws] ${req.method} request received:`, req.url);
+
+  // Handle preflight CORS
+  if (req.method === 'OPTIONS') {
+    console.log('[polymarket-ws] Handling OPTIONS request for CORS preflight');
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
+  }
+
+  // Parse URL and query parameters
   const url = new URL(req.url);
   const assetId = url.searchParams.get('assetId');
   
-  console.log('[polymarket-ws] Received request', {
-    method: req.method,
-    url: req.url,
-    assetId,
-    headers: Object.fromEntries(req.headers.entries())
-  });
+  console.log('[polymarket-ws] Attempting to connect with assetId:', assetId);
   
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    console.log('[polymarket-ws] Handling CORS preflight request');
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  // Check if this is a WebSocket request
-  const upgrade = req.headers.get('upgrade') || '';
-  if (upgrade.toLowerCase() !== 'websocket') {
-    console.error('[polymarket-ws] Not a WebSocket request, upgrade header:', upgrade);
-    return new Response('Expected WebSocket connection', { 
-      status: 400,
-      headers: corsHeaders
-    });
-  }
-
-  // Validate assetId
   if (!assetId) {
     console.error('[polymarket-ws] Missing assetId parameter');
-    return new Response('Missing assetId parameter', {
-      status: 400,
-      headers: corsHeaders
-    });
+    return new Response(
+      JSON.stringify({ error: 'Missing assetId parameter' }),
+      {
+        status: 400,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   }
 
   try {
-    console.log('[polymarket-ws] Upgrading connection to WebSocket for asset ID:', assetId);
-    const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
-    console.log("[polymarket-ws] WebSocket connection established with client");
+    // Polymarket WebSocket URL
+    const wsTarget = `wss://ws-subscriptions-clob.polymarket.com/ws/market`;
+    console.log('[polymarket-ws] Connecting to Polymarket WebSocket:', wsTarget);
     
-    const stream = new PolymarketStream(clientSocket, assetId);
+    // Create WebSocket connection to client
+    const { socket, response } = Deno.upgradeWebSocket(req, {
+      idleTimeout: 60, // 60 seconds idle timeout
+    });
     
-    clientSocket.onopen = () => {
-      console.log('[polymarket-ws] Client WebSocket connection opened');
-      stream.connect();
+    console.log('[polymarket-ws] WebSocket connection with client established');
+    
+    // Create connection to Polymarket
+    const polymarketWs = new WebSocket(wsTarget);
+    console.log('[polymarket-ws] Initiated WebSocket connection to Polymarket');
+    
+    let polymarketConnected = false;
+    
+    // Handle messages from the client
+    socket.onopen = () => {
+      console.log('[polymarket-ws] Client connection opened');
     };
-
-    clientSocket.onclose = (event) => {
-      console.log('[polymarket-ws] Client WebSocket closed with code:', event.code, 'reason:', event.reason);
-      stream.cleanup();
+    
+    socket.onclose = () => {
+      console.log('[polymarket-ws] Client connection closed');
+      if (polymarketWs.readyState === WebSocket.OPEN) {
+        console.log('[polymarket-ws] Closing Polymarket connection');
+        polymarketWs.close();
+      }
     };
-
-    clientSocket.onerror = (error) => {
-      console.error('[polymarket-ws] Client WebSocket error:', error);
-      stream.cleanup();
+    
+    socket.onerror = (e) => {
+      console.error('[polymarket-ws] Client connection error:', e);
     };
-
+    
+    socket.onmessage = (event) => {
+      console.log('[polymarket-ws] Received message from client:', event.data);
+      if (polymarketConnected) {
+        polymarketWs.send(event.data);
+      }
+    };
+    
+    // Handle Polymarket WebSocket events
+    polymarketWs.onopen = () => {
+      console.log('[polymarket-ws] Connected to Polymarket WebSocket');
+      polymarketConnected = true;
+      
+      // Subscribe to orderbook for the asset
+      const subscribeMsg = JSON.stringify({
+        type: "subscribe",
+        channel: "orderbook",
+        assetId: assetId,
+      });
+      
+      console.log('[polymarket-ws] Sending subscription message:', subscribeMsg);
+      polymarketWs.send(subscribeMsg);
+    };
+    
+    polymarketWs.onmessage = (event) => {
+      try {
+        console.log('[polymarket-ws] Received message from Polymarket:', event.data);
+        const data = JSON.parse(event.data);
+        
+        // Process and transform the data if needed
+        if (data.type === "orderbook") {
+          console.log('[polymarket-ws] Received orderbook data');
+          
+          // Create structured orderbook response
+          const orderbook = {
+            bids: data.bids || {},
+            asks: data.asks || {},
+            best_bid: data.bids ? Math.max(...Object.keys(data.bids).map(Number)) : 0,
+            best_ask: data.asks ? Math.min(...Object.keys(data.asks).map(Number)) : 1,
+            spread: 0, // Will be calculated below
+          };
+          
+          // Calculate spread
+          if (orderbook.best_bid && orderbook.best_ask) {
+            orderbook.spread = orderbook.best_ask - orderbook.best_bid;
+          }
+          
+          // Forward the processed data to the client
+          socket.send(JSON.stringify({ orderbook }));
+        } else {
+          // Forward other messages as-is
+          socket.send(event.data);
+        }
+      } catch (e) {
+        console.error('[polymarket-ws] Error processing Polymarket message:', e);
+        socket.send(JSON.stringify({ error: 'Error processing orderbook data' }));
+      }
+    };
+    
+    polymarketWs.onerror = (e) => {
+      console.error('[polymarket-ws] Polymarket WebSocket error:', e);
+      socket.send(JSON.stringify({ error: 'Error connecting to orderbook service' }));
+    };
+    
+    polymarketWs.onclose = (event) => {
+      console.log('[polymarket-ws] Polymarket WebSocket closed with code:', event.code, 'reason:', event.reason);
+      polymarketConnected = false;
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ error: 'Orderbook service connection closed' }));
+        socket.close();
+      }
+    };
+    
+    // Return the WebSocket response
+    console.log('[polymarket-ws] Returning upgraded WebSocket response');
     return response;
   } catch (error) {
-    console.error("[polymarket-ws] WebSocket connection error:", error);
-    return new Response(JSON.stringify({ 
-      error: "Failed to establish WebSocket connection",
-      details: error.message 
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 500
-    });
+    console.error('[polymarket-ws] Error handling WebSocket connection:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to establish WebSocket connection' }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   }
 });
