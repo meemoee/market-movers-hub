@@ -108,7 +108,7 @@ export default function TopMoversList({
   const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
-  const [sortBy, setSortBy] = useState<'price_change' | 'volume' | 'price_volume_impact'>('price_change');
+  const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const debouncedProbabilityRange = useDebounce(probabilityRange, 300);
   const debouncedPriceChangeRange = useDebounce(priceChangeRange, 300);

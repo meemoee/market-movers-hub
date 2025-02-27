@@ -1,3 +1,4 @@
+
 import { ChevronDown, SlidersHorizontal } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -37,8 +38,8 @@ interface TopMoversHeaderProps {
   setShowVolumeMinThumb: (show: boolean) => void;
   showVolumeMaxThumb: boolean;
   setShowVolumeMaxThumb: (show: boolean) => void;
-  sortBy: 'price_change' | 'volume' | 'price_volume_impact';
-  onSortChange: (value: 'price_change' | 'volume' | 'price_volume_impact') => void;
+  sortBy: 'price_change' | 'volume';
+  onSortChange: (value: 'price_change' | 'volume') => void;
 }
 
 export function TopMoversHeader({
@@ -120,7 +121,7 @@ export function TopMoversHeader({
                 <Label className="text-xs text-muted-foreground">Sort by</Label>
                 <Select
                   value={sortBy}
-                  onValueChange={(value: 'price_change' | 'volume' | 'price_volume_impact') => onSortChange(value)}
+                  onValueChange={(value: 'price_change' | 'volume') => onSortChange(value)}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Sort by" />
@@ -128,7 +129,6 @@ export function TopMoversHeader({
                   <SelectContent>
                     <SelectItem value="price_change">Price Change</SelectItem>
                     <SelectItem value="volume">Volume Change</SelectItem>
-                    <SelectItem value="price_volume_impact">Price Volume Impact</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
