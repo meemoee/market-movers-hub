@@ -1,3 +1,4 @@
+
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -12,7 +13,7 @@ import {
 import { LiveOrderBook } from './LiveOrderBook';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -59,9 +60,28 @@ export function TransactionDialog({
   const [size, setSize] = useState(1);
   const [isClosing, setIsClosing] = useState(false);
 
+  // Add effect to log when orderbook data changes
+  useEffect(() => {
+    console.log('[TransactionDialog] OrderBook data changed:', orderBookData);
+  }, [orderBookData]);
+
+  // Add effect to log when market selection changes
+  useEffect(() => {
+    if (selectedMarket) {
+      console.log('[TransactionDialog] Market selected:', {
+        id: selectedMarket.id,
+        action: selectedMarket.action,
+        clobTokenId: selectedMarket.clobTokenId,
+        selectedOutcome: selectedMarket.selectedOutcome
+      });
+    }
+  }, [selectedMarket]);
+
   const handleClose = () => {
+    console.log('[TransactionDialog] Closing dialog');
     setIsClosing(true);
     setTimeout(() => {
+      console.log('[TransactionDialog] Dialog closed, cleaning up orderbook data');
       onOrderBookData(null);
       onClose();
       setIsClosing(false);
@@ -69,12 +89,23 @@ export function TransactionDialog({
   };
 
   const handleConfirm = async () => {
-    if (!selectedMarket || !orderBookData) return;
+    if (!selectedMarket || !orderBookData) {
+      console.warn('[TransactionDialog] Cannot confirm order: missing market data or orderbook data');
+      return;
+    }
+
+    console.log('[TransactionDialog] Confirming order for:', {
+      marketId: selectedMarket.id,
+      outcome: selectedMarket.selectedOutcome,
+      size,
+      price: orderBookData.best_ask
+    });
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session?.user) {
+        console.error('[TransactionDialog] No active user session');
         toast({
           variant: "destructive",
           title: "Error",
@@ -84,6 +115,14 @@ export function TransactionDialog({
       }
 
       const price = orderBookData.best_ask;
+      console.log('[TransactionDialog] Executing market order:', {
+        user_id: session.user.id,
+        market_id: selectedMarket.id,
+        token_id: selectedMarket.clobTokenId,
+        outcome: selectedMarket.selectedOutcome,
+        size,
+        price
+      });
       
       const { data, error } = await supabase.functions.invoke('execute-market-order', {
         body: {
@@ -98,7 +137,7 @@ export function TransactionDialog({
       });
 
       if (error) {
-        console.error('Error executing order:', error);
+        console.error('[TransactionDialog] Error executing order:', error);
         toast({
           variant: "destructive",
           title: "Error",
@@ -107,6 +146,7 @@ export function TransactionDialog({
         return;
       }
 
+      console.log('[TransactionDialog] Order executed successfully:', data);
       toast({
         title: "Order confirmed",
         description: `Your order to buy ${selectedMarket.selectedOutcome} has been placed successfully at ${(price * 100).toFixed(2)}¢`,
@@ -114,7 +154,7 @@ export function TransactionDialog({
       
       onConfirm();
     } catch (error: any) {
-      console.error('Error executing order:', error);
+      console.error('[TransactionDialog] Error executing order:', error);
       toast({
         variant: "destructive",
         title: "Error",
@@ -151,7 +191,10 @@ export function TransactionDialog({
           </div>
           <AlertDialogDescription className="space-y-4">
             <LiveOrderBook 
-              onOrderBookData={onOrderBookData}
+              onOrderBookData={(data) => {
+                console.log('[TransactionDialog] Received orderbook data from LiveOrderBook:', data);
+                onOrderBookData(data);
+              }}
               isLoading={isOrderBookLoading}
               clobTokenId={selectedMarket?.clobTokenId}
               isClosing={isClosing}
