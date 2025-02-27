@@ -38,4 +38,4 @@ verify_jwt = false
 
 [functions.polymarket-ws]
 verify_jwt = false
-port = 9999
+
