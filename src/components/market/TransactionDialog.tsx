@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -30,7 +29,6 @@ interface TopMover {
   clobtokenids?: string[];
   outcomes?: string[];
   selectedOutcome?: string;
-  description?: string;
 }
 
 interface TransactionDialogProps {
