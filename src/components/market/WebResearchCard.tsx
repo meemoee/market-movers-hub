@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -258,6 +259,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       const allContent: string[] = []
 
+      // Add initial progress message
+      setProgress(prev => [...prev, "Starting web research..."])
+
       const stream = new ReadableStream({
         start(controller) {
           const textDecoder = new TextDecoder()
@@ -315,7 +319,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
 
       if (allContent.length === 0) {
-        throw new Error('No content collected from web scraping')
+        setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
+        setError('No content collected from web scraping. Try a more specific query or different keywords.')
+        return // Exit early instead of throwing an error
       }
 
       // After collecting all content, start the analysis with improved streaming
@@ -478,7 +484,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
     } catch (error) {
       console.error('Error in web research:', error)
-      setError('Error occurred during research')
+      setError(`Error occurred during research: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setIsLoading(false)
       setIsAnalyzing(false)
