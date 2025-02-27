@@ -10,6 +10,9 @@ interface MultiRangeSliderProps {
   showMinThumb?: boolean;
   showMaxThumb?: boolean;
   className?: string;
+  step?: number;
+  formatLabel?: (value: number) => string;
+  showLabels?: boolean;
 }
 
 export const MultiRangeSlider = ({
@@ -20,6 +23,9 @@ export const MultiRangeSlider = ({
   showMinThumb = true,
   showMaxThumb = true,
   className = "",
+  step = 1,
+  formatLabel = (value) => `${value}`,
+  showLabels = false,
 }: MultiRangeSliderProps) => {
   const [minVal, setMinVal] = useState(value[0]);
   const [maxVal, setMaxVal] = useState(value[1]);
@@ -77,6 +83,7 @@ export const MultiRangeSlider = ({
           type="range"
           min={min}
           max={max}
+          step={step}
           value={minVal}
           onChange={(event) => {
             const value = Math.min(Number(event.target.value), maxVal - 1);
@@ -92,6 +99,7 @@ export const MultiRangeSlider = ({
           type="range"
           min={min}
           max={max}
+          step={step}
           value={maxVal}
           onChange={(event) => {
             const value = Math.max(Number(event.target.value), minVal + 1);
@@ -105,6 +113,12 @@ export const MultiRangeSlider = ({
       <div className="slider">
         <div className="slider__track" />
         <div ref={range} className="slider__range" />
+        {showLabels && (
+          <div className="flex justify-between w-full mt-2">
+            <span className="text-xs text-muted-foreground">{formatLabel(min)}</span>
+            <span className="text-xs text-muted-foreground">{formatLabel(max)}</span>
+          </div>
+        )}
       </div>
     </div>
   );
