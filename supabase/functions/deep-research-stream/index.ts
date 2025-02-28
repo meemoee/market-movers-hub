@@ -87,7 +87,7 @@ serve(async (req) => {
       
       const firstStepResults: ResearchStep = {
         query: searchQuery.trim(),
-        results: "Research completed. Found 0 key findings."
+        results: "Research completed. Found initial market information."
       };
       
       steps.push(firstStepResults);

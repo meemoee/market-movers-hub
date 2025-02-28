@@ -41,3 +41,6 @@ verify_jwt = false
 
 [functions.deep-research]
 verify_jwt = false
+
+[functions.deep-research-stream]
+verify_jwt = false
