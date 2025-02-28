@@ -1,6 +1,32 @@
+
 import { serve } from "https://deno.land/std@0.170.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.7.1";
-import { openAI } from "./openRouter.ts";
+
+// Import OpenAI function
+const openAI = async (options) => {
+  const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+  if (!OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY is required");
+  }
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+      "HTTP-Referer": "https://lovable.dev",
+      "X-Title": "Lovable HunchEx"
+    },
+    body: JSON.stringify(options)
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`OpenRouter API error: ${error}`);
+  }
+
+  return await response.json();
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -31,6 +57,8 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    console.log("Processing research request for market:", marketId);
 
     // Setup streaming response if requested
     if (stream) {
