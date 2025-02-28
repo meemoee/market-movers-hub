@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, FileText, RefreshCw } from 'lucide-react';
@@ -31,6 +31,20 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Cleanup function for when component unmounts or when research is reset
+  const cleanupStream = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanupStream;
+  }, []);
 
   const handleStartResearch = async () => {
     if (!description) {
@@ -50,70 +64,110 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       setResearchResults(null);
       setError(null);
       
+      // Cleanup any existing stream
+      cleanupStream();
+      
       // Add initial step to immediately show something
       setSteps([{ query: `Initial research for: ${description.substring(0, 30)}...`, results: "Starting research..." }]);
       
-      // Call the edge function
-      const { data, error } = await supabase.functions.invoke<{
-        success: boolean;
-        report?: ResearchReport;
-        steps?: ResearchStep[];
-        error?: string;
-      }>('deep-research', {
-        body: { description, marketId }
+      // Create new abort controller for this request
+      abortControllerRef.current = new AbortController();
+      
+      // Call the edge function with streaming enabled
+      const response = await fetch(`${supabase.functions.url}/deep-research-stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`,
+          'apikey': supabase.supabaseKey
+        },
+        body: JSON.stringify({ description, marketId }),
+        signal: abortControllerRef.current.signal
       });
       
-      if (error) {
-        throw new Error(`Edge function error: ${error.message}`);
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Edge function error: ${response.status} - ${errorData}`);
       }
       
-      if (!data.success || data.error) {
-        throw new Error(data.error || 'Unknown error occurred');
+      // Handle the SSE stream
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Failed to get reader from response');
       }
       
-      console.log('Research data received:', data);
+      // Process the stream
+      const decoder = new TextDecoder();
+      let buffer = '';
       
-      // Update with actual steps from the response
-      if (data.steps && data.steps.length > 0) {
-        setSteps(data.steps);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
         
-        // Simulate step-by-step progress
-        let currentStep = 0;
-        const interval = setInterval(() => {
-          if (currentStep < data.steps!.length - 1) {
-            currentStep++;
-            setCurrentStepIndex(currentStep);
-          } else {
-            clearInterval(interval);
-            
-            // Once all steps are processed, set the results
-            if (data.report) {
-              setResearchResults(data.report);
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete messages
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || ''; // Keep the incomplete message in the buffer
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'step') {
+                // Handle new step
+                setSteps(prevSteps => {
+                  const newSteps = [...prevSteps];
+                  // Update existing step or add new one
+                  const existingStepIndex = newSteps.findIndex(step => 
+                    step.query === data.step.query);
+                  
+                  if (existingStepIndex >= 0) {
+                    newSteps[existingStepIndex] = data.step;
+                  } else {
+                    newSteps.push(data.step);
+                  }
+                  return newSteps;
+                });
+                
+                // Update current step index
+                setCurrentStepIndex(prevIndex => {
+                  const newIndex = prevIndex + 1;
+                  return newIndex < steps.length ? newIndex : prevIndex;
+                });
+              } else if (data.type === 'report') {
+                // Handle final report
+                setResearchResults(data.report);
+              } else if (data.type === 'error') {
+                throw new Error(data.message);
+              }
+            } catch (err) {
+              console.error('Error parsing SSE data:', err, line);
             }
-            setIsLoading(false);
           }
-        }, 800); // Faster update every 800ms for visual effect
-      } else {
-        // If no steps are returned, just show the results
-        if (data.report) {
-          setResearchResults(data.report);
         }
-        setIsLoading(false);
       }
+      
+      setIsLoading(false);
     } catch (err) {
       console.error('Research error:', err);
-      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      // Don't set error if it was aborted intentionally
+      if (err instanceof Error && err.name !== 'AbortError') {
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
+        
+        toast({
+          title: "Research Failed",
+          description: err instanceof Error ? err.message : 'An unknown error occurred',
+          variant: "destructive"
+        });
+      }
       setIsLoading(false);
-      
-      toast({
-        title: "Research Failed",
-        description: err instanceof Error ? err.message : 'An unknown error occurred',
-        variant: "destructive"
-      });
     }
   };
 
   const handleReset = () => {
+    cleanupStream();
     setResearchResults(null);
     setSteps([]);
     setCurrentStepIndex(0);
@@ -122,7 +176,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
 
   // Calculate current progress percentage
   const progressPercentage = steps.length > 0 
-    ? ((currentStepIndex + 1) / steps.length) * 100
+    ? Math.min(((currentStepIndex + 1) / steps.length) * 100, 100)
     : 0;
 
   return (
