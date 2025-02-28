@@ -74,7 +74,8 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       abortControllerRef.current = new AbortController();
       
       // Get current auth session
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
       
       // Call the edge function with streaming enabled
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/deep-research-stream`, {
