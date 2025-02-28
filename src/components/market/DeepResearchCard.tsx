@@ -53,18 +53,27 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       setSteps([]);
       setResearchResults(null);
       
-      // Initialize the streaming response
-      const response = await supabase.functions.invoke('deep-research', {
-        body: { description, marketId },
-        responseType: 'stream'
+      // Initialize the request to the edge function
+      const response = await fetch(`${supabase.functions.url}/deep-research`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`,
+          'apikey': process.env.SUPABASE_ANON_KEY || '',
+        },
+        body: JSON.stringify({ description, marketId }),
       });
 
-      if (!response.data) {
-        throw new Error("No response data received");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error("No response body received");
       }
 
       // Process the stream
-      const reader = response.data.getReader();
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
 
