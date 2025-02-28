@@ -19,12 +19,16 @@ interface ResearchReport {
   conclusion: string;
 }
 
+interface ResearchStep {
+  query: string;
+  results: string;
+}
+
 export function DeepResearchCard({ description, marketId }: DeepResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [researchResults, setResearchResults] = useState<ResearchReport | null>(null);
-  const [iteration, setIteration] = useState(0);
-  const [totalIterations, setTotalIterations] = useState(5);
-  const [currentQuery, setCurrentQuery] = useState('');
+  const [steps, setSteps] = useState<ResearchStep[]>([]);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
@@ -39,16 +43,21 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     }
 
     try {
+      // Reset all states
       setIsLoading(true);
-      setIteration(1);
+      setSteps([]);
+      setCurrentStepIndex(0);
+      setResearchResults(null);
       setError(null);
-      setCurrentQuery(`Initial query for: ${description.substring(0, 30)}...`);
+      
+      // Add initial step to immediately show something
+      setSteps([{ query: `Initial research for: ${description.substring(0, 30)}...`, results: "Starting research..." }]);
       
       // Call the edge function
       const { data, error } = await supabase.functions.invoke<{
         success: boolean;
         report?: ResearchReport;
-        steps?: { query: string; results: string }[];
+        steps?: ResearchStep[];
         error?: string;
       }>('deep-research', {
         body: { description, marketId }
@@ -64,17 +73,16 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       
       console.log('Research data received:', data);
       
-      // Process research steps to show progress
+      // Update with actual steps from the response
       if (data.steps && data.steps.length > 0) {
-        setTotalIterations(data.steps.length);
+        setSteps(data.steps);
         
-        // Simulate step-by-step progress for better UX
+        // Simulate step-by-step progress
         let currentStep = 0;
         const interval = setInterval(() => {
-          if (currentStep < data.steps!.length) {
-            setIteration(currentStep + 1);
-            setCurrentQuery(data.steps![currentStep].query);
+          if (currentStep < data.steps!.length - 1) {
             currentStep++;
+            setCurrentStepIndex(currentStep);
           } else {
             clearInterval(interval);
             
@@ -84,7 +92,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
             }
             setIsLoading(false);
           }
-        }, 1000); // Update every second for visual effect
+        }, 800); // Faster update every 800ms for visual effect
       } else {
         // If no steps are returned, just show the results
         if (data.report) {
@@ -107,10 +115,15 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
 
   const handleReset = () => {
     setResearchResults(null);
-    setIteration(0);
-    setCurrentQuery('');
+    setSteps([]);
+    setCurrentStepIndex(0);
     setError(null);
   };
+
+  // Calculate current progress percentage
+  const progressPercentage = steps.length > 0 
+    ? ((currentStepIndex + 1) / steps.length) * 100
+    : 0;
 
   return (
     <Card className="bg-background/70 backdrop-blur-sm border-muted">
@@ -126,19 +139,19 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">Research in progress...</div>
               <div className="text-sm text-muted-foreground">
-                Iteration {iteration}/{totalIterations}
+                Step {currentStepIndex + 1}/{steps.length || '?'}
               </div>
             </div>
             
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Search className="h-3.5 w-3.5" />
-              <span className="flex-1">{currentQuery}</span>
+              <span className="flex-1">{steps[currentStepIndex]?.query || 'Initializing research...'}</span>
             </div>
             
             <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
               <div 
                 className="bg-primary h-full transition-all duration-500 ease-in-out"
-                style={{ width: `${(iteration / totalIterations) * 100}%` }}
+                style={{ width: `${progressPercentage}%` }}
               />
             </div>
             
