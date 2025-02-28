@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { description, marketId } = await req.json();
+    const { description, marketId, model } = await req.json();
 
     if (!description) {
       return new Response(
@@ -30,15 +30,29 @@ serve(async (req) => {
       );
     }
 
-    console.log("Starting deep research for:", description);
+    // Always use the specified model
+    const modelToUse = "google/gemini-2.0-flash-001";
+    console.log(`Starting deep research for: "${description}" using model: ${modelToUse}`);
 
-    // Initialize and return the stream
-    const stream = await openaiStream({
-      model: "google/gemini-pro-1.5-flash-preview",
-      messages: [
-        {
-          role: "system",
-          content: `You are an AI research assistant. Your task is to conduct deep research on a market to help investors make informed decisions. The research should be iterative, with each step building on the previous one.
+    // Send a progress message to let the client know we've started
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        // Send initial progress update
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: "progress",
+          message: "Initializing research...",
+          currentStep: 0,
+          totalSteps: 3
+        })}\n\n`));
+
+        // Start the OpenRouter stream
+        openaiStream({
+          model: modelToUse,
+          messages: [
+            {
+              role: "system",
+              content: `You are an AI research assistant. Your task is to conduct deep research on a market to help investors make informed decisions. The research should be iterative, with each step building on the previous one.
 
 Important: For each important insight or question that arises during your research, you should search for more information before proceeding.
 
@@ -52,10 +66,10 @@ I'll provide you with a description of a market or investment opportunity, and y
 3. Synthesize all this information into a final research report
 
 The total research report should have 3 iterations max. For each iteration, clearly mark the beginning and end.`,
-        },
-        {
-          role: "user",
-          content: `Please research the following market: ${description}
+            },
+            {
+              role: "user",
+              content: `Please research the following market: ${description}
 
 Remember to:
 1. Break this down into 2-3 specific research queries
@@ -63,12 +77,49 @@ Remember to:
 3. Synthesize all information into a final report with the JSON structure requested
 
 Please ensure each step is clearly delineated with the JSON markers for proper client-side parsing.`,
-        },
-      ],
-      stream: true,
+            },
+          ],
+          stream: true,
+        }).then(stream => {
+          const reader = stream.getReader();
+          
+          function processStream() {
+            reader.read().then(({ done, value }) => {
+              if (done) {
+                // Signal the end of the stream
+                controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+                controller.close();
+                return;
+              }
+              
+              // Forward the chunk to the client
+              controller.enqueue(value);
+              
+              // Continue reading
+              processStream();
+            }).catch(error => {
+              console.error("Stream reading error:", error);
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: "error",
+                message: error.message || "Error reading stream"
+              })}\n\n`));
+              controller.close();
+            });
+          }
+          
+          processStream();
+        }).catch(error => {
+          console.error("OpenRouter API error:", error);
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+            type: "error",
+            message: error.message || "Failed to start research"
+          })}\n\n`));
+          controller.close();
+        });
+      }
     });
 
-    return new Response(stream, {
+    return new Response(body, {
       headers: {
         ...corsHeaders,
         "Content-Type": "text/event-stream",

@@ -44,6 +44,7 @@ export async function openaiStream(params: OpenAIRequest): Promise<ReadableStrea
   // Return a stream that transforms the OpenAI stream into the format we need
   const reader = response.body!.getReader();
   const decoder = new TextDecoder("utf-8");
+  const encoder = new TextEncoder();
   let buffer = "";
 
   return new ReadableStream({
@@ -52,7 +53,7 @@ export async function openaiStream(params: OpenAIRequest): Promise<ReadableStrea
         reader.read().then(({ done, value }) => {
           if (done) {
             // Signal the end of the stream
-            controller.enqueue(`data: [DONE]\n\n`);
+            controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
             controller.close();
             return;
           }
@@ -66,8 +67,12 @@ export async function openaiStream(params: OpenAIRequest): Promise<ReadableStrea
             const trimmedLine = line.trim();
             if (!trimmedLine || !trimmedLine.startsWith("data: ")) continue;
             
-            // Forward the data event
-            controller.enqueue(trimmedLine + "\n\n");
+            try {
+              // Forward the data event
+              controller.enqueue(encoder.encode(`${trimmedLine}\n\n`));
+            } catch (err) {
+              console.error("Error parsing or forwarding line:", err, "Line:", trimmedLine);
+            }
           }
           
           push();

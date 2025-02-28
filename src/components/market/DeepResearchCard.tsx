@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -68,10 +67,16 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ description, marketId }),
+        body: JSON.stringify({ 
+          description, 
+          marketId,
+          model: "google/gemini-2.0-flash-001" // Always use this model as specified
+        }),
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`HTTP error! status: ${response.status}, response:`, errorText);
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
@@ -94,67 +99,81 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
         
         // Decode and add to buffer
         const chunk = decoder.decode(value, { stream: true });
-        console.log('Received chunk:', chunk);
         buffer += chunk;
         
         // Process complete messages in buffer
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
+        let lines = buffer.split('\n');
+        
+        // Keep the last potentially incomplete line in buffer
+        buffer = lines.pop() || ''; 
         
         for (const line of lines) {
           if (!line.trim()) continue;
           
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.replace('data: ', '');
-            if (jsonStr === '[DONE]') continue;
-            
-            try {
-              const data = JSON.parse(jsonStr);
-              console.log('Stream update:', data);
+          try {
+            // Handle SSE format (data: {...})
+            if (line.startsWith('data: ')) {
+              const jsonStr = line.substring(6); // Remove 'data: ' prefix
               
-              if (data.type === 'step') {
-                // Update with a new research step
-                const newStep: ResearchStep = data.data;
-                setSteps(prev => [...prev, newStep]);
-                setIteration(prev => prev + 1);
-                setCurrentQuery(newStep.query);
-                if (data.total) setTotalIterations(data.total);
-              } 
-              else if (data.type === 'progress') {
-                // Update progress information
-                setCurrentQuery(data.message || 'Researching...');
-                if (data.currentStep !== undefined) setIteration(data.currentStep);
-                if (data.totalSteps !== undefined) setTotalIterations(data.totalSteps);
+              console.log('Processing SSE data:', jsonStr);
+              
+              if (jsonStr === '[DONE]') {
+                console.log('Received [DONE] signal');
+                continue;
               }
-              else if (data.type === 'report') {
-                // Final report received
-                console.log('Final report received:', data.data);
-                setResearchResults(data.data as ResearchReport);
+              
+              try {
+                const data = JSON.parse(jsonStr);
+                console.log('Parsed data object:', data);
+                
+                if (data.type === 'step') {
+                  // Handle research step update
+                  console.log('Received step update:', data);
+                  const newStep: ResearchStep = data.data;
+                  setSteps(prev => [...prev, newStep]);
+                  setIteration(prev => prev + 1);
+                  setCurrentQuery(newStep.query);
+                  if (data.total) setTotalIterations(data.total);
+                } 
+                else if (data.type === 'progress') {
+                  // Handle progress update
+                  console.log('Received progress update:', data);
+                  setCurrentQuery(data.message || 'Researching...');
+                  if (data.currentStep !== undefined) setIteration(data.currentStep);
+                  if (data.totalSteps !== undefined) setTotalIterations(data.totalSteps);
+                }
+                else if (data.type === 'report') {
+                  // Handle final report
+                  console.log('Received final report:', data);
+                  setResearchResults(data.data as ResearchReport);
+                }
+                else if (data.type === 'error') {
+                  throw new Error(data.message || 'Unknown error during research');
+                }
+              } catch (parseError) {
+                console.error('Error parsing JSON data:', parseError, 'Raw data:', jsonStr);
               }
-              else if (data.type === 'error') {
-                throw new Error(data.message || 'Unknown error during research');
-              }
-            } catch (e) {
-              console.error('Error parsing streaming data:', e, jsonStr);
+            } else {
+              console.log('Received non-SSE line:', line);
             }
-          } else {
-            console.log('Non-SSE line received:', line);
+          } catch (lineError) {
+            console.error('Error processing line:', lineError, 'Line content:', line);
           }
         }
       }
       
       console.log('Research completed successfully');
-      setIsLoading(false);
     } catch (err) {
       console.error('Research error:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
-      setIsLoading(false);
       
       toast({
         title: "Research Failed",
         description: err instanceof Error ? err.message : 'An unknown error occurred',
         variant: "destructive"
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -202,7 +221,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
             <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
               <div 
                 className="bg-primary h-full transition-all duration-500 ease-in-out"
-                style={{ width: `${(iteration / totalIterations) * 100}%` }}
+                style={{ width: `${Math.max(5, (iteration / totalIterations) * 100)}%` }}
               />
             </div>
             
