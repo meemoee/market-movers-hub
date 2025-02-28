@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, FileText, RefreshCw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useEventListener } from '@/hooks/use-event-listener';
 
 interface DeepResearchCardProps {
   description?: string;
@@ -26,69 +26,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
   const [totalIterations, setTotalIterations] = useState(5);
   const [currentQuery, setCurrentQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const { toast } = useToast();
-
-  // Clean up the abort controller on unmount or when changing
-  useEffect(() => {
-    return () => {
-      if (abortController) {
-        abortController.abort();
-      }
-    };
-  }, [abortController]);
-
-  // Listen for visibility changes to handle browser tab switching
-  useEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && isLoading && abortController) {
-      // If the user switches tabs while loading, cancel the current request
-      abortController.abort();
-    }
-  });
-
-  const processStreamChunk = (chunk: string) => {
-    if (!chunk || chunk === '') return;
-    
-    try {
-      console.log("Processing chunk:", chunk);
-      
-      // Handle different message formats that might come from the stream
-      if (chunk.startsWith('data: ')) {
-        const jsonStr = chunk.slice(6).trim();
-        
-        // Skip the [DONE] message
-        if (jsonStr === '[DONE]') return;
-        
-        try {
-          const data = JSON.parse(jsonStr);
-          console.log("Parsed data:", data);
-          
-          if (data.type === 'progress') {
-            // Handle progress updates
-            console.log("Progress update:", data);
-            if (data.iteration !== undefined) {
-              setIteration(data.iteration);
-            }
-            if (data.totalIterations !== undefined) {
-              setTotalIterations(data.totalIterations);
-            }
-            if (data.query) {
-              setCurrentQuery(data.query);
-            }
-          } 
-          else if (data.type === 'report' && data.report) {
-            // Handle final report
-            console.log("Final report received:", data.report);
-            setResearchResults(data.report);
-          }
-        } catch (e) {
-          console.warn('Error parsing SSE data:', e, "Raw string:", jsonStr);
-        }
-      }
-    } catch (e) {
-      console.error('Error processing stream chunk:', e);
-    }
-  };
 
   const handleStartResearch = async () => {
     if (!description) {
@@ -101,104 +39,60 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     }
 
     try {
-      // Reset state
       setIsLoading(true);
-      setIteration(0);
+      setIteration(1);
       setError(null);
-      setCurrentQuery('Initializing research...');
-      setResearchResults(null);
+      setCurrentQuery(`Initial query for: ${description.substring(0, 30)}...`);
       
-      // Create a new abort controller for this request
-      const controller = new AbortController();
-      setAbortController(controller);
-      
-      console.log("Starting deep research with params:", { description, marketId });
-      
-      // Call the edge function with streaming enabled
-      const response = await supabase.functions.invoke('deep-research', {
-        body: { description, marketId, stream: true }
+      // Call the edge function
+      const { data, error } = await supabase.functions.invoke<{
+        success: boolean;
+        report?: ResearchReport;
+        steps?: { query: string; results: string }[];
+        error?: string;
+      }>('deep-research', {
+        body: { description, marketId }
       });
       
-      // Check if the request was aborted
-      if (controller.signal.aborted) {
-        setIsLoading(false);
-        return;
+      if (error) {
+        throw new Error(`Edge function error: ${error.message}`);
       }
       
-      if (response.error) {
-        throw new Error(`Edge function error: ${response.error.message}`);
+      if (!data.success || data.error) {
+        throw new Error(data.error || 'Unknown error occurred');
       }
       
-      console.log("Received initial response:", response);
+      console.log('Research data received:', data);
       
-      // Process the streaming response
-      const reader = response.data.body?.getReader();
-      if (!reader) {
-        throw new Error("Failed to get reader from response body");
-      }
-      
-      const textDecoder = new TextDecoder();
-      let buffer = '';
-      
-      // Read the stream chunks and process them
-      const readChunk = async () => {
-        try {
-          while (true) {
-            // Check if the request was aborted
-            if (controller.signal.aborted) {
-              console.log("Request aborted");
-              setIsLoading(false);
-              break;
+      // Process research steps to show progress
+      if (data.steps && data.steps.length > 0) {
+        setTotalIterations(data.steps.length);
+        
+        // Simulate step-by-step progress for better UX
+        let currentStep = 0;
+        const interval = setInterval(() => {
+          if (currentStep < data.steps!.length) {
+            setIteration(currentStep + 1);
+            setCurrentQuery(data.steps![currentStep].query);
+            currentStep++;
+          } else {
+            clearInterval(interval);
+            
+            // Once all steps are processed, set the results
+            if (data.report) {
+              setResearchResults(data.report);
             }
-            
-            const { done, value } = await reader.read();
-            if (done) {
-              console.log("Stream complete");
-              setIsLoading(false);
-              break;
-            }
-            
-            const chunk = textDecoder.decode(value, { stream: true });
-            console.log("Received chunk:", chunk);
-            
-            buffer += chunk;
-            
-            // Split the buffer by newlines to get individual messages
-            const lines = buffer.split('\n');
-            // The last line might be incomplete, so keep it in the buffer
-            buffer = lines.pop() || '';
-            
-            // Process each complete line
-            for (const line of lines) {
-              if (line.trim()) {
-                processStreamChunk(line.trim());
-              }
-            }
-          }
-        } catch (err) {
-          // Ignore abort errors
-          if (err.name === 'AbortError' || controller.signal.aborted) {
-            console.log("Stream reading aborted");
             setIsLoading(false);
-            return;
           }
-          
-          console.error('Stream reading error:', err);
-          setError(err instanceof Error ? err.message : 'An error occurred while processing research');
-          setIsLoading(false);
+        }, 1000); // Update every second for visual effect
+      } else {
+        // If no steps are returned, just show the results
+        if (data.report) {
+          setResearchResults(data.report);
         }
-      };
-      
-      // Start reading the stream
-      readChunk();
-      
-    } catch (err) {
-      // Ignore abort errors
-      if (err.name === 'AbortError' || abortController?.signal.aborted) {
         setIsLoading(false);
-        return;
       }
-      
+    } catch (err) {
       console.error('Research error:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
       setIsLoading(false);
@@ -208,8 +102,6 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
         description: err instanceof Error ? err.message : 'An unknown error occurred',
         variant: "destructive"
       });
-    } finally {
-      setAbortController(null);
     }
   };
 
@@ -219,11 +111,6 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     setCurrentQuery('');
     setError(null);
   };
-
-  // Calculate progress percentage
-  const progressPercentage = totalIterations > 0 
-    ? Math.min(Math.round((iteration / totalIterations) * 100), 100) 
-    : 0;
 
   return (
     <Card className="bg-background/70 backdrop-blur-sm border-muted">
@@ -251,7 +138,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
             <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
               <div 
                 className="bg-primary h-full transition-all duration-500 ease-in-out"
-                style={{ width: `${progressPercentage}%` }}
+                style={{ width: `${(iteration / totalIterations) * 100}%` }}
               />
             </div>
             
