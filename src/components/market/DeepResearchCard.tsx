@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, FileText, RefreshCw } from 'lucide-react';
@@ -19,6 +19,11 @@ interface ResearchReport {
   conclusion: string;
 }
 
+interface ResearchStep {
+  query: string;
+  results: string;
+}
+
 export function DeepResearchCard({ description, marketId }: DeepResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [researchResults, setResearchResults] = useState<ResearchReport | null>(null);
@@ -26,6 +31,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
   const [totalIterations, setTotalIterations] = useState(5);
   const [currentQuery, setCurrentQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [steps, setSteps] = useState<ResearchStep[]>([]);
   const { toast } = useToast();
 
   const handleStartResearch = async () => {
@@ -39,59 +45,79 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     }
 
     try {
+      // Reset states
       setIsLoading(true);
-      setIteration(1);
+      setIteration(0);
       setError(null);
-      setCurrentQuery(`Initial query for: ${description.substring(0, 30)}...`);
+      setCurrentQuery('Initializing research...');
+      setSteps([]);
+      setResearchResults(null);
       
-      // Call the edge function
-      const { data, error } = await supabase.functions.invoke<{
-        success: boolean;
-        report?: ResearchReport;
-        steps?: { query: string; results: string }[];
-        error?: string;
-      }>('deep-research', {
-        body: { description, marketId }
+      // Initialize the streaming response
+      const response = await supabase.functions.invoke('deep-research', {
+        body: { description, marketId },
+        responseType: 'stream'
       });
-      
-      if (error) {
-        throw new Error(`Edge function error: ${error.message}`);
+
+      if (!response.data) {
+        throw new Error("No response data received");
       }
-      
-      if (!data.success || data.error) {
-        throw new Error(data.error || 'Unknown error occurred');
-      }
-      
-      console.log('Research data received:', data);
-      
-      // Process research steps to show progress
-      if (data.steps && data.steps.length > 0) {
-        setTotalIterations(data.steps.length);
+
+      // Process the stream
+      const reader = response.data.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
         
-        // Simulate step-by-step progress for better UX
-        let currentStep = 0;
-        const interval = setInterval(() => {
-          if (currentStep < data.steps!.length) {
-            setIteration(currentStep + 1);
-            setCurrentQuery(data.steps![currentStep].query);
-            currentStep++;
-          } else {
-            clearInterval(interval);
+        if (done) break;
+        
+        // Decode and add to buffer
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete messages in buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
+        
+        for (const line of lines) {
+          if (!line.trim() || !line.startsWith('data: ')) continue;
+          
+          const jsonStr = line.replace('data: ', '');
+          if (jsonStr === '[DONE]') continue;
+          
+          try {
+            const data = JSON.parse(jsonStr);
+            console.log('Stream update:', data);
             
-            // Once all steps are processed, set the results
-            if (data.report) {
-              setResearchResults(data.report);
+            if (data.type === 'step') {
+              // Update with a new research step
+              const newStep = data.data as ResearchStep;
+              setSteps(prev => [...prev, newStep]);
+              setIteration(prev => prev + 1);
+              setCurrentQuery(newStep.query);
+              setTotalIterations(data.total || 5);
+            } 
+            else if (data.type === 'progress') {
+              // Update progress information
+              setCurrentQuery(data.message || 'Researching...');
+              if (data.currentStep) setIteration(data.currentStep);
+              if (data.totalSteps) setTotalIterations(data.totalSteps);
             }
-            setIsLoading(false);
+            else if (data.type === 'report') {
+              // Final report received
+              setResearchResults(data.data as ResearchReport);
+            }
+            else if (data.type === 'error') {
+              throw new Error(data.message || 'Unknown error during research');
+            }
+          } catch (e) {
+            console.error('Error parsing streaming data:', e, jsonStr);
           }
-        }, 1000); // Update every second for visual effect
-      } else {
-        // If no steps are returned, just show the results
-        if (data.report) {
-          setResearchResults(data.report);
         }
-        setIsLoading(false);
       }
+      
+      setIsLoading(false);
     } catch (err) {
       console.error('Research error:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
@@ -110,7 +136,18 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     setIteration(0);
     setCurrentQuery('');
     setError(null);
+    setSteps([]);
   };
+
+  // Automatic scroll to latest research step
+  useEffect(() => {
+    if (steps.length > 0) {
+      const progressElement = document.getElementById('research-progress');
+      if (progressElement) {
+        progressElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    }
+  }, [steps]);
 
   return (
     <Card className="bg-background/70 backdrop-blur-sm border-muted">
@@ -122,7 +159,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="space-y-3">
+          <div className="space-y-3" id="research-progress">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">Research in progress...</div>
               <div className="text-sm text-muted-foreground">
@@ -141,6 +178,23 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
                 style={{ width: `${(iteration / totalIterations) * 100}%` }}
               />
             </div>
+            
+            {steps.length > 0 && (
+              <div className="mt-4 space-y-2 max-h-[200px] overflow-y-auto">
+                {steps.map((step, index) => (
+                  <div key={index} className="text-xs border border-border p-2 rounded-md">
+                    <div className="font-medium">Query {index + 1}: {step.query}</div>
+                    {step.results && (
+                      <div className="text-muted-foreground mt-1 text-xs line-clamp-2">
+                        {step.results.length > 100 
+                          ? `${step.results.substring(0, 100)}...` 
+                          : step.results}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             
             <div className="flex justify-center pt-2">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
