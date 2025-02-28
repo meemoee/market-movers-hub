@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, FileText, RefreshCw } from 'lucide-react';
@@ -18,11 +19,6 @@ interface ResearchReport {
   conclusion: string;
 }
 
-interface ResearchStep {
-  query: string;
-  results: string;
-}
-
 export function DeepResearchCard({ description, marketId }: DeepResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [researchResults, setResearchResults] = useState<ResearchReport | null>(null);
@@ -30,7 +26,6 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
   const [totalIterations, setTotalIterations] = useState(5);
   const [currentQuery, setCurrentQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [steps, setSteps] = useState<ResearchStep[]>([]);
   const { toast } = useToast();
 
   const handleStartResearch = async () => {
@@ -44,136 +39,69 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     }
 
     try {
-      // Reset states
       setIsLoading(true);
-      setIteration(0);
+      setIteration(1);
       setError(null);
-      setCurrentQuery('Initializing research...');
-      setSteps([]);
-      setResearchResults(null);
+      setCurrentQuery(`Initial query for: ${description.substring(0, 30)}...`);
       
-      // Direct call to Supabase edge function with proper URL construction
-      const functionUrl = `${import.meta.env.VITE_SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co'}/functions/v1/deep-research`;
-      
-      // Get the current auth session token
-      const { data: { session } } = await supabase.auth.getSession();
-      const accessToken = session?.access_token || '';
-      
-      console.log('Starting deep research with URL:', functionUrl);
-      
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ 
-          description, 
-          marketId,
-          model: "google/gemini-2.0-flash-001" // Always use this model as specified
-        }),
+      // Call the edge function
+      const { data, error } = await supabase.functions.invoke<{
+        success: boolean;
+        report?: ResearchReport;
+        steps?: { query: string; results: string }[];
+        error?: string;
+      }>('deep-research', {
+        body: { description, marketId }
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`HTTP error! status: ${response.status}, response:`, errorText);
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      if (!response.body) {
-        throw new Error("No response body received");
-      }
-
-      // Process the stream
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) {
-          console.log('Stream complete');
-          break;
-        }
-        
-        // Decode and add to buffer
-        const chunk = decoder.decode(value, { stream: true });
-        buffer += chunk;
-        
-        // Process complete messages in buffer
-        let lines = buffer.split('\n');
-        
-        // Keep the last potentially incomplete line in buffer
-        buffer = lines.pop() || ''; 
-        
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          
-          try {
-            // Handle SSE format (data: {...})
-            if (line.startsWith('data: ')) {
-              const jsonStr = line.substring(6); // Remove 'data: ' prefix
-              
-              console.log('Processing SSE data:', jsonStr);
-              
-              if (jsonStr === '[DONE]') {
-                console.log('Received [DONE] signal');
-                continue;
-              }
-              
-              try {
-                const data = JSON.parse(jsonStr);
-                console.log('Parsed data object:', data);
-                
-                if (data.type === 'step') {
-                  // Handle research step update
-                  console.log('Received step update:', data);
-                  const newStep: ResearchStep = data.data;
-                  setSteps(prev => [...prev, newStep]);
-                  setIteration(prev => prev + 1);
-                  setCurrentQuery(newStep.query);
-                  if (data.total) setTotalIterations(data.total);
-                } 
-                else if (data.type === 'progress') {
-                  // Handle progress update
-                  console.log('Received progress update:', data);
-                  setCurrentQuery(data.message || 'Researching...');
-                  if (data.currentStep !== undefined) setIteration(data.currentStep);
-                  if (data.totalSteps !== undefined) setTotalIterations(data.totalSteps);
-                }
-                else if (data.type === 'report') {
-                  // Handle final report
-                  console.log('Received final report:', data);
-                  setResearchResults(data.data as ResearchReport);
-                }
-                else if (data.type === 'error') {
-                  throw new Error(data.message || 'Unknown error during research');
-                }
-              } catch (parseError) {
-                console.error('Error parsing JSON data:', parseError, 'Raw data:', jsonStr);
-              }
-            } else {
-              console.log('Received non-SSE line:', line);
-            }
-          } catch (lineError) {
-            console.error('Error processing line:', lineError, 'Line content:', line);
-          }
-        }
+      
+      if (error) {
+        throw new Error(`Edge function error: ${error.message}`);
       }
       
-      console.log('Research completed successfully');
+      if (!data.success || data.error) {
+        throw new Error(data.error || 'Unknown error occurred');
+      }
+      
+      console.log('Research data received:', data);
+      
+      // Process research steps to show progress
+      if (data.steps && data.steps.length > 0) {
+        setTotalIterations(data.steps.length);
+        
+        // Simulate step-by-step progress for better UX
+        let currentStep = 0;
+        const interval = setInterval(() => {
+          if (currentStep < data.steps!.length) {
+            setIteration(currentStep + 1);
+            setCurrentQuery(data.steps![currentStep].query);
+            currentStep++;
+          } else {
+            clearInterval(interval);
+            
+            // Once all steps are processed, set the results
+            if (data.report) {
+              setResearchResults(data.report);
+            }
+            setIsLoading(false);
+          }
+        }, 1000); // Update every second for visual effect
+      } else {
+        // If no steps are returned, just show the results
+        if (data.report) {
+          setResearchResults(data.report);
+        }
+        setIsLoading(false);
+      }
     } catch (err) {
       console.error('Research error:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setIsLoading(false);
       
       toast({
         title: "Research Failed",
         description: err instanceof Error ? err.message : 'An unknown error occurred',
         variant: "destructive"
       });
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -182,18 +110,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     setIteration(0);
     setCurrentQuery('');
     setError(null);
-    setSteps([]);
   };
-
-  // Automatic scroll to latest research step
-  useEffect(() => {
-    if (steps.length > 0) {
-      const progressElement = document.getElementById('research-progress');
-      if (progressElement) {
-        progressElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }
-    }
-  }, [steps]);
 
   return (
     <Card className="bg-background/70 backdrop-blur-sm border-muted">
@@ -205,7 +122,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       </CardHeader>
       <CardContent>
         {isLoading ? (
-          <div className="space-y-3" id="research-progress">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="text-sm font-medium">Research in progress...</div>
               <div className="text-sm text-muted-foreground">
@@ -221,26 +138,9 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
             <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
               <div 
                 className="bg-primary h-full transition-all duration-500 ease-in-out"
-                style={{ width: `${Math.max(5, (iteration / totalIterations) * 100)}%` }}
+                style={{ width: `${(iteration / totalIterations) * 100}%` }}
               />
             </div>
-            
-            {steps.length > 0 && (
-              <div className="mt-4 space-y-2 max-h-[200px] overflow-y-auto">
-                {steps.map((step, index) => (
-                  <div key={index} className="text-xs border border-border p-2 rounded-md">
-                    <div className="font-medium">Query {index + 1}: {step.query}</div>
-                    {step.results && (
-                      <div className="text-muted-foreground mt-1 text-xs line-clamp-2">
-                        {step.results.length > 100 
-                          ? `${step.results.substring(0, 100)}...` 
-                          : step.results}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
             
             <div className="flex justify-center pt-2">
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
