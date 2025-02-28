@@ -71,13 +71,18 @@ export function MarketDetails({
         </TabsList>
         
         <TabsContent value="price" className="mt-4 space-y-4">
-          <PriceChart marketId={marketId} selectedInterval={selectedInterval} onIntervalSelect={() => {}} />
+          <PriceChart 
+            data={[]} 
+            events={[]} 
+            selectedInterval={selectedInterval} 
+            onIntervalSelect={() => {}} 
+          />
           {eventId && <RelatedMarkets eventId={eventId} marketId={marketId} selectedInterval={selectedInterval} />}
         </TabsContent>
         
         <TabsContent value="research" className="mt-4 space-y-4">
           <DeepResearchCard marketId={marketId} question={question} />
-          <WebResearchCard marketId={marketId} />
+          <WebResearchCard description={description || question} marketId={marketId} />
         </TabsContent>
         
         <TabsContent value="debates" className="mt-4">
