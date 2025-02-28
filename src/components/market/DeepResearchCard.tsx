@@ -54,12 +54,25 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       setResearchResults(null);
       
       // Initialize the request to the edge function
-      const response = await fetch(`${supabase.functions.url}/deep-research`, {
+      // Use the supabase.functions.invoke with streaming option
+      const { data, error: invokeError } = await supabase.functions.invoke('deep-research', {
+        body: { description, marketId },
+      });
+
+      if (invokeError) {
+        throw new Error(invokeError.message);
+      }
+
+      // Since we can't use streaming directly with invoke, we'll use a second fetch request
+      // Get the API endpoint URL from the environment or construct it
+      const apiUrl = `${window.location.protocol}//${window.location.host}/api/edge/deep-research`;
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`,
-          'apikey': process.env.SUPABASE_ANON_KEY || '',
+          // Get the active session token
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`,
         },
         body: JSON.stringify({ description, marketId }),
       });
