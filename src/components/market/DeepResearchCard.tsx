@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +50,8 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     if (!chunk || chunk === '') return;
     
     try {
+      console.log("Processing chunk:", chunk);
+      
       // Handle different message formats that might come from the stream
       if (chunk.startsWith('data: ')) {
         const jsonStr = chunk.slice(6).trim();
@@ -60,9 +61,11 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
         
         try {
           const data = JSON.parse(jsonStr);
+          console.log("Parsed data:", data);
           
           if (data.type === 'progress') {
             // Handle progress updates
+            console.log("Progress update:", data);
             if (data.iteration !== undefined) {
               setIteration(data.iteration);
             }
@@ -75,10 +78,11 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
           } 
           else if (data.type === 'report' && data.report) {
             // Handle final report
+            console.log("Final report received:", data.report);
             setResearchResults(data.report);
           }
         } catch (e) {
-          console.warn('Error parsing SSE data:', e);
+          console.warn('Error parsing SSE data:', e, "Raw string:", jsonStr);
         }
       }
     } catch (e) {
@@ -108,6 +112,8 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       const controller = new AbortController();
       setAbortController(controller);
       
+      console.log("Starting deep research with params:", { description, marketId });
+      
       // Call the edge function with streaming enabled
       const response = await supabase.functions.invoke('deep-research', {
         body: { description, marketId, stream: true }
@@ -123,81 +129,68 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
         throw new Error(`Edge function error: ${response.error.message}`);
       }
       
+      console.log("Received initial response:", response);
+      
       // Process the streaming response
-      const reader = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder();
-          const streamReader = new Response(response.data.body).body?.getReader();
-          
-          function push() {
-            // Check if the request was aborted before reading
-            if (abortController?.signal.aborted) {
-              controller.close();
+      const reader = response.data.body?.getReader();
+      if (!reader) {
+        throw new Error("Failed to get reader from response body");
+      }
+      
+      const textDecoder = new TextDecoder();
+      let buffer = '';
+      
+      // Read the stream chunks and process them
+      const readChunk = async () => {
+        try {
+          while (true) {
+            // Check if the request was aborted
+            if (controller.signal.aborted) {
+              console.log("Request aborted");
               setIsLoading(false);
-              return;
+              break;
             }
             
-            streamReader?.read().then(({ done, value }) => {
-              if (done) {
-                controller.close();
-                setIsLoading(false);
-                return;
-              }
-              
-              const chunk = textDecoder.decode(value);
-              const lines = chunk.split('\n').filter(line => line.trim());
-              
-              for (const line of lines) {
-                processStreamChunk(line);
-              }
-              
-              // Check if the request was aborted after processing
-              if (abortController?.signal.aborted) {
-                controller.close();
-                setIsLoading(false);
-                return;
-              }
-              
-              push();
-            }).catch(err => {
-              // Ignore abort errors
-              if (err.name === 'AbortError' || abortController?.signal.aborted) {
-                controller.close();
-                setIsLoading(false);
-                return;
-              }
-              
-              console.error('Stream reading error:', err);
-              setError(err instanceof Error ? err.message : 'An error occurred while processing research');
+            const { done, value } = await reader.read();
+            if (done) {
+              console.log("Stream complete");
               setIsLoading(false);
-              controller.error(err);
-            });
+              break;
+            }
+            
+            const chunk = textDecoder.decode(value, { stream: true });
+            console.log("Received chunk:", chunk);
+            
+            buffer += chunk;
+            
+            // Split the buffer by newlines to get individual messages
+            const lines = buffer.split('\n');
+            // The last line might be incomplete, so keep it in the buffer
+            buffer = lines.pop() || '';
+            
+            // Process each complete line
+            for (const line of lines) {
+              if (line.trim()) {
+                processStreamChunk(line.trim());
+              }
+            }
           }
-          
-          push();
-        }
-      });
-
-      const streamReader = reader.getReader();
-      while (true) {
-        // Check if the request was aborted before reading
-        if (abortController?.signal.aborted) {
-          setIsLoading(false);
-          break;
-        }
-        
-        try {
-          const { done } = await streamReader.read();
-          if (done) break;
         } catch (err) {
           // Ignore abort errors
-          if (err.name === 'AbortError' || abortController?.signal.aborted) {
+          if (err.name === 'AbortError' || controller.signal.aborted) {
+            console.log("Stream reading aborted");
             setIsLoading(false);
-            break;
+            return;
           }
-          throw err;
+          
+          console.error('Stream reading error:', err);
+          setError(err instanceof Error ? err.message : 'An error occurred while processing research');
+          setIsLoading(false);
         }
-      }
+      };
+      
+      // Start reading the stream
+      readChunk();
       
     } catch (err) {
       // Ignore abort errors
