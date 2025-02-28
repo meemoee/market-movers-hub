@@ -7,6 +7,7 @@ import { QADisplay } from './QADisplay';
 import { WebResearchCard } from './WebResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
+import { DeepResearchCard } from './DeepResearchCard';
 
 interface MarketDetailsProps {
   description?: string;
@@ -130,12 +131,18 @@ export function MarketDetails({
         />
       )}
 
-      {/* Web Research Section */}
+      {/* Research Sections - Side by side */}
       {description && (
-        <WebResearchCard 
-          description={description} 
-          marketId={marketId}
-        />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <WebResearchCard 
+            description={description} 
+            marketId={marketId}
+          />
+          <DeepResearchCard
+            description={description}
+            marketId={marketId}
+          />
+        </div>
       )}
 
       {/* QA Tree Section - Only render if we have required props */}
