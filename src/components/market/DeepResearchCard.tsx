@@ -110,9 +110,14 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       
       // Call the edge function with streaming enabled
       const response = await supabase.functions.invoke('deep-research', {
-        body: { description, marketId, stream: true },
-        signal: controller.signal
+        body: { description, marketId, stream: true }
       });
+      
+      // Check if the request was aborted
+      if (controller.signal.aborted) {
+        setIsLoading(false);
+        return;
+      }
       
       if (response.error) {
         throw new Error(`Edge function error: ${response.error.message}`);
@@ -125,6 +130,13 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
           const streamReader = new Response(response.data.body).body?.getReader();
           
           function push() {
+            // Check if the request was aborted before reading
+            if (abortController?.signal.aborted) {
+              controller.close();
+              setIsLoading(false);
+              return;
+            }
+            
             streamReader?.read().then(({ done, value }) => {
               if (done) {
                 controller.close();
@@ -139,8 +151,22 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
                 processStreamChunk(line);
               }
               
+              // Check if the request was aborted after processing
+              if (abortController?.signal.aborted) {
+                controller.close();
+                setIsLoading(false);
+                return;
+              }
+              
               push();
             }).catch(err => {
+              // Ignore abort errors
+              if (err.name === 'AbortError' || abortController?.signal.aborted) {
+                controller.close();
+                setIsLoading(false);
+                return;
+              }
+              
               console.error('Stream reading error:', err);
               setError(err instanceof Error ? err.message : 'An error occurred while processing research');
               setIsLoading(false);
@@ -154,11 +180,32 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
 
       const streamReader = reader.getReader();
       while (true) {
-        const { done } = await streamReader.read();
-        if (done) break;
+        // Check if the request was aborted before reading
+        if (abortController?.signal.aborted) {
+          setIsLoading(false);
+          break;
+        }
+        
+        try {
+          const { done } = await streamReader.read();
+          if (done) break;
+        } catch (err) {
+          // Ignore abort errors
+          if (err.name === 'AbortError' || abortController?.signal.aborted) {
+            setIsLoading(false);
+            break;
+          }
+          throw err;
+        }
       }
       
     } catch (err) {
+      // Ignore abort errors
+      if (err.name === 'AbortError' || abortController?.signal.aborted) {
+        setIsLoading(false);
+        return;
+      }
+      
       console.error('Research error:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
       setIsLoading(false);
