@@ -62,6 +62,8 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
         throw new Error(data.error || 'Unknown error occurred');
       }
       
+      console.log('Research data received:', data);
+      
       // Process research steps to show progress
       if (data.steps && data.steps.length > 0) {
         setTotalIterations(data.steps.length);
