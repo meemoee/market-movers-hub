@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SimilarHistoricalEvents } from "./SimilarHistoricalEvents";
 import { QADisplay } from "./QADisplay";
-import { PriceChart } from "./PriceChart";
+import PriceChart from "./PriceChart";
 import { RelatedMarkets } from "./RelatedMarkets";
 import { WebResearchCard } from "./WebResearchCard";
 import { DeepResearchCard } from "./DeepResearchCard";
@@ -40,7 +40,7 @@ export function MarketDetails({
         if (error) {
           console.error('Error fetching QA tree:', error);
         } else if (data) {
-          setQATree(data.tree);
+          setQATree(data.tree_data);
         }
       } catch (error) {
         console.error('Failed to fetch QA tree:', error);
@@ -71,17 +71,17 @@ export function MarketDetails({
         </TabsList>
         
         <TabsContent value="price" className="mt-4 space-y-4">
-          <PriceChart marketId={marketId} />
+          <PriceChart marketId={marketId} selectedInterval={selectedInterval} onIntervalSelect={() => {}} />
           {eventId && <RelatedMarkets eventId={eventId} marketId={marketId} selectedInterval={selectedInterval} />}
         </TabsContent>
         
         <TabsContent value="research" className="mt-4 space-y-4">
           <DeepResearchCard marketId={marketId} question={question} />
-          <WebResearchCard marketId={marketId} question={question} />
+          <WebResearchCard marketId={marketId} />
         </TabsContent>
         
         <TabsContent value="debates" className="mt-4">
-          <QADisplay tree={qaTree} isLoading={isLoadingQATree} marketId={marketId} question={question} />
+          <QADisplay marketId={marketId} marketQuestion={question} />
         </TabsContent>
         
         <TabsContent value="similar" className="mt-4">
