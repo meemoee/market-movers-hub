@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, FileText, RefreshCw } from 'lucide-react';
@@ -44,7 +44,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       setError(null);
       setCurrentQuery(`Initial query for: ${description.substring(0, 30)}...`);
       
-      // Use the regular supabase.functions.invoke method
+      // Call the edge function
       const { data, error } = await supabase.functions.invoke<{
         success: boolean;
         report?: ResearchReport;

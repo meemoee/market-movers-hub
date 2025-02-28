@@ -1,17 +1,6 @@
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { corsHeaders, handleCorsOptions } from '../_shared/cors.ts';
-import { callOpenRouter } from './openRouter.ts';
-
-interface RequestBody {
-  description: string;
-  marketId: string;
-}
-
-interface ResearchStep {
-  query: string;
-  results: string;
-}
+import { corsHeaders } from '../_shared/cors.ts';
+import { OpenRouter } from './openRouter.ts';
 
 interface ResearchReport {
   title: string;
@@ -21,153 +10,527 @@ interface ResearchReport {
   conclusion: string;
 }
 
-serve(async (req: Request) => {
+interface ResearchStep {
+  query: string;
+  results: string;
+}
+
+// Default model to use
+const DEFAULT_MODEL = 'google/gemini-2.0-flash-001';
+
+Deno.serve(async (req) => {
   // Handle CORS preflight request
-  const corsResponse = handleCorsOptions(req);
-  if (corsResponse) {
-    return corsResponse;
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      headers: corsHeaders,
+    });
   }
 
   try {
-    const requestData: RequestBody = await req.json();
-    const { description, marketId } = requestData;
-
+    const { description, marketId, iterations = 3 } = await req.json();
+    
     if (!description) {
-      throw new Error('Missing market description');
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: 'Missing market description' 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400 
+        }
+      );
     }
 
-    console.log(`Starting deep research for market: ${marketId}`);
-    console.log(`Description: ${description}`);
+    console.log(`Starting deep research for market ${marketId}`);
+    console.log(`Description: ${description.substring(0, 100)}...`);
+    console.log(`Iterations: ${iterations}`);
 
-    // Generate a set of search queries
-    const queries = await generateSearchQueries(description);
-    console.log("Generated queries:", queries);
+    const openRouter = new OpenRouter(Deno.env.get("OPENROUTER_API_KEY") || "");
+    const model = DEFAULT_MODEL;
 
-    // Perform research steps
-    const steps: ResearchStep[] = [];
-    for (const query of queries) {
-      console.log(`Executing research step with query: "${query}"`);
+    // Initialize research state
+    const researchState = {
+      intent: description,
+      model,
+      totalIterations: iterations,
+      iteration: 1,
+      findings: [],
+      previousQueries: [],
+      steps: [] as ResearchStep[]
+    };
+    
+    // Formulate initial strategic query
+    const initialQuery = await formInitialQuery(description, model, openRouter);
+    let currentQuery = initialQuery;
+    
+    researchState.steps.push({
+      query: initialQuery,
+      results: "Initial query formulated. Starting research..."
+    });
+    
+    console.log(`Initial query: ${initialQuery}`);
+    
+    // Main research loop
+    while (researchState.iteration <= iterations) {
+      console.log(`Performing iteration ${researchState.iteration}/${iterations}`);
       
-      // Simulate search results for demo purposes
-      const results = `Research results for "${query}": Found several relevant articles discussing market trends, expert opinions, and historical data.`;
+      // Perform research
+      const result = await performResearch(currentQuery, researchState, openRouter);
       
-      steps.push({ query, results });
-    }
-
-    // Generate the final research report
-    const report = await generateResearchReport(description, steps);
-    console.log("Generated research report:", report);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        steps,
-        report
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 200 
+      // Store results
+      researchState.findings.push(result);
+      researchState.previousQueries.push(currentQuery);
+      
+      researchState.steps.push({
+        query: currentQuery,
+        results: `Research completed. Found ${result.keyFindings.length} key findings.`
+      });
+      
+      // Check if research should continue
+      if (researchState.iteration >= iterations || result.error) {
+        break;
       }
-    );
-  } catch (error) {
-    console.error("Error in deep-research function:", error);
+      
+      // Generate next query based on findings
+      currentQuery = await generateNextQuery(
+        description, 
+        researchState.previousQueries, 
+        result.keyFindings, 
+        model,
+        openRouter
+      );
+      
+      researchState.steps.push({
+        query: currentQuery,
+        results: "Generated follow-up query based on findings."
+      });
+      
+      // Increment iteration counter
+      researchState.iteration++;
+    }
+    
+    // Generate final report
+    console.log("Generating final report");
+    const finalReport = await generateFinalReport(researchState, openRouter);
+    
+    researchState.steps.push({
+      query: "Final synthesis",
+      results: "Generating comprehensive research report."
+    });
+    
+    console.log("Research completed successfully");
     
     return new Response(
       JSON.stringify({
-        success: false,
-        error: error.message
+        success: true,
+        report: finalReport,
+        steps: researchState.steps
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
+    
+  } catch (error) {
+    console.error(`Error in deep-research function: ${error.message}`);
+    
+    return new Response(
+      JSON.stringify({ 
+        success: false, 
+        error: `Internal server error: ${error.message}` 
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500
+        status: 500 
       }
     );
   }
 });
 
-async function generateSearchQueries(description: string): Promise<string[]> {
-  const prompt = `
-Given the following market description, generate 5 search queries that would help gather relevant information to evaluate the market's outcome probability:
-
-Description: ${description}
-
-Generate 5 specific, focused search queries that would help research this market. Each query should target different aspects of the topic to ensure comprehensive research. Format the output as a JSON array of strings.
-  `;
-
+/**
+ * Formulate an optimal initial query based on research intent
+ */
+async function formInitialQuery(intent: string, model: string, openRouter: OpenRouter): Promise<string> {
+  console.log(`Formulating strategic initial query...`);
+  
   try {
-    const response = await callOpenRouter("google/gemini-2.0-flash-001", prompt);
-    const parsedResponse = JSON.parse(response);
+    const systemPrompt = `You are an expert search query formulator. Create the most effective initial search query that will:
+1. Target the most essential information about the topic
+2. Be specific enough to find relevant results
+3. Use 5-10 words maximum with precise terminology
+
+Return ONLY the query text with no explanations or formatting.`;
+
+    const response = await openRouter.complete(model, [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Create the best initial search query for: "${intent}"` }
+    ], 60, 0.3);
+
+    const initialQuery = response.replace(/^["']|["']$/g, '') // Remove quotes
+      .replace(/\.$/, ''); // Remove trailing period
     
-    if (Array.isArray(parsedResponse) && parsedResponse.length > 0) {
-      return parsedResponse.slice(0, 5); // Ensure we get max 5 queries
-    }
-    
-    // Fallback in case response format is unexpected
-    return [
-      `${description} latest news`,
-      `${description} expert analysis`,
-      `${description} historical data`,
-      `${description} predictions`,
-      `${description} timeline`
-    ];
+    console.log(`Initial query formulated: "${initialQuery}"`);
+    return initialQuery;
   } catch (error) {
-    console.error("Error generating search queries:", error);
-    // Provide fallback queries
-    return [
-      `${description} latest news`,
-      `${description} expert analysis`,
-      `${description} historical data`,
-      `${description} predictions`,
-      `${description} timeline`
-    ];
+    console.error(`Failed to formulate initial query: ${error.message}`);
+    return intent; // Fall back to original intent
   }
 }
 
-async function generateResearchReport(description: string, steps: ResearchStep[]): Promise<ResearchReport> {
-  const researchData = steps.map(step => `Query: ${step.query}\nResults: ${step.results}`).join('\n\n');
+/**
+ * Generate a strategic follow-up query based on findings
+ */
+async function generateNextQuery(
+  intent: string, 
+  previousQueries: string[], 
+  keyFindings: string[], 
+  model: string,
+  openRouter: OpenRouter
+): Promise<string> {
+  console.log(`Generating strategic follow-up query...`);
   
-  const prompt = `
-As a market research expert, analyze the following information and create a comprehensive research report for this prediction market:
+  const recentFindings = keyFindings
+    .slice(-3)
+    .map((f, i) => `${i+1}. ${f}`)
+    .join('\n');
+    
+  const previousQueriesText = previousQueries
+    .slice(-3)
+    .map((q, i) => `${i+1}. "${q}"`)
+    .join('\n');
+  
+  try {
+    const systemPrompt = `You generate strategic follow-up search queries for research. 
+RESPOND WITH ONLY THE QUERY TEXT - NO EXPLANATIONS OR QUOTES.`;
 
-Market Description: ${description}
+    const userPrompt = `RESEARCH QUESTION: "${intent}"
 
-Research Data:
-${researchData}
+PREVIOUS QUERIES:
+${previousQueriesText}
 
-Create a detailed research report with the following sections:
-1. A concise title for the report
-2. An executive summary (2-3 sentences summarizing key findings)
-3. Key findings (3-5 bullet points)
-4. Brief analysis (2-3 paragraphs)
-5. Conclusion with implications for market probability (1-2 paragraphs)
+RECENT FINDINGS:
+${recentFindings}
 
-Format the response as a JSON object with the following structure:
-{
-  "title": "Report Title",
-  "executiveSummary": "Executive summary text...",
-  "keyFindings": ["Finding 1", "Finding 2", "Finding 3"],
-  "analysis": "Analysis paragraphs...",
-  "conclusion": "Conclusion paragraphs..."
+Based on what we've learned, create the MOST EFFECTIVE follow-up search query that will:
+
+1. Focus on the most important remaining unknown aspect
+2. Be different enough from previous queries
+3. Use precise language that would appear in relevant sources
+4. Contain 5-10 words maximum
+5. Help directly answer the original research question
+
+Return only the query text with no explanations.`;
+
+    const response = await openRouter.complete(model, [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], 60, 0.4);
+
+    const nextQuery = response.replace(/^["']|["']$/g, '') // Remove quotes
+      .replace(/\.$/, ''); // Remove trailing period
+    
+    console.log(`Follow-up query generated: "${nextQuery}"`);
+    return nextQuery;
+  } catch (error) {
+    console.error(`Query generation failed: ${error.message}`);
+    // Simple fallback strategy
+    return `${intent.split(' ').slice(0, 3).join(' ')} additional information`;
+  }
 }
-  `;
+
+/**
+ * Perform a research iteration
+ */
+async function performResearch(query: string, researchState: any, openRouter: OpenRouter) {
+  console.log(`[Iteration ${researchState.iteration}/${researchState.totalIterations}] Searching: "${query}"`);
+  
+  // Create a brief research context from previous findings
+  let researchContext = '';
+  if (researchState.findings.length > 0) {
+    const previousFindings = researchState.findings
+      .slice(-1)[0]
+      .keyFindings
+      .slice(0, 3)
+      .map((f: string, i: number) => `${i+1}. ${f}`)
+      .join('\n');
+      
+    if (previousFindings) {
+      researchContext = `\nPREVIOUS FINDINGS:\n${previousFindings}`;
+    }
+  }
+  
+  // System prompt
+  const systemPrompt = `You are a precise research assistant investigating: "${researchState.intent}"
+
+Current iteration: ${researchState.iteration} of ${researchState.totalIterations}
+Current query: "${query}"
+${researchContext}
+
+Your task is to:
+1. Search for and analyze information relevant to the query
+2. Identify NEW facts and information about the topic
+3. Focus on directly answering the original research question
+4. Provide specific, detailed, factual information
+5. CITE SOURCES using markdown links [title](url) whenever possible
+
+RESPOND IN THIS FORMAT:
+1. First, provide a DETAILED ANALYSIS of the search results (1-2 paragraphs)
+2. Then, list KEY FINDINGS as numbered points (precise, specific facts)
+3. ${researchState.iteration < researchState.totalIterations ? 'Finally, state the most important unanswered question based on these findings' : 'Finally, provide a comprehensive SUMMARY of all findings related to the original question'}
+
+IMPORTANT:
+- Focus on NEW information in each iteration
+- Be objective and factual
+- Cite sources wherever possible 
+- Make each key finding specific and self-contained`;
 
   try {
-    const response = await callOpenRouter("google/gemini-2.0-flash-001", prompt);
-    const report = JSON.parse(response);
-    return report;
+    // The ":online" suffix is for web search, if available on OpenRouter
+    const onlineModel = `${researchState.model}:online`;
+    
+    const response = await openRouter.complete(onlineModel, [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Search for information on: "${query}"` }
+    ], 1200, 0.3);
+    
+    // Process the content to extract structured data
+    const result = processContent(response, query);
+    result.iteration = researchState.iteration;
+    
+    return result;
   } catch (error) {
-    console.error("Error generating research report:", error);
-    // Return a fallback report
+    console.error(`Research failed: ${error.message}`);
+    // Try again without the :online suffix if it failed
+    try {
+      console.log("Retrying without web search...");
+      const response = await openRouter.complete(researchState.model, [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Based on your knowledge, provide information on: "${query}"` }
+      ], 1200, 0.3);
+      
+      // Process the content to extract structured data
+      const result = processContent(response, query);
+      result.iteration = researchState.iteration;
+      
+      return result;
+    } catch (retryError) {
+      console.error(`Retry also failed: ${retryError.message}`);
+      return {
+        iteration: researchState.iteration,
+        query,
+        analysis: `Error occurred during research: ${error.message}`,
+        keyFindings: ["Error in analysis"],
+        importantQuestion: '',
+        finalSummary: '',
+        sources: [],
+        error: true
+      };
+    }
+  }
+}
+
+/**
+ * Process content to extract structured information
+ */
+function processContent(content: string, query: string) {
+  // Initialize result object
+  const result = {
+    query,
+    analysis: '',
+    keyFindings: [] as string[],
+    importantQuestion: '',
+    finalSummary: '',
+    sources: [] as {url: string, label: string}[],
+    error: false
+  };
+  
+  try {
+    // Extract analysis section (everything before "KEY FINDINGS")
+    const analysisSplit = content.split(/KEY FINDINGS/i);
+    if (analysisSplit.length > 1) {
+      result.analysis = analysisSplit[0].trim();
+    } else {
+      result.analysis = content.trim();
+      return result; // Early return if we can't parse properly
+    }
+    
+    // Extract key findings
+    const findingRegex = /\d+\.\s+(.+?)(?=\d+\.|IMPORTANT QUESTION|SUMMARY|$)/gs;
+    let restContent = analysisSplit.slice(1).join('KEY FINDINGS');
+    let findingMatch;
+    
+    while ((findingMatch = findingRegex.exec(restContent)) !== null) {
+      const finding = findingMatch[1].trim();
+      if (finding) {
+        result.keyFindings.push(finding);
+      }
+    }
+    
+    // Extract important question or final summary
+    const questionMatch = content.match(/IMPORTANT QUESTION[:\s]*([^\n]+)/i);
+    if (questionMatch && questionMatch[1]) {
+      result.importantQuestion = questionMatch[1].trim();
+    }
+    
+    const summaryMatch = content.match(/SUMMARY[:\s]*([\s\S]+)/i);
+    if (summaryMatch && summaryMatch[1]) {
+      result.finalSummary = summaryMatch[1].trim();
+    }
+    
+    // Extract sources from markdown links
+    const sourceRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+    let sourceMatch;
+    
+    while ((sourceMatch = sourceRegex.exec(content)) !== null) {
+      const [_, label, url] = sourceMatch;
+      
+      if (url && isValidUrl(url)) {
+        result.sources.push({
+          url,
+          label: label || url
+        });
+      }
+    }
+    
+    return result;
+  } catch (error) {
+    console.error(`Content processing failed: ${error.message}`);
+    result.error = true;
+    return result;
+  }
+}
+
+/**
+ * Check if a string is a valid URL
+ */
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Generate final research report
+ */
+async function generateFinalReport(researchState: any, openRouter: OpenRouter): Promise<ResearchReport> {
+  console.log('Generating final research synthesis...');
+  
+  // Prepare findings summary
+  const allFindings = researchState.findings
+    .flatMap((f: any) => f.keyFindings)
+    .map((f: string, i: number) => `${i+1}. ${f}`)
+    .join('\n');
+  
+  // Generate final report
+  try {
+    const systemPrompt = `You are a research synthesis expert creating a comprehensive final report.`;
+    
+    const userPrompt = `RESEARCH QUESTION: "${researchState.intent}"
+
+FINDINGS FROM ALL ITERATIONS:
+${allFindings}
+
+Create a comprehensive research report with these sections:
+1. TITLE - Clear, informative title for the report
+2. EXECUTIVE SUMMARY - Brief overview of key conclusions (1-2 paragraphs)
+3. KEY FINDINGS - 5-7 most important findings (numbered list)
+4. DETAILED ANALYSIS - Comprehensive analysis of findings (2 paragraphs)
+5. CONCLUSION - Final answer to the research question (1 paragraph)
+
+Make the report clear, factual, and directly answer the original research question.`;
+
+    const fullReport = await openRouter.complete(researchState.model, [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], 1500, 0.3);
+    
+    console.log("Final report generated");
+    
+    // Parse the report into sections
+    return parseReportToStructure(fullReport);
+  } catch (error) {
+    console.error(`Final report generation failed: ${error.message}`);
+    
+    // Return a basic error report
     return {
-      title: `Research Report: ${description.substring(0, 50)}...`,
-      executiveSummary: "This automatic research report encountered issues during generation. The results should be considered preliminary.",
-      keyFindings: [
-        "Insufficient data available for comprehensive analysis",
-        "Consider conducting manual research for more accurate results",
-        "Automated research system limitations detected"
-      ],
-      analysis: "The automated research system attempted to analyze this market but encountered technical limitations. The research queries were executed but the analysis engine could not process the results effectively.",
-      conclusion: "Due to technical limitations in the research process, no definitive conclusion can be provided at this time. Consider this report as preliminary and seek additional information sources."
+      title: "Research Synthesis Error",
+      executiveSummary: `Error generating final report: ${error.message}`,
+      keyFindings: ["Error occurred during research synthesis"],
+      analysis: "Unable to complete research analysis due to an error.",
+      conclusion: "Research synthesis failed to complete."
+    };
+  }
+}
+
+/**
+ * Parse the full report text into a structured report object
+ */
+function parseReportToStructure(reportText: string): ResearchReport {
+  try {
+    // Extract title
+    const titleMatch = reportText.match(/^#?\s*(.*?)(?:\n|$)/);
+    const title = titleMatch ? titleMatch[1].trim() : "Research Report";
+    
+    // Extract executive summary
+    const execSummaryMatch = reportText.match(/EXECUTIVE SUMMARY:?([\s\S]*?)(?=KEY FINDINGS|$)/i);
+    const executiveSummary = execSummaryMatch ? execSummaryMatch[1].trim() : "";
+    
+    // Extract key findings
+    const keyFindingsMatch = reportText.match(/KEY FINDINGS:?([\s\S]*?)(?=DETAILED ANALYSIS|ANALYSIS|$)/i);
+    let keyFindings: string[] = [];
+    
+    if (keyFindingsMatch && keyFindingsMatch[1]) {
+      const findingsText = keyFindingsMatch[1].trim();
+      const findingRegex = /\d+\.\s+(.+?)(?=\d+\.|$)/gs;
+      let findingMatch;
+      
+      while ((findingMatch = findingRegex.exec(findingsText)) !== null) {
+        keyFindings.push(findingMatch[1].trim());
+      }
+    }
+    
+    // Extract analysis
+    const analysisMatch = reportText.match(/(?:DETAILED ANALYSIS|ANALYSIS):?([\s\S]*?)(?=CONCLUSION|$)/i);
+    const analysis = analysisMatch ? analysisMatch[1].trim() : "";
+    
+    // Extract conclusion
+    const conclusionMatch = reportText.match(/CONCLUSION:?([\s\S]*?)(?=LIMITATIONS|FURTHER RESEARCH|$)/i);
+    const conclusion = conclusionMatch ? conclusionMatch[1].trim() : "";
+    
+    // If we couldn't parse the sections properly, use a simpler approach
+    if (!executiveSummary && !analysis && !conclusion) {
+      const parts = reportText.split('\n\n');
+      
+      return {
+        title: title,
+        executiveSummary: parts[0] || "Research completed.",
+        keyFindings: keyFindings.length > 0 ? keyFindings : ["No specific findings extracted"],
+        analysis: parts.length > 1 ? parts[1] : "Analysis not available.",
+        conclusion: parts.length > 2 ? parts[2] : "See executive summary."
+      };
+    }
+    
+    return {
+      title,
+      executiveSummary,
+      keyFindings: keyFindings.length > 0 ? keyFindings : ["No structured findings available"],
+      analysis,
+      conclusion
+    };
+  } catch (error) {
+    console.error(`Error parsing report structure: ${error.message}`);
+    
+    // Return a basic structure if parsing fails
+    return {
+      title: "Research Synthesis",
+      executiveSummary: "A synthesis of the research findings.",
+      keyFindings: ["Error parsing structured findings"],
+      analysis: "Error parsing analysis section.",
+      conclusion: "See executive summary."
     };
   }
 }
