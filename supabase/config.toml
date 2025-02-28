@@ -33,11 +33,63 @@ enabled = true
 enabled = true
 port = 54327
 
+[functions]
+[functions.get-top-movers]
+verify_jwt = false
+import_map = "./import_map.json"
+
 [functions.price-history]
 verify_jwt = false
+import_map = "./import_map.json"
 
 [functions.polymarket-ws]
 verify_jwt = false
+import_map = "./import_map.json"
 
 [functions.deep-research]
 verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.search-markets]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.get-orderbook]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.execute-market-order]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.market-analysis]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.web-research]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.web-scrape]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.analyze-web-content]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.extract-research-insights]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.generate-queries]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.generate-qa-tree]
+verify_jwt = false
+import_map = "./import_map.json"
+
+[functions.evaluate-qa-pair]
+verify_jwt = false
+import_map = "./import_map.json"
