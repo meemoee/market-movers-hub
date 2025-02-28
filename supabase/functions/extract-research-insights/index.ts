@@ -1,149 +1,142 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+import { createClient } from '@supabase/supabase-js'
+import { corsHeaders } from '../_shared/cors.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+interface AnalysisRequest {
+  webContent: string;
+  analysis: string;
 }
 
-serve(async (req) => {
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
+const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+// Create a Supabase client with the Admin key
+const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { webContent, analysis } = await req.json()
-    
-    // Trim content to avoid token limits
-    const trimmedContent = webContent.slice(0, 15000)
-    console.log('Web content length:', trimmedContent.length)
-    console.log('Analysis length:', analysis.length)
+    const { webContent, analysis } = await req.json() as AnalysisRequest;
 
-    const response = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Research App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with two fields: probability (a percentage string like '75%') and areasForResearch (an array of strings describing areas needing more research)."
-          },
-          {
-            role: "user",
-            content: `Based on this web research and analysis, provide the probability and areas needing more research:\n\nWeb Content:\n${trimmedContent}\n\nAnalysis:\n${analysis}`
-          }
-        ],
-        response_format: { type: "json_object" },
-        stream: true
-      })
-    })
-
-    if (!response.ok) {
-      console.error('OpenRouter API error:', response.status, await response.text())
-      throw new Error('Failed to get insights from OpenRouter')
+    if (!webContent || !analysis) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters: webContent and analysis' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
     }
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available
-    let buffer = ""
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        buffer += text
-        
-        // Keep processing the buffer until we can't find any more complete messages
-        while (true) {
-          const nlIndex = buffer.indexOf('\n')
-          if (nlIndex === -1) break
-          
-          const line = buffer.slice(0, nlIndex)
-          buffer = buffer.slice(nlIndex + 1)
-          
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data === '[DONE]') continue
-            
-            try {
-              const parsed = JSON.parse(data)
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || ""
-              
-              if (content) {
-                const event = {
-                  choices: [{
-                    delta: { content },
-                    message: { content }
-                  }]
-                }
-                controller.enqueue(
-                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                )
-              }
-            } catch (err) {
-              console.debug('Parsing chunk (expected during streaming):', err)
-            }
-          }
-        }
-      },
-      flush(controller) {
-        // Process any remaining complete messages in the buffer
-        if (buffer.trim()) {
-          const lines = buffer.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim()
-              if (data === '[DONE]') continue
-              
-              try {
-                const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || 
-                              parsed.choices?.[0]?.message?.content || ""
-                
-                if (content) {
-                  const event = {
-                    choices: [{
-                      delta: { content },
-                      message: { content }
-                    }]
-                  }
-                  controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                  )
-                }
-              } catch (err) {
-                console.debug('Parsing final chunk (expected):', err)
-              }
-            }
-          }
-        }
-        buffer = ""
-      }
-    })
+    if (!OPENROUTER_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: 'OpenRouter API key not configured' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
 
-    return new Response(response.body?.pipeThrough(transformStream), {
+    // Set up SSE
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
+    const encoder = new TextEncoder();
+
+    // Start the analysis process
+    generateInsights(webContent, analysis, writer, encoder).catch(error => {
+      console.error('Error generating insights:', error);
+      writer.close();
+    });
+
+    return new Response(stream.readable, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
+        'Connection': 'keep-alive',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
       }
-    })
+    });
 
   } catch (error) {
-    console.error('Error in extract-research-insights:', error)
+    console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
-    )
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
-})
+});
+
+async function generateInsights(
+  webContent: string, 
+  analysis: string, 
+  writer: WritableStreamDefaultWriter<Uint8Array>, 
+  encoder: TextEncoder
+) {
+  try {
+    const prompt = `You have researched information about a prediction market. Based on the research and analysis, extract:
+1. The probability of the event occurring (as a percentage or decimal)
+2. Key areas that need more research to make a better prediction
+
+Research data: ${webContent.substring(0, 5000)}
+
+Analysis so far: ${analysis}
+
+Return your response as a valid JSON object with these fields:
+{
+  "probability": "your probability estimate as a string",
+  "areasForResearch": ["area1", "area2", "area3"]
+}
+
+Ensure the JSON is properly formatted.`;
+
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'https://hunchex.com',
+        'X-Title': 'Hunchex Research Insights'
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-4-turbo-preview',
+        messages: [
+          { role: 'system', content: 'You are a research analyst for prediction markets. Provide clear, structured insights based on provided information.' },
+          { role: 'user', content: prompt }
+        ],
+        stream: true,
+        max_tokens: 1024
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('Response body reader not available');
+    }
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = new TextDecoder().decode(value);
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          await writer.write(encoder.encode(`${line}\n`));
+        }
+      }
+    }
+
+  } catch (error) {
+    console.error('Error in generateInsights:', error);
+    await writer.write(encoder.encode(`data: {"error": "${error.message}"}\n\n`));
+  } finally {
+    await writer.close();
+  }
+}
