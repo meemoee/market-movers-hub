@@ -297,6 +297,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                         'Searching "$1"'
                       )
                       setProgress(prev => [...prev, message])
+                    } else if (parsed.type === 'error') {
+                      setError(parsed.message || 'Unknown error during search')
                     }
                   } catch (e) {
                     console.error('Error parsing SSE data:', e)

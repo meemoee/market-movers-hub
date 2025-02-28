@@ -1,236 +1,400 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
-const BING_API_KEY = Deno.env.get('BING_API_KEY')
-const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") || "";
+const DEFAULT_MODEL = "google/gemini-2.0-flash-001";
+
+async function formInitialQuery(intent: string, model: string): Promise<string> {
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hunchex.app'
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { 
+            role: 'system', 
+            content: `You are an expert search query formulator. Create the most effective initial search query that will:
+1. Target the most essential information about the topic
+2. Be specific enough to find relevant results
+3. Use 5-10 words maximum with precise terminology
+
+Return ONLY the query text with no explanations or formatting.`
+          },
+          { 
+            role: 'user', 
+            content: `Create the best initial search query for: "${intent}"` 
+          }
+        ],
+        max_tokens: 60,
+        temperature: 0.3
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const initialQuery = data.choices[0].message.content.trim()
+      .replace(/^["']|["']$/g, '') // Remove quotes
+      .replace(/\.$/, ''); // Remove trailing period
+    
+    return initialQuery;
+  } catch (error) {
+    console.error(`Failed to formulate initial query: ${error.message}`);
+    return intent; // Fall back to original intent
+  }
 }
 
-class ContentCollector {
-  seenUrls: Set<string>
+async function generateNextQuery(
+  intent: string, 
+  previousQueries: string[], 
+  keyFindings: string[], 
+  model: string
+): Promise<string> {
+  const recentFindings = keyFindings
+    .slice(-3)
+    .map((f, i) => `${i+1}. ${f}`)
+    .join('\n');
+    
+  const previousQueriesText = previousQueries
+    .slice(-3)
+    .map((q, i) => `${i+1}. "${q}"`)
+    .join('\n');
   
-  constructor() {
-    this.seenUrls = new Set()
-  }
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hunchex.app'
+      },
+      body: JSON.stringify({
+        model: model,
+        messages: [
+          { 
+            role: 'system', 
+            content: `You generate strategic follow-up search queries for research. 
+RESPOND WITH ONLY THE QUERY TEXT - NO EXPLANATIONS OR QUOTES.` 
+          },
+          { 
+            role: 'user', 
+            content: `RESEARCH QUESTION: "${intent}"
 
-  shouldProcessUrl(url: string): boolean {
-    if (this.seenUrls.has(url)) return false
-    this.seenUrls.add(url)
-    return true
+PREVIOUS QUERIES:
+${previousQueriesText}
+
+RECENT FINDINGS:
+${recentFindings}
+
+Based on what we've learned, create the MOST EFFECTIVE follow-up search query that will:
+
+1. Focus on the most important remaining unknown aspect
+2. Be different enough from previous queries
+3. Use precise language that would appear in relevant sources
+4. Contain 5-10 words maximum
+5. Help directly answer the original research question
+
+Return only the query text with no explanations.` 
+          }
+        ],
+        max_tokens: 60,
+        temperature: 0.4
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const nextQuery = data.choices[0].message.content.trim()
+      .replace(/^["']|["']$/g, '') // Remove quotes
+      .replace(/\.$/, ''); // Remove trailing period
+    
+    return nextQuery;
+  } catch (error) {
+    console.error(`Query generation failed: ${error.message}`);
+    // Simple fallback strategy
+    return `${intent.split(' ').slice(0, 3).join(' ')} additional information`;
   }
 }
 
-class WebScraper {
-  private bingApiKey: string
-  private collector: ContentCollector
-  private encoder: TextEncoder
-  private controller: ReadableStreamDefaultController<any>
-  private processedUrls: number
-  private maxUrlsPerQuery: number
-  private maxQueriesProcessed: number
-  private queriesProcessed: number
+interface ResearchResult {
+  url: string;
+  content: string;
+  title?: string;
+}
 
-  constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
-    if (!bingApiKey) throw new Error('Bing API key is required')
-    this.bingApiKey = bingApiKey
-    this.collector = new ContentCollector()
-    this.encoder = new TextEncoder()
-    this.controller = controller
-    this.processedUrls = 0
-    this.maxUrlsPerQuery = 12      // Balanced number of URLs per query
-    this.maxQueriesProcessed = 4   // Process 4 queries max
-    this.queriesProcessed = 0
+interface ResearchState {
+  intent: string;
+  model: string;
+  iteration: number;
+  totalIterations: number;
+  findings: any[];
+  previousQueries: string[];
+}
+
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch (e) {
+    return false;
   }
+}
 
-  private sendUpdate(message: string) {
-    console.log(message)
-    const data = `data: ${JSON.stringify({ message })}\n\n`
-    this.controller.enqueue(this.encoder.encode(data))
-  }
-
-  private sendResults(results: any[]) {
-    const data = `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
-    this.controller.enqueue(this.encoder.encode(data))
-  }
-
-  private shouldSkipUrl(url: string): boolean {
-    // Only skip social media and file downloads
-    const skipDomains = [
-      'reddit.com', 'facebook.com', 'twitter.com', 
-      'instagram.com', 'youtube.com', 'tiktok.com'
-    ]
-    const skipExtensions = ['.pdf', '.doc', '.docx', '.xls', '.xlsx']
+function extractSourcesFromContent(content: string): { url: string, title?: string }[] {
+  const sources: { url: string, title?: string }[] = [];
+  const sourceRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  let sourceMatch;
+  
+  while ((sourceMatch = sourceRegex.exec(content)) !== null) {
+    const [_, label, url] = sourceMatch;
     
-    return skipDomains.some(domain => url.includes(domain)) ||
-           skipExtensions.some(ext => url.toLowerCase().endsWith(ext))
+    if (url && isValidUrl(url)) {
+      sources.push({
+        url,
+        title: label || undefined
+      });
+    }
   }
+  
+  return sources;
+}
 
-  async searchBing(query: string, offset = 0): Promise<any[]> {
-    try {
-      const params = new URLSearchParams({
-        q: query,
-        count: "10",              // Get 10 results per page
-        offset: offset.toString(),
-        responseFilter: "Webpages"
+async function performResearch(
+  query: string, 
+  researchState: ResearchState
+): Promise<{ content: string, results: ResearchResult[] }> {
+  console.log(`Searching: "${query}" (Iteration ${researchState.iteration}/${researchState.totalIterations})`);
+  
+  // Create a brief research context from previous findings
+  let researchContext = '';
+  if (researchState.findings.length > 0) {
+    const previousFindings = researchState.findings
+      .slice(-1)[0]
+      .keyFindings
+      .slice(0, 3)
+      .map((f: string, i: number) => `${i+1}. ${f}`)
+      .join('\n');
+      
+    if (previousFindings) {
+      researchContext = `\nPREVIOUS FINDINGS:\n${previousFindings}`;
+    }
+  }
+  
+  // System prompt
+  const systemPrompt = `You are a precise research assistant investigating: "${researchState.intent}"
+
+Current iteration: ${researchState.iteration} of ${researchState.totalIterations}
+Current query: "${query}"
+${researchContext}
+
+Your task is to:
+1. Search for and analyze information relevant to the query
+2. Identify NEW facts and information about the topic
+3. Focus on directly answering the original research question
+4. Provide specific, detailed, factual information
+5. CITE SOURCES using markdown links [title](url) whenever possible
+
+RESPOND IN THIS FORMAT:
+1. First, provide a DETAILED ANALYSIS of the search results (1-2 paragraphs)
+2. Then, list KEY FINDINGS as numbered points (precise, specific facts)
+3. ${researchState.iteration < researchState.totalIterations ? 'Finally, state the most important unanswered question based on these findings' : 'Finally, provide a comprehensive SUMMARY of all findings related to the original question'}
+
+IMPORTANT:
+- Focus on NEW information in each iteration
+- Be objective and factual
+- Cite sources wherever possible 
+- Make each key finding specific and self-contained`;
+
+  try {
+    // Make API request
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hunchex.app'
+      },
+      body: JSON.stringify({
+        model: `${researchState.model}:online`, // Web search enabled
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Search for information on: "${query}"` }
+        ],
+        max_tokens: 1200,
+        temperature: 0.3
       })
+    });
 
-      const response = await fetch(`${BING_SEARCH_URL}?${params}`, {
-        headers: { "Ocp-Apim-Subscription-Key": this.bingApiKey }
-      })
-
-      if (!response.ok) {
-        console.error('Bing API error:', response.status)
-        return []
-      }
-
-      const data = await response.json()
-      return data.webPages?.value || []
-    } catch (error) {
-      console.error("Search error:", error)
-      return []
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} - ${response.statusText}`);
     }
-  }
 
-  async fetchAndParseContent(url: string) {
-    if (this.shouldSkipUrl(url) || !this.collector.shouldProcessUrl(url)) return
-
-    try {
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5s timeout
-
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Accept': 'text/html',
-        },
-        signal: controller.signal
-      })
-      
-      clearTimeout(timeoutId)
-
-      if (!response.ok) return
-
-      const contentType = response.headers.get('content-type')
-      if (!contentType?.includes('text/html')) return
-
-      const html = await response.text()
-      
-      // Skip extremely large pages
-      if (html.length > 500000) return
-      
-      const $ = load(html)
-      
-      // Remove only the most problematic elements
-      $('script, style, nav, iframe').remove()
-      
-      const title = $('title').text().trim()
-      const mainContent = $('main, article, .content, .article, .post').text() || $('body').text()
-      const content = mainContent
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 3000) // Allow more content per page
-
-      if (content) {
-        this.sendResults([{ url, content, title }])
-        this.processedUrls++
-      }
-    } catch (error) {
-      return // Skip failed URLs
-    }
-  }
-
-  async processBatch(urls: string[]) {
-    const batchSize = 4  // Process 4 URLs at once
-    for (let i = 0; i < urls.length; i += batchSize) {
-      const batchUrls = urls.slice(i, i + batchSize)
-      const promises = batchUrls.map(url => this.fetchAndParseContent(url))
-      await Promise.all(promises)
-      await new Promise(resolve => setTimeout(resolve, 200)) // Consistent small delay
-    }
-  }
-
-  async processQuery(query: string) {
-    let offset = 0
-    let urlsProcessed = 0
-
-    while (urlsProcessed < this.maxUrlsPerQuery) {
-      const searchResults = await this.searchBing(query, offset)
-      if (!searchResults.length) break
-
-      const urls = searchResults.map(result => result.url)
-      await this.processBatch(urls)
-      
-      urlsProcessed += urls.length
-      offset += 10
-      
-      if (urlsProcessed >= this.maxUrlsPerQuery) break
-      await new Promise(resolve => setTimeout(resolve, 500)) // Consistent delay between searches
-    }
-  }
-
-  async run(queries: string[]) {
-    this.sendUpdate(`Starting web research for ${queries.length} queries`)
+    const data = await response.json();
+    const content = data.choices[0].message.content;
     
-    for (const query of queries) {
-      if (this.queriesProcessed >= this.maxQueriesProcessed) {
-        this.sendUpdate('Reached maximum number of queries to process')
-        break
-      }
-
-      this.sendUpdate(`Processing query ${this.queriesProcessed + 1}/${this.maxQueriesProcessed}: ${query}`)
-      await this.processQuery(query)
-      this.queriesProcessed++
-      
-      await new Promise(resolve => setTimeout(resolve, 1000)) // Consistent delay between queries
-    }
-
-    return true
+    // Extract sources from the content
+    const sources = extractSourcesFromContent(content);
+    
+    // Create result objects with content from sources
+    const results: ResearchResult[] = sources.map(source => ({
+      url: source.url,
+      title: source.title,
+      content: `Information from ${source.title || 'web search'}: ${content.substring(0, 100)}...` // Simplified for demo
+    }));
+    
+    return {
+      content,
+      results
+    };
+  } catch (error) {
+    console.error(`Research failed: ${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   }
 }
 
 serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const { queries } = await req.json()
-
-    if (!BING_API_KEY) {
-      throw new Error('BING_API_KEY is not configured')
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY not provided");
     }
 
-    const stream = new ReadableStream({
-      start: async (controller) => {
-        try {
-          const scraper = new WebScraper(BING_API_KEY, controller)
-          await scraper.run(queries)
-          controller.close()
-        } catch (error) {
-          controller.error(error)
-        }
-      },
-    })
+    const { queries } = await req.json();
+    if (!queries || !Array.isArray(queries)) {
+      throw new Error("Invalid request: queries array is required");
+    }
 
-    return new Response(stream, {
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Initial setup
+          const model = DEFAULT_MODEL;
+          const intent = queries[0]; // Use first query as main intent
+          const totalIterations = Math.min(queries.length, 3); // Limit to 3 iterations
+          
+          const researchState: ResearchState = {
+            intent,
+            model,
+            iteration: 1,
+            totalIterations,
+            findings: [],
+            previousQueries: []
+          };
+          
+          // Message about starting research
+          const startMessage = JSON.stringify({
+            type: "message",
+            message: "Starting web research..."
+          });
+          controller.enqueue(new TextEncoder().encode(`data: ${startMessage}\n\n`));
+          
+          // Formulate initial query
+          let currentQuery = await formInitialQuery(intent, model);
+          researchState.previousQueries.push(currentQuery);
+          
+          // Process each query
+          while (researchState.iteration <= totalIterations) {
+            const queryMessage = JSON.stringify({
+              type: "message",
+              message: `Processing query ${researchState.iteration}/${totalIterations}: ${currentQuery}`
+            });
+            controller.enqueue(new TextEncoder().encode(`data: ${queryMessage}\n\n`));
+            
+            // Perform research
+            const { content, results } = await performResearch(currentQuery, researchState);
+            
+            // Extract key findings from content
+            const findings = {
+              query: currentQuery,
+              content,
+              keyFindings: content.split("KEY FINDINGS")[1]?.split(/\d+\.\s+/).filter(Boolean).map(f => f.trim()) || []
+            };
+            researchState.findings.push(findings);
+
+            if (results.length > 0) {
+              const resultsMessage = JSON.stringify({
+                type: "results",
+                data: results
+              });
+              controller.enqueue(new TextEncoder().encode(`data: ${resultsMessage}\n\n`));
+            }
+
+            // Move to next iteration
+            if (researchState.iteration >= totalIterations) {
+              break;
+            }
+            
+            // Generate next query
+            if (queries[researchState.iteration]) {
+              // Use predefined query if available
+              currentQuery = queries[researchState.iteration];
+            } else {
+              // Generate follow-up query
+              currentQuery = await generateNextQuery(
+                intent,
+                researchState.previousQueries,
+                findings.keyFindings,
+                model
+              );
+            }
+            
+            researchState.previousQueries.push(currentQuery);
+            researchState.iteration++;
+          }
+          
+          // Final message
+          const completionMessage = JSON.stringify({
+            type: "message",
+            message: "Web research completed"
+          });
+          controller.enqueue(new TextEncoder().encode(`data: ${completionMessage}\n\n`));
+        } catch (error) {
+          const errorMessage = JSON.stringify({
+            type: "error",
+            message: `Error: ${error instanceof Error ? error.message : String(error)}`
+          });
+          controller.enqueue(new TextEncoder().encode(`data: ${errorMessage}\n\n`));
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(readableStream, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
       },
-    })
+    });
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error",
+      }),
       {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
       }
-    )
+    );
   }
-})
+});
