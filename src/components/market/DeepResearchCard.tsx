@@ -73,13 +73,16 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       // Create new abort controller for this request
       abortControllerRef.current = new AbortController();
       
+      // Get current auth session
+      const { data: { session } } = await supabase.auth.getSession();
+      
       // Call the edge function with streaming enabled
-      const response = await fetch(`${supabase.functions.url}/deep-research-stream`, {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/deep-research-stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.session()?.access_token || ''}`,
-          'apikey': supabase.supabaseKey
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || ''
         },
         body: JSON.stringify({ description, marketId }),
         signal: abortControllerRef.current.signal
