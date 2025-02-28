@@ -60,6 +60,8 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token || '';
       
+      console.log('Starting deep research with URL:', functionUrl);
+      
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
@@ -85,52 +87,63 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       while (true) {
         const { done, value } = await reader.read();
         
-        if (done) break;
+        if (done) {
+          console.log('Stream complete');
+          break;
+        }
         
         // Decode and add to buffer
-        buffer += decoder.decode(value, { stream: true });
+        const chunk = decoder.decode(value, { stream: true });
+        console.log('Received chunk:', chunk);
+        buffer += chunk;
         
         // Process complete messages in buffer
         const lines = buffer.split('\n');
         buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
         
         for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data: ')) continue;
+          if (!line.trim()) continue;
           
-          const jsonStr = line.replace('data: ', '');
-          if (jsonStr === '[DONE]') continue;
-          
-          try {
-            const data = JSON.parse(jsonStr);
-            console.log('Stream update:', data);
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.replace('data: ', '');
+            if (jsonStr === '[DONE]') continue;
             
-            if (data.type === 'step') {
-              // Update with a new research step
-              const newStep = data.data as ResearchStep;
-              setSteps(prev => [...prev, newStep]);
-              setIteration(prev => prev + 1);
-              setCurrentQuery(newStep.query);
-              setTotalIterations(data.total || 5);
-            } 
-            else if (data.type === 'progress') {
-              // Update progress information
-              setCurrentQuery(data.message || 'Researching...');
-              if (data.currentStep) setIteration(data.currentStep);
-              if (data.totalSteps) setTotalIterations(data.totalSteps);
+            try {
+              const data = JSON.parse(jsonStr);
+              console.log('Stream update:', data);
+              
+              if (data.type === 'step') {
+                // Update with a new research step
+                const newStep: ResearchStep = data.data;
+                setSteps(prev => [...prev, newStep]);
+                setIteration(prev => prev + 1);
+                setCurrentQuery(newStep.query);
+                if (data.total) setTotalIterations(data.total);
+              } 
+              else if (data.type === 'progress') {
+                // Update progress information
+                setCurrentQuery(data.message || 'Researching...');
+                if (data.currentStep !== undefined) setIteration(data.currentStep);
+                if (data.totalSteps !== undefined) setTotalIterations(data.totalSteps);
+              }
+              else if (data.type === 'report') {
+                // Final report received
+                console.log('Final report received:', data.data);
+                setResearchResults(data.data as ResearchReport);
+              }
+              else if (data.type === 'error') {
+                throw new Error(data.message || 'Unknown error during research');
+              }
+            } catch (e) {
+              console.error('Error parsing streaming data:', e, jsonStr);
             }
-            else if (data.type === 'report') {
-              // Final report received
-              setResearchResults(data.data as ResearchReport);
-            }
-            else if (data.type === 'error') {
-              throw new Error(data.message || 'Unknown error during research');
-            }
-          } catch (e) {
-            console.error('Error parsing streaming data:', e, jsonStr);
+          } else {
+            console.log('Non-SSE line received:', line);
           }
         }
       }
       
+      console.log('Research completed successfully');
       setIsLoading(false);
     } catch (err) {
       console.error('Research error:', err);
