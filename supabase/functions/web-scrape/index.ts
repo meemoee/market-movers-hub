@@ -1,5 +1,6 @@
 
-import { createClient } from '@supabase/supabase-js'
+// Import createClient from the ESM URL for Deno compatibility
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { corsHeaders } from '../_shared/cors.ts'
 
 interface WebSearchQuery {
