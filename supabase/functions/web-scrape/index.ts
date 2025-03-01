@@ -1,178 +1,186 @@
 
+import { corsHeaders } from '../_shared/cors.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import * as cheerio from "https://esm.sh/cheerio@1.0.0-rc.12";
-import { corsHeaders } from "../_shared/cors.ts";
+
+interface SearchResult {
+  url: string;
+  title: string;
+  snippet: string;
+}
+
+const encoder = new TextEncoder();
 
 serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: corsHeaders,
-      status: 204,
-    });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
 
+  // Create a new response with a readable stream
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
   const encoder = new TextEncoder();
-  const responseStream = new TransformStream();
-  const writer = responseStream.writable.getWriter();
 
-  const writeSSE = async (event: string, data: any) => {
+  // Process the request in the background
+  EdgeRuntime.waitUntil((async () => {
     try {
-      const message = `data: ${JSON.stringify(data)}\n\n`;
-      await writer.write(encoder.encode(message));
-    } catch (error) {
-      console.error("Error writing to stream:", error);
-    }
-  };
+      const { queries } = await req.json();
+      console.log(`Web scrape: Received ${queries.length} queries`);
 
-  try {
-    // Parse the request body
-    const { queries } = await req.json();
-    
-    if (!queries || !Array.isArray(queries) || queries.length === 0) {
-      throw new Error("Invalid queries parameter. Expected non-empty array.");
-    }
-
-    // Start the response with the SSE headers
-    const response = new Response(responseStream.readable, {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
-    });
-
-    // Process each query in sequence and collect results
-    const allResults = [];
-    
-    for (let i = 0; i < queries.length; i++) {
-      const query = queries[i];
-      await writeSSE("message", { message: `Processing query ${i+1}/${queries.length}: ${query}` });
-      
-      // Call the brave-search function for this query
-      const braveResponse = await fetch(`${req.url.split('/web-scrape')[0]}/brave-search`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query }),
-      });
-      
-      if (!braveResponse.ok) {
-        console.error(`Error from brave-search: ${braveResponse.status}`);
-        const errorText = await braveResponse.text();
-        console.error(`Brave search error details: ${errorText}`);
-        await writeSSE("message", { 
-          message: `Error searching for "${query}": ${braveResponse.status}` 
-        });
-        continue;
+      if (!queries || !Array.isArray(queries)) {
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ message: 'Invalid input: queries must be an array' })}\n\n`));
+        await writer.close();
+        return;
       }
-      
-      const braveData = await braveResponse.json();
-      
-      if (!braveData.results || braveData.results.length === 0) {
-        console.log(`No results found for query: ${query}`);
-        await writeSSE("message", { 
-          message: `No results found for "${query}"` 
-        });
-        continue;
+
+      // Supabase URL from environment variable
+      const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+      if (!SUPABASE_URL) {
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ message: 'SUPABASE_URL is not set' })}\n\n`));
+        await writer.close();
+        return;
       }
-      
-      console.log(`Found ${braveData.results.length} results for query: ${query}`);
-      await writeSSE("message", { 
-        message: `Found ${braveData.results.length} results for "${query}"` 
-      });
-      
-      // Process and scrape each result
-      const scrapingResults = [];
-      
-      for (const result of braveData.results) {
+
+      const results: SearchResult[] = [];
+
+      for (let i = 0; i < queries.length; i++) {
+        const query = queries[i];
+        console.log(`Web scrape: Processing query ${i + 1}/${queries.length}: ${query}`);
+        
+        await writer.write(
+          encoder.encode(`data: ${JSON.stringify({ message: `Processing query ${i + 1}/${queries.length}: ${query}` })}\n\n`)
+        );
+
         try {
-          await writeSSE("message", { message: `Scraping content from ${result.url}` });
-          
-          // Fetch the webpage content
-          const response = await fetch(result.url, {
+          // Call the brave-search function to get search results
+          const braveResponse = await fetch(`${SUPABASE_URL}/functions/v1/brave-search`, {
+            method: 'POST',
             headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
             },
+            body: JSON.stringify({ query, count: 5 })
           });
 
-          if (!response.ok) {
-            console.log(`Failed to fetch ${result.url}: ${response.status}`);
+          if (!braveResponse.ok) {
+            const errorText = await braveResponse.text();
+            console.error(`Error fetching search results: ${braveResponse.status} - ${errorText}`);
+            await writer.write(
+              encoder.encode(`data: ${JSON.stringify({ 
+                message: `Error fetching search results for query "${query}": ${braveResponse.status}` 
+              })}\n\n`)
+            );
             continue;
           }
 
-          const html = await response.text();
-          
-          // Parse the HTML using cheerio
-          const $ = cheerio.load(html);
-          
-          // Remove script and style elements
-          $("script, style").remove();
-          
-          // Get the visible text content
-          let content = $("body")
-            .text()
-            .replace(/\s+/g, " ")
-            .trim();
+          const searchResults = await braveResponse.json();
+          console.log(`Web scrape: Received ${searchResults.length} search results for query "${query}"`);
+
+          if (!searchResults || searchResults.length === 0) {
+            await writer.write(
+              encoder.encode(`data: ${JSON.stringify({ 
+                message: `No search results found for query "${query}"` 
+              })}\n\n`)
+            );
+            continue;
+          }
+
+          // Process each search result to fetch content
+          for (const result of searchResults) {
+            if (!result.url) continue;
             
-          // Limit content length
-          content = content.slice(0, 5000);
-          
-          if (content) {
-            scrapingResults.push({
-              url: result.url,
-              title: result.title,
-              content: content
-            });
-            console.log(`Successfully scraped content from ${result.url}`);
+            try {
+              console.log(`Web scrape: Fetching content from ${result.url}`);
+              const contentResponse = await fetch(result.url, {
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                },
+                timeout: 10000 // 10 second timeout
+              });
+
+              if (!contentResponse.ok) {
+                console.log(`Web scrape: Failed to fetch ${result.url}: ${contentResponse.status}`);
+                continue;
+              }
+
+              const html = await contentResponse.text();
+              
+              // Simple HTML parsing to extract text content
+              const textContent = html
+                .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+                .replace(/<[^>]*>/g, ' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+
+              // Truncate if too long
+              const content = textContent.slice(0, 5000);
+              
+              if (content) {
+                results.push({
+                  url: result.url,
+                  title: result.title || '',
+                  content: content
+                } as any);
+                
+                // Stream the result back to the client
+                await writer.write(
+                  encoder.encode(`data: ${JSON.stringify({ 
+                    type: 'results', 
+                    data: [{
+                      url: result.url,
+                      title: result.title || '',
+                      content: content
+                    }]
+                  })}\n\n`)
+                );
+                
+                console.log(`Web scrape: Successfully extracted content from ${result.url} (${content.length} chars)`);
+              }
+            } catch (error) {
+              console.error(`Error processing ${result.url}: ${error.message}`);
+            }
           }
         } catch (error) {
-          console.error(`Error scraping ${result.url}:`, error.message);
+          console.error(`Error processing query "${query}": ${error.message}`);
+          await writer.write(
+            encoder.encode(`data: ${JSON.stringify({ 
+              message: `Error processing query "${query}": ${error.message}` 
+            })}\n\n`)
+          );
         }
       }
-      
-      // Add these results to the overall collection
-      if (scrapingResults.length > 0) {
-        await writeSSE("results", { type: "results", data: scrapingResults });
-        allResults.push(...scrapingResults);
+
+      if (results.length === 0) {
+        await writer.write(
+          encoder.encode(`data: ${JSON.stringify({ 
+            message: `No content was collected from any of the ${queries.length} queries.` 
+          })}\n\n`)
+        );
       }
-    }
-    
-    // Send a final message with the total count
-    await writeSSE("message", { 
-      message: `Completed scraping with ${allResults.length} total results` 
-    });
-    
-    // Signal the end of the stream
-    await writeSSE("done", "[DONE]");
-    await writer.close();
-    
-    return response;
-  } catch (error) {
-    console.error("Web scraping error:", error);
-    
-    try {
-      await writeSSE("error", { 
-        type: "error", 
-        message: `Error: ${error.message}` 
-      });
+
+      console.log(`Web scrape: Completed with ${results.length} results`);
+      await writer.write(encoder.encode(`data: ${JSON.stringify({ message: "Search Completed" })}\n\n`));
+      await writer.write(encoder.encode('data: [DONE]\n\n'));
+    } catch (error) {
+      console.error(`Web scrape error: ${error.message}`);
+      await writer.write(
+        encoder.encode(`data: ${JSON.stringify({ 
+          message: `Error: ${error.message}` 
+        })}\n\n`)
+      );
+    } finally {
       await writer.close();
-    } catch (streamError) {
-      console.error("Error closing stream:", streamError);
     }
-    
-    // If we haven't started the stream yet, return a standard error response
-    return new Response(
-      JSON.stringify({ error: `Web scraping failed: ${error.message}` }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-        status: 500,
-      }
-    );
-  }
+  })());
+
+  // Return the stream immediately
+  return new Response(readable, {
+    headers: {
+      ...corsHeaders,
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  });
 });

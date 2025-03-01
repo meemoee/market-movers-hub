@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -67,7 +66,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   })
   const { toast } = useToast()
 
-  // Query saved research with market_id filter
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
     queryKey: ['saved-research', marketId],
     queryFn: async () => {
@@ -107,7 +105,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     })
   }
 
-  // Helper function to check markdown formatting completeness
   const isCompleteMarkdown = (text: string): boolean => {
     const stack: string[] = [];
     let inCode = false;
@@ -119,7 +116,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const nextChar = text[i + 1];
       const prevChar = text[i - 1];
       
-      // Handle code blocks
       if (char === '`' && nextChar === '`' && text[i + 2] === '`') {
         inCode = !inCode;
         i += 2;
@@ -128,7 +124,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       if (inCode) continue;
       
-      // Handle numbered lists
       if (/^\d$/.test(char)) {
         currentNumber += char;
         continue;
@@ -144,7 +139,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         currentNumber = '';
       }
       
-      // Handle bold
       if (char === '*' && nextChar === '*') {
         const pattern = '**';
         if (stack.length > 0 && stack[stack.length - 1] === pattern) {
@@ -156,7 +150,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         continue;
       }
       
-      // Handle single markers
       if ((char === '*' || char === '`' || char === '_') && 
           !(prevChar && nextChar && /\w/.test(prevChar) && /\w/.test(nextChar))) {
         if (stack.length > 0 && stack[stack.length - 1] === char) {
@@ -237,12 +230,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setStreamingState({ rawText: '', parsedData: null })
 
     try {
-      // Add initial progress message
       setProgress(prev => [...prev, "Starting web research..."])
       setProgress(prev => [...prev, "Generating search queries..."])
 
-      // First, generate queries
-      console.log("Calling generate-queries function with:", { query: description })
       const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
         body: { query: description }
       })
@@ -259,16 +249,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         throw new Error('Invalid queries response')
       }
 
-      // Log the generated queries
       console.log("Generated queries:", queriesData.queries)
       setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
       
-      // Display the queries in the progress
       queriesData.queries.forEach((query: string, index: number) => {
         setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
       })
 
-      // Then, perform web scraping with the generated queries
       console.log("Calling web-scrape function with queries:", queriesData.queries)
       const response = await supabase.functions.invoke('web-scrape', {
         body: { queries: queriesData.queries }
@@ -279,6 +266,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         throw response.error
       }
 
+      console.log("Received response from web-scrape function:", response)
+      
       const allContent: string[] = []
 
       const stream = new ReadableStream({
@@ -286,24 +275,40 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const textDecoder = new TextDecoder()
           const reader = new Response(response.data.body).body?.getReader()
           
+          if (!reader) {
+            controller.error(new Error("Failed to get reader from response"))
+            return
+          }
+          
           function push() {
-            reader?.read().then(({done, value}) => {
+            reader.read().then(({done, value}) => {
               if (done) {
+                console.log("Stream reading complete")
                 setProgress(prev => [...prev, "Search Completed"])
                 controller.close()
                 return
               }
               
               const chunk = textDecoder.decode(value)
+              console.log("Received chunk:", chunk)
+              
               const lines = chunk.split('\n').filter(line => line.trim())
               
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   const jsonStr = line.slice(6).trim()
                   
+                  if (jsonStr === '[DONE]') {
+                    console.log("Received [DONE] marker")
+                    continue
+                  }
+                  
                   try {
+                    console.log("Parsing JSON from line:", jsonStr)
                     const parsed = JSON.parse(jsonStr)
+                    
                     if (parsed.type === 'results' && Array.isArray(parsed.data)) {
+                      console.log("Received results:", parsed.data)
                       setResults(prev => [...prev, ...parsed.data])
                       parsed.data.forEach((result: ResearchResult) => {
                         if (result?.content) {
@@ -311,6 +316,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                         }
                       })
                     } else if (parsed.message) {
+                      console.log("Received message:", parsed.message)
                       const message = parsed.message.replace(
                         /processing query \d+\/\d+: (.*)/i, 
                         'Searching "$1"'
@@ -318,12 +324,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       setProgress(prev => [...prev, message])
                     }
                   } catch (e) {
-                    console.error('Error parsing SSE data:', e)
+                    console.error('Error parsing SSE data:', e, "Raw data:", jsonStr)
                   }
                 }
               }
               
               push()
+            }).catch(error => {
+              console.error("Error reading from stream:", error)
+              controller.error(error)
             })
           }
           
@@ -331,21 +340,33 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       })
 
-      const reader = stream.getReader()
-      while (true) {
-        const { done } = await reader.read()
-        if (done) break
+      try {
+        const reader = stream.getReader()
+        while (true) {
+          const { done } = await reader.read()
+          if (done) {
+            console.log("Finished reading from stream")
+            break
+          }
+        }
+      } catch (error) {
+        console.error("Error consuming stream:", error)
       }
+
+      console.log("Results after stream processing:", results)
+      console.log("Content collected:", allContent.length, "items")
 
       if (allContent.length === 0) {
         setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
         setError('No content collected from web scraping. Try a more specific query or different keywords.')
-        return // Exit early instead of throwing an error
+        setIsLoading(false)
+        return
       }
 
-      // After collecting all content, start the analysis with improved streaming
       setIsAnalyzing(true)
       setProgress(prev => [...prev, "Starting content analysis..."])
+      
+      console.log("Starting content analysis with content length:", allContent.join('\n\n').length)
       
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: { 
@@ -355,7 +376,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       })
 
-      if (analysisResponse.error) throw analysisResponse.error
+      if (analysisResponse.error) {
+        console.error("Error from analyze-web-content:", analysisResponse.error)
+        throw analysisResponse.error
+      }
+
+      console.log("Received response from analyze-web-content")
 
       let accumulatedContent = '';
       let incompleteMarkdown = '';
@@ -365,14 +391,22 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const textDecoder = new TextDecoder()
           const reader = new Response(analysisResponse.data.body).body?.getReader()
           
+          if (!reader) {
+            controller.error(new Error("Failed to get reader from analysis response"))
+            return
+          }
+          
           function push() {
-            reader?.read().then(({done, value}) => {
+            reader.read().then(({done, value}) => {
               if (done) {
+                console.log("Analysis stream complete")
                 controller.close()
                 return
               }
               
               const chunk = textDecoder.decode(value)
+              console.log("Received analysis chunk of size:", chunk.length)
+              
               const lines = chunk.split('\n').filter(line => line.trim())
               
               for (const line of lines) {
@@ -383,18 +417,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   try {
                     const { content } = cleanStreamContent(jsonStr)
                     if (content) {
-                      // Combine incomplete markdown with new content
+                      console.log("Received content chunk:", content.substring(0, 50) + "...")
+                      
                       let updatedContent = incompleteMarkdown + content
                       
-                      // If we don't have complete markdown formatting
-                      if (!isCompleteMarkdown(updatedContent)) {
-                        incompleteMarkdown = updatedContent;
-                        continue;
-                      }
-                      
-                      // Reset incomplete markdown and update content
-                      incompleteMarkdown = '';
-                      accumulatedContent += updatedContent;
+                      accumulatedContent += content;
                       setAnalysis(accumulatedContent);
                     }
                   } catch (e) {
@@ -404,6 +431,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               }
               
               push()
+            }).catch(error => {
+              console.error("Error reading from analysis stream:", error)
+              controller.error(error)
             })
           }
           
@@ -411,15 +441,18 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       })
 
-      const analysisReader = analysisStream.getReader()
-      while (true) {
-        const { done } = await analysisReader.read()
-        if (done) break
+      try {
+        const analysisReader = analysisStream.getReader()
+        while (true) {
+          const { done } = await analysisReader.read()
+          if (done) break
+        }
+      } catch (error) {
+        console.error("Error consuming analysis stream:", error)
       }
 
       setProgress(prev => [...prev, "Analysis complete, extracting key insights..."])
 
-      // Extract insights using streaming with the same markdown formatting
       const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
         body: {
           webContent: allContent.join('\n\n'),
@@ -427,7 +460,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       })
 
-      if (insightsResponse.error) throw insightsResponse.error
+      if (insightsResponse.error) {
+        console.error("Error from extract-research-insights:", insightsResponse.error)
+        throw insightsResponse.error
+      }
+
+      console.log("Received response from extract-research-insights")
 
       let accumulatedJson = ''
       let incompleteInsightsMarkdown = ''
@@ -437,14 +475,22 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const textDecoder = new TextDecoder()
           const reader = new Response(insightsResponse.data.body).body?.getReader()
           
+          if (!reader) {
+            controller.error(new Error("Failed to get reader from insights response"))
+            return
+          }
+          
           function push() {
-            reader?.read().then(({done, value}) => {
+            reader.read().then(({done, value}) => {
               if (done) {
+                console.log("Insights stream complete")
                 controller.close()
                 return
               }
               
               const chunk = textDecoder.decode(value)
+              console.log("Received insights chunk of size:", chunk.length)
+              
               const lines = chunk.split('\n').filter(line => line.trim())
               
               for (const line of lines) {
@@ -456,16 +502,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     const { content } = cleanStreamContent(jsonStr)
                     
                     if (content) {
-                      // Handle markdown formatting for insights
+                      console.log("Received insights content chunk:", content.substring(0, 50) + "...")
+                      
                       let updatedContent = incompleteInsightsMarkdown + content
                       
-                      if (!isCompleteMarkdown(updatedContent)) {
-                        incompleteInsightsMarkdown = updatedContent
-                        continue
-                      }
-                      
                       incompleteInsightsMarkdown = ''
-                      accumulatedJson += updatedContent
+                      accumulatedJson += content
                       
                       setStreamingState(prev => {
                         const newState = {
@@ -492,6 +534,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               }
               
               push()
+            }).catch(error => {
+              console.error("Error reading from insights stream:", error)
+              controller.error(error)
             })
           }
           
@@ -499,10 +544,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       })
 
-      const insightsReader = insightsStream.getReader()
-      while (true) {
-        const { done } = await insightsReader.read()
-        if (done) break
+      try {
+        const insightsReader = insightsStream.getReader()
+        while (true) {
+          const { done } = await insightsReader.read()
+          if (done) break
+        }
+      } catch (error) {
+        console.error("Error consuming insights stream:", error)
       }
 
       setProgress(prev => [...prev, "Research complete!"])
@@ -519,7 +568,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
 
   useEffect(() => {
-    // Auto-save when all content is ready
     const shouldAutoSave = !isLoading && 
                           !isAnalyzing && 
                           results.length > 0 && 
