@@ -260,7 +260,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       if (allContent.length === 0) {
         setProgress(prev => [...prev, "No content to analyze. Trying simpler queries..."]);
         
-        // Generate more simplified queries if we didn't get results
         if (iteration < maxIterations) {
           const simplifiedQueries = [
             `${description.split(' ').slice(0, 10).join(' ')}`,
@@ -279,7 +278,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           content: allContent.join('\n\n'),
           query: description,
           question: description,
-          marketId: marketId // Explicitly pass marketId to maintain context
+          marketId: marketId,
+          marketDescription: description
         }
       })
 
@@ -341,7 +341,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       const currentAnalysis = await processAnalysisStream(analysisReader)
       
-      // Store the current iteration results
       setIterations(prev => [
         ...prev, 
         {
@@ -352,12 +351,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       ])
       
-      // If this is the final iteration, extract insights
       if (iteration === maxIterations) {
         setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
         await extractInsights(allContent, currentAnalysis)
       } else {
-        // Generate new queries based on this analysis
         setProgress(prev => [...prev, "Generating new queries based on analysis..."])
         
         try {
@@ -366,7 +363,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               query: description,
               previousResults: currentAnalysis,
               iteration: iteration,
-              marketId: marketId // Explicitly pass marketId to maintain context
+              marketId: marketId,
+              marketDescription: description
             }
           })
 
@@ -387,12 +385,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
           })
 
-          // Start next iteration with the new queries
           await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
         } catch (error) {
           console.error("Error generating refined queries:", error)
           
-          // Create fallback queries if the generate-queries function fails
           const fallbackQueries = [
             `${description} latest information`,
             `${description} expert analysis`,
@@ -417,8 +413,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       body: {
         webContent: allContent.join('\n\n'),
         analysis: finalAnalysis,
-        marketId: marketId, // Explicitly pass marketId to maintain context
-        marketQuestion: description // Pass the market question for context
+        marketId: marketId,
+        marketQuestion: description
       }
     })
 
@@ -507,10 +503,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
       
-      // Create shorter versions of queries if they're too long
       const shortenedQueries = queries.map(query => {
         if (query.length > 390) {
-          // Extract key phrases from the query
           const keywords = query.split(/[.!?]/)
             .filter(sentence => sentence.length > 5)
             .slice(0, 2)
@@ -523,8 +517,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const response = await supabase.functions.invoke('web-scrape', {
         body: { 
           queries: shortenedQueries,
-          marketId: marketId, // Explicitly pass marketId to maintain context 
-          marketDescription: description // Pass market description for context
+          marketId: marketId,
+          marketDescription: description
         }
       })
 
@@ -578,7 +572,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   iterationResults.push(...parsed.data)
                   setResults(prev => {
                     const combined = [...prev, ...parsed.data]
-                    // Remove duplicates based on URL
                     const uniqueResults = Array.from(
                       new Map(combined.map(item => [item.url, item])).values()
                     )
@@ -631,7 +624,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return
       }
 
-      // Process the results of this iteration
       await processQueryResults(allContent, iteration, queries, iterationResults)
     } catch (error) {
       console.error(`Error in web research iteration ${iteration}:`, error)
@@ -663,8 +655,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
           body: { 
             query: description,
-            marketId: marketId, // Explicitly pass marketId to maintain context
-            marketDescription: description // More context for the function
+            marketId: marketId,
+            marketDescription: description
           }
         })
 
@@ -687,12 +679,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
         })
 
-        // Start the iterative research process with initial queries
         await handleWebScrape(queriesData.queries, 1)
       } catch (error) {
         console.error("Error generating initial queries:", error)
         
-        // Create simplified fallback queries to avoid Brave search limits
         const fallbackQueries = [
           `${description.split(' ').slice(0, 8).join(' ')}`,
           `${description.split(' ').slice(0, 8).join(' ')} analysis`,
@@ -830,7 +820,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       <ProgressDisplay messages={progress} />
       
-      {/* Research Iterations Display */}
       {iterations.length > 0 && (
         <div className="border rounded-md">
           <Accordion type="multiple" value={expandedIterations} className="w-full">

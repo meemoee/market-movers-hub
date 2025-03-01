@@ -1,150 +1,135 @@
 
-import { corsHeaders } from "../_shared/cors.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY") || "";
-
-interface Response {
-  queries: string[];
+interface RequestBody {
+  query: string;
+  previousResults?: string;
+  iteration?: number;
+  marketId?: string;
+  marketDescription?: string;
 }
 
+// OpenRouter API configuration
+const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") || "";
+const MODEL = "anthropic/claude-3-haiku-20240307";
+
 serve(async (req) => {
-  // Handle CORS preflight requests
+  // Handle CORS
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: corsHeaders,
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { query, previousResults, iteration, marketId, marketDescription } = await req.json();
+    const { query, previousResults, iteration = 0, marketId, marketDescription } = await req.json() as RequestBody;
 
-    if (!query) {
-      return new Response(
-        JSON.stringify({ error: "Query is required" }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-    }
-
-    // Simplified system message to save tokens
-    const systemMessage = `You generate search queries for market research. Keep queries short, concise and focused. Each query should be maximum 100 characters.`;
-
-    let userMessage = "";
+    console.log(`Generate Queries request: market ID ${marketId}, iteration ${iteration}`);
+    console.log(`Market description: ${marketDescription?.substring(0, 100)}${marketDescription?.length > 100 ? '...' : ''}`);
     
-    if (previousResults && iteration > 1) {
-      userMessage = `Based on the market question: "${query.substring(0, 200)}" and these previous findings: "${previousResults.substring(0, 500)}", generate 3 short, focused search queries (max 100 characters each) to discover new information for iteration ${iteration}.`;
-    } else {
-      // For the first iteration, just extract key elements from the query
-      userMessage = `For the market question: "${query.substring(0, 200)}", generate 3 short, focused search queries (max 100 characters each) to find relevant information. Keep each query under 100 characters.`;
+    // Prepare a more relevant context for query generation
+    let prompt = "";
+    
+    // If we have both marketId and marketDescription, use them to create more focused queries
+    if (marketId && marketDescription) {
+      prompt = `Generate ${iteration > 0 ? 'refined' : 'initial'} search queries to research the following market prediction: "${marketDescription}".
+      
+Market ID: ${marketId}
+
+${previousResults ? `Based on previous research findings: "${previousResults}"\n\n` : ''}
+
+${iteration > 0 
+  ? `This is iteration ${iteration}. Focus on areas that need more investigation or clarification from the previous results.` 
+  : 'These queries will be used to search for relevant information about this market prediction.'}
+
+Generate ${iteration > 0 ? '3-4' : '4-5'} concise, focused search queries that will yield the most relevant information to evaluate this prediction. Each query should be under 100 characters if possible and target specific aspects of the market. Make queries specific and avoid generic terms.`;
+    } 
+    // Fall back to the original query if market context isn't available
+    else {
+      prompt = `Generate ${iteration > 0 ? 'refined' : 'initial'} search queries for the following topic/question: "${query}"
+      
+${previousResults ? `Based on previous research findings: "${previousResults}"\n\n` : ''}
+
+${iteration > 0 
+  ? `This is iteration ${iteration}. Focus on areas that need more investigation or clarification from the previous results.` 
+  : 'These queries will be used for web search to gather information.'}
+
+Generate ${iteration > 0 ? '3-4' : '4-5'} concise, focused search queries that will yield the most relevant information. Each query should be under 100 characters if possible.`;
     }
 
-    const apiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://hunchex.com",
+        "X-Title": "Hunchex Research",
       },
       body: JSON.stringify({
-        model: "gpt-3.5-turbo",
+        model: MODEL,
         messages: [
           {
             role: "system",
-            content: systemMessage,
+            content: "You are a query generation assistant that creates effective web search queries based on topics and previous search results. Your queries should be concise, focused, and diverse to cover different aspects of the topic."
           },
           {
             role: "user",
-            content: userMessage,
-          },
+            content: prompt
+          }
         ],
+        max_tokens: 500,
         temperature: 0.7,
-        max_tokens: 300,
       }),
     });
 
-    if (!apiResponse.ok) {
-      const errorData = await apiResponse.json();
-      console.error("OpenAI API error:", errorData);
-      
-      // Generate fallback queries if OpenAI fails
-      const words = query.split(' ');
-      const fallbackQueries = [
-        words.slice(0, 6).join(' '),
-        words.slice(0, 4).join(' ') + " latest news",
-        words.slice(0, 4).join(' ') + " analysis"
-      ];
-      
-      return new Response(
-        JSON.stringify({ queries: fallbackQueries }),
-        {
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`OpenRouter API error: ${response.status} ${errorText}`);
+      throw new Error(`OpenRouter API error: ${response.status}`);
     }
 
-    const data = await apiResponse.json();
+    const data = await response.json();
+    const generatedText = data.choices?.[0]?.message?.content || "";
     
-    const generatedText = data.choices[0].message.content;
-    const queryRegex = /\d+\.\s*(.*?)(?=\d+\.|$)/gs;
+    // Extract the queries from the generated text
+    const queryRegex = /^\d+\.\s+(.*?)$/gm;
+    const queryMatches = [...generatedText.matchAll(queryRegex)];
     
-    // Extract queries using regex
-    const matches = [...generatedText.matchAll(queryRegex)];
-    let queries = matches.map(match => match[1].trim());
+    const queries = queryMatches.map(match => match[1].trim());
     
-    // If regex extraction failed, split by newlines
-    if (queries.length === 0) {
-      queries = generatedText
-        .split('\n')
-        .filter(line => line.trim())
-        .map(line => line.replace(/^\d+\.?\s*/, '').trim())
-        .filter(line => line.length > 0 && line.length <= 390);
-    }
+    // If no queries were extracted, try to extract lines that might be queries
+    const fallbackQueries = queries.length > 0 
+      ? queries 
+      : generatedText
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line && !line.startsWith('```') && line.length < 300);
     
-    // Limit to 3 queries and ensure none are too long
-    queries = queries
-      .slice(0, 3)
-      .map(q => q.length > 390 ? q.substring(0, 390) : q);
+    // Ensure we get at least some queries by adding defaults if needed
+    const finalQueries = fallbackQueries.length > 0 
+      ? fallbackQueries 
+      : marketDescription 
+        ? [
+            `${marketDescription.split(' ').slice(0, 6).join(' ')} latest information`,
+            `${marketDescription.split(' ').slice(0, 6).join(' ')} analysis`,
+            `${marketId} market prediction analysis`
+          ]
+        : [
+            `${query} latest information`,
+            `${query} analysis`,
+            `${query} details`
+          ];
     
-    // Ensure we have at least one query
-    if (queries.length === 0) {
-      const words = query.split(' ');
-      queries = [
-        words.slice(0, 8).join(' '),
-        words.slice(0, 6).join(' ') + " recent news",
-        words.slice(0, 6).join(' ') + " analysis"
-      ];
-    }
+    console.log("Generated queries:", finalQueries);
 
-    const response: Response = {
-      queries,
-    };
-
-    return new Response(JSON.stringify(response), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
+    return new Response(JSON.stringify({ queries: finalQueries }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
     });
   } catch (error) {
-    console.error("Error:", error);
-    
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
-    );
+    console.error("Error generating queries:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500,
+    });
   }
 });
