@@ -1,4 +1,5 @@
-import { corsHeaders } from '../_shared/cors';
+
+import { corsHeaders } from '../_shared/cors.ts';
 import { SSEMessage } from './types';
 
 const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";

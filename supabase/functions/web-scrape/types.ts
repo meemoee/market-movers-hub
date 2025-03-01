@@ -1,6 +1,6 @@
 
 export interface SSEMessage {
-  type: string;
+  type: 'message' | 'results' | 'error';
   message?: string;
   data?: any;
 }
