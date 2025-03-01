@@ -41,18 +41,3 @@ verify_jwt = false
 
 [functions.deep-research]
 verify_jwt = false
-
-[functions.brave-search]
-verify_jwt = false
-
-[functions.generate-queries]
-verify_jwt = false
-
-[functions.web-scrape]
-verify_jwt = false
-
-[functions.analyze-web-content]
-verify_jwt = false
-
-[functions.extract-research-insights]
-verify_jwt = false
