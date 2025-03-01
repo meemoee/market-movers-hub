@@ -251,142 +251,165 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[]) => {
-    setIsAnalyzing(true)
-    setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
-    
-    console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
-    
-    const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
-      body: { 
-        content: allContent.join('\n\n'),
-        query: description,
-        question: description,
-        marketId: marketId // Explicitly pass marketId to maintain context
-      }
-    })
-
-    if (analysisResponse.error) {
-      console.error("Error from analyze-web-content:", analysisResponse.error)
-      throw analysisResponse.error
-    }
-
-    console.log("Received response from analyze-web-content")
-
-    let accumulatedContent = '';
-    
-    const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-      const textDecoder = new TextDecoder()
-      let buffer = '';
+    try {
+      setIsAnalyzing(true)
+      setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
       
-      while (true) {
-        const { done, value } = await reader.read()
+      console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
+      
+      if (allContent.length === 0) {
+        setProgress(prev => [...prev, "No content to analyze. Trying simpler queries..."]);
         
-        if (done) {
-          console.log("Analysis stream complete")
-          break
+        // Generate more simplified queries if we didn't get results
+        if (iteration < maxIterations) {
+          const simplifiedQueries = [
+            `${description.split(' ').slice(0, 10).join(' ')}`,
+            `${marketId} latest updates`,
+            `${description.split(' ').slice(0, 5).join(' ')} news`
+          ];
+          
+          setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
+          await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent]);
+          return;
         }
+      }
+      
+      const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
+        body: { 
+          content: allContent.join('\n\n'),
+          query: description,
+          question: description,
+          marketId: marketId // Explicitly pass marketId to maintain context
+        }
+      })
+
+      if (analysisResponse.error) {
+        console.error("Error from analyze-web-content:", analysisResponse.error)
+        throw analysisResponse.error
+      }
+
+      console.log("Received response from analyze-web-content")
+
+      let accumulatedContent = '';
+      
+      const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+        const textDecoder = new TextDecoder()
+        let buffer = '';
         
-        const chunk = textDecoder.decode(value)
-        console.log("Received analysis chunk of size:", chunk.length)
-        
-        buffer += chunk
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-        
-        for (const line of lines) {
-          if (line.trim() && line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim()
-            if (jsonStr === '[DONE]') continue
-            
-            try {
-              const { content } = cleanStreamContent(jsonStr)
-              if (content) {
-                console.log("Received content chunk:", content.substring(0, 50) + "...")
-                accumulatedContent += content;
-                setAnalysis(accumulatedContent);
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Analysis stream complete")
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received analysis chunk of size:", chunk.length)
+          
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              if (jsonStr === '[DONE]') continue
+              
+              try {
+                const { content } = cleanStreamContent(jsonStr)
+                if (content) {
+                  console.log("Received content chunk:", content.substring(0, 50) + "...")
+                  accumulatedContent += content;
+                  setAnalysis(accumulatedContent);
+                }
+              } catch (e) {
+                console.error('Error parsing analysis SSE data:', e)
               }
-            } catch (e) {
-              console.error('Error parsing analysis SSE data:', e)
             }
           }
         }
+
+        return accumulatedContent;
       }
 
-      return accumulatedContent;
-    }
-
-    const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
-    
-    if (!analysisReader) {
-      throw new Error('Failed to get reader from analysis response')
-    }
-    
-    const currentAnalysis = await processAnalysisStream(analysisReader)
-    
-    // Store the current iteration results
-    setIterations(prev => [
-      ...prev, 
-      {
-        iteration,
-        queries: currentQueries,
-        results: iterationResults,
-        analysis: currentAnalysis
-      }
-    ])
-    
-    // If this is the final iteration, extract insights
-    if (iteration === maxIterations) {
-      setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
-      await extractInsights(allContent, currentAnalysis)
-    } else {
-      // Generate new queries based on this analysis
-      setProgress(prev => [...prev, "Generating new queries based on analysis..."])
+      const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
       
-      try {
-        const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-          body: { 
-            query: description,
-            previousResults: currentAnalysis,
-            iteration: iteration,
-            marketId: marketId // Explicitly pass marketId to maintain context
-          }
-        })
-
-        if (refinedQueriesError) {
-          console.error("Error from generate-queries:", refinedQueriesError)
-          throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
-        }
-
-        if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
-          console.error("Invalid refined queries response:", refinedQueriesData)
-          throw new Error('Invalid refined queries response')
-        }
-
-        console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
-        setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
-        
-        refinedQueriesData.queries.forEach((query: string, index: number) => {
-          setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
-        })
-
-        // Start next iteration with the new queries
-        await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
-      } catch (error) {
-        console.error("Error generating refined queries:", error)
-        
-        // Create fallback queries if the generate-queries function fails
-        const fallbackQueries = [
-          `${description} latest information`,
-          `${description} expert analysis`,
-          `${description} key details`
-        ]
-        
-        setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
-        await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
+      if (!analysisReader) {
+        throw new Error('Failed to get reader from analysis response')
       }
-    }
+      
+      const currentAnalysis = await processAnalysisStream(analysisReader)
+      
+      // Store the current iteration results
+      setIterations(prev => [
+        ...prev, 
+        {
+          iteration,
+          queries: currentQueries,
+          results: iterationResults,
+          analysis: currentAnalysis
+        }
+      ])
+      
+      // If this is the final iteration, extract insights
+      if (iteration === maxIterations) {
+        setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
+        await extractInsights(allContent, currentAnalysis)
+      } else {
+        // Generate new queries based on this analysis
+        setProgress(prev => [...prev, "Generating new queries based on analysis..."])
+        
+        try {
+          const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
+            body: { 
+              query: description,
+              previousResults: currentAnalysis,
+              iteration: iteration,
+              marketId: marketId // Explicitly pass marketId to maintain context
+            }
+          })
 
-    return currentAnalysis
+          if (refinedQueriesError) {
+            console.error("Error from generate-queries:", refinedQueriesError)
+            throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
+          }
+
+          if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
+            console.error("Invalid refined queries response:", refinedQueriesData)
+            throw new Error('Invalid refined queries response')
+          }
+
+          console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
+          setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
+          
+          refinedQueriesData.queries.forEach((query: string, index: number) => {
+            setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
+          })
+
+          // Start next iteration with the new queries
+          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
+        } catch (error) {
+          console.error("Error generating refined queries:", error)
+          
+          // Create fallback queries if the generate-queries function fails
+          const fallbackQueries = [
+            `${description} latest information`,
+            `${description} expert analysis`,
+            `${description} key details`
+          ]
+          
+          setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
+          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
+        }
+      }
+
+      return currentAnalysis
+    } catch (error) {
+      console.error("Error in processQueryResults:", error);
+      setError(`Error analyzing content: ${error.message}`);
+      setIsAnalyzing(false);
+    }
   }
 
   const extractInsights = async (allContent: string[], finalAnalysis: string) => {
@@ -484,9 +507,22 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
       
+      // Create shorter versions of queries if they're too long
+      const shortenedQueries = queries.map(query => {
+        if (query.length > 390) {
+          // Extract key phrases from the query
+          const keywords = query.split(/[.!?]/)
+            .filter(sentence => sentence.length > 5)
+            .slice(0, 2)
+            .join('. ');
+          return keywords.length > 50 ? keywords : query.substring(0, 390);
+        }
+        return query;
+      });
+      
       const response = await supabase.functions.invoke('web-scrape', {
         body: { 
-          queries: queries,
+          queries: shortenedQueries,
           marketId: marketId, // Explicitly pass marketId to maintain context 
           marketDescription: description // Pass market description for context
         }
@@ -502,6 +538,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const allContent: string[] = [...previousContent]
       const iterationResults: ResearchResult[] = []
       let messageCount = 0;
+      let hasResults = false;
 
       const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
@@ -553,6 +590,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       allContent.push(result.content)
                     }
                   })
+                  
+                  hasResults = true;
                 } else if (parsed.type === 'message' && parsed.message) {
                   console.log("Received message:", parsed.message)
                   messageCount++;
@@ -653,14 +692,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       } catch (error) {
         console.error("Error generating initial queries:", error)
         
-        // Create fallback queries if the generate-queries function fails
+        // Create simplified fallback queries to avoid Brave search limits
         const fallbackQueries = [
-          `${description}`,
-          `${description} analysis`,
-          `${description} prediction`
+          `${description.split(' ').slice(0, 8).join(' ')}`,
+          `${description.split(' ').slice(0, 8).join(' ')} analysis`,
+          `${description.split(' ').slice(0, 8).join(' ')} prediction`
         ]
         
-        setProgress(prev => [...prev, `Using fallback queries due to error: ${error.message}`])
+        setProgress(prev => [...prev, `Using simplified fallback queries due to error: ${error.message}`])
         await handleWebScrape(fallbackQueries, 1)
       }
 

@@ -1,66 +1,103 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-// Brave Search API URL
-const BRAVE_SEARCH_API_URL = "https://api.search.brave.com/res/v1/web/search";
+const BRAVE_API_KEY = Deno.env.get("BRAVE_API_KEY") || "";
 
-interface SearchRequest {
-  query: string;
+interface BraveSearchParams {
+  q: string;
   count?: number;
+  offset?: number;
+}
+
+export async function searchBrave(query: string, count: number = 10): Promise<any> {
+  // Truncate query to 390 characters (below the 400 limit)
+  const truncatedQuery = query.length > 390 ? query.substring(0, 390) + "..." : query;
+  
+  const params: BraveSearchParams = {
+    q: truncatedQuery,
+    count
+  };
+  
+  const url = new URL("https://api.search.brave.com/res/v1/web/search");
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined) {
+      url.searchParams.append(key, value.toString());
+    }
+  });
+
+  try {
+    console.log(`Searching Brave for: ${truncatedQuery.substring(0, 50)}...`);
+    
+    const response = await fetch(url.toString(), {
+      method: "GET",
+      headers: {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_API_KEY,
+        "X-Country-Code": "US"
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Brave search failed: ${response.status} ${errorText}`);
+      throw new Error(`Brave search failed: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log(`Received ${data.web?.results?.length || 0} search results`);
+    return data;
+  } catch (error) {
+    console.error("Error searching Brave:", error);
+    throw error;
+  }
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, {
+      headers: corsHeaders,
+    });
   }
 
   try {
-    const { query, count = 10 } = await req.json() as SearchRequest;
+    const { query, count } = await req.json();
     
-    if (!query || typeof query !== 'string') {
+    if (!query) {
       return new Response(
-        JSON.stringify({ error: "Invalid query provided" }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
+        JSON.stringify({ error: "Query parameter is required" }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
       );
     }
 
-    console.log(`Performing Brave search for: "${query}"`);
-
-    const apiKey = Deno.env.get("BRAVE_API_KEY");
+    const results = await searchBrave(query, count || 10);
     
-    if (!apiKey) {
-      throw new Error("BRAVE_API_KEY environment variable is not set");
-    }
-    
-    const response = await fetch(`${BRAVE_SEARCH_API_URL}?q=${encodeURIComponent(query)}&count=${count}`, {
-      method: "GET",
+    return new Response(JSON.stringify(results), {
       headers: {
-        "Accept": "application/json",
-        "X-Subscription-Token": apiKey
+        ...corsHeaders,
+        "Content-Type": "application/json",
       },
     });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Brave search API error: ${response.status} ${errorText}`);
-      throw new Error(`Brave search failed: ${response.status} ${errorText}`);
-    }
-    
-    const data = await response.json();
-    
-    console.log(`Successfully received Brave search results for: "${query}"`);
-    
-    return new Response(
-      JSON.stringify(data),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
   } catch (error) {
-    console.error(`Error in brave-search function: ${error.message}`);
+    console.error("Error processing request:", error);
+    
     return new Response(
       JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 }
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
     );
   }
 });
