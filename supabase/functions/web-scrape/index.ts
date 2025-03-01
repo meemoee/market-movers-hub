@@ -1,228 +1,178 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import * as cheerio from "https://esm.sh/cheerio@1.0.0-rc.12";
 import { corsHeaders } from "../_shared/cors.ts";
-
-interface SearchResult {
-  url: string;
-  name: string;
-  snippet: string;
-}
-
-interface ResearchResult {
-  url: string;
-  content: string;
-  title?: string;
-}
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
+    return new Response(null, {
+      headers: corsHeaders,
+      status: 204,
+    });
   }
 
-  // Create a ReadableStream to allow sending events
-  const stream = new ReadableStream({
-    start(controller) {
-      const textEncoder = new TextEncoder();
-      
-      const sendEvent = (data: any) => {
-        controller.enqueue(textEncoder.encode(`data: ${JSON.stringify(data)}\n\n`));
-      };
+  const encoder = new TextEncoder();
+  const responseStream = new TransformStream();
+  const writer = responseStream.writable.getWriter();
 
-      const collectWebContent = async () => {
-        try {
-          const { queries } = await req.json();
-          
-          if (!queries || !Array.isArray(queries)) {
-            throw new Error("Queries parameter must be provided as an array");
-          }
-
-          let allResults: SearchResult[] = [];
-          
-          for (let i = 0; i < queries.length; i++) {
-            const query = queries[i];
-            sendEvent({ type: 'message', message: `Processing query ${i+1}/${queries.length}: ${query}` });
-            
-            try {
-              // Call the Brave search API via our Supabase function
-              const response = await fetch(
-                `${req.url.split('/web-scrape')[0]}/brave-search`,
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({ query }),
-                }
-              );
-              
-              if (!response.ok) {
-                sendEvent({ 
-                  type: 'message', 
-                  message: `Error searching for "${query}": ${response.status}` 
-                });
-                continue;
-              }
-              
-              const searchResults = await response.json();
-              allResults = [...allResults, ...searchResults];
-              
-              // De-duplicate results by URL
-              const uniqueUrls = new Set();
-              allResults = allResults.filter(result => {
-                if (uniqueUrls.has(result.url)) {
-                  return false;
-                }
-                uniqueUrls.add(result.url);
-                return true;
-              });
-              
-              sendEvent({ 
-                type: 'message', 
-                message: `Found ${searchResults.length} results for "${query}"` 
-              });
-            } catch (error) {
-              console.error(`Error searching for "${query}":`, error);
-              sendEvent({ 
-                type: 'message', 
-                message: `Error searching for "${query}": ${error.message}` 
-              });
-            }
-          }
-          
-          // Process the top results
-          const topResults = allResults.slice(0, 15);
-          sendEvent({ 
-            type: 'message', 
-            message: `Processing top ${topResults.length} search results` 
-          });
-          
-          const successfulResults: ResearchResult[] = [];
-          
-          for (const result of topResults) {
-            try {
-              sendEvent({ 
-                type: 'message', 
-                message: `Fetching content from: ${result.url}` 
-              });
-              
-              const content = await fetchAndExtractContent(result.url);
-              
-              if (content && content.trim()) {
-                successfulResults.push({
-                  url: result.url,
-                  content: content,
-                  title: result.name
-                });
-                
-                sendEvent({ 
-                  type: 'results', 
-                  data: [{ 
-                    url: result.url, 
-                    content: content, 
-                    title: result.name 
-                  }] 
-                });
-              }
-            } catch (error) {
-              console.error(`Error fetching content from ${result.url}:`, error);
-              sendEvent({ 
-                type: 'message', 
-                message: `Error fetching content from ${result.url}: ${error.message}` 
-              });
-            }
-          }
-          
-          if (successfulResults.length === 0) {
-            sendEvent({ 
-              type: 'message', 
-              message: `No content could be extracted from search results.` 
-            });
-          }
-          
-          sendEvent({ type: 'message', message: `Content extraction complete` });
-        } catch (error) {
-          console.error("Web scrape error:", error);
-          sendEvent({ 
-            type: 'error', 
-            error: error.message 
-          });
-        } finally {
-          controller.close();
-        }
-      };
-      
-      // Start the content collection process
-      collectWebContent();
+  const writeSSE = async (event: string, data: any) => {
+    try {
+      const message = `data: ${JSON.stringify(data)}\n\n`;
+      await writer.write(encoder.encode(message));
+    } catch (error) {
+      console.error("Error writing to stream:", error);
     }
-  });
-  
-  return new Response(stream, {
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive"
-    }
-  });
-});
+  };
 
-// Helper function to fetch content from a URL
-async function fetchAndExtractContent(url: string): Promise<string> {
   try {
-    // Skip PDFs, social media, and other non-text content
-    if (
-      url.endsWith('.pdf') || 
-      url.endsWith('.doc') || 
-      url.endsWith('.docx') ||
-      url.includes('twitter.com') ||
-      url.includes('facebook.com') ||
-      url.includes('instagram.com') ||
-      url.includes('tiktok.com') ||
-      url.includes('youtube.com')
-    ) {
-      throw new Error("Skipping non-text content");
+    // Parse the request body
+    const { queries } = await req.json();
+    
+    if (!queries || !Array.isArray(queries) || queries.length === 0) {
+      throw new Error("Invalid queries parameter. Expected non-empty array.");
+    }
+
+    // Start the response with the SSE headers
+    const response = new Response(responseStream.readable, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+
+    // Process each query in sequence and collect results
+    const allResults = [];
+    
+    for (let i = 0; i < queries.length; i++) {
+      const query = queries[i];
+      await writeSSE("message", { message: `Processing query ${i+1}/${queries.length}: ${query}` });
+      
+      // Call the brave-search function for this query
+      const braveResponse = await fetch(`${req.url.split('/web-scrape')[0]}/brave-search`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query }),
+      });
+      
+      if (!braveResponse.ok) {
+        console.error(`Error from brave-search: ${braveResponse.status}`);
+        const errorText = await braveResponse.text();
+        console.error(`Brave search error details: ${errorText}`);
+        await writeSSE("message", { 
+          message: `Error searching for "${query}": ${braveResponse.status}` 
+        });
+        continue;
+      }
+      
+      const braveData = await braveResponse.json();
+      
+      if (!braveData.results || braveData.results.length === 0) {
+        console.log(`No results found for query: ${query}`);
+        await writeSSE("message", { 
+          message: `No results found for "${query}"` 
+        });
+        continue;
+      }
+      
+      console.log(`Found ${braveData.results.length} results for query: ${query}`);
+      await writeSSE("message", { 
+        message: `Found ${braveData.results.length} results for "${query}"` 
+      });
+      
+      // Process and scrape each result
+      const scrapingResults = [];
+      
+      for (const result of braveData.results) {
+        try {
+          await writeSSE("message", { message: `Scraping content from ${result.url}` });
+          
+          // Fetch the webpage content
+          const response = await fetch(result.url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            },
+          });
+
+          if (!response.ok) {
+            console.log(`Failed to fetch ${result.url}: ${response.status}`);
+            continue;
+          }
+
+          const html = await response.text();
+          
+          // Parse the HTML using cheerio
+          const $ = cheerio.load(html);
+          
+          // Remove script and style elements
+          $("script, style").remove();
+          
+          // Get the visible text content
+          let content = $("body")
+            .text()
+            .replace(/\s+/g, " ")
+            .trim();
+            
+          // Limit content length
+          content = content.slice(0, 5000);
+          
+          if (content) {
+            scrapingResults.push({
+              url: result.url,
+              title: result.title,
+              content: content
+            });
+            console.log(`Successfully scraped content from ${result.url}`);
+          }
+        } catch (error) {
+          console.error(`Error scraping ${result.url}:`, error.message);
+        }
+      }
+      
+      // Add these results to the overall collection
+      if (scrapingResults.length > 0) {
+        await writeSSE("results", { type: "results", data: scrapingResults });
+        allResults.push(...scrapingResults);
+      }
     }
     
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+    // Send a final message with the total count
+    await writeSSE("message", { 
+      message: `Completed scraping with ${allResults.length} total results` 
     });
     
-    if (!response.ok) {
-      throw new Error(`Error fetching content: ${response.status}`);
-    }
+    // Signal the end of the stream
+    await writeSSE("done", "[DONE]");
+    await writer.close();
     
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('text/html')) {
-      throw new Error("Not HTML content");
-    }
-    
-    const html = await response.text();
-    
-    // Use Deno's built-in DOMParser to extract text content
-    const doc = new DOMParser().parseFromString(html, 'text/html');
-    
-    // Remove script and style elements
-    const scripts = doc.querySelectorAll('script, style');
-    scripts.forEach(el => el.remove());
-    
-    // Extract text from the body
-    const textContent = doc.body.textContent || '';
-    
-    // Basic cleaning of the text content
-    const cleanedContent = textContent
-      .split('\n')
-      .map(line => line.trim())
-      .filter(line => line)
-      .join(' ')
-      .replace(/\s+/g, ' ');
-    
-    // Limit the content to a reasonable length
-    return cleanedContent.slice(0, 10000);
+    return response;
   } catch (error) {
-    console.error(`Error extracting content from ${url}:`, error);
-    throw error;
+    console.error("Web scraping error:", error);
+    
+    try {
+      await writeSSE("error", { 
+        type: "error", 
+        message: `Error: ${error.message}` 
+      });
+      await writer.close();
+    } catch (streamError) {
+      console.error("Error closing stream:", streamError);
+    }
+    
+    // If we haven't started the stream yet, return a standard error response
+    return new Response(
+      JSON.stringify({ error: `Web scraping failed: ${error.message}` }),
+      {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+        status: 500,
+      }
+    );
   }
-}
+});
