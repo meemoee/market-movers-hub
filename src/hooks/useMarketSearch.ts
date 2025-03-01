@@ -11,7 +11,7 @@ interface MarketSearchResponse {
 
 export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number) {
   return useQuery({
-    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax], // Include probability range in queryKey
+    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax],
     queryFn: async () => {
       console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax });
       
@@ -38,7 +38,7 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
         total: data?.total
       }
     },
-    enabled: true, // Always enable the query since we want it to work with probability filters too
+    enabled: true,
     staleTime: 0,
     retry: 2,
     retryDelay: 1000

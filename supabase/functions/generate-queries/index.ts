@@ -1,123 +1,184 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.1";
 
-serve(async (req) => {
+const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 200,
-      headers: new Headers(corsHeaders),
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { query, previousResults, iteration, marketId, marketDescription } = await req.json();
+    const { query, marketId, marketDescription, previousResults, iteration = 0 } = await req.json();
     
-    console.log(`Generating queries for market ${marketId}: ${marketDescription}`);
+    // Log the request details
+    console.log("Generate queries request:");
+    console.log(`- Market ID: ${marketId}`);
+    console.log(`- Market Description: ${marketDescription?.substring(0, 100)}${marketDescription?.length > 100 ? '...' : ''}`);
+    console.log(`- Iteration: ${iteration}`);
 
-    if (!query) {
-      return new Response(
-        JSON.stringify({ error: "Query parameter is required" }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+    // If we have a marketId, try to fetch more information from the database
+    let marketInfo = null;
+    if (marketId) {
+      const { data, error } = await supabase
+        .from("markets")
+        .select("id, question, description, subtitle, yes_sub_title, no_sub_title")
+        .eq("id", marketId)
+        .single();
+      
+      if (error) {
+        console.error("Error fetching market info:", error);
+      } else if (data) {
+        marketInfo = data;
+        console.log("Retrieved market info:", JSON.stringify(marketInfo, null, 2));
+      }
     }
 
-    // Generate search queries based on the market description
-    let queries: string[] = [];
+    // Combine all market information we have
+    const fullMarketDescription = marketInfo?.question || marketDescription || query || "";
+    const additionalContext = marketInfo?.description || "";
     
-    if (!previousResults) {
-      // Initial queries should be focused on the market description
-      // Extract key terms from the market description
-      const keyTerms = extractKeyTerms(marketDescription || query);
+    console.log("Full market description to use for query generation:", fullMarketDescription);
+
+    let prompt = "";
+    
+    if (iteration === 0) {
+      // Initial queries generation
+      prompt = `
+You are a market research assistant. Generate 3 clear, focused search queries to gather information about the following prediction market:
+
+Market: ${fullMarketDescription}
+${additionalContext ? `Additional context: ${additionalContext}` : ''}
+
+Generate 3 search queries that are:
+1. Short (under 8 words each)
+2. Focused on finding factual information
+3. Will help analyze the probability of this market resolving to YES
+
+Return only the queries, one per line, with no numbers or other text.
+`;
+    } else {
+      // Refined queries based on previous results
+      prompt = `
+You are a market research assistant. Based on the previous research results, generate 3 refined search queries to gather additional information about this prediction market:
+
+Market: ${fullMarketDescription}
+${additionalContext ? `Additional context: ${additionalContext}` : ''}
+
+Previous analysis: ${previousResults ? previousResults.substring(0, 500) : "No previous results"}
+
+Generate 3 search queries that:
+1. Are short (under 8 words each)
+2. Fill gaps in the existing research
+3. Target specific aspects not covered yet
+4. Will help analyze the probability of this market resolving to YES
+
+Return only the queries, one per line, with no numbers or other text.
+`;
+    }
+
+    // For simplicity, let's manually generate some queries based on the market description
+    // In a real implementation, you would use an AI to generate these queries
+    
+    let queries = [];
+    
+    // Generate simple queries based on the market description
+    const marketWords = fullMarketDescription.split(' ').filter(w => w.length > 3);
+    
+    if (iteration === 0) {
+      // For first iteration, use simple keyword extraction
+      const keyTerms = extractKeyTerms(fullMarketDescription);
       
       queries = [
-        `${keyTerms[0]} latest news`,
-        `${keyTerms[0]} prediction`,
-        `${keyTerms[1]} analysis`
+        `${keyTerms.slice(0, 3).join(' ')} latest news`,
+        `${keyTerms.slice(0, 2).join(' ')} prediction`,
+        `${keyTerms.slice(0, 2).join(' ')} analysis`
       ];
       
-      // Add market ID specific query if it exists
       if (marketId) {
-        queries.push(`market ${marketId} analysis`);
+        // Always add a market ID specific query as backup
+        queries.push(`${marketId} analysis`);
       }
     } else {
-      // For subsequent iterations, refine based on previous results
-      // Extract key terms from both the market description and previous results
-      const keyTerms = extractKeyTerms(marketDescription || query);
-      const previousTerms = extractKeyTerms(previousResults);
+      // For subsequent iterations, try to target gaps
+      const keyTerms = extractKeyTerms(fullMarketDescription);
+      const secondaryTerms = extractKeyTerms(additionalContext || "");
       
-      // Combine terms for more targeted queries
       queries = [
-        `${keyTerms[0]} ${previousTerms[0]} latest updates`,
-        `${keyTerms[0]} ${previousTerms[1]} expert analysis`,
-        `${previousTerms[0]} prediction`
+        `${keyTerms.slice(0, 2).join(' ')} ${secondaryTerms.slice(0, 1).join(' ')} research`,
+        `${keyTerms.slice(0, 2).join(' ')} expert opinion`,
+        `${keyTerms.slice(0, 1).join(' ')} ${secondaryTerms.slice(0, 1).join(' ')} probability`
       ];
     }
     
-    // Ensure queries are not too long and are unique
-    const processedQueries = [...new Set(
-      queries.map(q => q.trim())
-            .filter(q => q.length > 0)
-            .map(q => q.length > 100 ? q.substring(0, 100) : q)
-    )];
+    // Ensure queries are unique
+    queries = [...new Set(queries)];
     
+    // Limit to 3 queries
+    queries = queries.slice(0, 3);
+    
+    console.log("Generated queries:", queries);
+
     return new Response(
-      JSON.stringify({ queries: processedQueries }),
+      JSON.stringify({
+        queries: queries,
+      }),
       {
-        status: 200,
         headers: {
-          ...corsHeaders,
           "Content-Type": "application/json",
+          ...corsHeaders,
         },
       }
     );
+
   } catch (error) {
-    console.error("Error generating search queries:", error);
+    console.error("Error generating queries:", error);
     return new Response(
-      JSON.stringify({ error: `Internal server error: ${error.message}` }),
+      JSON.stringify({ error: `Failed to generate queries: ${error.message}` }),
       {
         status: 500,
         headers: {
-          ...corsHeaders,
           "Content-Type": "application/json",
+          ...corsHeaders,
         },
       }
     );
   }
 });
 
-// Helper function to extract meaningful terms from text
+// Helper function to extract key terms from text
 function extractKeyTerms(text: string): string[] {
-  if (!text) return ['market', 'prediction'];
+  if (!text) return [];
   
-  // Split the text into words and filter out common stop words
-  const stopWords = new Set(['a', 'an', 'the', 'and', 'or', 'but', 'if', 'this', 'will', 'to', 'of', 'for', 'in', 'on', 'at', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'that', 'these', 'those', 'with', 'as', 'from']);
+  // Remove common stop words
+  const stopWords = new Set([
+    "a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from",
+    "by", "with", "in", "out", "will", "be", "is", "are", "was", "were", "this", "that", 
+    "these", "those", "market", "resolve", "yes", "no", "if", "it", "its"
+  ]);
   
-  const words = text.toLowerCase()
-    .replace(/[^\w\s]/g, '') // Remove punctuation
+  // Split text into words, filter out short words and stop words
+  const words = text
+    .replace(/[^\w\s]/gi, ' ') // Remove punctuation
     .split(/\s+/)
-    .filter(word => word.length > 3 && !stopWords.has(word));
+    .filter(word => word.length > 3 && !stopWords.has(word.toLowerCase()))
+    .map(word => word.toLowerCase());
   
-  // Get the most frequent meaningful words
-  const wordCounts: Record<string, number> = {};
-  for (const word of words) {
-    wordCounts[word] = (wordCounts[word] || 0) + 1;
-  }
+  // Count word frequencies
+  const wordCounts = words.reduce((acc, word) => {
+    acc[word] = (acc[word] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
   
   // Sort by frequency
   const sortedWords = Object.entries(wordCounts)
     .sort((a, b) => b[1] - a[1])
-    .map(entry => entry[0]);
+    .map(([word]) => word);
   
-  // Return the top terms, or defaults if none found
-  return sortedWords.length > 0 
-    ? sortedWords.slice(0, Math.min(5, sortedWords.length))
-    : ['market', 'prediction'];
+  return sortedWords.slice(0, 10); // Return top 10 terms
 }
