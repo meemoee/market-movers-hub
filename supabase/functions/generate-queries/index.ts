@@ -1,127 +1,106 @@
 
-import { corsHeaders } from "../_shared/cors.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+// deno-lint-ignore-file no-explicit-any
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-interface GenerateQueriesRequest {
-  query: string;
-  previousResults?: string;
-  iteration?: number;
-  marketId?: string;
-  marketDescription?: string;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+interface RequestBody {
+  marketId: string;
 }
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
-const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      headers: corsHeaders
+    });
   }
 
   try {
-    const requestData: GenerateQueriesRequest = await req.json();
-    const { query, previousResults, iteration = 0, marketId, marketDescription } = requestData;
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-    if (!query) {
+    const { marketId } = await req.json() as RequestBody;
+    
+    console.log('Processing market query generation for:', marketId);
+
+    // Get market details
+    const { data: marketData, error: marketError } = await supabase
+      .from('markets')
+      .select('question, description')
+      .eq('id', marketId)
+      .single();
+
+    if (marketError || !marketData) {
+      console.error('Error fetching market data:', marketError);
       return new Response(
-        JSON.stringify({ error: "Query parameter is required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        JSON.stringify({ error: `Failed to fetch market: ${marketError?.message || 'Unknown error'}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
-    console.log("Generate queries request:", { 
-      query, 
-      iteration,
-      marketId,
-      marketDescription: marketDescription?.substring(0, 100)
+    const marketQuestion = marketData.question || '';
+    const marketDescription = marketData.description || '';
+    
+    console.log('Market details for query generation:', { 
+      question: marketQuestion,
+      hasDescription: Boolean(marketDescription),
+      descriptionLength: marketDescription?.length
     });
 
-    let marketInfo = "";
-    let searchContext = "";
-
-    // Get market data if marketId is provided
-    if (marketId) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-      const { data: marketData, error: marketError } = await supabase
-        .from("markets")
-        .select("question, description")
-        .eq("id", marketId)
-        .single();
-
-      if (!marketError && marketData) {
-        console.log("Found market data:", {
-          id: marketId,
-          question: marketData.question,
-          description: marketData.description?.substring(0, 100)
-        });
-        
-        marketInfo = `Market ID: ${marketId}
-Market Question: ${marketData.question}
-Market Description: ${marketData.description || ""}`;
-        
-        searchContext = marketData.question;
-      } else {
-        console.log("Using marketDescription as fallback:", marketDescription?.substring(0, 100));
-        marketInfo = `Market ID: ${marketId}
-Market Description: ${marketDescription || ""}`;
-        
-        searchContext = marketDescription || "";
+    // Generate queries based only on market question and description, not the ID
+    let queries = [];
+    
+    // Remove any mention of "Yes" from the title and make it a standalone query
+    const cleanedTitle = marketQuestion.replace(/Will|Does|Is|Are|Can|Could|Should|Would|Do|Did|Has|Have|Had|May|Might|Must|Shall|When|Where|Which|Who|Whom|Whose|Why|How/i, '').trim();
+    const simplifiedTitle = cleanedTitle.replace(/\?$/, '').trim();
+    
+    queries.push(simplifiedTitle);
+    
+    // Add title with "latest news" for recency
+    queries.push(`${simplifiedTitle} latest news`);
+    
+    // Add title with "prediction" or "forecast" for prediction-focused content
+    queries.push(`${simplifiedTitle} prediction`);
+    
+    // Add title with "analysis" for analytical content
+    queries.push(`${simplifiedTitle} analysis`);
+    
+    // If there's a description, extract key elements for additional queries
+    if (marketDescription) {
+      // Clean the description and extract key phrases
+      const keyPhrases = marketDescription
+        .split(/[.!?]/)
+        .map(phrase => phrase.trim())
+        .filter(phrase => phrase.length > 15 && phrase.length < 150);
+      
+      // Add up to 2 key phrases from the description
+      for (let i = 0; i < Math.min(2, keyPhrases.length); i++) {
+        queries.push(keyPhrases[i]);
       }
-    } else if (marketDescription) {
-      marketInfo = `Market Description: ${marketDescription}`;
-      searchContext = marketDescription;
     }
-
-    // Filter out excess spaces and ensure a clean query
-    const cleanQuery = searchContext || query;
     
-    // Generating search queries based on the market information and iteration
-    let queries: string[] = [];
+    // Remove any empty queries and limit to max 5 queries
+    queries = queries
+      .filter(q => q.length > 0 && q.length < 150)
+      .slice(0, 5);
     
-    if (iteration === 0) {
-      // Initial queries - focused on core information
-      queries = [
-        `${cleanQuery} latest news`,
-        `${cleanQuery} prediction`,
-        `${marketId || ""} ${cleanQuery} analysis`,
-      ];
-    } else if (previousResults) {
-      // Refine queries based on previous results
-      // Use simple queries for now to ensure we get results
-      queries = [
-        `${cleanQuery} latest information`,
-        `${cleanQuery} analysis ${new Date().getFullYear()}`,
-        `${cleanQuery} expert opinion`,
-      ];
-    }
-
-    // Trim and clean all queries
-    queries = queries.map(q => q.trim().replace(/\s+/g, ' '));
-    
-    // Filter out any empty queries
-    queries = queries.filter(q => q.length > 0);
-    
-    console.log("Generated queries:", queries);
+    console.log('Generated queries:', queries);
 
     return new Response(
-      JSON.stringify({ queries }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify(queries),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
-    console.error("Generate queries error:", error);
-    
+    console.error('Error generating queries:', error);
     return new Response(
-      JSON.stringify({ error: `Generate queries error: ${error.message}` }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      JSON.stringify({ error: `Server error: ${error.message}` }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
     );
   }
 });
