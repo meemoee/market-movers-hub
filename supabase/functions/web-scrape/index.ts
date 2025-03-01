@@ -76,7 +76,7 @@ serve(async (req) => {
           
           const searchData = await response.json();
           
-          if (!searchData.results || !Array.isArray(searchData.results)) {
+          if (!searchData.results || !Array.isArray(searchData.results) || searchData.results.length === 0) {
             await sendMessage(`No results found for "${query}"`);
             continue;
           }
@@ -84,8 +84,8 @@ serve(async (req) => {
           // Format the results and send them to the client
           const formattedResults: SearchResult[] = searchData.results.map((result: any) => ({
             url: result.url,
-            content: result.content,
-            title: result.title
+            content: result.description || result.content || result.snippet || "",
+            title: result.title || "Search Result"
           }));
           
           await sendResults(formattedResults);
