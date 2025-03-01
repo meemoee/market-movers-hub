@@ -38,9 +38,9 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
       // Add detailed logging for debugging
       if (data?.data?.length) {
         console.log('First market in results:', {
-          id: data.data[0].id,
+          id: data.data[0].market_id,
           question: data.data[0].question,
-          probability: data.data[0].probability
+          probability: data.data[0].final_last_traded_price
         });
       }
       
