@@ -7,7 +7,6 @@ import { QADisplay } from './QADisplay';
 import { WebResearchCard } from './WebResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
-import { DeepResearchCard } from './DeepResearchCard';
 
 interface MarketDetailsProps {
   description?: string;
@@ -131,15 +130,11 @@ export function MarketDetails({
         />
       )}
 
-      {/* Research Sections - Side by side */}
+      {/* Research Sections */}
       {description && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
           <WebResearchCard 
             description={description} 
-            marketId={marketId}
-          />
-          <DeepResearchCard
-            description={description}
             marketId={marketId}
           />
         </div>
