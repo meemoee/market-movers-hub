@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,6 +28,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Badge } from "@/components/ui/badge"
 
 interface WebResearchCardProps {
   description: string;
@@ -49,6 +51,13 @@ interface StreamingState {
   } | null;
 }
 
+interface ResearchIteration {
+  iteration: number;
+  queries: string[];
+  results: ResearchResult[];
+  analysis: string;
+}
+
 interface SavedResearch {
   id: string;
   user_id: string;
@@ -60,6 +69,7 @@ interface SavedResearch {
   created_at: string;
   updated_at: string;
   market_id: string;
+  iterations?: ResearchIteration[];
 }
 
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
@@ -75,6 +85,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   })
   const [maxIterations, setMaxIterations] = useState(3)
   const [currentIteration, setCurrentIteration] = useState(0)
+  const [iterations, setIterations] = useState<ResearchIteration[]>([])
+  const [expandedIterations, setExpandedIterations] = useState<string[]>(['iteration-1'])
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -95,7 +107,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       return (data as any[]).map(item => ({
         ...item,
         sources: item.sources as ResearchResult[],
-        areas_for_research: item.areas_for_research as string[]
+        areas_for_research: item.areas_for_research as string[],
+        iterations: item.iterations as ResearchIteration[] || []
       })) as SavedResearch[]
     }
   })
@@ -103,6 +116,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const loadSavedResearch = (research: SavedResearch) => {
     setResults(research.sources)
     setAnalysis(research.analysis)
+    
+    if (research.iterations && research.iterations.length > 0) {
+      setIterations(research.iterations)
+      setExpandedIterations([`iteration-${research.iterations.length}`])
+    }
     
     setStreamingState({
       rawText: JSON.stringify({
@@ -210,7 +228,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         analysis,
         probability: streamingState.parsedData?.probability || '',
         areas_for_research: streamingState.parsedData?.areasForResearch as unknown as Json,
-        market_id: marketId
+        market_id: marketId,
+        iterations: iterations as unknown as Json
       })
 
       if (error) throw error
@@ -231,7 +250,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const processQueryResults = async (allContent: string[], iteration: number) => {
+  const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[]) => {
     setIsAnalyzing(true)
     setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
     
@@ -303,6 +322,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     const currentAnalysis = await processAnalysisStream(analysisReader)
     
+    // Store the current iteration results
+    setIterations(prev => [
+      ...prev, 
+      {
+        iteration,
+        queries: currentQueries,
+        results: iterationResults,
+        analysis: currentAnalysis
+      }
+    ])
+    
     // If this is the final iteration, extract insights
     if (iteration === maxIterations) {
       setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
@@ -311,33 +341,47 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       // Generate new queries based on this analysis
       setProgress(prev => [...prev, "Generating new queries based on analysis..."])
       
-      const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-        body: { 
-          query: description,
-          previousResults: currentAnalysis,
-          iteration: iteration
+      try {
+        const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
+          body: { 
+            query: description,
+            previousResults: currentAnalysis,
+            iteration: iteration
+          }
+        })
+
+        if (refinedQueriesError) {
+          console.error("Error from generate-queries:", refinedQueriesError)
+          throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
         }
-      })
 
-      if (refinedQueriesError) {
-        console.error("Error from generate-queries:", refinedQueriesError)
-        throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
+        if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
+          console.error("Invalid refined queries response:", refinedQueriesData)
+          throw new Error('Invalid refined queries response')
+        }
+
+        console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
+        setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
+        
+        refinedQueriesData.queries.forEach((query: string, index: number) => {
+          setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
+        })
+
+        // Start next iteration with the new queries
+        await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
+      } catch (error) {
+        console.error("Error generating refined queries:", error)
+        
+        // Create fallback queries if the generate-queries function fails
+        const fallbackQueries = [
+          `${description} latest information`,
+          `${description} expert analysis`,
+          `${description} key details`
+        ]
+        
+        setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
+        await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
       }
-
-      if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
-        console.error("Invalid refined queries response:", refinedQueriesData)
-        throw new Error('Invalid refined queries response')
-      }
-
-      console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
-      setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
-      
-      refinedQueriesData.queries.forEach((query: string, index: number) => {
-        setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
-      })
-
-      // Start next iteration with the new queries
-      await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
     }
 
     return currentAnalysis
@@ -430,6 +474,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
       setCurrentIteration(iteration)
+      setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
       
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       const response = await supabase.functions.invoke('web-scrape', {
@@ -537,7 +582,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
 
       // Process the results of this iteration
-      await processQueryResults(allContent, iteration)
+      await processQueryResults(allContent, iteration, queries, iterationResults)
     } catch (error) {
       console.error(`Error in web research iteration ${iteration}:`, error)
       setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -555,36 +600,52 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setIsAnalyzing(false)
     setStreamingState({ rawText: '', parsedData: null })
     setCurrentIteration(0)
+    setIterations([])
+    setExpandedIterations(['iteration-1'])
 
     try {
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, "Generating initial search queries..."])
 
-      const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-        body: { query: description }
-      })
+      try {
+        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
+          body: { query: description }
+        })
 
-      if (queriesError) {
-        console.error("Error from generate-queries:", queriesError)
-        throw new Error(`Error generating queries: ${queriesError.message}`)
+        if (queriesError) {
+          console.error("Error from generate-queries:", queriesError)
+          throw new Error(`Error generating queries: ${queriesError.message}`)
+        }
+
+        console.log("Received queries data:", queriesData)
+
+        if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
+          console.error("Invalid queries response:", queriesData)
+          throw new Error('Invalid queries response')
+        }
+
+        console.log("Generated queries:", queriesData.queries)
+        setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
+        
+        queriesData.queries.forEach((query: string, index: number) => {
+          setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
+        })
+
+        // Start the iterative research process with initial queries
+        await handleWebScrape(queriesData.queries, 1)
+      } catch (error) {
+        console.error("Error generating initial queries:", error)
+        
+        // Create fallback queries if the generate-queries function fails
+        const fallbackQueries = [
+          `${description}`,
+          `${description} analysis`,
+          `${description} prediction`
+        ]
+        
+        setProgress(prev => [...prev, `Using fallback queries due to error: ${error.message}`])
+        await handleWebScrape(fallbackQueries, 1)
       }
-
-      console.log("Received queries data:", queriesData)
-
-      if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
-        console.error("Invalid queries response:", queriesData)
-        throw new Error('Invalid queries response')
-      }
-
-      console.log("Generated queries:", queriesData.queries)
-      setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
-      
-      queriesData.queries.forEach((query: string, index: number) => {
-        setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
-      })
-
-      // Start the iterative research process with initial queries
-      await handleWebScrape(queriesData.queries, 1)
 
       setProgress(prev => [...prev, "Research complete!"])
 
@@ -611,6 +672,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       saveResearch();
     }
   }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error]);
+
+  const toggleIterationExpand = (iterationId: string) => {
+    setExpandedIterations(prev => {
+      if (prev.includes(iterationId)) {
+        return prev.filter(id => id !== iterationId);
+      } else {
+        return [...prev, iterationId];
+      }
+    });
+  };
 
   return (
     <Card className="p-4 space-y-4">
@@ -703,9 +774,90 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       <ProgressDisplay messages={progress} />
       
-      <SitePreviewList results={results} />
+      {/* Research Iterations Display */}
+      {iterations.length > 0 && (
+        <div className="border rounded-md">
+          <Accordion type="multiple" value={expandedIterations} className="w-full">
+            {iterations.map((iter) => (
+              <AccordionItem 
+                key={`iteration-${iter.iteration}`} 
+                value={`iteration-${iter.iteration}`}
+                className={iter.iteration === maxIterations ? "border-b-0" : ""}
+              >
+                <AccordionTrigger className="px-4 py-2">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={iter.iteration === maxIterations ? "default" : "outline"}>
+                      Iteration {iter.iteration}
+                    </Badge>
+                    <span className="text-sm">
+                      {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
+                    </span>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4">
+                  <div className="space-y-4">
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Search Queries</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {iter.queries.map((query, idx) => (
+                          <Badge key={idx} variant="secondary" className="text-xs">
+                            {query}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    {iter.results.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
+                        <ScrollArea className="h-[150px] rounded-md border">
+                          <div className="p-4 space-y-2">
+                            {iter.results.map((result, idx) => (
+                              <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                                <a 
+                                  href={result.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline"
+                                >
+                                  {result.title || result.url}
+                                </a>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Analysis</h4>
+                      <div className="text-sm border rounded-md p-3 bg-accent/5">
+                        {iter.analysis}
+                      </div>
+                    </div>
+                    
+                    {iter.iteration < maxIterations && (
+                      <div>
+                        <h4 className="text-sm font-medium">Next Steps</h4>
+                        <p className="text-sm text-muted-foreground">
+                          Based on this analysis, new search queries were generated for iteration {iter.iteration + 1}.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
+      )}
       
-      <AnalysisDisplay content={analysis} />
+      {!iterations.length && (
+        <>
+          <SitePreviewList results={results} />
+          <AnalysisDisplay content={analysis} />
+        </>
+      )}
       
       <InsightsDisplay streamingState={streamingState} />
     </Card>
