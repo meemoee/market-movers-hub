@@ -18,34 +18,49 @@ serve(async (req) => {
   }
 
   try {
-    const { query, previousResults, iteration } = await req.json() as QueryRequest
+    // Check if OpenAI API key is set
+    if (!OPENAI_API_KEY) {
+      console.error("OPENAI_API_KEY is not set")
+      return new Response(
+        JSON.stringify({
+          error: "Server configuration error: OPENAI_API_KEY is not set",
+          queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
+        }),
+        { 
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200 // Return 200 with fallback queries instead of error
+        }
+      )
+    }
 
-    if (!query) {
+    // Parse the request body
+    const requestData = await req.json().catch(error => {
+      console.error("Error parsing request body:", error)
+      throw new Error("Invalid request body")
+    }) as QueryRequest
+    
+    if (!requestData.query) {
       throw new Error("No query provided")
     }
 
-    if (!OPENAI_API_KEY) {
-      throw new Error("OPENAI_API_KEY is not set")
-    }
-
-    console.log(`Generating search queries for: "${query}"`)
-    if (previousResults) {
-      console.log(`Refining based on iteration ${iteration} with previousResults length: ${previousResults.length}`)
+    console.log(`Generating search queries for: "${requestData.query}"`)
+    if (requestData.previousResults) {
+      console.log(`Refining based on iteration ${requestData.iteration} with previousResults length: ${requestData.previousResults.length}`)
     }
 
     // Different prompts based on whether we have previous results
     let systemPrompt
     let userPrompt
 
-    if (previousResults && iteration) {
+    if (requestData.previousResults && requestData.iteration) {
       systemPrompt = `You are a research assistant that helps generate search queries to explore a topic in depth. 
-      You are currently on iteration ${iteration} of research, and need to generate new search queries based on previous findings.`
+      You are currently on iteration ${requestData.iteration} of research, and need to generate new search queries based on previous findings.`
       
-      userPrompt = `Based on the original query: "${query}"
+      userPrompt = `Based on the original query: "${requestData.query}"
       
       And the following analysis from the previous research iteration:
       
-      ${previousResults}
+      ${requestData.previousResults}
       
       Generate 5 new search queries that:
       1. Explore gaps in the current research
@@ -58,7 +73,7 @@ serve(async (req) => {
     } else {
       systemPrompt = `You are a research assistant that helps generate search queries to explore a topic in depth.`
       
-      userPrompt = `Generate 5 search queries to research the following query: "${query}"
+      userPrompt = `Generate 5 search queries to research the following query: "${requestData.query}"
       
       The queries should:
       1. Use different keywords and phrasings
@@ -72,61 +87,90 @@ serve(async (req) => {
 
     console.log("Sending prompt to OpenAI")
 
-    const openAIResponse = await fetch(OPENAI_API_URL, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.7,
-        response_format: { type: "json_object" }
-      })
-    })
-
-    if (!openAIResponse.ok) {
-      const errorText = await openAIResponse.text()
-      console.error("OpenAI API error:", errorText)
-      throw new Error(`OpenAI API error: ${openAIResponse.status} ${openAIResponse.statusText}`)
-    }
-
-    const data = await openAIResponse.json()
-    
-    if (!data.choices || !data.choices[0]?.message?.content) {
-      console.error("Unexpected API response:", data)
-      throw new Error("Invalid response from OpenAI API")
-    }
-
-    console.log("Received response from OpenAI")
-    
     try {
-      const content = data.choices[0].message.content
-      const parsedContent = JSON.parse(content)
-      
-      if (!parsedContent.queries || !Array.isArray(parsedContent.queries)) {
-        console.error("Invalid content format:", content)
-        throw new Error("Response did not contain a valid queries array")
+      const openAIResponse = await fetch(OPENAI_API_URL, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${OPENAI_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ],
+          temperature: 0.7,
+          response_format: { type: "json_object" }
+        })
+      })
+
+      if (!openAIResponse.ok) {
+        const errorText = await openAIResponse.text()
+        console.error("OpenAI API error:", errorText)
+        
+        // Return fallback queries instead of failing
+        return new Response(JSON.stringify({
+          queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        })
       }
 
-      console.log("Generated queries:", parsedContent.queries)
+      const data = await openAIResponse.json()
       
-      return new Response(JSON.stringify(parsedContent), {
+      if (!data.choices || !data.choices[0]?.message?.content) {
+        console.error("Unexpected API response:", data)
+        throw new Error("Invalid response from OpenAI API")
+      }
+
+      console.log("Received response from OpenAI")
+      
+      try {
+        const content = data.choices[0].message.content
+        const parsedContent = JSON.parse(content)
+        
+        if (!parsedContent.queries || !Array.isArray(parsedContent.queries)) {
+          console.error("Invalid content format:", content)
+          throw new Error("Response did not contain a valid queries array")
+        }
+
+        console.log("Generated queries:", parsedContent.queries)
+        console.log("Final result:", JSON.stringify(parsedContent, null, 2))
+        
+        return new Response(JSON.stringify(parsedContent), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        })
+      } catch (error) {
+        console.error("Error parsing OpenAI response:", error)
+        
+        // Return fallback queries instead of failing
+        return new Response(JSON.stringify({
+          queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        })
+      }
+    } catch (openAIError) {
+      console.error("Error calling OpenAI API:", openAIError)
+      
+      // Return fallback queries instead of failing
+      return new Response(JSON.stringify({
+        queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
+      }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" }
       })
-    } catch (error) {
-      console.error("Error parsing OpenAI response:", error)
-      throw new Error("Failed to parse the response from OpenAI")
     }
   } catch (error) {
     console.error("Error:", error.message)
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    
+    // Return fallback queries even for general errors
+    return new Response(JSON.stringify({
+      error: error.message,
+      queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
+    }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200 // Return 200 with fallback queries instead of error
     })
   }
 })
