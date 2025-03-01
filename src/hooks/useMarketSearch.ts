@@ -15,9 +15,12 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
     queryFn: async () => {
       console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax });
       
+      // Ensure search query is properly trimmed
+      const trimmedQuery = searchQuery.trim();
+      
       const { data, error } = await supabase.functions.invoke<MarketSearchResponse>('search-markets', {
         body: {
-          searchQuery: searchQuery.trim(),
+          searchQuery: trimmedQuery,
           page,
           limit: 20,
           probabilityMin,
@@ -31,6 +34,15 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
       }
       
       console.log('Received market search response:', data);
+      
+      // Add detailed logging for debugging
+      if (data?.data?.length) {
+        console.log('First market in results:', {
+          id: data.data[0].id,
+          question: data.data[0].question,
+          probability: data.data[0].probability
+        });
+      }
       
       return {
         data: data?.data || [],

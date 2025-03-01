@@ -1,11 +1,17 @@
 
 import { corsHeaders } from "../_shared/cors.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.1";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+interface GenerateQueriesRequest {
+  query: string;
+  previousResults?: string;
+  iteration?: number;
+  marketId?: string;
+  marketDescription?: string;
+}
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -14,171 +20,108 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { query, marketId, marketDescription, previousResults, iteration = 0 } = await req.json();
-    
-    // Log the request details
-    console.log("Generate queries request:");
-    console.log(`- Market ID: ${marketId}`);
-    console.log(`- Market Description: ${marketDescription?.substring(0, 100)}${marketDescription?.length > 100 ? '...' : ''}`);
-    console.log(`- Iteration: ${iteration}`);
+    const requestData: GenerateQueriesRequest = await req.json();
+    const { query, previousResults, iteration = 0, marketId, marketDescription } = requestData;
 
-    // If we have a marketId, try to fetch more information from the database
-    let marketInfo = null;
+    if (!query) {
+      return new Response(
+        JSON.stringify({ error: "Query parameter is required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    console.log("Generate queries request:", { 
+      query, 
+      iteration,
+      marketId,
+      marketDescription: marketDescription?.substring(0, 100)
+    });
+
+    let marketInfo = "";
+    let searchContext = "";
+
+    // Get market data if marketId is provided
     if (marketId) {
-      const { data, error } = await supabase
+      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+      const { data: marketData, error: marketError } = await supabase
         .from("markets")
-        .select("id, question, description, subtitle, yes_sub_title, no_sub_title")
+        .select("question, description")
         .eq("id", marketId)
         .single();
-      
-      if (error) {
-        console.error("Error fetching market info:", error);
-      } else if (data) {
-        marketInfo = data;
-        console.log("Retrieved market info:", JSON.stringify(marketInfo, null, 2));
+
+      if (!marketError && marketData) {
+        console.log("Found market data:", {
+          id: marketId,
+          question: marketData.question,
+          description: marketData.description?.substring(0, 100)
+        });
+        
+        marketInfo = `Market ID: ${marketId}
+Market Question: ${marketData.question}
+Market Description: ${marketData.description || ""}`;
+        
+        searchContext = marketData.question;
+      } else {
+        console.log("Using marketDescription as fallback:", marketDescription?.substring(0, 100));
+        marketInfo = `Market ID: ${marketId}
+Market Description: ${marketDescription || ""}`;
+        
+        searchContext = marketDescription || "";
       }
+    } else if (marketDescription) {
+      marketInfo = `Market Description: ${marketDescription}`;
+      searchContext = marketDescription;
     }
 
-    // Combine all market information we have
-    const fullMarketDescription = marketInfo?.question || marketDescription || query || "";
-    const additionalContext = marketInfo?.description || "";
+    // Filter out excess spaces and ensure a clean query
+    const cleanQuery = searchContext || query;
     
-    console.log("Full market description to use for query generation:", fullMarketDescription);
-
-    let prompt = "";
+    // Generating search queries based on the market information and iteration
+    let queries: string[] = [];
     
     if (iteration === 0) {
-      // Initial queries generation
-      prompt = `
-You are a market research assistant. Generate 3 clear, focused search queries to gather information about the following prediction market:
-
-Market: ${fullMarketDescription}
-${additionalContext ? `Additional context: ${additionalContext}` : ''}
-
-Generate 3 search queries that are:
-1. Short (under 8 words each)
-2. Focused on finding factual information
-3. Will help analyze the probability of this market resolving to YES
-
-Return only the queries, one per line, with no numbers or other text.
-`;
-    } else {
-      // Refined queries based on previous results
-      prompt = `
-You are a market research assistant. Based on the previous research results, generate 3 refined search queries to gather additional information about this prediction market:
-
-Market: ${fullMarketDescription}
-${additionalContext ? `Additional context: ${additionalContext}` : ''}
-
-Previous analysis: ${previousResults ? previousResults.substring(0, 500) : "No previous results"}
-
-Generate 3 search queries that:
-1. Are short (under 8 words each)
-2. Fill gaps in the existing research
-3. Target specific aspects not covered yet
-4. Will help analyze the probability of this market resolving to YES
-
-Return only the queries, one per line, with no numbers or other text.
-`;
-    }
-
-    // For simplicity, let's manually generate some queries based on the market description
-    // In a real implementation, you would use an AI to generate these queries
-    
-    let queries = [];
-    
-    // Generate simple queries based on the market description
-    const marketWords = fullMarketDescription.split(' ').filter(w => w.length > 3);
-    
-    if (iteration === 0) {
-      // For first iteration, use simple keyword extraction
-      const keyTerms = extractKeyTerms(fullMarketDescription);
-      
+      // Initial queries - focused on core information
       queries = [
-        `${keyTerms.slice(0, 3).join(' ')} latest news`,
-        `${keyTerms.slice(0, 2).join(' ')} prediction`,
-        `${keyTerms.slice(0, 2).join(' ')} analysis`
+        `${cleanQuery} latest news`,
+        `${cleanQuery} prediction`,
+        `${marketId || ""} ${cleanQuery} analysis`,
       ];
-      
-      if (marketId) {
-        // Always add a market ID specific query as backup
-        queries.push(`${marketId} analysis`);
-      }
-    } else {
-      // For subsequent iterations, try to target gaps
-      const keyTerms = extractKeyTerms(fullMarketDescription);
-      const secondaryTerms = extractKeyTerms(additionalContext || "");
-      
+    } else if (previousResults) {
+      // Refine queries based on previous results
+      // Use simple queries for now to ensure we get results
       queries = [
-        `${keyTerms.slice(0, 2).join(' ')} ${secondaryTerms.slice(0, 1).join(' ')} research`,
-        `${keyTerms.slice(0, 2).join(' ')} expert opinion`,
-        `${keyTerms.slice(0, 1).join(' ')} ${secondaryTerms.slice(0, 1).join(' ')} probability`
+        `${cleanQuery} latest information`,
+        `${cleanQuery} analysis ${new Date().getFullYear()}`,
+        `${cleanQuery} expert opinion`,
       ];
     }
+
+    // Trim and clean all queries
+    queries = queries.map(q => q.trim().replace(/\s+/g, ' '));
     
-    // Ensure queries are unique
-    queries = [...new Set(queries)];
-    
-    // Limit to 3 queries
-    queries = queries.slice(0, 3);
+    // Filter out any empty queries
+    queries = queries.filter(q => q.length > 0);
     
     console.log("Generated queries:", queries);
 
     return new Response(
-      JSON.stringify({
-        queries: queries,
-      }),
+      JSON.stringify({ queries }),
       {
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
-
   } catch (error) {
-    console.error("Error generating queries:", error);
+    console.error("Generate queries error:", error);
+    
     return new Response(
-      JSON.stringify({ error: `Failed to generate queries: ${error.message}` }),
+      JSON.stringify({ error: `Generate queries error: ${error.message}` }),
       {
         status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   }
 });
-
-// Helper function to extract key terms from text
-function extractKeyTerms(text: string): string[] {
-  if (!text) return [];
-  
-  // Remove common stop words
-  const stopWords = new Set([
-    "a", "an", "the", "and", "but", "or", "for", "nor", "on", "at", "to", "from",
-    "by", "with", "in", "out", "will", "be", "is", "are", "was", "were", "this", "that", 
-    "these", "those", "market", "resolve", "yes", "no", "if", "it", "its"
-  ]);
-  
-  // Split text into words, filter out short words and stop words
-  const words = text
-    .replace(/[^\w\s]/gi, ' ') // Remove punctuation
-    .split(/\s+/)
-    .filter(word => word.length > 3 && !stopWords.has(word.toLowerCase()))
-    .map(word => word.toLowerCase());
-  
-  // Count word frequencies
-  const wordCounts = words.reduce((acc, word) => {
-    acc[word] = (acc[word] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-  
-  // Sort by frequency
-  const sortedWords = Object.entries(wordCounts)
-    .sort((a, b) => b[1] - a[1])
-    .map(([word]) => word);
-  
-  return sortedWords.slice(0, 10); // Return top 10 terms
-}

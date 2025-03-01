@@ -1,38 +1,23 @@
 
 import { corsHeaders } from "../_shared/cors.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-const BRAVE_API_KEY = Deno.env.get("BRAVE_API_KEY");
-const BRAVE_SEARCH_API = "https://api.search.brave.com/res/v1/web/search";
+const braveApiUrl = "https://api.search.brave.com/res/v1/web/search";
 
-// Add required headers for Deno Deploy
-const requestHeaders = {
-  "Authorization": `Bearer ${BRAVE_API_KEY}`,
-  "Accept": "application/json",
-  "Content-Type": "application/json",
-  "x-deno-subhost": "https://lfmkoismabbhujycnqpn.supabase.co",
-  ...corsHeaders
-};
-
-interface QueryParams {
+interface BraveSearchParams {
   q: string;
   count?: number;
   offset?: number;
   search_lang?: string;
+  country?: string;
+  safe_search?: string;
+  freshness?: string;
 }
 
-interface BraveSearchResult {
-  title: string;
-  url: string;
-  description: string;
-}
-
-interface BraveSearchResponse {
-  web?: {
-    results: BraveSearchResult[];
-  };
-  query?: {
-    original: string;
-  };
+interface SearchRequest {
+  query: string;
+  count?: number;
+  offset?: number;
 }
 
 Deno.serve(async (req) => {
@@ -42,115 +27,94 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { query, count = 5 } = await req.json();
+    const BRAVE_API_KEY = Deno.env.get("BRAVE_API_KEY");
+    if (!BRAVE_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "BRAVE_API_KEY is not set in environment" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
-    console.log(`Processing Brave search for query: "${query}"`);
+    // Parse request body
+    const requestData: SearchRequest = await req.json();
+    const { query, count = 5, offset = 0 } = requestData;
 
-    if (!query || query.trim() === "") {
+    if (!query) {
       return new Response(
         JSON.stringify({ error: "Query parameter is required" }),
         {
           status: 400,
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders,
-          },
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
 
-    if (!BRAVE_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "Brave API key is not configured" }),
-        {
-          status: 500,
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders,
-          },
-        }
-      );
-    }
+    console.log(`Executing Brave search for query: "${query}"`);
 
-    // Define query parameters
-    const params: QueryParams = {
+    const params: BraveSearchParams = {
       q: query,
       count: count,
+      offset: offset,
       search_lang: "en",
+      country: "US",
+      safe_search: "moderate",
     };
 
-    // Build the URL with query params
-    const url = new URL(BRAVE_SEARCH_API);
+    const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
-      url.searchParams.append(key, value.toString());
+      if (value !== undefined) {
+        searchParams.append(key, value.toString());
+      }
     });
 
-    // Make the request to Brave Search API
-    const response = await fetch(url.toString(), {
+    const url = `${braveApiUrl}?${searchParams.toString()}`;
+
+    // Make the request to Brave Search API with proper headers
+    const response = await fetch(url, {
       method: "GET",
-      headers: requestHeaders,
+      headers: {
+        "Accept": "application/json",
+        "X-Subscription-Token": BRAVE_API_KEY,
+        "x-deno-subhost": "brave-search", // Required header for Deno Deploy
+      },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Brave search API error: ${response.status} ${errorText}`);
+      console.error(`Brave API error ${response.status}: ${errorText}`);
+      
       return new Response(
         JSON.stringify({ 
-          error: `Brave search failed: ${response.status} ${errorText}`
+          error: `Brave search failed: ${response.status} ${errorText}`,
+          status: response.status
         }),
         {
           status: response.status,
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders,
-          },
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
       );
     }
 
-    const data: BraveSearchResponse = await response.json();
+    const data = await response.json();
+    console.log(`Brave search success: Found ${data.web?.results?.length || 0} results`);
 
-    if (!data.web || !data.web.results || data.web.results.length === 0) {
-      console.log(`No results found for query: "${query}"`);
-      return new Response(
-        JSON.stringify({ 
-          results: [], 
-          message: `No results found for query: "${query}"` 
-        }),
-        {
-          headers: {
-            "Content-Type": "application/json",
-            ...corsHeaders,
-          },
-        }
-      );
-    }
-
-    // Transform Brave search results to our format
-    const results = data.web.results.map((result) => ({
-      url: result.url,
-      title: result.title,
-      content: result.description,
-    }));
-
-    console.log(`Found ${results.length} results for query: "${query}"`);
-
-    return new Response(JSON.stringify({ results }), {
-      headers: {
-        "Content-Type": "application/json",
-        ...corsHeaders,
-      },
-    });
-  } catch (error) {
-    console.error("Error processing Brave search:", error);
     return new Response(
-      JSON.stringify({ error: `Internal server error: ${error.message}` }),
+      JSON.stringify(data),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  } catch (error) {
+    console.error("Brave search error:", error.message);
+    
+    return new Response(
+      JSON.stringify({ error: `Brave search error: ${error.message}` }),
       {
         status: 500,
-        headers: {
-          "Content-Type": "application/json",
-          ...corsHeaders,
-        },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
     );
   }

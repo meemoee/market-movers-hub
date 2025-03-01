@@ -1,9 +1,34 @@
 
 import { corsHeaders } from "../_shared/cors.ts";
-import { ScrapingResult } from "./types.ts";
+import { SearchResult } from "./types.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-// Sleep function to prevent rate limiting
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+interface ScrapingRequest {
+  queries: string[];
+  marketId?: string;
+  marketDescription?: string;
+}
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+
+const encoder = new TextEncoder();
+
+function streamText(controller: ReadableStreamDefaultController, text: string) {
+  controller.enqueue(encoder.encode(`data: ${text}\n\n`));
+}
+
+function streamMessage(controller: ReadableStreamDefaultController, message: string) {
+  streamText(controller, JSON.stringify({ type: "message", message }));
+}
+
+function streamError(controller: ReadableStreamDefaultController, message: string) {
+  streamText(controller, JSON.stringify({ type: "error", message }));
+}
+
+function streamResults(controller: ReadableStreamDefaultController, results: SearchResult[]) {
+  streamText(controller, JSON.stringify({ type: "results", data: results }));
+}
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -11,136 +36,196 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const responseStream = new TransformStream();
-  const writer = responseStream.writable.getWriter();
-  
-  // Process the request in a separate async function
-  (async () => {
-    try {
-      const { queries, marketId, marketDescription } = await req.json();
-      
-      console.log("Web scrape request received:");
-      console.log(`- Market ID: ${marketId}`);
-      console.log(`- Market Description: ${marketDescription?.substring(0, 100)}${marketDescription?.length > 100 ? '...' : ''}`);
-      console.log(`- Queries: ${JSON.stringify(queries)}`);
+  try {
+    // Parse request body
+    const { queries, marketId, marketDescription } = await req.json() as ScrapingRequest;
 
-      if (!queries || !Array.isArray(queries) || queries.length === 0) {
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "error", message: "No valid queries provided" })}\n\n`));
-        await writer.close();
-        return;
-      }
-
-      // Send initial message
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "message", message: "Starting web search..." })}\n\n`));
-
-      const allResults: ScrapingResult[] = [];
-      
-      // Process each query with a delay between requests
-      for (let i = 0; i < queries.length; i++) {
-        const query = queries[i];
-        
-        if (!query || typeof query !== 'string' || query.trim() === '') {
-          continue;
+    if (!queries || !Array.isArray(queries) || queries.length === 0) {
+      return new Response(
+        JSON.stringify({ error: "Valid queries array is required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         }
-        
-        // Send progress message
-        await writer.write(
-          encoder.encode(`data: ${JSON.stringify({ type: "message", message: `Processing query ${i + 1}/${queries.length}: ${query}` })}\n\n`)
-        );
-
-        try {
-          // Call the Brave search function via Supabase Edge Function
-          const response = await fetch(
-            `${Deno.env.get("SUPABASE_URL")}/functions/v1/brave-search`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`,
-                "x-deno-subhost": "https://lfmkoismabbhujycnqpn.supabase.co",
-              },
-              body: JSON.stringify({ query, count: 5 }),
-            }
-          );
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`Brave search API error: ${response.status} ${errorText}`);
-            await writer.write(
-              encoder.encode(`data: ${JSON.stringify({ type: "error", message: `Error processing query "${query}": Brave search failed: ${response.status} ${errorText}` })}\n\n`)
-            );
-            continue;
-          }
-
-          const data = await response.json();
-          
-          if (data.error) {
-            console.error(`Brave search API error: ${data.error}`);
-            await writer.write(
-              encoder.encode(`data: ${JSON.stringify({ type: "error", message: `Error processing query "${query}": ${data.error}` })}\n\n`)
-            );
-            continue;
-          }
-          
-          if (!data.results || data.results.length === 0) {
-            console.log(`No results found for query: ${query}`);
-            continue;
-          }
-
-          // Map results to our format
-          const results: ScrapingResult[] = data.results.map((result: any) => ({
-            url: result.url,
-            title: result.title,
-            content: result.content,
-          }));
-
-          // Add to all results
-          allResults.push(...results);
-
-          // Send results back to client
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ type: "results", data: results })}\n\n`)
-          );
-          
-          // Delay between requests to avoid rate limiting
-          if (i < queries.length - 1) {
-            await sleep(1000);
-          }
-        } catch (error) {
-          console.error(`Error processing query "${query}":`, error);
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ type: "error", message: `Error processing query "${query}": ${error.message}` })}\n\n`)
-          );
-        }
-      }
-
-      if (allResults.length === 0) {
-        await writer.write(
-          encoder.encode(`data: ${JSON.stringify({ type: "error", message: "No results found for any queries" })}\n\n`)
-        );
-      }
-
-      // Send done message
-      await writer.write(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
-      await writer.write(encoder.encode(`data: [DONE]\n\n`));
-    } catch (error) {
-      console.error("Error in web-scrape function:", error);
-      await writer.write(
-        encoder.encode(`data: ${JSON.stringify({ type: "error", message: `Server error: ${error.message}` })}\n\n`)
       );
-    } finally {
-      await writer.close();
     }
-  })();
 
-  return new Response(responseStream.readable, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection": "keep-alive",
-      ...corsHeaders,
-    },
-  });
+    console.log("Web scrape request:", { 
+      queriesCount: queries.length, 
+      marketId,
+      marketDescription: marketDescription?.substring(0, 100)
+    });
+
+    // Create response stream
+    const stream = new ReadableStream({
+      start: async (controller) => {
+        try {
+          streamMessage(controller, "Starting web search...");
+
+          // Enhance queries with market information if available
+          const enhancedQueries = queries.map(query => {
+            // If the query doesn't already contain the marketId and we have one
+            if (marketId && !query.includes(marketId)) {
+              return `${query.trim()} ${marketId}`;
+            }
+            return query;
+          });
+
+          // If we have a market description, use it to create a better enhanced query
+          if (marketDescription && marketId) {
+            // Create a supabase client to fetch market data if needed
+            const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+            const { data: marketData, error: marketError } = await supabase
+              .from("markets")
+              .select("question, description")
+              .eq("id", marketId)
+              .single();
+
+            if (!marketError && marketData) {
+              console.log("Found market data:", {
+                id: marketId,
+                question: marketData.question,
+                description: marketData.description?.substring(0, 100)
+              });
+            }
+          }
+
+          let hasResults = false;
+          const allResults: SearchResult[] = [];
+
+          // Process each query with rate limiting
+          for (let i = 0; i < enhancedQueries.length; i++) {
+            const query = enhancedQueries[i];
+            streamMessage(controller, `Processing query ${i+1}/${enhancedQueries.length}: ${query}`);
+            
+            try {
+              // Call Brave Search API through our edge function
+              const searchResponse = await fetch(
+                new URL("/functions/v1/brave-search", SUPABASE_URL).href,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${SUPABASE_KEY}`,
+                  },
+                  body: JSON.stringify({ query, count: 5 }),
+                }
+              );
+
+              if (!searchResponse.ok) {
+                const errorText = await searchResponse.text();
+                streamError(controller, `Error processing query "${query}": Brave search failed: ${searchResponse.status} ${errorText}`);
+                continue;
+              }
+
+              const searchData = await searchResponse.json();
+              console.log(`Search results for query "${query}":`, { 
+                resultsCount: searchData.web?.results?.length || 0 
+              });
+
+              if (!searchData.web?.results || searchData.web.results.length === 0) {
+                console.log(`No results found for query: "${query}"`);
+                continue;
+              }
+
+              // Process search results
+              const results: SearchResult[] = [];
+
+              for (const result of searchData.web.results) {
+                try {
+                  if (!result.url) continue;
+
+                  // Attempt to fetch and extract content from the URL
+                  const apiUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(result.url)}`;
+                  
+                  const contentResponse = await fetch(apiUrl, {
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                  });
+
+                  if (!contentResponse.ok) {
+                    console.log(`Failed to fetch content from ${result.url}: ${contentResponse.status}`);
+                    continue;
+                  }
+
+                  const html = await contentResponse.text();
+                  
+                  // Extract only the text content from HTML
+                  const textContent = html
+                    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+                    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+                    .replace(/<[^>]*>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                  // Limit content length 
+                  const limitedContent = textContent.substring(0, 8000);
+                  
+                  results.push({
+                    url: result.url,
+                    title: result.title || '',
+                    content: limitedContent,
+                  });
+                  
+                  hasResults = true;
+                } catch (error) {
+                  console.log(`Error processing result from ${result.url}:`, error);
+                }
+
+                // Add a small delay between content requests to avoid rate limiting
+                await new Promise(resolve => setTimeout(resolve, 200));
+              }
+
+              // Send a stream update with these results
+              if (results.length > 0) {
+                streamResults(controller, results);
+                allResults.push(...results);
+              }
+
+              // Rate limiting between search queries
+              if (i < enhancedQueries.length - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+              }
+            } catch (error) {
+              console.error(`Error processing query "${query}":`, error);
+              streamError(controller, `Error processing query "${query}": ${error.message}`);
+            }
+          }
+
+          if (!hasResults) {
+            streamError(controller, "No results found for any queries");
+          }
+
+          streamText(controller, JSON.stringify({ type: "done" }));
+          streamText(controller, "[DONE]");
+        } catch (error) {
+          console.error("Error in web scrape stream:", error);
+          streamError(controller, `Web scrape error: ${error.message}`);
+          streamText(controller, "[DONE]");
+        } finally {
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  } catch (error) {
+    console.error("Error processing web scrape request:", error);
+    
+    return new Response(
+      JSON.stringify({ error: `Web scrape error: ${error.message}` }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }
+    );
+  }
 });
-
-const encoder = new TextEncoder();
