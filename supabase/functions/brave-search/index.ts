@@ -42,7 +42,12 @@ serve(async (req) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Brave search API error:', errorText, 'Status:', response.status);
-      throw new Error(`Brave search failed: ${response.status} ${response.statusText}`);
+      return new Response(JSON.stringify({ 
+        error: `Brave search failed: ${response.status} ${response.statusText}`,
+        results: [] 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
     const data = await response.json();

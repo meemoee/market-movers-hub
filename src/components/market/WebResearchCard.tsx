@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,17 +10,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { 
+  Slider 
+} from "@/components/ui/slider"
 import { supabase } from "@/integrations/supabase/client"
 import { ResearchHeader } from "./research/ResearchHeader"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./research/InsightsDisplay"
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Settings } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useToast } from "@/components/ui/use-toast"
 import { Json } from '@/integrations/supabase/types'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 interface WebResearchCardProps {
   description: string;
@@ -64,6 +73,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     rawText: '',
     parsedData: null
   })
+  const [maxIterations, setMaxIterations] = useState(3)
+  const [currentIteration, setCurrentIteration] = useState(0)
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -220,45 +231,209 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const handleResearch = async () => {
-    setIsLoading(true)
-    setProgress([])
-    setResults([])
-    setError(null)
-    setAnalysis('')
-    setIsAnalyzing(false)
-    setStreamingState({ rawText: '', parsedData: null })
-
-    try {
-      setProgress(prev => [...prev, "Starting web research..."])
-      setProgress(prev => [...prev, "Generating search queries..."])
-
-      const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-        body: { query: description }
-      })
-
-      if (queriesError) {
-        console.error("Error from generate-queries:", queriesError)
-        throw new Error(`Error generating queries: ${queriesError.message}`)
+  const processQueryResults = async (allContent: string[], iteration: number) => {
+    setIsAnalyzing(true)
+    setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
+    
+    console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
+    
+    const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
+      body: { 
+        content: allContent.join('\n\n'),
+        query: description,
+        question: description
       }
+    })
 
-      console.log("Received queries data:", queriesData)
+    if (analysisResponse.error) {
+      console.error("Error from analyze-web-content:", analysisResponse.error)
+      throw analysisResponse.error
+    }
 
-      if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
-        console.error("Invalid queries response:", queriesData)
-        throw new Error('Invalid queries response')
-      }
+    console.log("Received response from analyze-web-content")
 
-      console.log("Generated queries:", queriesData.queries)
-      setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
+    let accumulatedContent = '';
+    
+    const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+      const textDecoder = new TextDecoder()
+      let buffer = '';
       
-      queriesData.queries.forEach((query: string, index: number) => {
-        setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          console.log("Analysis stream complete")
+          break
+        }
+        
+        const chunk = textDecoder.decode(value)
+        console.log("Received analysis chunk of size:", chunk.length)
+        
+        buffer += chunk
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+        
+        for (const line of lines) {
+          if (line.trim() && line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
+            
+            try {
+              const { content } = cleanStreamContent(jsonStr)
+              if (content) {
+                console.log("Received content chunk:", content.substring(0, 50) + "...")
+                accumulatedContent += content;
+                setAnalysis(accumulatedContent);
+              }
+            } catch (e) {
+              console.error('Error parsing analysis SSE data:', e)
+            }
+          }
+        }
+      }
+
+      return accumulatedContent;
+    }
+
+    const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
+    
+    if (!analysisReader) {
+      throw new Error('Failed to get reader from analysis response')
+    }
+    
+    const currentAnalysis = await processAnalysisStream(analysisReader)
+    
+    // If this is the final iteration, extract insights
+    if (iteration === maxIterations) {
+      setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
+      await extractInsights(allContent, currentAnalysis)
+    } else {
+      // Generate new queries based on this analysis
+      setProgress(prev => [...prev, "Generating new queries based on analysis..."])
+      
+      const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
+        body: { 
+          query: description,
+          previousResults: currentAnalysis,
+          iteration: iteration
+        }
       })
 
-      console.log("Calling web-scrape function with queries:", queriesData.queries)
+      if (refinedQueriesError) {
+        console.error("Error from generate-queries:", refinedQueriesError)
+        throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
+      }
+
+      if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
+        console.error("Invalid refined queries response:", refinedQueriesData)
+        throw new Error('Invalid refined queries response')
+      }
+
+      console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
+      setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
+      
+      refinedQueriesData.queries.forEach((query: string, index: number) => {
+        setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
+      })
+
+      // Start next iteration with the new queries
+      await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
+    }
+
+    return currentAnalysis
+  }
+
+  const extractInsights = async (allContent: string[], finalAnalysis: string) => {
+    const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
+      body: {
+        webContent: allContent.join('\n\n'),
+        analysis: finalAnalysis
+      }
+    })
+
+    if (insightsResponse.error) {
+      console.error("Error from extract-research-insights:", insightsResponse.error)
+      throw insightsResponse.error
+    }
+
+    console.log("Received response from extract-research-insights")
+
+    let accumulatedJson = ''
+    
+    const processInsightsStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+      const textDecoder = new TextDecoder()
+      let buffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          console.log("Insights stream complete")
+          break
+        }
+        
+        const chunk = textDecoder.decode(value)
+        console.log("Received insights chunk of size:", chunk.length)
+        
+        buffer += chunk
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+        
+        for (const line of lines) {
+          if (line.trim() && line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
+            
+            try {
+              const { content } = cleanStreamContent(jsonStr)
+              
+              if (content) {
+                console.log("Received insights content chunk:", content.substring(0, 50) + "...")
+                accumulatedJson += content
+                
+                setStreamingState(prev => {
+                  const newState = {
+                    rawText: accumulatedJson,
+                    parsedData: prev.parsedData
+                  }
+
+                  try {
+                    const parsedJson = JSON.parse(accumulatedJson)
+                    if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
+                      newState.parsedData = parsedJson
+                    }
+                  } catch {
+                    // Continue accumulating if not valid JSON yet
+                  }
+
+                  return newState
+                })
+              }
+            } catch (e) {
+              console.debug('Chunk parse error (expected):', e)
+            }
+          }
+        }
+      }
+    }
+
+    const insightsReader = new Response(insightsResponse.data.body).body?.getReader()
+    
+    if (!insightsReader) {
+      throw new Error('Failed to get reader from insights response')
+    }
+    
+    await processInsightsStream(insightsReader)
+  }
+
+  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
+    try {
+      setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
+      setCurrentIteration(iteration)
+      
+      console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       const response = await supabase.functions.invoke('web-scrape', {
-        body: { queries: queriesData.queries }
+        body: { queries: queries }
       })
 
       if (response.error) {
@@ -268,7 +443,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       console.log("Received response from web-scrape function:", response)
       
-      const allContent: string[] = []
+      const allContent: string[] = [...previousContent]
+      const iterationResults: ResearchResult[] = []
       let messageCount = 0;
 
       const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
@@ -280,7 +456,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           
           if (done) {
             console.log("Stream reading complete")
-            setProgress(prev => [...prev, "Search Completed"])
+            setProgress(prev => [...prev, `Search Completed for iteration ${iteration}`])
             break
           }
           
@@ -306,7 +482,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 
                 if (parsed.type === 'results' && Array.isArray(parsed.data)) {
                   console.log("Received results:", parsed.data)
-                  setResults(prev => [...prev, ...parsed.data])
+                  iterationResults.push(...parsed.data)
+                  setResults(prev => {
+                    const combined = [...prev, ...parsed.data]
+                    // Remove duplicates based on URL
+                    const uniqueResults = Array.from(
+                      new Map(combined.map(item => [item.url, item])).values()
+                    )
+                    return uniqueResults
+                  })
+                  
                   parsed.data.forEach((result: ResearchResult) => {
                     if (result?.content) {
                       allContent.push(result.content)
@@ -317,12 +502,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   messageCount++;
                   const message = parsed.message.replace(
                     /processing query \d+\/\d+: (.*)/i, 
-                    'Searching "$1"'
+                    `Iteration ${iteration}: Searching "$1"`
                   )
                   setProgress(prev => [...prev, message])
                 } else if (parsed.type === 'error' && parsed.message) {
                   console.error("Received error from stream:", parsed.message)
-                  setError(`Error: ${parsed.message}`)
+                  setProgress(prev => [...prev, `Error: ${parsed.message}`])
                 }
               } catch (e) {
                 console.error('Error parsing SSE data:', e, "Raw data:", jsonStr)
@@ -340,167 +525,66 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       await processStream(reader)
 
-      console.log("Results after stream processing:", results)
+      console.log(`Results after stream processing for iteration ${iteration}:`, iterationResults.length)
       console.log("Content collected:", allContent.length, "items")
 
       if (allContent.length === 0) {
         setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
         setError('No content collected from web scraping. Try a more specific query or different keywords.')
         setIsLoading(false)
+        setIsAnalyzing(false)
         return
       }
 
-      setIsAnalyzing(true)
-      setProgress(prev => [...prev, "Starting content analysis..."])
-      
-      console.log("Starting content analysis with content length:", allContent.join('\n\n').length)
-      
-      const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
-        body: { 
-          content: allContent.join('\n\n'),
-          query: description,
-          question: description
-        }
+      // Process the results of this iteration
+      await processQueryResults(allContent, iteration)
+    } catch (error) {
+      console.error(`Error in web research iteration ${iteration}:`, error)
+      setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setIsLoading(false)
+      setIsAnalyzing(false)
+    }
+  }
+
+  const handleResearch = async () => {
+    setIsLoading(true)
+    setProgress([])
+    setResults([])
+    setError(null)
+    setAnalysis('')
+    setIsAnalyzing(false)
+    setStreamingState({ rawText: '', parsedData: null })
+    setCurrentIteration(0)
+
+    try {
+      setProgress(prev => [...prev, "Starting iterative web research..."])
+      setProgress(prev => [...prev, "Generating initial search queries..."])
+
+      const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
+        body: { query: description }
       })
 
-      if (analysisResponse.error) {
-        console.error("Error from analyze-web-content:", analysisResponse.error)
-        throw analysisResponse.error
+      if (queriesError) {
+        console.error("Error from generate-queries:", queriesError)
+        throw new Error(`Error generating queries: ${queriesError.message}`)
       }
 
-      console.log("Received response from analyze-web-content")
+      console.log("Received queries data:", queriesData)
 
-      let accumulatedContent = '';
-      
-      const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-        const textDecoder = new TextDecoder()
-        let buffer = '';
-        
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log("Analysis stream complete")
-            break
-          }
-          
-          const chunk = textDecoder.decode(value)
-          console.log("Received analysis chunk of size:", chunk.length)
-          
-          buffer += chunk
-          const lines = buffer.split('\n\n')
-          buffer = lines.pop() || ''
-          
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              if (jsonStr === '[DONE]') continue
-              
-              try {
-                const { content } = cleanStreamContent(jsonStr)
-                if (content) {
-                  console.log("Received content chunk:", content.substring(0, 50) + "...")
-                  accumulatedContent += content;
-                  setAnalysis(accumulatedContent);
-                }
-              } catch (e) {
-                console.error('Error parsing analysis SSE data:', e)
-              }
-            }
-          }
-        }
+      if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
+        console.error("Invalid queries response:", queriesData)
+        throw new Error('Invalid queries response')
       }
 
-      const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
+      console.log("Generated queries:", queriesData.queries)
+      setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
       
-      if (!analysisReader) {
-        throw new Error('Failed to get reader from analysis response')
-      }
-      
-      await processAnalysisStream(analysisReader)
-
-      setProgress(prev => [...prev, "Analysis complete, extracting key insights..."])
-
-      const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
-        body: {
-          webContent: allContent.join('\n\n'),
-          analysis: accumulatedContent
-        }
+      queriesData.queries.forEach((query: string, index: number) => {
+        setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
       })
 
-      if (insightsResponse.error) {
-        console.error("Error from extract-research-insights:", insightsResponse.error)
-        throw insightsResponse.error
-      }
-
-      console.log("Received response from extract-research-insights")
-
-      let accumulatedJson = ''
-      
-      const processInsightsStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-        const textDecoder = new TextDecoder()
-        let buffer = '';
-        
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log("Insights stream complete")
-            break
-          }
-          
-          const chunk = textDecoder.decode(value)
-          console.log("Received insights chunk of size:", chunk.length)
-          
-          buffer += chunk
-          const lines = buffer.split('\n\n')
-          buffer = lines.pop() || ''
-          
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              if (jsonStr === '[DONE]') continue
-              
-              try {
-                const { content } = cleanStreamContent(jsonStr)
-                
-                if (content) {
-                  console.log("Received insights content chunk:", content.substring(0, 50) + "...")
-                  accumulatedJson += content
-                  
-                  setStreamingState(prev => {
-                    const newState = {
-                      rawText: accumulatedJson,
-                      parsedData: prev.parsedData
-                    }
-
-                    try {
-                      const parsedJson = JSON.parse(accumulatedJson)
-                      if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
-                        newState.parsedData = parsedJson
-                      }
-                    } catch {
-                      // Continue accumulating if not valid JSON yet
-                    }
-
-                    return newState
-                  })
-                }
-              } catch (e) {
-                console.debug('Chunk parse error (expected):', e)
-              }
-            }
-          }
-        }
-      }
-
-      const insightsReader = new Response(insightsResponse.data.body).body?.getReader()
-      
-      if (!insightsReader) {
-        throw new Error('Failed to get reader from insights response')
-      }
-      
-      await processInsightsStream(insightsReader)
+      // Start the iterative research process with initial queries
+      await handleWebScrape(queriesData.queries, 1)
 
       setProgress(prev => [...prev, "Research complete!"])
 
@@ -537,38 +621,83 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           onResearch={handleResearch}
         />
         
-        {savedResearch && savedResearch.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline">
-                Saved Research <ChevronDown className="ml-2 h-4 w-4" />
+        <div className="flex space-x-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Settings className="h-4 w-4" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-[300px]">
-              <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {savedResearch.map((research) => (
-                <DropdownMenuItem 
-                  key={research.id}
-                  onClick={() => loadSavedResearch(research)}
-                  className="flex flex-col items-start"
-                >
-                  <div className="font-medium truncate w-full">
-                    {research.query}
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm">Research Settings</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Number of Iterations</span>
+                    <span className="text-sm font-medium">{maxIterations}</span>
                   </div>
-                  <div className="text-sm text-muted-foreground">
-                    {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
-                  </div>
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+                  <Slider
+                    value={[maxIterations]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={(values) => setMaxIterations(values[0])}
+                    disabled={isLoading || isAnalyzing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Higher values will provide more thorough research but take longer to complete.
+                  </p>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          
+          {savedResearch && savedResearch.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[300px]">
+                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {savedResearch.map((research) => (
+                  <DropdownMenuItem 
+                    key={research.id}
+                    onClick={() => loadSavedResearch(research)}
+                    className="flex flex-col items-start"
+                  >
+                    <div className="font-medium truncate w-full">
+                      {research.query}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
 
       {error && (
         <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
           {error}
+        </div>
+      )}
+
+      {currentIteration > 0 && (
+        <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
+          <div 
+            className="bg-primary h-full transition-all duration-500 ease-in-out"
+            style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>Iteration {currentIteration} of {maxIterations}</span>
+            <span>{Math.round((currentIteration / maxIterations) * 100)}% complete</span>
+          </div>
         </div>
       )}
 
