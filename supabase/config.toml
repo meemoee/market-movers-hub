@@ -45,3 +45,6 @@ verify_jwt = false
 
 [functions.generate-qa-tree]
 verify_jwt = false
+
+[functions.web-research]
+verify_jwt = false
