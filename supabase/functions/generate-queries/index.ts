@@ -1,176 +1,198 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { corsHeaders } from "../_shared/cors.ts"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
-const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY")
-const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions"
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
-interface QueryRequest {
-  query: string
-  previousResults?: string
-  iteration?: number
-}
+type RequestBody = {
+  query: string;
+  previousResults?: string;
+  iteration?: number;
+  marketId?: string; // Add marketId to the request type
+  marketDescription?: string; // Add market description to provide better context
+};
 
 serve(async (req) => {
-  // Handle CORS preflight requests
+  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
   }
 
   try {
-    // Check if OpenAI API key is set
-    if (!OPENAI_API_KEY) {
-      console.error("OPENAI_API_KEY is not set")
-      return new Response(
-        JSON.stringify({
-          error: "Server configuration error: OPENAI_API_KEY is not set",
-          queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
-        }),
-        { 
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200 // Return 200 with fallback queries instead of error
-        }
-      )
+    const { query, previousResults, iteration = 0, marketId, marketDescription } = await req.json() as RequestBody;
+
+    console.log(`Generating queries for market ${marketId || 'unknown market'}`, {
+      query,
+      iteration,
+      previousResultsLength: previousResults?.length || 0,
+      marketDescription: marketDescription?.substring(0, 50) + '...'
+    });
+
+    const apiKey = Deno.env.get('OPENAI_API_KEY') || Deno.env.get('OPENROUTER_API_KEY');
+    if (!apiKey) {
+      throw new Error('API key not found');
     }
 
-    // Parse the request body
-    const requestData = await req.json().catch(error => {
-      console.error("Error parsing request body:", error)
-      throw new Error("Invalid request body")
-    }) as QueryRequest
+    let prompt = '';
+    const contextInfo = marketId ? `market ID: ${marketId} - ` : '';
     
-    if (!requestData.query) {
-      throw new Error("No query provided")
-    }
-
-    console.log(`Generating search queries for: "${requestData.query}"`)
-    if (requestData.previousResults) {
-      console.log(`Refining based on iteration ${requestData.iteration} with previousResults length: ${requestData.previousResults.length}`)
-    }
-
-    // Different prompts based on whether we have previous results
-    let systemPrompt
-    let userPrompt
-
-    if (requestData.previousResults && requestData.iteration) {
-      systemPrompt = `You are a research assistant that helps generate search queries to explore a topic in depth. 
-      You are currently on iteration ${requestData.iteration} of research, and need to generate new search queries based on previous findings.`
+    if (iteration === 0) {
+      // First iteration: generate initial queries
+      prompt = `You are a search query generator for a web research system. Your task is to generate web search queries related to the following market question: "${contextInfo}${query}"
       
-      userPrompt = `Based on the original query: "${requestData.query}"
+      ${marketDescription ? `Additional context about this market: ${marketDescription}` : ''}
       
-      And the following analysis from the previous research iteration:
+      Create 5 specific, diverse search queries to gather information to help analyze and answer this question. The queries should:
+      1. Focus specifically on the exact market question, not tangential topics
+      2. Include different angles and aspects relevant to this specific question
+      3. Include relevant entities, dates, locations mentioned in the question
+      4. Be phrased in ways that will yield high-quality, recent information from search engines
+      5. Be focused on finding factual information, not opinions
       
-      ${requestData.previousResults}
-      
-      Generate 5 new search queries that:
-      1. Explore gaps in the current research
-      2. Focus on areas that need more investigation
-      3. Use different keywords to find diverse sources
-      4. Are specific enough to return relevant results
-      5. Will help deepen the understanding of the topic
-      
-      Return just the 5 search queries as a JSON array called "queries". Make each query between 3-6 words.`
+      Format your response as a JSON object with a "queries" array like this: 
+      {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`;
     } else {
-      systemPrompt = `You are a research assistant that helps generate search queries to explore a topic in depth.`
+      // Subsequent iterations: generate refined queries based on previous results
+      prompt = `You are a search query generator for a web research system. Your task is to generate web search queries based on a market question and previous research results.
+
+      Market question: "${contextInfo}${query}"
       
-      userPrompt = `Generate 5 search queries to research the following query: "${requestData.query}"
+      ${marketDescription ? `Additional context about this market: ${marketDescription}` : ''}
       
-      The queries should:
-      1. Use different keywords and phrasings
-      2. Focus on different aspects of the topic
-      3. Be specific enough to return relevant results
-      4. Be general enough to capture diverse sources
-      5. Include any necessary context from the original query
+      Previous research findings:
+      ${previousResults}
       
-      Return just the 5 search queries as a JSON array called "queries". Make each query between 3-6 words.`
+      Based on the previous research, create 3-4 refined search queries that will help fill gaps in our knowledge or explore promising areas identified in the research. The queries should:
+      1. Focus specifically on the exact market question, not tangential topics
+      2. Target information gaps identified in the previous research
+      3. Avoid repeating searches that would yield similar results to what we already have
+      4. Be precisely targeted to the specific market question and context
+      5. Be focused on finding factual information
+      
+      Format your response as a JSON object with a "queries" array like this:
+      {"queries": ["query 1", "query 2", "query 3"]}`;
     }
 
-    console.log("Sending prompt to OpenAI")
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user', 
+            content: prompt,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 500,
+      }),
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      console.error('Error from OpenAI:', responseData);
+      throw new Error(`OpenAI API error: ${responseData.error?.message || JSON.stringify(responseData)}`);
+    }
+
+    const content = responseData.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error('No content in response');
+    }
 
     try {
-      const openAIResponse = await fetch(OPENAI_API_URL, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${OPENAI_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "gpt-4o",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ],
-          temperature: 0.7,
-          response_format: { type: "json_object" }
-        })
-      })
-
-      if (!openAIResponse.ok) {
-        const errorText = await openAIResponse.text()
-        console.error("OpenAI API error:", errorText)
-        
-        // Return fallback queries instead of failing
-        return new Response(JSON.stringify({
-          queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        })
+      // Try to parse the response as JSON
+      const parsed = JSON.parse(content);
+      
+      if (!parsed.queries || !Array.isArray(parsed.queries)) {
+        throw new Error('Response does not contain a valid queries array');
       }
 
-      const data = await openAIResponse.json()
-      
-      if (!data.choices || !data.choices[0]?.message?.content) {
-        console.error("Unexpected API response:", data)
-        throw new Error("Invalid response from OpenAI API")
-      }
+      // Validate each query to ensure it's related to the original question
+      const validatedQueries = parsed.queries.filter((query: string) => {
+        // A very simple validation - ensure query is not empty and is a string
+        return typeof query === 'string' && query.trim().length > 0;
+      });
 
-      console.log("Received response from OpenAI")
-      
-      try {
-        const content = data.choices[0].message.content
-        const parsedContent = JSON.parse(content)
-        
-        if (!parsedContent.queries || !Array.isArray(parsedContent.queries)) {
-          console.error("Invalid content format:", content)
-          throw new Error("Response did not contain a valid queries array")
+      console.log(`Generated ${validatedQueries.length} queries for market ${marketId || 'unknown'}`, validatedQueries);
+
+      return new Response(
+        JSON.stringify({ queries: validatedQueries }),
+        {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
         }
-
-        console.log("Generated queries:", parsedContent.queries)
-        console.log("Final result:", JSON.stringify(parsedContent, null, 2))
-        
-        return new Response(JSON.stringify(parsedContent), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        })
-      } catch (error) {
-        console.error("Error parsing OpenAI response:", error)
-        
-        // Return fallback queries instead of failing
-        return new Response(JSON.stringify({
-          queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        })
-      }
-    } catch (openAIError) {
-      console.error("Error calling OpenAI API:", openAIError)
+      );
+    } catch (parseError) {
+      console.error('Error parsing OpenAI response as JSON:', parseError);
+      console.log('Raw response:', content);
       
-      // Return fallback queries instead of failing
-      return new Response(JSON.stringify({
-        queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      })
+      // Attempt to extract queries using regex as a fallback
+      const queryMatches = content.match(/"([^"]+)"/g) || [];
+      const extractedQueries = queryMatches
+        .map((match: string) => match.replace(/"/g, ''))
+        .filter((query: string) => query.length > 5 && !query.includes('query'));
+
+      if (extractedQueries.length > 0) {
+        console.log('Extracted queries using regex fallback:', extractedQueries);
+        return new Response(
+          JSON.stringify({ queries: extractedQueries }),
+          {
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+
+      // If all else fails, generate generic queries based on the original query
+      const fallbackQueries = [
+        `${query} latest information`,
+        `${query} analysis`,
+        `${query} facts`,
+        `${query} details`
+      ];
+      
+      console.log('Using fallback queries:', fallbackQueries);
+      
+      return new Response(
+        JSON.stringify({ queries: fallbackQueries }),
+        {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
     }
   } catch (error) {
-    console.error("Error:", error.message)
+    console.error('Error in generate-queries function:', error);
     
-    // Return fallback queries even for general errors
-    return new Response(JSON.stringify({
-      error: error.message,
-      queries: ["Ukraine rare earth deal", "US Ukraine rare earths", "Ukraine rare earth agreement", "Ukraine US resources", "rare earth elements deal"]
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200 // Return 200 with fallback queries instead of error
-    })
+    return new Response(
+      JSON.stringify({
+        error: error.message || 'Unknown error in generate-queries function',
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
   }
-})
+});

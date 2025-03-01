@@ -1,151 +1,128 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+interface AnalysisRequest {
+  content: string;
+  query: string;
+  question: string;
+  marketId?: string; // Add market ID to the request
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { content, query, question } = await req.json()
+    const { content, query, question, marketId } = await req.json() as AnalysisRequest;
     
-    if (!content || content.length === 0) {
-      throw new Error('No content provided for analysis')
+    // Log request info for debugging
+    console.log(`Analyze web content request for market ID ${marketId || 'unknown'}:`, {
+      contentLength: content?.length || 0,
+      query: query?.substring(0, 100) || 'Not provided',
+      question: question?.substring(0, 100) || 'Not provided'
+    });
+
+    // Determine which API to use
+    const openAIKey = Deno.env.get('OPENAI_API_KEY');
+    const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+    
+    if (!openAIKey && !openRouterKey) {
+      throw new Error('No API keys configured for LLM services');
     }
 
-    console.log(`Analyzing content for query: ${query}`)
-    console.log(`Market question: ${question}`)
-    console.log(`Content length: ${content.length} characters`)
+    // Choose OpenAI or OpenRouter based on available keys
+    const apiKey = openAIKey || openRouterKey;
+    const apiEndpoint = openAIKey 
+      ? 'https://api.openai.com/v1/chat/completions'
+      : 'https://openrouter.ai/api/v1/chat/completions';
+    
+    // Determine auth header based on which service we're using
+    const authHeader = openAIKey
+      ? { 'Authorization': `Bearer ${apiKey}` }
+      : { 'HTTP-Referer': 'https://hunchex.com', 'X-Title': 'Hunchex Analysis', 'Authorization': `Bearer ${apiKey}` };
 
-    const response = await fetch(OPENROUTER_URL, {
+    // Set up content limiter to prevent tokens from being exceeded
+    const contentLimit = 80000; // Arbitrary limit to prevent token overages
+    const truncatedContent = content.length > contentLimit 
+      ? content.substring(0, contentLimit) + "... [content truncated]" 
+      : content;
+
+    // Create a system prompt that incorporates the specific market context
+    const marketContext = marketId
+      ? `\nImportant context: You are analyzing content for prediction market ID: ${marketId}\n`
+      : '';
+
+    const systemPrompt = `You are an expert market research analyst.${marketContext}
+Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
+Provide a comprehensive, balanced analysis of the key information, focusing on facts that help assess probability.
+Be factual and evidence-based, not speculative.`;
+
+    // Create the prompt for the user message
+    const prompt = `Here is the web content I've collected during research:
+---
+${truncatedContent}
+---
+
+Based solely on the information in this content:
+1. What are the key facts and insights relevant to the market question "${question}"?
+2. What evidence supports or contradicts the proposition?
+3. How does this information affect the probability assessment?
+4. What conclusions can we draw about the likely outcome?
+
+Ensure your analysis is factual, balanced, and directly addresses the market question.`;
+
+    // Make the streaming request
+    const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        ...authHeader,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Research App',
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: openAIKey ? 'gpt-4o-mini' : 'openai/gpt-4o-mini',
         messages: [
-          {
-            role: "system",
-            content: "You are a careful thinker who shows your complete reasoning process. Your responses should reflect your authentic thought process as you explore and solve problems. STYLE REQUIREMENTS: - Express your thoughts as they naturally occur - Show your full reasoning journey - Include moments of uncertainty and revision - Think out loud in a conversational tone - Let your understanding develop progressively DEMONSTRATE: - When you're examining something closely - When you notice new details - When you revise your thinking - When you make connections - When you question your assumptions - When you refine your understanding AVOID: - Jumping to conclusions - Hiding uncertainty - Skipping steps in your reasoning - Presenting only final thoughts - Artificial or forced structure Your response should feel like a natural exploration of your thinking process, showing how your understanding develops and changes as you reason through the problem. Be transparent about your thought process, including moments of uncertainty, revision, and discovery."
-          },
-          {
-            role: "user",
-            content: `Market Question: "${question}"
-
-Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}
-
-Content:
-${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
-          }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
         ],
-        stream: true
-      })
-    })
+        stream: true,
+        temperature: 0.3
+      }),
+    });
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available
-    let buffer = ""
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        buffer += text
-        
-        // Keep processing the buffer until we can't find any more complete messages
-        while (true) {
-          const nlIndex = buffer.indexOf('\n')
-          if (nlIndex === -1) break
-          
-          const line = buffer.slice(0, nlIndex)
-          buffer = buffer.slice(nlIndex + 1)
-          
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data === '[DONE]') continue
-            
-            try {
-              const parsed = JSON.parse(data)
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || ""
-              
-              if (content) {
-                const event = {
-                  choices: [{
-                    delta: { content },
-                    message: { content }
-                  }]
-                }
-                controller.enqueue(
-                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                )
-              }
-            } catch (err) {
-              console.debug('Parsing chunk (expected during streaming):', err)
-            }
-          }
-        }
-      },
-      flush(controller) {
-        // Process any remaining complete messages in the buffer
-        if (buffer.trim()) {
-          const lines = buffer.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim()
-              if (data === '[DONE]') continue
-              
-              try {
-                const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || 
-                              parsed.choices?.[0]?.message?.content || ""
-                
-                if (content) {
-                  const event = {
-                    choices: [{
-                      delta: { content },
-                      message: { content }
-                    }]
-                  }
-                  controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                  )
-                }
-              } catch (err) {
-                console.debug('Parsing final chunk (expected):', err)
-              }
-            }
-          }
-        }
-        buffer = ""
-      }
-    })
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error: ${response.status} ${errorText}`);
+    }
 
-    return new Response(response.body?.pipeThrough(transformStream), {
+    // Return the streaming response
+    return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
       }
-    })
-
+    });
   } catch (error) {
-    console.error('Error in analyze-web-content:', error)
+    console.error('Error in analyze-web-content:', error);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
+      JSON.stringify({ error: error.message || 'Unknown error' }),
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       }
-    )
+    );
   }
-})
+});

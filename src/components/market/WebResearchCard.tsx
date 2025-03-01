@@ -260,7 +260,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       body: { 
         content: allContent.join('\n\n'),
         query: description,
-        question: description
+        question: description,
+        marketId: marketId // Explicitly pass marketId to maintain context
       }
     })
 
@@ -346,7 +347,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           body: { 
             query: description,
             previousResults: currentAnalysis,
-            iteration: iteration
+            iteration: iteration,
+            marketId: marketId // Explicitly pass marketId to maintain context
           }
         })
 
@@ -391,7 +393,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
       body: {
         webContent: allContent.join('\n\n'),
-        analysis: finalAnalysis
+        analysis: finalAnalysis,
+        marketId: marketId, // Explicitly pass marketId to maintain context
+        marketQuestion: description // Pass the market question for context
       }
     })
 
@@ -477,8 +481,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
       
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
+      console.log(`Market ID for web-scrape: ${marketId}`)
+      console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
+      
       const response = await supabase.functions.invoke('web-scrape', {
-        body: { queries: queries }
+        body: { 
+          queries: queries,
+          marketId: marketId, // Explicitly pass marketId to maintain context 
+          marketDescription: description // Pass market description for context
+        }
       })
 
       if (response.error) {
@@ -605,11 +616,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
     try {
       setProgress(prev => [...prev, "Starting iterative web research..."])
+      setProgress(prev => [...prev, `Researching market: ${marketId}`])
+      setProgress(prev => [...prev, `Market question: ${description}`])
       setProgress(prev => [...prev, "Generating initial search queries..."])
 
       try {
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-          body: { query: description }
+          body: { 
+            query: description,
+            marketId: marketId, // Explicitly pass marketId to maintain context
+            marketDescription: description // More context for the function
+          }
         })
 
         if (queriesError) {
