@@ -1,94 +1,84 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { serve } from "http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { query } = await req.json()
-
-    if (!OPENROUTER_API_KEY) {
-      throw new Error('OPENROUTER_API_KEY is not configured')
-    }
-
-    console.log('Generating sub-queries for:', query)
+    // Get request body
+    const { query } = await req.json();
     
-    const response = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Research App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful assistant that generates search queries."
-          },
-          {
-            role: "user",
-            content: `Generate 5 diverse search queries to gather comprehensive information about the following topic. Focus on different aspects that would be relevant for market research:
-
-Topic: ${query}
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`
-          }
-        ],
-        response_format: { type: "json_object" }
-      })
-    })
-
-    if (!response.ok) {
-      throw new Error(`OpenRouter API error: ${response.status}`)
+    if (!query || typeof query !== 'string') {
+      throw new Error('Invalid or missing query parameter');
     }
 
-    const result = await response.json()
-    const content = result.choices[0].message.content.trim()
+    console.log(`Generating search queries for: "${query}"`);
+
+    // Generate a set of search queries based on the original query
+    // Here we'll use simple strategies to create different search variations
+    const baseQuery = query.trim();
     
-    try {
-      const queriesData = JSON.parse(content)
-      const queries = queriesData.queries || []
-      console.log('Generated queries:', queries)
+    // Create different query variations
+    const queries = [
+      baseQuery, // Original query
+    ];
 
-      return new Response(
-        JSON.stringify({ queries }),
-        { 
-          headers: { 
-            ...corsHeaders,
-            'Content-Type': 'application/json'
-          } 
-        }
-      )
-    } catch (parseError) {
-      console.error('Error parsing LLM response:', parseError)
-      console.log('Raw content:', content)
-      throw new Error('Invalid response format from LLM')
-    }
-
-  } catch (error) {
-    console.error('Error generating queries:', error)
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500,
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+    // Add keyword variations
+    const words = baseQuery.split(/\s+/).filter(w => w.length > 3);
+    
+    // Extract key phrases (simple approach - chunks of 2-3 consecutive words)
+    if (words.length >= 3) {
+      // Take first 3 words
+      queries.push(words.slice(0, 3).join(' '));
+      
+      // Take last 3 words
+      queries.push(words.slice(-3).join(' '));
+      
+      // Take middle 3 words if there are enough
+      if (words.length >= 5) {
+        const middleIndex = Math.floor(words.length / 2);
+        queries.push(words.slice(middleIndex - 1, middleIndex + 2).join(' '));
       }
-    )
+    } else if (words.length === 2) {
+      queries.push(words.join(' '));
+    }
+
+    // Add more specific variations by combining important terms
+    if (words.length >= 4) {
+      // Take first and last words
+      queries.push(`${words[0]} ${words[words.length - 1]}`);
+      
+      // Take two middle words
+      const middleIndex = Math.floor(words.length / 2);
+      queries.push(`${words[middleIndex - 1]} ${words[middleIndex]}`);
+    }
+
+    // Filter out duplicate queries and ensure we have at least one
+    const uniqueQueries = [...new Set(queries)].filter(q => q.length > 0);
+    
+    if (uniqueQueries.length === 0) {
+      uniqueQueries.push(baseQuery); // Fallback to original query
+    }
+
+    console.log(`Generated ${uniqueQueries.length} search queries:`, uniqueQueries);
+
+    return new Response(JSON.stringify({ 
+      queries: uniqueQueries 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error('Error generating queries:', error.message);
+    
+    return new Response(JSON.stringify({ 
+      error: `Query generation error: ${error.message}`
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
-})
+});
