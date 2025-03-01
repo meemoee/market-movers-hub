@@ -1,11 +1,11 @@
 
-import { corsHeaders } from '../_shared/cors.ts';
-import { SSEMessage } from './types';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
+import { SSEMessage } from "./types.ts";
 
-const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
-const BRAVE_API_KEY = Deno.env.get("BRAVE_API_KEY");
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -34,8 +34,41 @@ Deno.serve(async (req) => {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(message)}\n\n`));
 
             try {
-              // Execute the search
-              const searchResults = await searchWeb(query);
+              // Execute the search using brave-search function
+              console.log(`Searching for: "${query}"`);
+              const searchResponse = await fetch(`${SUPABASE_URL}/functions/v1/brave-search`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query })
+              });
+              
+              if (!searchResponse.ok) {
+                const errorText = await searchResponse.text();
+                console.error(`Error response from brave-search: ${errorText}`);
+                const errorMessage: SSEMessage = {
+                  type: 'message',
+                  message: `Error fetching search results for query "${query}": ${searchResponse.status}`
+                };
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorMessage)}\n\n`));
+                continue;
+              }
+              
+              const searchData = await searchResponse.json();
+              console.log(`Brave search: Received response`, searchData);
+              
+              if (!searchData.results || !Array.isArray(searchData.results)) {
+                console.error('Invalid response structure from brave-search:', searchData);
+                const errorMessage: SSEMessage = {
+                  type: 'message',
+                  message: `Error processing query "${query}": Invalid response from search API`
+                };
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorMessage)}\n\n`));
+                continue;
+              }
+              
+              const searchResults = searchData.results;
               console.log(`Brave search: Received ${searchResults.length} results`);
               
               if (searchResults && searchResults.length > 0) {
@@ -49,11 +82,11 @@ Deno.serve(async (req) => {
                 };
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify(resultMessage)}\n\n`));
               } else {
-                const errorMessage: SSEMessage = {
+                const noResultsMessage: SSEMessage = {
                   type: 'message',
                   message: `No results found for query "${query}"`
                 };
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorMessage)}\n\n`));
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(noResultsMessage)}\n\n`));
               }
             } catch (error) {
               console.error(`Error processing query "${query}":`, error);
@@ -109,43 +142,3 @@ Deno.serve(async (req) => {
     });
   }
 });
-
-async function searchWeb(query: string) {
-  if (!BRAVE_API_KEY) {
-    throw new Error("BRAVE_API_KEY is not set");
-  }
-
-  const url = new URL(BRAVE_SEARCH_URL);
-  url.searchParams.append('q', query);
-  url.searchParams.append('count', '10');
-  url.searchParams.append('search_lang', 'en');
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'Accept': 'application/json',
-      'X-Subscription-Token': BRAVE_API_KEY,
-    }
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Brave search API error:', errorText);
-    throw new Error(`Brave search failed: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  
-  // Add proper error handling and validation for the API response
-  if (!data || !data.web || !Array.isArray(data.web.results)) {
-    console.error('Unexpected API response structure:', JSON.stringify(data));
-    return []; // Return empty array instead of throwing error
-  }
-
-  // Extract and transform the search results
-  return data.web.results.map(result => ({
-    url: result.url,
-    title: result.title,
-    content: result.description || ''
-  }));
-}

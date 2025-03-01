@@ -1,10 +1,11 @@
 
-import { corsHeaders } from '../_shared/cors.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
-const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 const BRAVE_API_KEY = Deno.env.get("BRAVE_API_KEY");
+const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -12,9 +13,12 @@ Deno.serve(async (req) => {
 
   try {
     const { query } = await req.json();
-    if (!query) {
-      throw new Error("No query provided");
+    
+    if (!query || typeof query !== 'string') {
+      throw new Error("No valid query provided");
     }
+
+    console.log(`Processing search for query: "${query}"`);
 
     if (!BRAVE_API_KEY) {
       throw new Error("BRAVE_API_KEY is not set");
@@ -25,7 +29,7 @@ Deno.serve(async (req) => {
     url.searchParams.append('count', '10');
     url.searchParams.append('search_lang', 'en');
 
-    console.log(`Fetching Brave search results for: ${query}`);
+    console.log(`Fetching search results from: ${url.toString()}`);
     
     const response = await fetch(url, {
       method: 'GET',
@@ -37,13 +41,12 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Brave search API error:', errorText);
+      console.error('Brave search API error:', errorText, 'Status:', response.status);
       throw new Error(`Brave search failed: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
     
-    // Add proper error handling and validation for the API response
     if (!data || !data.web || !Array.isArray(data.web.results)) {
       console.error('Unexpected API response structure:', JSON.stringify(data));
       return new Response(JSON.stringify({ results: [] }), {
@@ -51,22 +54,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Extract and transform the search results
+    console.log(`Received ${data.web.results.length} search results`);
+
+    // Transform the search results into a simpler format
     const results = data.web.results.map(result => ({
       url: result.url,
       title: result.title,
       content: result.description || ''
     }));
 
-    console.log(`Brave search: Received ${results.length} results`);
-
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
-
   } catch (error) {
-    console.error('Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error('Error processing request:', error);
+    return new Response(JSON.stringify({ error: error.message, results: [] }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
