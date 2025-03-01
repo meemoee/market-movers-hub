@@ -1,75 +1,87 @@
 
-import { corsHeaders } from '../_shared/cors.ts';
+import { corsHeaders } from '../_shared/cors';
 
-interface BraveSearchParams {
-  query: string;
-  count?: number;
-}
+const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+  // Handle CORS for preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    const { query } = await req.json();
+    
+    if (!query || typeof query !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'No search query provided' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    console.log(`Searching Brave for: "${query}"`);
+    
     const BRAVE_API_KEY = Deno.env.get('BRAVE_API_KEY');
     if (!BRAVE_API_KEY) {
-      throw new Error('BRAVE_API_KEY is not set');
+      console.error('BRAVE_API_KEY environment variable is not set');
+      return new Response(
+        JSON.stringify({ error: 'BRAVE_API_KEY environment variable is not set' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
     }
 
-    const { query, count = 10 } = await req.json() as BraveSearchParams;
-    console.log(`Brave search: Searching for "${query}"`);
-    
-    if (!query) {
-      throw new Error('Query parameter is required');
-    }
-
-    // Sanitize query
+    // Sanitize query - remove special characters
     const sanitizedQuery = query.replace(/[^\w\s]/gi, ' ').trim();
     
     const params = new URLSearchParams({
       q: sanitizedQuery,
-      count: count.toString(),
+      count: '15'  // Increase result count from default (10)
     });
     
-    const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
-    const url = `${BRAVE_SEARCH_URL}?${params}`;
-    
-    console.log(`Brave search: Making request to ${url}`);
-    
-    const response = await fetch(url, {
+    const response = await fetch(`${BRAVE_SEARCH_URL}?${params}`, {
       headers: {
         'Accept': 'application/json',
         'X-Subscription-Token': BRAVE_API_KEY
       }
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Brave API error (${response.status}): ${errorText}`);
-      throw new Error(`Brave search API error: ${response.status} - ${errorText}`);
+      console.error(`Brave search error: ${response.status} - ${errorText}`);
+      return new Response(
+        JSON.stringify({ error: `Brave search error: ${response.status}` }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: response.status }
+      );
+    }
+
+    const data = await response.json();
+    
+    // Process and filter web results
+    if (!data.web || !data.web.results) {
+      console.log(`No web results found for query: ${query}`);
+      return new Response(
+        JSON.stringify({ results: [] }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
     }
     
-    const data = await response.json();
-    console.log(`Brave search: Received ${data?.web?.results?.length || 0} results`);
-    
-    // Format results
-    const results = data?.web?.results?.map((item: any) => ({
+    const results = data.web.results.map((item: any) => ({
       url: item.url,
-      title: item.title || 'Brave Result',
-      snippet: item.description || ''
-    })) || [];
+      title: item.title || '',
+      description: item.description || ''
+    }));
     
-    console.log(`Brave search: Formatted ${results.length} results`);
-    return new Response(JSON.stringify(results), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.log(`Found ${results.length} results for query: ${query}`);
+    
+    return new Response(
+      JSON.stringify({ results }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+    );
   } catch (error) {
-    console.error(`Brave search error: ${error.message}`);
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    console.error('Brave search error:', error);
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
   }
 });

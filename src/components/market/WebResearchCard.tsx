@@ -269,89 +269,76 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log("Received response from web-scrape function:", response)
       
       const allContent: string[] = []
+      let messageCount = 0;
 
-      const stream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder()
-          const reader = new Response(response.data.body).body?.getReader()
-          
-          if (!reader) {
-            controller.error(new Error("Failed to get reader from response"))
-            return
-          }
-          
-          function push() {
-            reader.read().then(({done, value}) => {
-              if (done) {
-                console.log("Stream reading complete")
-                setProgress(prev => [...prev, "Search Completed"])
-                controller.close()
-                return
-              }
-              
-              const chunk = textDecoder.decode(value)
-              console.log("Received chunk:", chunk)
-              
-              const lines = chunk.split('\n').filter(line => line.trim())
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  
-                  if (jsonStr === '[DONE]') {
-                    console.log("Received [DONE] marker")
-                    continue
-                  }
-                  
-                  try {
-                    console.log("Parsing JSON from line:", jsonStr)
-                    const parsed = JSON.parse(jsonStr)
-                    
-                    if (parsed.type === 'results' && Array.isArray(parsed.data)) {
-                      console.log("Received results:", parsed.data)
-                      setResults(prev => [...prev, ...parsed.data])
-                      parsed.data.forEach((result: ResearchResult) => {
-                        if (result?.content) {
-                          allContent.push(result.content)
-                        }
-                      })
-                    } else if (parsed.message) {
-                      console.log("Received message:", parsed.message)
-                      const message = parsed.message.replace(
-                        /processing query \d+\/\d+: (.*)/i, 
-                        'Searching "$1"'
-                      )
-                      setProgress(prev => [...prev, message])
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e, "Raw data:", jsonStr)
-                  }
-                }
-              }
-              
-              push()
-            }).catch(error => {
-              console.error("Error reading from stream:", error)
-              controller.error(error)
-            })
-          }
-          
-          push()
-        }
-      })
-
-      try {
-        const reader = stream.getReader()
+      const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+        const textDecoder = new TextDecoder()
+        let buffer = '';
+        
         while (true) {
-          const { done } = await reader.read()
+          const { done, value } = await reader.read()
+          
           if (done) {
-            console.log("Finished reading from stream")
+            console.log("Stream reading complete")
+            setProgress(prev => [...prev, "Search Completed"])
             break
           }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received chunk:", chunk)
+          
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              
+              if (jsonStr === '[DONE]') {
+                console.log("Received [DONE] marker")
+                continue
+              }
+              
+              try {
+                console.log("Parsing JSON from line:", jsonStr)
+                const parsed = JSON.parse(jsonStr)
+                
+                if (parsed.type === 'results' && Array.isArray(parsed.data)) {
+                  console.log("Received results:", parsed.data)
+                  setResults(prev => [...prev, ...parsed.data])
+                  parsed.data.forEach((result: ResearchResult) => {
+                    if (result?.content) {
+                      allContent.push(result.content)
+                    }
+                  })
+                } else if (parsed.type === 'message' && parsed.message) {
+                  console.log("Received message:", parsed.message)
+                  messageCount++;
+                  const message = parsed.message.replace(
+                    /processing query \d+\/\d+: (.*)/i, 
+                    'Searching "$1"'
+                  )
+                  setProgress(prev => [...prev, message])
+                } else if (parsed.type === 'error' && parsed.message) {
+                  console.error("Received error from stream:", parsed.message)
+                  setError(`Error: ${parsed.message}`)
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e, "Raw data:", jsonStr)
+              }
+            }
+          }
         }
-      } catch (error) {
-        console.error("Error consuming stream:", error)
       }
+
+      const reader = new Response(response.data.body).body?.getReader()
+      
+      if (!reader) {
+        throw new Error('Failed to get reader from response')
+      }
+      
+      await processStream(reader)
 
       console.log("Results after stream processing:", results)
       console.log("Content collected:", allContent.length, "items")
@@ -384,72 +371,53 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log("Received response from analyze-web-content")
 
       let accumulatedContent = '';
-      let incompleteMarkdown = '';
       
-      const analysisStream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder()
-          const reader = new Response(analysisResponse.data.body).body?.getReader()
-          
-          if (!reader) {
-            controller.error(new Error("Failed to get reader from analysis response"))
-            return
-          }
-          
-          function push() {
-            reader.read().then(({done, value}) => {
-              if (done) {
-                console.log("Analysis stream complete")
-                controller.close()
-                return
-              }
-              
-              const chunk = textDecoder.decode(value)
-              console.log("Received analysis chunk of size:", chunk.length)
-              
-              const lines = chunk.split('\n').filter(line => line.trim())
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  if (jsonStr === '[DONE]') continue
-                  
-                  try {
-                    const { content } = cleanStreamContent(jsonStr)
-                    if (content) {
-                      console.log("Received content chunk:", content.substring(0, 50) + "...")
-                      
-                      let updatedContent = incompleteMarkdown + content
-                      
-                      accumulatedContent += content;
-                      setAnalysis(accumulatedContent);
-                    }
-                  } catch (e) {
-                    console.error('Error parsing analysis SSE data:', e)
-                  }
-                }
-              }
-              
-              push()
-            }).catch(error => {
-              console.error("Error reading from analysis stream:", error)
-              controller.error(error)
-            })
-          }
-          
-          push()
-        }
-      })
-
-      try {
-        const analysisReader = analysisStream.getReader()
+      const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+        const textDecoder = new TextDecoder()
+        let buffer = '';
+        
         while (true) {
-          const { done } = await analysisReader.read()
-          if (done) break
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Analysis stream complete")
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received analysis chunk of size:", chunk.length)
+          
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              if (jsonStr === '[DONE]') continue
+              
+              try {
+                const { content } = cleanStreamContent(jsonStr)
+                if (content) {
+                  console.log("Received content chunk:", content.substring(0, 50) + "...")
+                  accumulatedContent += content;
+                  setAnalysis(accumulatedContent);
+                }
+              } catch (e) {
+                console.error('Error parsing analysis SSE data:', e)
+              }
+            }
+          }
         }
-      } catch (error) {
-        console.error("Error consuming analysis stream:", error)
       }
+
+      const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
+      
+      if (!analysisReader) {
+        throw new Error('Failed to get reader from analysis response')
+      }
+      
+      await processAnalysisStream(analysisReader)
 
       setProgress(prev => [...prev, "Analysis complete, extracting key insights..."])
 
@@ -468,91 +436,71 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log("Received response from extract-research-insights")
 
       let accumulatedJson = ''
-      let incompleteInsightsMarkdown = ''
       
-      const insightsStream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder()
-          const reader = new Response(insightsResponse.data.body).body?.getReader()
-          
-          if (!reader) {
-            controller.error(new Error("Failed to get reader from insights response"))
-            return
-          }
-          
-          function push() {
-            reader.read().then(({done, value}) => {
-              if (done) {
-                console.log("Insights stream complete")
-                controller.close()
-                return
-              }
-              
-              const chunk = textDecoder.decode(value)
-              console.log("Received insights chunk of size:", chunk.length)
-              
-              const lines = chunk.split('\n').filter(line => line.trim())
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  if (jsonStr === '[DONE]') continue
-                  
-                  try {
-                    const { content } = cleanStreamContent(jsonStr)
-                    
-                    if (content) {
-                      console.log("Received insights content chunk:", content.substring(0, 50) + "...")
-                      
-                      let updatedContent = incompleteInsightsMarkdown + content
-                      
-                      incompleteInsightsMarkdown = ''
-                      accumulatedJson += content
-                      
-                      setStreamingState(prev => {
-                        const newState = {
-                          rawText: accumulatedJson,
-                          parsedData: prev.parsedData
-                        }
-
-                        try {
-                          const parsedJson = JSON.parse(accumulatedJson)
-                          if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
-                            newState.parsedData = parsedJson
-                          }
-                        } catch {
-                          // Continue accumulating if not valid JSON yet
-                        }
-
-                        return newState
-                      })
-                    }
-                  } catch (e) {
-                    console.debug('Chunk parse error (expected):', e)
-                  }
-                }
-              }
-              
-              push()
-            }).catch(error => {
-              console.error("Error reading from insights stream:", error)
-              controller.error(error)
-            })
-          }
-          
-          push()
-        }
-      })
-
-      try {
-        const insightsReader = insightsStream.getReader()
+      const processInsightsStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+        const textDecoder = new TextDecoder()
+        let buffer = '';
+        
         while (true) {
-          const { done } = await insightsReader.read()
-          if (done) break
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Insights stream complete")
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received insights chunk of size:", chunk.length)
+          
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              if (jsonStr === '[DONE]') continue
+              
+              try {
+                const { content } = cleanStreamContent(jsonStr)
+                
+                if (content) {
+                  console.log("Received insights content chunk:", content.substring(0, 50) + "...")
+                  accumulatedJson += content
+                  
+                  setStreamingState(prev => {
+                    const newState = {
+                      rawText: accumulatedJson,
+                      parsedData: prev.parsedData
+                    }
+
+                    try {
+                      const parsedJson = JSON.parse(accumulatedJson)
+                      if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
+                        newState.parsedData = parsedJson
+                      }
+                    } catch {
+                      // Continue accumulating if not valid JSON yet
+                    }
+
+                    return newState
+                  })
+                }
+              } catch (e) {
+                console.debug('Chunk parse error (expected):', e)
+              }
+            }
+          }
         }
-      } catch (error) {
-        console.error("Error consuming insights stream:", error)
       }
+
+      const insightsReader = new Response(insightsResponse.data.body).body?.getReader()
+      
+      if (!insightsReader) {
+        throw new Error('Failed to get reader from insights response')
+      }
+      
+      await processInsightsStream(insightsReader)
 
       setProgress(prev => [...prev, "Research complete!"])
 
