@@ -6,6 +6,8 @@ const BRAVE_SEARCH_URL = "https://api.search.brave.com/res/v1/web/search";
 const BRAVE_API_KEY = Deno.env.get("BRAVE_API_KEY");
 
 serve(async (req) => {
+  console.log("Brave search function called");
+  
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -13,17 +15,25 @@ serve(async (req) => {
 
   try {
     if (!BRAVE_API_KEY) {
+      console.error("BRAVE_API_KEY environment variable is required");
       throw new Error("BRAVE_API_KEY environment variable is required");
     }
 
-    const { query } = await req.json();
+    const payload = await req.json();
+    console.log("Request payload:", payload);
+    
+    const { query } = payload;
     
     if (!query || typeof query !== "string") {
+      console.error("Query parameter must be provided as a string");
       throw new Error("Query parameter must be provided as a string");
     }
 
+    console.log("Searching Brave for:", query);
+
     // Sanitize the query - remove special characters
     const sanitizedQuery = query.replace(/[^\w\s]/gi, ' ').trim();
+    console.log("Sanitized query:", sanitizedQuery);
     
     const params = new URLSearchParams({
       q: sanitizedQuery,
@@ -31,6 +41,7 @@ serve(async (req) => {
     });
     
     const url = `${BRAVE_SEARCH_URL}?${params}`;
+    console.log("Brave search URL:", url);
     
     const response = await fetch(url, {
       headers: {
@@ -40,10 +51,15 @@ serve(async (req) => {
     });
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Brave search API error: ${response.status} ${response.statusText}`, errorText);
       throw new Error(`Brave search API error: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
+    console.log("Brave search response received", { 
+      web_results_count: data.web?.results?.length || 0 
+    });
     
     // Process and format results
     let results = [];
@@ -59,6 +75,8 @@ serve(async (req) => {
         }
       });
     }
+
+    console.log(`Found ${results.length} valid results from Brave search`);
 
     return new Response(
       JSON.stringify(results),

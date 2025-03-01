@@ -237,30 +237,49 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setStreamingState({ rawText: '', parsedData: null })
 
     try {
+      // Add initial progress message
+      setProgress(prev => [...prev, "Starting web research..."])
+      setProgress(prev => [...prev, "Generating search queries..."])
+
       // First, generate queries
+      console.log("Calling generate-queries function with:", { query: description })
       const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
         body: { query: description }
       })
 
       if (queriesError) {
+        console.error("Error from generate-queries:", queriesError)
         throw new Error(`Error generating queries: ${queriesError.message}`)
       }
 
+      console.log("Received queries data:", queriesData)
+
       if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
+        console.error("Invalid queries response:", queriesData)
         throw new Error('Invalid queries response')
       }
 
+      // Log the generated queries
+      console.log("Generated queries:", queriesData.queries)
+      setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
+      
+      // Display the queries in the progress
+      queriesData.queries.forEach((query: string, index: number) => {
+        setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
+      })
+
       // Then, perform web scraping with the generated queries
+      console.log("Calling web-scrape function with queries:", queriesData.queries)
       const response = await supabase.functions.invoke('web-scrape', {
         body: { queries: queriesData.queries }
       })
 
-      if (response.error) throw response.error
+      if (response.error) {
+        console.error("Error from web-scrape:", response.error)
+        throw response.error
+      }
 
       const allContent: string[] = []
-
-      // Add initial progress message
-      setProgress(prev => [...prev, "Starting web research..."])
 
       const stream = new ReadableStream({
         start(controller) {
@@ -326,6 +345,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       // After collecting all content, start the analysis with improved streaming
       setIsAnalyzing(true)
+      setProgress(prev => [...prev, "Starting content analysis..."])
+      
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: { 
           content: allContent.join('\n\n'),
@@ -395,6 +416,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         const { done } = await analysisReader.read()
         if (done) break
       }
+
+      setProgress(prev => [...prev, "Analysis complete, extracting key insights..."])
 
       // Extract insights using streaming with the same markdown formatting
       const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
@@ -481,6 +504,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         const { done } = await insightsReader.read()
         if (done) break
       }
+
+      setProgress(prev => [...prev, "Research complete!"])
 
     } catch (error) {
       console.error('Error in web research:', error)
