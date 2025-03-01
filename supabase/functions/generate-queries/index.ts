@@ -1,5 +1,6 @@
 
-import { serve } from "http/server.ts";
+// Import the serve function from Deno's http server module with correct URL format
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
