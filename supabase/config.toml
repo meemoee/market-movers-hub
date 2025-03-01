@@ -1,60 +1,43 @@
 
 project_id = "lfmkoismabbhujycnqpn"
 
-[api]
-enabled = true
-port = 54321
-schemas = ["public", "storage", "graphql_public"]
-
-[db]
-port = 54322
-shadow_port = 54320
-major_version = 15
-
-[realtime]
-enabled = true
-
-[studio]
-enabled = true
-port = 54323
-api_url = "http://localhost"
-
-[inbucket]
-enabled = true
-port = 54324
-
-[storage]
-enabled = true
-
-[auth]
-enabled = true
-
-[analytics]
-enabled = true
-port = 54327
-
-[functions.price-history]
-verify_jwt = false
-
-[functions.polymarket-ws]
-verify_jwt = false
-
-[functions.deep-research]
-verify_jwt = false
-
 [functions.brave-search]
 verify_jwt = false
 
-[functions.generate-queries]
+[functions.web-scrape]
 verify_jwt = false
 
-[functions.web-scrape]
+[functions.deep-research]
 verify_jwt = false
 
 [functions.analyze-web-content]
 verify_jwt = false
 
 [functions.extract-research-insights]
+verify_jwt = false
+
+[functions.get-top-movers]
+verify_jwt = false
+
+[functions.search-markets]
+verify_jwt = false
+
+[functions.polymarket-ws]
+verify_jwt = false
+
+[functions.generate-queries]
+verify_jwt = false
+
+[functions.get-orderbook]
+verify_jwt = false
+
+[functions.market-analysis]
+verify_jwt = false
+
+[functions.execute-market-order]
+verify_jwt = false
+
+[functions.price-history]
 verify_jwt = false
 
 [functions.evaluate-qa-pair]
