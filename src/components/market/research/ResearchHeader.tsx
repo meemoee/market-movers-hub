@@ -3,16 +3,20 @@ import { Button } from "@/components/ui/button"
 
 interface ResearchHeaderProps {
   onStartResearch: () => void
-  isResearching: boolean
-  query: string
-  onQueryChange: (query: string) => void
+  isResearching?: boolean
+  query?: string
+  onQueryChange?: (query: string) => void
+  isLoading?: boolean
+  isAnalyzing?: boolean
 }
 
 export function ResearchHeader({ 
   onStartResearch, 
-  isResearching,
-  query,
-  onQueryChange
+  isResearching = false,
+  query = "",
+  onQueryChange = () => {},
+  isLoading = false,
+  isAnalyzing = false
 }: ResearchHeaderProps) {
   return (
     <div className="flex flex-col gap-2 mb-4">
@@ -23,13 +27,13 @@ export function ResearchHeader({
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Enter research query..."
           className="flex-grow p-2 bg-background border border-input rounded-md text-sm"
-          disabled={isResearching}
+          disabled={isResearching || isLoading || isAnalyzing}
         />
         <Button 
           onClick={onStartResearch}
-          disabled={isResearching || !query.trim()}
+          disabled={isResearching || isLoading || isAnalyzing || !query.trim()}
         >
-          {isResearching ? 'Researching...' : 'Research'}
+          {isLoading || isAnalyzing ? 'Researching...' : 'Research'}
         </Button>
       </div>
     </div>

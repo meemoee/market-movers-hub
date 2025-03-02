@@ -1,6 +1,6 @@
 
 import { useEffect, useRef } from "react"
-import { ResearchResult } from "../WebResearchCard"
+import { ResearchResult } from "./types"
 import { Badge } from "@/components/ui/badge"
 import { Link } from "lucide-react"
 
