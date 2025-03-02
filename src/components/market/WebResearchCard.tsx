@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -461,6 +462,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const extractInsights = async (allContent: string[], finalAnalysis: string) => {
+    setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
+    
     const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
       body: {
         webContent: allContent.join('\n\n'),
@@ -488,7 +491,31 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         if (done) {
           console.log("Insights stream complete")
-          break
+          
+          // When stream is complete, make a final attempt to parse the JSON
+          try {
+            const finalData = JSON.parse(accumulatedJson);
+            setStreamingState({
+              rawText: accumulatedJson,
+              parsedData: {
+                probability: finalData.probability || "Unknown",
+                areasForResearch: Array.isArray(finalData.areasForResearch) ? finalData.areasForResearch : []
+              }
+            });
+            
+            // Add a summary of extracted insights to progress
+            setProgress(prev => [...prev, `Extracted probability: ${finalData.probability || "Unknown"}`]);
+            if (Array.isArray(finalData.areasForResearch) && finalData.areasForResearch.length > 0) {
+              setProgress(prev => [
+                ...prev, 
+                `Identified ${finalData.areasForResearch.length} areas needing further research`
+              ]);
+            }
+          } catch (e) {
+            console.error('Final JSON parsing error:', e);
+          }
+          
+          break;
         }
         
         const chunk = textDecoder.decode(value)
@@ -1023,11 +1050,36 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       )}
 
       {streamingState.parsedData && (
-        <InsightsDisplay 
-          probability={streamingState.parsedData.probability} 
-          areasForResearch={streamingState.parsedData.areasForResearch} 
-        />
+        <div className="border rounded-md p-4 mt-4">
+          <h3 className="text-lg font-medium mb-2">Final Research Analysis</h3>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Probability Estimate</h4>
+              <div className="text-xl font-semibold">
+                {streamingState.parsedData.probability}
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-2">Areas Needing Further Research</h4>
+              <ScrollArea className="h-[200px] w-full rounded border p-2">
+                <div className="space-y-2">
+                  {streamingState.parsedData.areasForResearch.map((area, index) => (
+                    <div key={index} className="p-2 bg-accent/20 rounded">
+                      {index + 1}. {area}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+        </div>
       )}
+      
+      <InsightsDisplay 
+        probability={streamingState.parsedData?.probability || ""} 
+        areasForResearch={streamingState.parsedData?.areasForResearch || []} 
+      />
 
       {results.length > 0 && !iterations.length && (
         <>
