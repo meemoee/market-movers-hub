@@ -14,9 +14,14 @@ serve(async (req) => {
   }
 
   try {
-    const { question, description } = await req.json();
+    const requestData = await req.json();
+    const { query, marketId, marketDescription, question } = requestData;
     
-    console.log("Received request for query generation:", { question, description });
+    // Use either question or query parameter
+    const researchQuery = question || query || "";
+    const description = marketDescription || "";
+    
+    console.log("Received request for query generation:", { researchQuery, marketId, description });
     
     const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
     if (!openrouterApiKey) {
@@ -24,8 +29,9 @@ serve(async (req) => {
     }
     
     const contextInfo = `
-      Market Question: ${question}
+      Market Question: ${researchQuery}
       ${description ? `Market Description: ${description}` : ''}
+      ${marketId ? `Market ID: ${marketId}` : ''}
     `;
     
     const systemPrompt = `You are a research query generator. Given a prediction market question and description, generate 3 search queries that would help research this topic.
@@ -80,6 +86,16 @@ serve(async (req) => {
         try {
           const parsedContent = JSON.parse(content);
           queries = parsedContent.queries || [];
+          
+          // Check if queries contain undefined values and replace them if needed
+          if (queries.some(q => q === "undefined" || q === undefined)) {
+            console.log("Found undefined values in queries, using fallback queries");
+            queries = [
+              `${researchQuery} latest news`,
+              `${researchQuery} analysis`,
+              `${researchQuery} probability`,
+            ];
+          }
         } catch (parseError) {
           console.error("Error parsing JSON from model response:", parseError);
           // If JSON parsing fails, try to extract queries with regex
@@ -87,7 +103,7 @@ serve(async (req) => {
           if (match && match[1]) {
             queries = match[1].split(',')
               .map(q => q.trim().replace(/^"/, '').replace(/"$/, ''))
-              .filter(q => q.length > 0);
+              .filter(q => q.length > 0 && q !== "undefined");
           }
         }
       }
@@ -96,31 +112,42 @@ serve(async (req) => {
     }
     
     // If extraction failed or no queries were found, fall back to simple queries
-    if (!queries.length) {
+    if (!queries.length || queries.every(q => q === "undefined" || q === undefined)) {
       console.log("Falling back to simple query generation");
       queries = [
-        `${question} latest news`,
-        `${question} analysis`,
-        `${question} probability`,
+        `${researchQuery} latest news`,
+        `${researchQuery} analysis`,
+        `${researchQuery} probability`,
       ];
     }
     
     console.log("Final generated queries:", queries);
     
-    return new Response(JSON.stringify(queries), {
+    // Return the result
+    return new Response(JSON.stringify({ queries }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
     
   } catch (error) {
     console.error("Error in generate-queries function:", error);
     
-    // Fallback queries based on the question
+    // Get the query from the request if possible
+    let query = "unknown";
+    try {
+      const requestData = await req.json();
+      query = requestData.query || requestData.question || "unknown";
+    } catch {
+      // Ignore parsing errors
+    }
+    
+    // Fallback queries based on the query
     const fallbackQueries = [
-      `${error.message || "Error generating queries"}`,
-      "Please try again later",
+      `${query} latest news`,
+      `${query} analysis`,
+      `${query} forecast`,
     ];
     
-    return new Response(JSON.stringify(fallbackQueries), {
+    return new Response(JSON.stringify({ queries: fallbackQueries }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
