@@ -319,60 +319,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
-        let buffer = '';
-        
-        const processChunk = async (chunk: string) => {
-          console.log("Processing chunk:", chunk.substring(0, 50) + "...")
-          
-          buffer += chunk
-          const lines = buffer.split('\n\n')
-          buffer = lines.pop() || ''
-          
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              if (jsonStr === '[DONE]') continue
-              
-              try {
-                const { content } = cleanStreamContent(jsonStr)
-                if (content) {
-                  console.log("Received content chunk:", content.substring(0, 50) + "...")
-                  // Add the new content to progress updates to help debug
-                  setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
-                  
-                  accumulatedContent += content;
-                  iterationAnalysis += content; // Save for iterations array too
-                  
-                  // CRITICAL: Do these updates synchronously without delays
-                  setAnalysis(accumulatedContent);
-                  
-                  // Update iterations with latest content immediately - NO DELAYS
-                  setIterations(prev => {
-                    const updatedIterations = [...prev];
-                    const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
-                    
-                    if (currentIterIndex >= 0) {
-                      updatedIterations[currentIterIndex] = {
-                        ...updatedIterations[currentIterIndex],
-                        analysis: iterationAnalysis
-                      };
-                    }
-                    
-                    return updatedIterations;
-                  });
-                  
-                  // Force an immediate React re-render by using requestAnimationFrame
-                  // This is more efficient than setTimeout
-                  window.requestAnimationFrame(() => {
-                    // This empty callback forces React to process the state updates right away
-                  });
-                }
-              } catch (e) {
-                console.error('Error parsing analysis SSE data:', e)
-              }
-            }
-          }
-        };
         
         while (true) {
           const { done, value } = await reader.read()
@@ -383,10 +329,53 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           }
           
           const chunk = textDecoder.decode(value)
-          console.log("Received analysis chunk of size:", chunk.length)
+          console.log("Received raw chunk, size:", chunk.length)
           
-          // Process chunk immediately without any artificial delays
-          await processChunk(chunk);
+          const lines = chunk.split('\n')
+          
+          for (const line of lines) {
+            if (!line.trim() || !line.startsWith('data: ')) continue
+            
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
+            
+            try {
+              const parsedJson = JSON.parse(jsonStr)
+              const content = parsedJson.choices?.[0]?.delta?.content || 
+                             parsedJson.choices?.[0]?.message?.content || '';
+              
+              if (content) {
+                console.log("Processing content chunk:", content.substring(0, 30) + "...")
+                
+                // Add the content to the accumulated content
+                accumulatedContent += content
+                iterationAnalysis += content
+                
+                // Update analysis state
+                setAnalysis(accumulatedContent)
+                
+                // Update the iterations array immediately
+                setIterations(prev => {
+                  const updatedIterations = [...prev]
+                  const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration)
+                  
+                  if (currentIterIndex >= 0) {
+                    updatedIterations[currentIterIndex] = {
+                      ...updatedIterations[currentIterIndex],
+                      analysis: iterationAnalysis
+                    }
+                  }
+                  
+                  return updatedIterations
+                })
+                
+                // Use immedidate rendering technique to ensure React updates the UI
+                window.requestAnimationFrame(() => {})
+              }
+            } catch (e) {
+              console.error('Error parsing SSE line:', e, 'Line:', line)
+            }
+          }
         }
 
         return accumulatedContent;
@@ -406,13 +395,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
         
         if (currentIterIndex >= 0) {
-          // Update existing iteration
           updatedIterations[currentIterIndex] = {
             ...updatedIterations[currentIterIndex],
             analysis: iterationAnalysis
           };
         } else {
-          // Add new iteration if it doesn't exist
           updatedIterations.push({
             iteration,
             queries: currentQueries,
@@ -423,7 +410,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         return updatedIterations;
       });
-      
+
       if (iteration === maxIterations) {
         setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
         await extractInsights(allContent, currentAnalysis)
