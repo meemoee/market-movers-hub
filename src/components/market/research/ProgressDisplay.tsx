@@ -19,12 +19,14 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
   
   useEffect(() => {
     // Auto-scroll to the bottom within the ScrollArea component only
-    // Using scrollIntoView with block: "end" and a more gentle behavior
+    // Using requestAnimationFrame to ensure DOM is ready and limiting scroll to the component
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ 
-        behavior: 'smooth', 
-        block: 'end',
-        inline: 'nearest'
+      requestAnimationFrame(() => {
+        messagesEndRef.current?.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end',
+          inline: 'nearest'
+        });
       });
     }
   }, [messages]);
@@ -32,8 +34,8 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
   if (!messages.length) return null
   
   return (
-    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
-      <ScrollArea className="h-40">
+    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40">
+      <ScrollArea className="h-full">
         <div className="p-4 space-y-2">
           {messages.map((message, index) => (
             <div 
