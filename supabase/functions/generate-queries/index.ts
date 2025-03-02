@@ -36,7 +36,6 @@ Deno.serve(async (req) => {
     console.log("Generate queries request:", { 
       query, 
       iteration,
-      marketId,
       marketDescription: marketDescription?.substring(0, 100)
     });
 
@@ -54,20 +53,17 @@ Deno.serve(async (req) => {
 
       if (!marketError && marketData) {
         console.log("Found market data:", {
-          id: marketId,
           question: marketData.question,
           description: marketData.description?.substring(0, 100)
         });
         
-        marketInfo = `Market ID: ${marketId}
-Market Question: ${marketData.question}
+        marketInfo = `Market Question: ${marketData.question}
 Market Description: ${marketData.description || ""}`;
         
         searchContext = marketData.question;
       } else {
         console.log("Using marketDescription as fallback:", marketDescription?.substring(0, 100));
-        marketInfo = `Market ID: ${marketId}
-Market Description: ${marketDescription || ""}`;
+        marketInfo = `Market Description: ${marketDescription || ""}`;
         
         searchContext = marketDescription || "";
       }
@@ -85,9 +81,9 @@ Market Description: ${marketDescription || ""}`;
     if (iteration === 0) {
       // Initial queries - focused on core information
       queries = [
-        `${cleanQuery} latest news`,
-        `${cleanQuery} prediction`,
-        `${marketId || ""} ${cleanQuery} analysis`,
+        `${cleanQuery} latest information`,
+        `${cleanQuery} recent updates`,
+        `${cleanQuery} analysis prediction`,
       ];
     } else if (previousResults) {
       // Refine queries based on previous results
