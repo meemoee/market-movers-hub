@@ -35,6 +35,7 @@ import { Badge } from "@/components/ui/badge"
 interface WebResearchCardProps {
   description: string;
   marketId: string;
+  title?: string;
 }
 
 interface ResearchResult {
@@ -72,7 +73,7 @@ interface SavedResearch {
   iterations?: ResearchIteration[];
 }
 
-export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
+export function WebResearchCard({ description, marketId, title = '' }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
@@ -364,6 +365,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
             body: JSON.stringify({ 
               query: description,
+              title: title,
               previousResults: currentAnalysis,
               iteration: iteration,
               marketDescription: description
@@ -669,11 +671,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     try {
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
+      if (title) {
+        setProgress(prev => [...prev, `Market title: ${title}`])
+      }
       setProgress(prev => [...prev, `Market question: ${description}`])
       setProgress(prev => [...prev, "Generating initial search queries..."])
 
       try {
         console.log("Calling generate-queries with:", { 
+          title,
           description, 
           descriptionLength: description ? description.length : 0 
         });
@@ -681,6 +687,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
           body: JSON.stringify({ 
             query: description,
+            title: title,
             marketDescription: description
           })
         });

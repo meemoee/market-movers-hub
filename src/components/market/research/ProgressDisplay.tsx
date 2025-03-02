@@ -28,7 +28,7 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
   
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
-      <ScrollArea className="h-40">
+      <ScrollArea className="h-44">
         <div className="p-4 space-y-2">
           {messages.map((message, index) => (
             <div 
