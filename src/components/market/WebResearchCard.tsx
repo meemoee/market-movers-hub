@@ -117,7 +117,7 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
       
       if (error) throw error
       
-      // Convert from JSON to our internal format
+      // Convert from JSON to our internal format with proper type checking
       const iterationsJson = data[0]?.iterations as Json | null || []
       const iterationsArray = Array.isArray(iterationsJson) ? iterationsJson : []
       
@@ -152,6 +152,10 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
     try {
       setIsLoading(true)
       
+      // Get the current user or use placeholder for anonymous users
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
+      
       // Create new research session in web_research table
       const { data, error } = await supabase
         .from('web_research')
@@ -162,7 +166,7 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
           sources: [],
           areas_for_research: [],
           probability: 'Unknown',
-          user_id: '00000000-0000-0000-0000-000000000000', // Placeholder
+          user_id: userId,
           iterations: []
         })
         .select()
@@ -217,7 +221,7 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
     try {
       setIsLoading(true)
       
-      // Get the current iterations
+      // Get the current user data
       const { data: currentData, error: currentError } = await supabase
         .from('web_research')
         .select('iterations')
@@ -328,7 +332,7 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
       
       // Since we can't use streaming directly with the Supabase client,
       // let's simulate streaming by processing the response in chunks
-      const content = response.data.analysis || '';
+      const content = response.data?.analysis || '';
       
       // Simulate streaming by processing each character with slight delay
       for (let i = 0; i < content.length; i += 3) {
