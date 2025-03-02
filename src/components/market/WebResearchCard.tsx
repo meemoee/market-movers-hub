@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,7 +37,7 @@ interface WebResearchCardProps {
   marketId: string;
 }
 
-interface ResearchResult {
+export interface ResearchResult {
   url: string;
   content: string;
   title?: string;
@@ -1160,6 +1159,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <InsightsDisplay 
         probability={streamingState.parsedData?.probability || ""} 
         areasForResearch={streamingState.parsedData?.areasForResearch || []} 
+        streamingState={streamingState}
       />
 
       {results.length > 0 && !iterations.length && (
