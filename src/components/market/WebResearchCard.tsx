@@ -17,7 +17,7 @@ import { ResearchHeader } from "./research/ResearchHeader"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
-import { InsightsDisplay } from "./research/InsightsDisplay"
+import { InsightsDisplay } from "./insights/InsightsDisplay"
 import { ChevronDown, Settings } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -515,15 +515,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
       
+      // Ensure queries don't exceed reasonable length - shorter queries are processed faster
       const shortenedQueries = queries.map(query => {
-        if (query.length > 390) {
-          const keywords = query.split(/[.!?]/)
-            .filter(sentence => sentence.length > 5)
-            .slice(0, 2)
-            .join('. ');
-          return keywords.length > 50 ? keywords : query.substring(0, 390);
+        // Remove any accidental market ID and limit query length
+        const cleanedQuery = query.replace(new RegExp(` ${marketId}$`), '');
+        if (cleanedQuery.length > 200) {
+          return cleanedQuery.substring(0, 200);
         }
-        return query;
+        return cleanedQuery;
       });
       
       const response = await supabase.functions.invoke('web-scrape', {
@@ -606,13 +605,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   if (queryMatch && queryMatch[1] && queryMatch[2]) {
                     const queryIndex = parseInt(queryMatch[1], 10) - 1;
                     setCurrentQueryIndex(queryIndex);
+                    
+                    // Display clean query without market ID
+                    const cleanQueryText = queryMatch[2].replace(new RegExp(` ${marketId}$`), '');
+                    setProgress(prev => [...prev, `Iteration ${iteration}: Searching "${cleanQueryText}"`]);
+                  } else {
+                    // Fallback for other messages
+                    setProgress(prev => [...prev, parsed.message]);
                   }
-                  
-                  const message = parsed.message.replace(
-                    /processing query \d+\/\d+: (.*)/i, 
-                    `Iteration ${iteration}: Searching "$1"`
-                  )
-                  setProgress(prev => [...prev, message])
                 } else if (parsed.type === 'error' && parsed.message) {
                   console.error("Received error from stream:", parsed.message)
                   setProgress(prev => [...prev, `Error: ${parsed.message}`])
@@ -701,17 +701,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           throw new Error('Invalid queries response')
         }
 
-        console.log("Generated queries:", queriesData.queries)
-        setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
+        // Filter out any queries that might have accidental market ID appended
+        const cleanQueries = queriesData.queries.map(q => q.replace(new RegExp(` ${marketId}$`), ''));
+        
+        console.log("Generated clean queries:", cleanQueries)
+        setProgress(prev => [...prev, `Generated ${cleanQueries.length} search queries`])
         
         // Set current queries immediately for display
-        setCurrentQueries(queriesData.queries);
+        setCurrentQueries(cleanQueries);
         
-        queriesData.queries.forEach((query: string, index: number) => {
+        cleanQueries.forEach((query: string, index: number) => {
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
         });
 
-        await handleWebScrape(queriesData.queries, 1);
+        await handleWebScrape(cleanQueries, 1);
       } catch (error) {
         console.error("Error generating initial queries:", error);
         
@@ -934,52 +937,4 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                           <div className="p-4 space-y-2">
                             {iter.results.map((result, idx) => (
                               <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
-                                <a 
-                                  href={result.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-primary hover:underline"
-                                >
-                                  {result.title || result.url}
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </div>
-                    )}
-                    
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Analysis</h4>
-                      <div className="text-sm border rounded-md p-3 bg-accent/5">
-                        {iter.analysis}
-                      </div>
-                    </div>
-                    
-                    {iter.iteration < maxIterations && (
-                      <div>
-                        <h4 className="text-sm font-medium">Next Steps</h4>
-                        <p className="text-sm text-muted-foreground">
-                          Based on this analysis, new search queries were generated for iteration {iter.iteration + 1}.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        </div>
-      )}
-      
-      {!iterations.length && (
-        <>
-          <SitePreviewList results={results} />
-          <AnalysisDisplay content={analysis} />
-        </>
-      )}
-      
-      <InsightsDisplay streamingState={streamingState} />
-    </Card>
-  )
-}
+                                <a
