@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -378,6 +377,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           marketId, 
           question, 
           isFollowUp: false,
+          marketQuestion,
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -394,7 +394,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const analysis = await processStream(reader, nodeId);
       console.log('Completed analysis for node', nodeId, ':', analysis);
 
-      // Update the node with the complete analysis and trigger evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -409,7 +408,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Create a complete QANode object for evaluation
       const currentNode: QANode = {
         id: nodeId,
         question,
@@ -425,6 +423,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             question, 
             parentContent: analysis, 
             isFollowUp: true,
+            marketQuestion,
             researchContext: selectedResearchData ? {
               analysis: selectedResearchData.analysis,
               probability: selectedResearchData.probability,
@@ -617,6 +616,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           question: node.question,
           isFollowUp: false,
           historyContext,
+          marketQuestion,
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -638,6 +638,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           question: node.question, 
           parentContent: analysis,
           historyContext,
+          marketQuestion,
           isFollowUp: true,
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
@@ -963,4 +964,3 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     </Card>
   );
 }
-
