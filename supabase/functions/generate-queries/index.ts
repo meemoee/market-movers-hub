@@ -39,7 +39,7 @@ serve(async (req) => {
       ]
     }`;
     
-    console.log("Sending request to OpenRouter with gemini-1.5-flash model");
+    console.log("Sending request to OpenRouter with google/gemini-2.0-flash-lite-001 model");
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -50,7 +50,7 @@ serve(async (req) => {
         'X-Title': 'HunchEx',
       },
       body: JSON.stringify({
-        model: 'gemini-1.5-flash',
+        model: 'google/gemini-2.0-flash-lite-001',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: contextInfo }
