@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -335,16 +334,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         const textDecoder = new TextDecoder()
         let buffer = '';
         
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log("Analysis stream complete")
-            break
-          }
-          
-          const chunk = textDecoder.decode(value)
-          console.log("Received analysis chunk of size:", chunk.length)
+        const processChunk = async (chunk: string) => {
+          console.log("Processing chunk:", chunk.substring(0, 50) + "...")
           
           buffer += chunk
           const lines = buffer.split('\n\n')
@@ -383,12 +374,30 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     
                     return updatedIterations;
                   });
+                  
+                  // Force an immediate React render
+                  await new Promise(resolve => setTimeout(resolve, 0));
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)
               }
             }
           }
+        };
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Analysis stream complete")
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received analysis chunk of size:", chunk.length)
+          
+          // Process each chunk individually and force a render after each one
+          await processChunk(chunk);
         }
 
         return accumulatedContent;
@@ -958,6 +967,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   };
 
   const renderIterationContent = (iter: ResearchIteration) => {
+    const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
+    
     return (
       <div className="space-y-4">
         <div>
@@ -1001,7 +1012,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
             <AnalysisDisplay 
               content={iter.analysis || "Analysis in progress..."} 
-              isStreaming={isAnalyzing && iter.iteration === currentIteration}
+              isStreaming={isCurrentlyStreaming}
             />
           </div>
         </div>
