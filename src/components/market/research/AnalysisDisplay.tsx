@@ -22,7 +22,6 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     // Only auto-scroll if content is growing (new chunks arriving)
     // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
-      console.log("Auto-scrolling due to new content chunk")
       scrollContainer.scrollTop = scrollContainer.scrollHeight
     }
     

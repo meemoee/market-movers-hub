@@ -1,168 +1,147 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { streamProcessor } from "./streamProcessor.ts"
+
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || ''
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || ''
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 serve(async (req) => {
+  // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { question, marketId, parentContent, isFollowUp, researchContext } = await req.json();
-    if (!question) throw new Error('Question is required');
+    const { 
+      marketId, 
+      question, 
+      parentContent = '',
+      historyContext = '',
+      isFollowUp = false,
+      marketQuestion = '',
+      researchContext = null,
+      model = "gpt-4o-mini",
+      useOpenRouter = false
+    } = await req.json()
 
-    // If this is a follow-up question, process it and return JSON.
-    if (isFollowUp && parentContent) {
-      const researchPrompt = researchContext ? `
-Consider this previous research:
-Analysis: ${researchContext.analysis}
-Probability Assessment: ${researchContext.probability}
-Areas Needing Research: ${researchContext.areasForResearch.join(', ')}
+    console.log(`Processing request for market: ${marketId}, Question: ${question.substring(0, 100)}...`)
+    console.log(`Using model: ${model} via ${useOpenRouter ? 'OpenRouter' : 'OpenAI'}`)
+    
+    let systemPrompt = ''
+    let userPrompt = ''
+    
+    if (isFollowUp) {
+      // Request to generate follow-up questions
+      console.log("Generating follow-up questions based on analysis")
+      
+      systemPrompt = `You are an expert financial market analyzer's assistant. You help by generating logical follow-up questions to dig deeper into market analysis. 
+Generate 2-3 specific follow-up questions based on the provided market question and analysis. Your questions should:
+1. Explore different angles not yet covered in the analysis
+2. Focus on the most important factors for understanding market probability
+3. Be clearly worded and specific, not vague
+4. Not repeat information already covered in the analysis
+5. Target information gaps or areas of uncertainty
+`
 
-Based on this research and the following analysis, generate follow-up questions:
-${parentContent}
-` : parentContent;
+      userPrompt = `Market Question: ${marketQuestion || question}
 
-      const followUpResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'http://localhost:5173',
-          'X-Title': 'Market Analysis App',
-        },
-        body: JSON.stringify({
-          model: "google/gemini-flash-1.5",
-          messages: [
-            {
-              role: "system",
-              content:
-                "Generate three analytical follow-up questions as a JSON array. Each question should be an object with a 'question' field. Return only the JSON array, nothing else."
-            },
-            {
-              role: "user",
-              content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${researchPrompt}`
-            }
-          ]
-        })
-      });
-      if (!followUpResponse.ok) {
-        throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
-      }
-      const data = await followUpResponse.json();
-      let rawContent = data.choices[0].message.content;
-      rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      let parsed;
-      try {
-        parsed = JSON.parse(rawContent);
-      } catch (err) {
-        throw new Error('Failed to parse follow-up questions');
-      }
-      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
-      return new Response(JSON.stringify(parsed), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+${historyContext ? `Previous analysis context:\n${historyContext}\n\n` : ''}
+
+Analysis: ${parentContent}
+
+${researchContext ? `Additional market research:\n${researchContext.analysis || ''}\n\n` : ''}
+
+Generate 2-3 specific follow-up questions to investigate important aspects of this market question that need further analysis. Format your response as a JSON array with each question as an object with a "question" field.`
+
+    } else {
+      // Request to analyze a question
+      console.log("Analyzing market question")
+      
+      systemPrompt = `You are an expert financial market analyst specializing in probability assessment and forecasting. 
+Your task is to thoroughly analyze a question about a financial market and provide a comprehensive assessment.
+
+Your analysis should:
+1. Break down all key factors that affect the probability
+2. Consider evidence from multiple perspectives
+3. Evaluate the timeframe and specific conditions
+4. Analyze historical precedents if relevant
+5. Provide a measured, evidence-based assessment
+6. Clearly explain your reasoning process
+7. Consider both potential outcomes and explain what would lead to each
+
+Be thorough but concise. Present information in a clear, structured way. Avoid vague statements without supporting evidence.`
+
+      userPrompt = `Market Question: ${question}
+
+${historyContext ? `Previous analysis context:\n${historyContext}\n\n` : ''}
+
+${researchContext ? `Additional market research:\n${researchContext.analysis || ''}\n\n` : ''}
+
+${researchContext?.areasForResearch?.length > 0 ? `Areas needing further research:\n${researchContext.areasForResearch.join('\n')}\n\n` : ''}
+
+Probability estimate from research: ${researchContext?.probability || 'Not available'}
+
+Please provide a comprehensive analysis of this market question. Assess key factors, evaluate evidence, and explain your reasoning clearly.`
     }
 
-    const systemPrompt = researchContext 
-      ? `You are a helpful assistant providing detailed analysis. Consider this previous research when forming your response:
+    // Choose API endpoint and format request based on whether we're using OpenRouter or OpenAI
+    let apiUrl = "https://api.openai.com/v1/chat/completions"
+    let headers = {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`
+    }
+    
+    if (useOpenRouter) {
+      apiUrl = "https://openrouter.ai/api/v1/chat/completions"
+      headers = {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://hunchex.com",
+        "X-Title": "Hunchex Market Analysis"
+      }
+    }
 
-Previous Analysis: ${researchContext.analysis}
-Probability Assessment: ${researchContext.probability}
-Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}
-
-Start your response with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.`
-      : "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.";
-
-    // For analysis, stream the response from OpenRouter.
-    const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
-      },
+    const response = await fetch(apiUrl, {
+      method: "POST",
+      headers,
       body: JSON.stringify({
-        model: "perplexity/llama-3.1-sonar-small-128k-online",
+        model: model,
         messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: question
-          }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
         ],
         stream: true
       })
-    });
-    if (!analysisResponse.ok) {
-      throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
+    })
+
+    if (!response.ok) {
+      const error = await response.text()
+      console.error(`API error (${response.status}): ${error}`)
+      throw new Error(`API request failed with status ${response.status}: ${error}`)
     }
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available.
-    let buffer = "";
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk);
-        buffer += text;
-        const parts = buffer.split("\n\n");
-        // Keep the last (possibly incomplete) part in the buffer.
-        buffer = parts.pop() || "";
-        for (const part of parts) {
-          if (part.startsWith("data: ")) {
-            const dataStr = part.slice(6).trim();
-            if (dataStr === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              // Re-emit the SSE event unmodified.
-              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
-            } catch (err) {
-              console.error("Error parsing SSE chunk:", err);
-            }
-          }
-        }
-      },
-      flush(controller) {
-        if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer.trim());
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
-          } catch (err) {
-            console.error("Error parsing final SSE chunk:", err);
-          }
-        }
-        buffer = "";
-      }
-    });
-
-    return new Response(analysisResponse.body?.pipeThrough(transformStream), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
-    });
+    console.log("Stream response started, beginning stream processing")
+    
+    if (isFollowUp) {
+      // For follow-up questions, we need to accumulate the entire response to parse the JSON
+      return streamProcessor(response.body, marketId, true)
+    } else {
+      // For analysis, we stream directly to the client
+      return streamProcessor(response.body, marketId, false)
+    }
   } catch (error) {
-    console.error("Function error:", error);
+    console.error("Function error:", error.message)
     return new Response(
-      JSON.stringify({
-        error: error.message,
-        details: error instanceof Error ? error.stack : "Unknown error"
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
       }
-    );
+    )
   }
-});
+})

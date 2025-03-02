@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const navigateToExtension = (extension: QANode) => {
     setNavigationHistory(prev => [...prev, qaData]);
@@ -371,20 +373,31 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         [nodeId]: { content: '', citations: [] },
       }));
 
+      // Cancel any existing ongoing stream requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Create a new AbortController for this request
+      abortControllerRef.current = new AbortController();
+
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
+      // Updated to specify Gemini model via OpenRouter
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
           question, 
           isFollowUp: false,
           marketQuestion,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true,  // Flag to use OpenRouter
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
             areasForResearch: selectedResearchData.areas_for_research
           } : null
-        }),
+        })
       });
       
       if (analysisError) throw analysisError;
@@ -418,6 +431,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       await evaluateQAPair(currentNode);
 
       if (!parentId) {
+        // Updated to specify Gemini model for follow-up questions
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({ 
             marketId, 
@@ -425,6 +439,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             parentContent: analysis, 
             isFollowUp: true,
             marketQuestion,
+            model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+            useOpenRouter: true,  // Flag to use OpenRouter
             researchContext: selectedResearchData ? {
               analysis: selectedResearchData.analysis,
               probability: selectedResearchData.probability,
@@ -607,8 +623,17 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       setQaData([newRootNode]);
 
+      // Cancel any existing ongoing stream requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Create a new AbortController for this request
+      abortControllerRef.current = new AbortController();
+
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
+      // Updated to specify Gemini model via OpenRouter
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
@@ -616,12 +641,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           isFollowUp: false,
           historyContext,
           marketQuestion,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true,  // Flag to use OpenRouter
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
             areasForResearch: selectedResearchData.areas_for_research
           } : null
-        }),
+        })
       });
       
       if (analysisError) throw analysisError;
@@ -631,6 +658,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const analysis = await processStream(reader, nodeId);
 
+      // Updated to specify Gemini model for follow-up questions
       const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
@@ -639,12 +667,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           historyContext,
           marketQuestion,
           isFollowUp: true,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true,  // Flag to use OpenRouter
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
             areasForResearch: selectedResearchData.areas_for_research
           } : null
-        }),
+        })
       });
       
       if (followUpError) throw followUpError;
@@ -670,6 +700,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     } finally {
       setIsAnalyzing(false);
       setCurrentNodeId(null);
+      // Clear the abort controller when done
+      abortControllerRef.current = null;
     }
   };
 
@@ -693,7 +725,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const { data, error } = await supabase.functions.invoke('evaluate-qa-pair', {
         body: { 
           question: node.question,
-          analysis: node.analysis
+          analysis: node.analysis,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true  // Flag to use OpenRouter
         }
       });
 
