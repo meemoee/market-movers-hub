@@ -16,7 +16,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
       const scrollContainer = scrollRef.current
       scrollContainer.scrollTop = scrollContainer.scrollHeight
     }
-  }, [content])
+  }, [content]) // This will trigger whenever content changes, even partial updates
 
   if (!content) return null;
 
