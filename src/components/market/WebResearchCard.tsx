@@ -344,7 +344,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       const currentAnalysis = await processAnalysisStream(analysisReader)
       
-      // Update iterations with the new data
       setIterations(prev => [
         ...prev, 
         {
@@ -362,14 +361,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."])
         
         try {
-          // Collect previous iterations' analysis for better context
           const previousAnalysis = iterations.map(iter => ({
             iteration: iter.iteration,
             analysis: iter.analysis,
             queries: iter.queries
           }));
           
-          // Create a more comprehensive context for the next query generation
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
             body: JSON.stringify({ 
               query: description,
@@ -396,7 +393,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
           setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
           
-          // Display new queries immediately and set them as current
           setCurrentQueries(refinedQueriesData.queries);
           setCurrentQueryIndex(-1);
           
@@ -523,13 +519,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
       
-      // Set the current queries for display
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
       
-      // Ensure queries don't exceed reasonable length - shorter queries are processed faster
       const shortenedQueries = queries.map(query => {
-        // Remove any accidental market ID and limit query length
         const cleanedQuery = query.replace(new RegExp(` ${marketId}$`), '');
         if (cleanedQuery.length > 200) {
           return cleanedQuery.substring(0, 200);
@@ -612,17 +605,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   console.log("Received message:", parsed.message)
                   messageCount++;
                   
-                  // Extract and update current query index
                   const queryMatch = parsed.message.match(/processing query (\d+)\/\d+: (.*)/i);
                   if (queryMatch && queryMatch[1] && queryMatch[2]) {
                     const queryIndex = parseInt(queryMatch[1], 10) - 1;
                     setCurrentQueryIndex(queryIndex);
                     
-                    // Display clean query without market ID
                     const cleanQueryText = queryMatch[2].replace(new RegExp(` ${marketId}$`), '');
                     setProgress(prev => [...prev, `Iteration ${iteration}: Searching "${cleanQueryText}"`]);
                   } else {
-                    // Fallback for other messages
                     setProgress(prev => [...prev, parsed.message]);
                   }
                 } else if (parsed.type === 'error' && parsed.message) {
@@ -697,7 +687,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             query: description,
             marketId: marketId,
             marketDescription: description,
-            question: description
+            question: description,
+            isInitialQuery: true
           })
         });
 
@@ -713,13 +704,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           throw new Error('Invalid queries response')
         }
 
-        // Filter out any queries that might have accidental market ID appended
         const cleanQueries = queriesData.queries.map(q => q.replace(new RegExp(` ${marketId}$`), ''));
         
         console.log("Generated clean queries:", cleanQueries)
         setProgress(prev => [...prev, `Generated ${cleanQueries.length} search queries`])
         
-        // Set current queries immediately for display
         setCurrentQueries(cleanQueries);
         
         cleanQueries.forEach((query: string, index: number) => {
@@ -745,7 +734,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               `${description.split(' ').slice(0, 8).join(' ')} prediction`
             ];
         
-        // Set fallback queries for display
         setCurrentQueries(fallbackQueries);
         
         setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
