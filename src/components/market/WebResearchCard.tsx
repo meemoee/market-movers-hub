@@ -350,8 +350,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 const { content } = cleanStreamContent(jsonStr)
                 if (content) {
                   console.log("Received content chunk:", content.substring(0, 50) + "...")
-                  // Add the new content to progress updates to help debug
-                  setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
+                  // Remove this line that adds content chunks to progress updates
+                  // setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
                   
                   accumulatedContent += content;
                   iterationAnalysis += content; // Save for iterations array too
