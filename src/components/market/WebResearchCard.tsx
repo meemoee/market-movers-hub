@@ -1070,32 +1070,39 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <ProgressDisplay messages={progress} />
       
       {iterations.length > 0 && (
-        <div className="border rounded-md">
-          <Accordion type="multiple" value={expandedIterations} className="w-full">
-            {iterations.map((iter) => (
-              <AccordionItem 
-                key={`iteration-${iter.iteration}`} 
-                value={`iteration-${iter.iteration}`}
-                className={iter.iteration === maxIterations ? "border-b-0" : ""}
-              >
-                <AccordionTrigger className="px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
-                           className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
-                      Iteration {iter.iteration}
-                      {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
-                    </Badge>
-                    <span className="text-sm">
-                      {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
-                    </span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  {renderIterationContent(iter)}
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+        <div className="border rounded-md overflow-hidden">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
+            <Accordion 
+              type="multiple" 
+              value={expandedIterations} 
+              onValueChange={setExpandedIterations}
+              className="w-full"
+            >
+              {iterations.map((iter) => (
+                <AccordionItem 
+                  key={`iteration-${iter.iteration}`} 
+                  value={`iteration-${iter.iteration}`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
+                >
+                  <AccordionTrigger className="px-2 py-2 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
+                             className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
+                        Iteration {iter.iteration}
+                        {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
+                      </Badge>
+                      <span className="text-sm">
+                        {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-2 pb-2">
+                    {renderIterationContent(iter)}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </ScrollArea>
         </div>
       )}
 
