@@ -282,7 +282,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           query: description,
           question: description,
           marketId: marketId,
-          marketDescription: description
+          marketDescription: description,
+          previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+          areasForResearch: streamingState.parsedData?.areasForResearch || []
         })
       })
 
@@ -294,6 +296,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log("Received response from analyze-web-content")
 
       let accumulatedContent = '';
+      let iterationAnalysis = ''; // For storing in the iterations array
       
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
@@ -324,7 +327,32 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 if (content) {
                   console.log("Received content chunk:", content.substring(0, 50) + "...")
                   accumulatedContent += content;
+                  iterationAnalysis += content; // Save for iterations array too
                   setAnalysis(accumulatedContent);
+                  
+                  // Store the current iteration analysis in real-time
+                  setIterations(prev => {
+                    const updatedIterations = [...prev];
+                    const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+                    
+                    if (currentIterIndex >= 0) {
+                      // Update existing iteration
+                      updatedIterations[currentIterIndex] = {
+                        ...updatedIterations[currentIterIndex],
+                        analysis: iterationAnalysis
+                      };
+                    } else if (iteration <= prev.length + 1) {
+                      // Add new iteration
+                      updatedIterations.push({
+                        iteration,
+                        queries: currentQueries,
+                        results: iterationResults,
+                        analysis: iterationAnalysis
+                      });
+                    }
+                    
+                    return updatedIterations;
+                  });
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)
@@ -344,15 +372,29 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       const currentAnalysis = await processAnalysisStream(analysisReader)
       
-      setIterations(prev => [
-        ...prev, 
-        {
-          iteration,
-          queries: currentQueries,
-          results: iterationResults,
-          analysis: currentAnalysis
+      // Final update to the iterations array with the complete analysis
+      setIterations(prev => {
+        const updatedIterations = [...prev];
+        const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+        
+        if (currentIterIndex >= 0) {
+          // Update existing iteration
+          updatedIterations[currentIterIndex] = {
+            ...updatedIterations[currentIterIndex],
+            analysis: iterationAnalysis
+          };
+        } else {
+          // Add new iteration if it doesn't exist
+          updatedIterations.push({
+            iteration,
+            queries: currentQueries,
+            results: iterationResults,
+            analysis: iterationAnalysis
+          });
         }
-      ])
+        
+        return updatedIterations;
+      });
       
       if (iteration === maxIterations) {
         setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
@@ -368,7 +410,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               iteration: iteration,
               marketId: marketId,
               marketDescription: description,
-              areasForResearch: streamingState.parsedData?.areasForResearch || []
+              areasForResearch: streamingState.parsedData?.areasForResearch || [],
+              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n')
             })
           })
 
@@ -807,6 +850,55 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     );
   };
 
+  const renderIterationContent = (iter: ResearchIteration) => {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h4 className="text-sm font-medium mb-2">Search Queries</h4>
+          <div className="flex flex-wrap gap-2">
+            {iter.queries.map((query, idx) => (
+              <Badge key={idx} variant="secondary" className="text-xs">
+                {query}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        
+        {iter.results.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
+            <ScrollArea className="h-[150px] rounded-md border">
+              <div className="p-4 space-y-2">
+                {iter.results.map((result, idx) => (
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                    <a 
+                      href={result.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline truncate block"
+                    >
+                      {result.title || result.url}
+                    </a>
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                      {result.content?.substring(0, 150)}...
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+        
+        <div>
+          <h4 className="text-sm font-medium mb-2">Analysis</h4>
+          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
+            <AnalysisDisplay content={iter.analysis} />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -911,8 +1003,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               >
                 <AccordionTrigger className="px-4 py-2">
                   <div className="flex items-center gap-2">
-                    <Badge variant={iter.iteration === maxIterations ? "default" : "outline"}>
+                    <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
+                           className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
                       Iteration {iter.iteration}
+                      {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
                     </Badge>
                     <span className="text-sm">
                       {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
@@ -920,50 +1014,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   </div>
                 </AccordionTrigger>
                 <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Search Queries</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {iter.queries.map((query, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {query}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    {iter.results.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
-                        <ScrollArea className="h-[150px] rounded-md border">
-                          <div className="p-4 space-y-2">
-                            {iter.results.map((result, idx) => (
-                              <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
-                                <a 
-                                  href={result.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-primary hover:underline truncate block"
-                                >
-                                  {result.title || result.url}
-                                </a>
-                                <p className="mt-1 line-clamp-2 text-muted-foreground">
-                                  {result.content?.substring(0, 150)}...
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </div>
-                    )}
-                    
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Analysis</h4>
-                      <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
-                        <AnalysisDisplay content={iter.analysis} />
-                      </div>
-                    </div>
-                  </div>
+                  {renderIterationContent(iter)}
                 </AccordionContent>
               </AccordionItem>
             ))}
