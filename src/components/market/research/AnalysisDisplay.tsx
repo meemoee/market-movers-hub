@@ -44,14 +44,16 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
   if (!content) return null
 
   return (
-    <div className="relative">
+    <div className="relative w-full overflow-hidden">
       <ScrollArea 
-        className="h-[200px] rounded-md border p-4 bg-accent/5"
+        className="h-[200px] rounded-md border p-4 bg-accent/5 max-w-full"
         ref={scrollRef}
       >
-        <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
-          {content}
-        </ReactMarkdown>
+        <div className="max-w-full break-words">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none overflow-hidden break-words">
+            {content}
+          </ReactMarkdown>
+        </div>
       </ScrollArea>
       
       {isStreaming && (
