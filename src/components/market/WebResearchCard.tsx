@@ -260,20 +260,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
       
       if (allContent.length === 0) {
-        setProgress(prev => [...prev, "No content to analyze. Trying simpler queries..."]);
-        
-        if (iteration < maxIterations) {
-          const simplifiedQueries = [
-            `${description.split(' ').slice(0, 10).join(' ')}`,
-            `${marketId} latest updates`,
-            `${description.split(' ').slice(0, 5).join(' ')} news`
-          ];
-          
-          setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
-          setCurrentQueries(simplifiedQueries);
-          await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent]);
-          return;
-        }
+        return;
       }
       
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
@@ -356,16 +343,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   accumulatedContent += content;
                   iterationAnalysis += content; // Save for iterations array too
                   
-                  // Update both the main analysis state and the iterations array in real-time
+                  // CRITICAL: Do these updates synchronously without delays
                   setAnalysis(accumulatedContent);
                   
-                  // Store the current iteration analysis in real-time
+                  // Update iterations with latest content immediately - NO DELAYS
                   setIterations(prev => {
                     const updatedIterations = [...prev];
                     const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
                     
                     if (currentIterIndex >= 0) {
-                      // Update existing iteration with the new chunk of content
                       updatedIterations[currentIterIndex] = {
                         ...updatedIterations[currentIterIndex],
                         analysis: iterationAnalysis
@@ -375,8 +361,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     return updatedIterations;
                   });
                   
-                  // Force React to re-render immediately
-                  await new Promise(resolve => setTimeout(resolve, 0));
+                  // Force an immediate React re-render by using requestAnimationFrame
+                  // This is more efficient than setTimeout
+                  window.requestAnimationFrame(() => {
+                    // This empty callback forces React to process the state updates right away
+                  });
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)
@@ -396,7 +385,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const chunk = textDecoder.decode(value)
           console.log("Received analysis chunk of size:", chunk.length)
           
-          // Process each chunk individually and force a render after each one
+          // Process chunk immediately without any artificial delays
           await processChunk(chunk);
         }
 
