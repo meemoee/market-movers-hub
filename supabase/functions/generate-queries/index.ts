@@ -1,106 +1,160 @@
 
-// deno-lint-ignore-file no-explicit-any
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { corsHeaders } from '../_shared/cors.ts'
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 
 interface RequestBody {
-  marketId: string;
+  query?: string;
+  marketDescription?: string;
+  previousResults?: string;
+  iteration?: number;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: corsHeaders
-    });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    const { marketId } = await req.json() as RequestBody;
+    // Get the request body
+    const requestData: RequestBody = await req.json()
+    const { query, marketDescription, previousResults, iteration = 0 } = requestData
     
-    console.log('Processing market query generation for:', marketId);
-
-    // Get market details
-    const { data: marketData, error: marketError } = await supabase
-      .from('markets')
-      .select('question, description')
-      .eq('id', marketId)
-      .single();
-
-    if (marketError || !marketData) {
-      console.error('Error fetching market data:', marketError);
+    if (!query && !marketDescription) {
       return new Response(
-        JSON.stringify({ error: `Failed to fetch market: ${marketError?.message || 'Unknown error'}` }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-      );
+        JSON.stringify({ error: 'Missing query or market description parameter' }),
+        { 
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
     }
 
-    const marketQuestion = marketData.question || '';
-    const marketDescription = marketData.description || '';
-    
-    console.log('Market details for query generation:', { 
-      question: marketQuestion,
-      hasDescription: Boolean(marketDescription),
-      descriptionLength: marketDescription?.length
-    });
+    const marketQuery = query || marketDescription || ''
+    console.log(`Generating queries for: ${marketQuery.substring(0, 100)}${marketQuery.length > 100 ? '...' : ''}`)
 
-    // Generate queries based only on market question and description, not the ID
-    let queries = [];
-    
-    // Remove any mention of "Yes" from the title and make it a standalone query
-    const cleanedTitle = marketQuestion.replace(/Will|Does|Is|Are|Can|Could|Should|Would|Do|Did|Has|Have|Had|May|Might|Must|Shall|When|Where|Which|Who|Whom|Whose|Why|How/i, '').trim();
-    const simplifiedTitle = cleanedTitle.replace(/\?$/, '').trim();
-    
-    queries.push(simplifiedTitle);
-    
-    // Add title with "latest news" for recency
-    queries.push(`${simplifiedTitle} latest news`);
-    
-    // Add title with "prediction" or "forecast" for prediction-focused content
-    queries.push(`${simplifiedTitle} prediction`);
-    
-    // Add title with "analysis" for analytical content
-    queries.push(`${simplifiedTitle} analysis`);
-    
-    // If there's a description, extract key elements for additional queries
-    if (marketDescription) {
-      // Clean the description and extract key phrases
-      const keyPhrases = marketDescription
-        .split(/[.!?]/)
-        .map(phrase => phrase.trim())
-        .filter(phrase => phrase.length > 15 && phrase.length < 150);
-      
-      // Add up to 2 key phrases from the description
-      for (let i = 0; i < Math.min(2, keyPhrases.length); i++) {
-        queries.push(keyPhrases[i]);
+    // Determine the system prompt based on iteration
+    let systemPrompt = 'You are a helpful research assistant that generates effective search queries.'
+    let userPrompt = ''
+
+    if (iteration > 0 && previousResults) {
+      systemPrompt = 'You are a helpful research assistant that refines search queries based on previous search results.'
+      userPrompt = `
+Based on the market question: "${marketQuery}"
+
+And the previous search results:
+${previousResults}
+
+I need ${iteration > 2 ? '3' : '5'} refined search queries that will help fill the gaps in our research. Focus on aspects that were not covered well in the previous results. 
+Return ONLY the search queries as a JSON array with no additional text.
+`
+    } else {
+      userPrompt = `
+I need to research this market question: "${marketQuery}"
+
+Generate ${iteration > 0 ? '3' : '5'} effective search queries that will help me gather information to answer this question.
+The queries should be diverse and cover different aspects of the question.
+Return ONLY the search queries as a JSON array with no additional text.
+`
+    }
+
+    // Make request to OpenRouter API
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://fastrepl.com',
+        'X-Title': 'FastRepl',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-pro',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: userPrompt
+          }
+        ],
+        temperature: 0.7,
+      }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.text()
+      console.error('OpenRouter API error:', errorData)
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log('OpenRouter response:', JSON.stringify(data))
+
+    if (!data.choices || !data.choices[0] || !data.choices[0].message || !data.choices[0].message.content) {
+      throw new Error('Invalid response from OpenRouter API')
+    }
+
+    let queriesText = data.choices[0].message.content.trim()
+    console.log('Queries text:', queriesText)
+
+    // Extract JSON array from the response if needed
+    let queries: string[] = []
+    try {
+      // Try to parse as JSON directly
+      queries = JSON.parse(queriesText)
+    } catch (e) {
+      // If that fails, try to extract JSON from the text
+      const jsonMatch = queriesText.match(/\[[\s\S]*\]/)
+      if (jsonMatch) {
+        try {
+          queries = JSON.parse(jsonMatch[0])
+        } catch (e2) {
+          // If still fails, split by newline and clean up
+          queries = queriesText
+            .split('\n')
+            .map(line => line.replace(/^["'\d\.\s-]*/, '').trim())
+            .filter(line => line.length > 0 && !line.startsWith('[') && !line.startsWith(']'))
+            .slice(0, 5)
+        }
+      } else {
+        // Split by newline and clean up
+        queries = queriesText
+          .split('\n')
+          .map(line => line.replace(/^["'\d\.\s-]*/, '').trim())
+          .filter(line => line.length > 0 && !line.startsWith('[') && !line.startsWith(']'))
+          .slice(0, 5)
       }
     }
-    
-    // Remove any empty queries and limit to max 5 queries
-    queries = queries
-      .filter(q => q.length > 0 && q.length < 150)
-      .slice(0, 5);
-    
-    console.log('Generated queries:', queries);
+
+    // Ensure we have at least some queries
+    if (queries.length === 0) {
+      queries = [
+        marketQuery,
+        `${marketQuery} analysis`,
+        `${marketQuery} prediction`
+      ]
+    }
+
+    console.log('Final queries:', queries)
 
     return new Response(
-      JSON.stringify(queries),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+      JSON.stringify({ queries }),
+      { 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
   } catch (error) {
-    console.error('Error generating queries:', error);
+    console.error('Error in generate-queries function:', error)
     return new Response(
-      JSON.stringify({ error: `Server error: ${error.message}` }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
-    );
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
   }
-});
+})

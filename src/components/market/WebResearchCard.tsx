@@ -278,7 +278,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           content: allContent.join('\n\n'),
           query: description,
           question: description,
-          marketId: marketId,
           marketDescription: description
         }
       })
