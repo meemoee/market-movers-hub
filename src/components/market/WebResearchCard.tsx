@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -37,7 +38,7 @@ interface WebResearchCardProps {
   marketId: string;
 }
 
-export interface ResearchResult {
+interface ResearchResult {
   url: string;
   content: string;
   title?: string;
@@ -322,11 +323,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return updatedIterations;
       });
       
-      // Make sure the iteration is expanded when starting analysis
-      if (!expandedIterations.includes(`iteration-${iteration}`)) {
-        setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
-      }
-      
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
         let buffer = '';
@@ -377,9 +373,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     return updatedIterations;
                   });
                   
-                  // Add each content chunk to progress messages to make streaming visible
-                  if (content.length > 0) {
-                    setProgress(prev => [...prev, `Analyzing: ${content.substring(0, 60)}${content.length > 60 ? '...' : ''}`]);
+                  // Make sure the iteration is expanded when streaming analysis
+                  if (!expandedIterations.includes(`iteration-${iteration}`)) {
+                    setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
                   }
                 }
               } catch (e) {
@@ -412,6 +408,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             analysis: iterationAnalysis
           };
         } else {
+          // Add new iteration if it doesn't exist
           updatedIterations.push({
             iteration,
             queries: currentQueries,
@@ -938,16 +935,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             <div 
               key={index} 
               className={`flex items-center gap-2 p-2 rounded-md text-sm ${
-                currentQueryIndex === index ? 'bg-primary/10 text-primary' : 'bg-muted/30'
+                currentQueryIndex === index ? 'bg-primary/10 border border-primary/30' : 'border border-transparent'
               }`}
             >
-              <span className="w-5 h-5 flex items-center justify-center rounded-full bg-muted text-xs">
-                {index + 1}
-              </span>
-              <span className="flex-1">{query}</span>
               {currentQueryIndex === index && (
-                <span className="animate-pulse text-xs text-primary">Processing...</span>
+                <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
               )}
+              <span className={currentQueryIndex === index ? 'font-medium' : ''}>
+                {index + 1}. {query}
+              </span>
             </div>
           ))}
         </div>
@@ -955,43 +951,90 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     );
   };
 
+  const renderIterationContent = (iter: ResearchIteration) => {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h4 className="text-sm font-medium mb-2">Search Queries</h4>
+          <div className="flex flex-wrap gap-2">
+            {iter.queries.map((query, idx) => (
+              <Badge key={idx} variant="secondary" className="text-xs">
+                {query}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        
+        {iter.results.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
+            <ScrollArea className="h-[150px] rounded-md border">
+              <div className="p-4 space-y-2">
+                {iter.results.map((result, idx) => (
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                    <a 
+                      href={result.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline truncate block"
+                    >
+                      {result.title || result.url}
+                    </a>
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                      {result.content?.substring(0, 150)}...
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+        
+        <div>
+          <h4 className="text-sm font-medium mb-2">Analysis</h4>
+          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
+            <AnalysisDisplay content={iter.analysis || "Analysis in progress..."} />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <Card className="flex flex-col shadow-sm relative overflow-hidden dark:bg-blue-950/10">
-      <div className="p-4 border-b flex justify-between items-center">
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
         <ResearchHeader 
-          isLoading={isLoading} 
+          isLoading={isLoading}
           isAnalyzing={isAnalyzing}
-          onResearch={handleResearch} 
+          onResearch={handleResearch}
         />
         
-        <div className="flex items-center space-x-2">
+        <div className="flex space-x-2">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-7 w-7">
+              <Button variant="outline" size="icon">
                 <Settings className="h-4 w-4" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80" align="end">
+            <PopoverContent className="w-80">
               <div className="space-y-4">
-                <div>
-                  <h4 className="font-medium mb-2 text-sm">Search Iterations</h4>
-                  <p className="text-xs text-muted-foreground mb-2">
-                    Control how many iterations of research to perform
-                  </p>
+                <h4 className="font-medium text-sm">Research Settings</h4>
+                <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Slider
-                      value={[maxIterations]}
-                      min={1}
-                      max={5}
-                      step={1}
-                      onValueChange={(val) => setMaxIterations(val[0])}
-                      className="w-[60%]"
-                      disabled={isLoading || isAnalyzing}
-                    />
-                    <span className="bg-muted text-foreground px-2 py-1 rounded-md text-xs">
-                      {maxIterations} iterations
-                    </span>
+                    <span className="text-sm">Number of Iterations</span>
+                    <span className="text-sm font-medium">{maxIterations}</span>
                   </div>
+                  <Slider
+                    value={[maxIterations]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={(values) => setMaxIterations(values[0])}
+                    disabled={isLoading || isAnalyzing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Higher values will provide more thorough research but take longer to complete.
+                  </p>
                 </div>
               </div>
             </PopoverContent>
@@ -1000,25 +1043,24 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           {savedResearch && savedResearch.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  History <ChevronDown className="ml-1 h-4 w-4" />
+                <Button variant="outline">
+                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[240px]">
-                <DropdownMenuLabel>Saved Research</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-[300px]">
+                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 {savedResearch.map((research) => (
                   <DropdownMenuItem 
                     key={research.id}
                     onClick={() => loadSavedResearch(research)}
+                    className="flex flex-col items-start"
                   >
-                    <div>
-                      <div className="font-medium">
-                        {format(new Date(research.created_at), 'PPP p')}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {research.sources.length} sources • {research.areas_for_research.length} insights
-                      </div>
+                    <div className="font-medium truncate w-full">
+                      {research.query}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
                     </div>
                   </DropdownMenuItem>
                 ))}
@@ -1027,131 +1069,114 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           )}
         </div>
       </div>
-      
+
       {error && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 text-sm">
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
           {error}
-        </div>  
+        </div>
+      )}
+
+      {currentIteration > 0 && (
+        <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
+          <div 
+            className="bg-primary h-full transition-all duration-500 ease-in-out"
+            style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>Iteration {currentIteration} of {maxIterations}</span>
+            <span>{Math.round((currentIteration / maxIterations) * 100)}% complete</span>
+          </div>
+        </div>
+      )}
+
+      {(isLoading || isAnalyzing) && renderQueryDisplay()}
+
+      <ProgressDisplay messages={progress} />
+      
+      {iterations.length > 0 && (
+        <div className="border rounded-md overflow-hidden">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
+            <Accordion 
+              type="multiple" 
+              value={expandedIterations} 
+              onValueChange={setExpandedIterations}
+              className="w-full"
+            >
+              {iterations.map((iter) => (
+                <AccordionItem 
+                  key={`iteration-${iter.iteration}`} 
+                  value={`iteration-${iter.iteration}`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
+                >
+                  <AccordionTrigger className="px-2 py-2 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
+                             className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
+                        Iteration {iter.iteration}
+                        {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
+                      </Badge>
+                      <span className="text-sm">
+                        {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-2 pb-2">
+                    {renderIterationContent(iter)}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </ScrollArea>
+        </div>
+      )}
+
+      {streamingState.parsedData && (
+        <div className="border rounded-md p-4 mt-4">
+          <h3 className="text-lg font-medium mb-2">Final Research Analysis</h3>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Probability Estimate</h4>
+              <div className="text-xl font-semibold">
+                {streamingState.parsedData.probability}
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-2">Areas Needing Further Research</h4>
+              <ScrollArea className="h-[200px] w-full rounded border p-2">
+                <div className="space-y-2">
+                  {streamingState.parsedData.areasForResearch.map((area, index) => (
+                    <div key={index} className="p-2 bg-accent/20 rounded">
+                      {index + 1}. {area}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+        </div>
       )}
       
-      <div className="flex-1 overflow-hidden grid grid-cols-1 md:grid-cols-2">
-        <div className="flex flex-col border-r">
-          <div className="p-4 border-b">
-            <ProgressDisplay 
-              progress={progress} 
-            />
+      <InsightsDisplay 
+        probability={streamingState.parsedData?.probability || ""} 
+        areasForResearch={streamingState.parsedData?.areasForResearch || []} 
+      />
+
+      {results.length > 0 && !iterations.length && (
+        <>
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-medium mb-2">Search Results</h3>
+            <SitePreviewList results={results} />
           </div>
           
-          <div className="flex-1 overflow-auto p-4">
-            {renderQueryDisplay()}
-            
-            {iterations.length > 0 ? (
-              <Accordion
-                type="multiple"
-                value={expandedIterations}
-                className="space-y-4"
-              >
-                {iterations.map((iteration) => (
-                  <AccordionItem 
-                    key={`iteration-${iteration.iteration}`} 
-                    value={`iteration-${iteration.iteration}`}
-                    className="border rounded-md overflow-hidden"
-                  >
-                    <AccordionTrigger className="px-4 py-2 hover:no-underline">
-                      <span className="flex items-center text-sm font-medium">
-                        <Badge variant="outline" className="mr-2">
-                          Iteration {iteration.iteration}
-                        </Badge>
-                        <span>
-                          {iteration.queries.length} queries • {iteration.results.length} results
-                        </span>
-                      </span>
-                    </AccordionTrigger>
-                    <AccordionContent className="pt-0">
-                      <div className="text-sm space-y-2">
-                        <div className="border-t px-4 py-3 bg-muted/30">
-                          <h4 className="font-medium text-xs mb-2">Search Queries:</h4>
-                          <div className="space-y-1">
-                            {iteration.queries.map((query, index) => (
-                              <div key={index} className="flex text-xs">
-                                <span className="w-5 flex-shrink-0">{index + 1}.</span>
-                                <span>{query}</span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        <div className="border-t px-4 py-3">
-                          <h4 className="font-medium text-xs mb-2">Sources ({iteration.results.length}):</h4>
-                          <div className="space-y-1 text-xs">
-                            {iteration.results.map((result, index) => (
-                              <div key={index} className="flex gap-1 items-center">
-                                <span className="w-5 flex-shrink-0">{index + 1}.</span>
-                                <a 
-                                  href={result.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  className="text-blue-600 dark:text-blue-400 hover:underline truncate"
-                                >
-                                  {result.title || result.url}
-                                </a>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        <div className="border-t px-4 py-3">
-                          <h4 className="font-medium text-xs mb-2">Analysis:</h4>
-                          <ScrollArea className="h-[300px] rounded-md border p-3">
-                            <AnalysisDisplay content={iteration.analysis || "Analyzing content..."} />
-                          </ScrollArea>
-                        </div>
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            ) : (
-              results.length > 0 && (
-                <SitePreviewList results={results} />
-              )
-            )}
-          </div>
-        </div>
-        
-        <div className="flex flex-col">
-          <div className="flex-1 overflow-auto">
-            {analysis ? (
-              <div className="p-4">
-                <h3 className="font-medium text-lg mb-3">Analysis</h3>
-                <ScrollArea className="h-[calc(100vh-320px)] rounded-md border p-4">
-                  <AnalysisDisplay content={analysis} />
-                </ScrollArea>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full p-8 text-center">
-                <div className="max-w-md">
-                  <h3 className="text-lg font-medium mb-2">
-                    {isLoading ? "Researching..." : "Start Research"}
-                  </h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    {isLoading 
-                      ? "Searching the web for information..."
-                      : "Click Research to analyze this market with AI-powered web research."
-                    }
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          {streamingState.parsedData && (
-            <div className="border-t p-4">
-              <InsightsDisplay streamingState={streamingState} />
+          {analysis && (
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-medium mb-2">Analysis</h3>
+              <AnalysisDisplay content={analysis} />
             </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
     </Card>
-  )
+  );
 }
