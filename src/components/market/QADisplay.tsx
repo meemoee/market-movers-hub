@@ -1,4 +1,4 @@
-<lov-code>
+
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -641,10 +641,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       if (analysisError) throw analysisError;
 
-      const reader = new Response(analysisData.body).body?.getReader();
-      if (!reader) throw new Error('Failed to create reader');
-
-      const analysis = await processStream(reader, nodeId);
+      const analysis = await processStreamFromOpenRouter(nodeId, analysisData.body);
 
       const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
@@ -779,7 +776,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       em: ({ children }) => <em className="italic">{children}</em>,
       strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
       h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h1>,
+      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
       h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
       hr: () => <hr className="my-4 border-muted" />,
     };
@@ -904,3 +901,102 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             variant="outline" 
             size="sm"
             onClick={navigateBack}
+            className="mb-2 sm:mb-0"
+          >
+            ← Back 
+          </Button>
+        )}
+        
+        <div className="flex-1 flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div className="w-full sm:max-w-[200px]">
+            <Select value={selectedResearch} onValueChange={setSelectedResearch}>
+              <SelectTrigger className="w-full text-xs h-9">
+                <SelectValue placeholder="Select research context" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No research context</SelectItem>
+                {savedResearch?.map(research => (
+                  <SelectItem 
+                    key={research.id} 
+                    value={research.id}
+                  >
+                    {new Date(research.created_at).toLocaleString()} ({research.probability.toFixed(2)}%)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="w-full sm:max-w-[200px]">
+            <Select 
+              value={selectedQATree} 
+              onValueChange={(value) => {
+                setSelectedQATree(value);
+                if (value !== 'none') {
+                  const tree = savedQATrees?.find(t => t.id === value);
+                  if (tree) {
+                    loadSavedQATree(tree.tree_data);
+                  }
+                } else {
+                  setQaData([]);
+                  setRootExtensions([]);
+                }
+              }}
+            >
+              <SelectTrigger className="w-full text-xs h-9">
+                <SelectValue placeholder="Select saved analysis" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">New analysis</SelectItem>
+                {savedQATrees?.map(tree => (
+                  <SelectItem key={tree.id} value={tree.id}>
+                    {new Date(tree.created_at).toLocaleString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex gap-2 mt-2 sm:mt-0 w-full sm:w-auto">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleAnalyze} 
+              disabled={isAnalyzing || !marketQuestion}
+              className="w-full sm:w-auto"
+            >
+              {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+            </Button>
+            
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={saveQATree} 
+              disabled={qaData.length === 0 || isAnalyzing}
+              className="w-full sm:w-auto"
+            >
+              Save Analysis
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {qaData.length === 0 ? (
+        <div className="text-center py-8 text-muted-foreground">
+          {isAnalyzing ? (
+            <div className="flex flex-col items-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
+              <p>Analyzing market question...</p>
+            </div>
+          ) : (
+            <p>Start an analysis to generate an explanation tree</p>  
+          )}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {qaData.map(node => renderQANode(node))}
+        </div>
+      )}
+    </Card>
+  );
+}
