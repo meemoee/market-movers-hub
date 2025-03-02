@@ -1149,33 +1149,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </ScrollArea>
         </div>
       )}
-
-      {streamingState.parsedData && (
-        <div className="border rounded-md p-4 mt-4">
-          <h3 className="text-lg font-medium mb-2">Final Research Analysis</h3>
-          <div className="space-y-4">
-            <div>
-              <h4 className="text-sm font-medium mb-2">Probability Estimate</h4>
-              <div className="text-xl font-semibold">
-                {streamingState.parsedData.probability}
-              </div>
-            </div>
-            
-            <div>
-              <h4 className="text-sm font-medium mb-2">Areas Needing Further Research</h4>
-              <ScrollArea className="h-[200px] w-full rounded border p-2">
-                <div className="space-y-2">
-                  {streamingState.parsedData.areasForResearch.map((area, index) => (
-                    <div key={index} className="p-2 bg-accent/20 rounded">
-                      {index + 1}. {area}
-                    </div>
-                  ))}
-                </div>
-              </ScrollArea>
-            </div>
-          </div>
-        </div>
-      )}
       
       <InsightsDisplay 
         probability={streamingState.parsedData?.probability || ""} 
