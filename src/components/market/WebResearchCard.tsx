@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -87,6 +88,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [currentIteration, setCurrentIteration] = useState(0)
   const [iterations, setIterations] = useState<ResearchIteration[]>([])
   const [expandedIterations, setExpandedIterations] = useState<string[]>(['iteration-1'])
+  const [currentQueries, setCurrentQueries] = useState<string[]>([])
+  const [currentQueryIndex, setCurrentQueryIndex] = useState<number>(-1)
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -268,19 +271,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           ];
           
           setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
+          setCurrentQueries(simplifiedQueries);
           await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent]);
           return;
         }
       }
       
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
-        body: { 
+        body: JSON.stringify({ 
           content: allContent.join('\n\n'),
           query: description,
           question: description,
           marketId: marketId,
           marketDescription: description
-        }
+        })
       })
 
       if (analysisResponse.error) {
@@ -359,13 +363,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         try {
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-            body: { 
+            body: JSON.stringify({ 
               query: description,
               previousResults: currentAnalysis,
               iteration: iteration,
               marketId: marketId,
               marketDescription: description
-            }
+            })
           })
 
           if (refinedQueriesError) {
@@ -380,6 +384,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
           console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
           setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
+          
+          // Display new queries immediately and set them as current
+          setCurrentQueries(refinedQueriesData.queries);
+          setCurrentQueryIndex(-1);
           
           refinedQueriesData.queries.forEach((query: string, index: number) => {
             setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
@@ -396,6 +404,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           ]
           
           setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
+          setCurrentQueries(fallbackQueries);
           await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
         }
       }
@@ -503,6 +512,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
       
+      // Set the current queries for display
+      setCurrentQueries(queries);
+      setCurrentQueryIndex(-1);
+      
       const shortenedQueries = queries.map(query => {
         if (query.length > 390) {
           const keywords = query.split(/[.!?]/)
@@ -515,11 +528,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       });
       
       const response = await supabase.functions.invoke('web-scrape', {
-        body: { 
+        body: JSON.stringify({ 
           queries: shortenedQueries,
           marketId: marketId,
           marketDescription: description
-        }
+        })
       })
 
       if (response.error) {
@@ -588,6 +601,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 } else if (parsed.type === 'message' && parsed.message) {
                   console.log("Received message:", parsed.message)
                   messageCount++;
+                  
+                  // Extract and update current query index
+                  const queryMatch = parsed.message.match(/processing query (\d+)\/\d+: (.*)/i);
+                  if (queryMatch && queryMatch[1] && queryMatch[2]) {
+                    const queryIndex = parseInt(queryMatch[1], 10) - 1;
+                    setCurrentQueryIndex(queryIndex);
+                  }
+                  
                   const message = parsed.message.replace(
                     /processing query \d+\/\d+: (.*)/i, 
                     `Iteration ${iteration}: Searching "$1"`
@@ -644,6 +665,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentIteration(0)
     setIterations([])
     setExpandedIterations(['iteration-1'])
+    setCurrentQueries([])
+    setCurrentQueryIndex(-1)
 
     try {
       setProgress(prev => [...prev, "Starting iterative web research..."])
@@ -681,6 +704,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         console.log("Generated queries:", queriesData.queries)
         setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
         
+        // Set current queries immediately for display
+        setCurrentQueries(queriesData.queries);
+        
         queriesData.queries.forEach((query: string, index: number) => {
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
         });
@@ -703,6 +729,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               `${description.split(' ').slice(0, 8).join(' ')} latest`,
               `${description.split(' ').slice(0, 8).join(' ')} prediction`
             ];
+        
+        // Set fallback queries for display
+        setCurrentQueries(fallbackQueries);
         
         setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
         await handleWebScrape(fallbackQueries, 1);
@@ -742,6 +771,36 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return [...prev, iterationId];
       }
     });
+  };
+
+  // Render the live query display
+  const renderQueryDisplay = () => {
+    if (!currentQueries.length) return null;
+    
+    return (
+      <div className="mb-4 border rounded-md p-4 bg-accent/5">
+        <h4 className="text-sm font-medium mb-2">
+          Current Queries (Iteration {currentIteration || 1})
+        </h4>
+        <div className="space-y-2">
+          {currentQueries.map((query, index) => (
+            <div 
+              key={index} 
+              className={`flex items-center gap-2 p-2 rounded-md text-sm ${
+                currentQueryIndex === index ? 'bg-primary/10 border border-primary/30' : 'border border-transparent'
+              }`}
+            >
+              {currentQueryIndex === index && (
+                <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              )}
+              <span className={currentQueryIndex === index ? 'font-medium' : ''}>
+                {index + 1}. {query}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -832,6 +891,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         </div>
       )}
+
+      {/* New live query display */}
+      {(isLoading || isAnalyzing) && renderQueryDisplay()}
 
       <ProgressDisplay messages={progress} />
       
