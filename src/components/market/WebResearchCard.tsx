@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,11 +32,16 @@ import {
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { ResearchResult } from "./research/types"
 
 interface WebResearchCardProps {
   description: string;
   marketId: string;
+}
+
+interface ResearchResult {
+  url: string;
+  content: string;
+  title?: string;
 }
 
 interface StreamingState {
@@ -929,18 +935,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             <div 
               key={index} 
               className={`flex items-center gap-2 p-2 rounded-md text-sm ${
-                currentQueryIndex === index ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'
+                currentQueryIndex === index ? 'bg-primary/10 border border-primary/30' : 'border border-transparent'
               }`}
             >
-              <span className="w-6 flex justify-center">
-                {currentQueryIndex === index ? (
-                  <span className="animate-pulse">→</span>
-                ) : (
-                  index + 1
-                )}
-              </span>
+              {currentQueryIndex === index && (
+                <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              )}
               <span className={currentQueryIndex === index ? 'font-medium' : ''}>
-                {query}
+                {index + 1}. {query}
               </span>
             </div>
           ))}
@@ -949,182 +951,232 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     );
   };
 
-  return (
-    <Card className="w-full mt-6">
-      <div className="p-6 space-y-4">
-        <div className="flex items-center justify-between pb-2">
-          <h3 className="text-xl font-semibold">Web Research</h3>
-          
-          <div className="flex items-center gap-2">
-            {savedResearch && savedResearch.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="h-8 px-2">
-                    <ChevronDown className="h-4 w-4 mr-1" />
-                    Previous Research
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuLabel>Saved Research</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {savedResearch.map((research) => (
-                    <DropdownMenuItem
-                      key={research.id}
-                      onClick={() => loadSavedResearch(research)}
-                    >
-                      <span className="truncate">
-                        {format(new Date(research.created_at), 'MMM d, yyyy h:mm a')}
-                      </span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-8 w-8">
-                  <Settings className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-80">
-                <div className="space-y-4">
-                  <h4 className="font-medium">Research Settings</h4>
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <label htmlFor="max-iterations" className="text-sm">
-                        Maximum iterations: {maxIterations}
-                      </label>
-                    </div>
-                    <Slider 
-                      id="max-iterations"
-                      defaultValue={[maxIterations]} 
-                      max={5}
-                      min={1}
-                      step={1}
-                      onValueChange={(value) => setMaxIterations(value[0])}
-                    />
-                  </div>
-                </div>
-              </PopoverContent>
-            </Popover>
+  const renderIterationContent = (iter: ResearchIteration) => {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h4 className="text-sm font-medium mb-2">Search Queries</h4>
+          <div className="flex flex-wrap gap-2">
+            {iter.queries.map((query, idx) => (
+              <Badge key={idx} variant="secondary" className="text-xs">
+                {query}
+              </Badge>
+            ))}
           </div>
         </div>
         
-        <ResearchHeader
-          onStartResearch={handleResearch}
+        {iter.results.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
+            <ScrollArea className="h-[150px] rounded-md border">
+              <div className="p-4 space-y-2">
+                {iter.results.map((result, idx) => (
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                    <a 
+                      href={result.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline truncate block"
+                    >
+                      {result.title || result.url}
+                    </a>
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                      {result.content?.substring(0, 150)}...
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+        
+        <div>
+          <h4 className="text-sm font-medium mb-2">Analysis</h4>
+          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
+            <AnalysisDisplay content={iter.analysis || "Analysis in progress..."} />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <ResearchHeader 
           isLoading={isLoading}
           isAnalyzing={isAnalyzing}
+          onResearch={handleResearch}
         />
         
-        {error && (
-          <div className="bg-destructive/10 border border-destructive text-destructive p-3 rounded-md text-sm">
-            {error}
-          </div>
-        )}
-        
-        {renderQueryDisplay()}
+        <div className="flex space-x-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm">Research Settings</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Number of Iterations</span>
+                    <span className="text-sm font-medium">{maxIterations}</span>
+                  </div>
+                  <Slider
+                    value={[maxIterations]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={(values) => setMaxIterations(values[0])}
+                    disabled={isLoading || isAnalyzing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Higher values will provide more thorough research but take longer to complete.
+                  </p>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          
+          {savedResearch && savedResearch.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[300px]">
+                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {savedResearch.map((research) => (
+                  <DropdownMenuItem 
+                    key={research.id}
+                    onClick={() => loadSavedResearch(research)}
+                    className="flex flex-col items-start"
+                  >
+                    <div className="font-medium truncate w-full">
+                      {research.query}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
 
-        {progress.length > 0 && (
-          <ProgressDisplay messages={progress} />
-        )}
-        
-        {iterations.length > 0 && (
-          <Accordion
-            type="multiple"
-            value={expandedIterations}
-            className="border rounded-md mb-4"
-          >
-            {iterations.map((iteration) => (
-              <AccordionItem 
-                key={`iteration-${iteration.iteration}`} 
-                value={`iteration-${iteration.iteration}`}
-                className="border-b last:border-b-0"
-              >
-                <AccordionTrigger className="py-3 px-4 hover:no-underline">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="rounded-full h-6 w-6 p-0 flex items-center justify-center font-normal">
-                      {iteration.iteration}
-                    </Badge>
-                    <span>Research Iteration {iteration.iteration}</span>
-                    {iteration === iterations[iterations.length - 1] && currentIteration === iteration.iteration && (isLoading || isAnalyzing) && (
-                      <Badge variant="secondary" className="ml-2 animate-pulse">Active</Badge>
-                    )}
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4 pt-1">
-                  <div className="space-y-3">
-                    {iteration.queries.length > 0 && (
-                      <div className="space-y-1">
-                        <h4 className="text-sm font-medium">Queries:</h4>
-                        <ul className="text-sm list-disc pl-5 space-y-1">
-                          {iteration.queries.map((query, i) => (
-                            <li key={i}>{query}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    {iteration.results.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Sources found ({iteration.results.length}):</h4>
-                        <SitePreviewList results={iteration.results} compact />
-                      </div>
-                    )}
-                    
-                    {iteration.analysis && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Analysis:</h4>
-                        <div className="bg-muted/50 rounded-md p-3">
-                          <ScrollArea className="h-[200px]">
-                            <AnalysisDisplay content={iteration.analysis} />
-                          </ScrollArea>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
-        )}
-        
-        {results.length > 0 && (
-          <div>
-            <h4 className="text-base font-medium pb-2">Sources</h4>
+      {error && (
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
+          {error}
+        </div>
+      )}
+
+      {currentIteration > 0 && (
+        <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
+          <div 
+            className="bg-primary h-full transition-all duration-500 ease-in-out"
+            style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>Iteration {currentIteration} of {maxIterations}</span>
+            <span>{Math.round((currentIteration / maxIterations) * 100)}% complete</span>
+          </div>
+        </div>
+      )}
+
+      {(isLoading || isAnalyzing) && renderQueryDisplay()}
+
+      <ProgressDisplay messages={progress} />
+      
+      {iterations.length > 0 && (
+        <div className="border rounded-md overflow-hidden">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
+            <Accordion 
+              type="multiple" 
+              value={expandedIterations} 
+              onValueChange={setExpandedIterations}
+              className="w-full"
+            >
+              {iterations.map((iter) => (
+                <AccordionItem 
+                  key={`iteration-${iter.iteration}`} 
+                  value={`iteration-${iter.iteration}`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
+                >
+                  <AccordionTrigger className="px-2 py-2 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
+                             className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
+                        Iteration {iter.iteration}
+                        {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
+                      </Badge>
+                      <span className="text-sm">
+                        {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-2 pb-2">
+                    {renderIterationContent(iter)}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </ScrollArea>
+        </div>
+      )}
+
+      {streamingState.parsedData && (
+        <div className="border rounded-md p-4 mt-4">
+          <h3 className="text-lg font-medium mb-2">Final Research Analysis</h3>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Probability Estimate</h4>
+              <div className="text-xl font-semibold">
+                {streamingState.parsedData.probability}
+              </div>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-2">Areas Needing Further Research</h4>
+              <ScrollArea className="h-[200px] w-full rounded border p-2">
+                <div className="space-y-2">
+                  {streamingState.parsedData.areasForResearch.map((area, index) => (
+                    <div key={index} className="p-2 bg-accent/20 rounded">
+                      {index + 1}. {area}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      <InsightsDisplay 
+        probability={streamingState.parsedData?.probability || ""} 
+        areasForResearch={streamingState.parsedData?.areasForResearch || []} 
+      />
+
+      {results.length > 0 && !iterations.length && (
+        <>
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-medium mb-2">Search Results</h3>
             <SitePreviewList results={results} />
           </div>
-        )}
-        
-        {analysis && (
-          <div>
-            <h4 className="text-base font-medium pb-2">Analysis</h4>
-            <AnalysisDisplay content={analysis} />
-          </div>
-        )}
-        
-        {streamingState.parsedData && (
-          <div>
-            <h4 className="text-base font-medium pb-2">Insights</h4>
-            <InsightsDisplay 
-              probability={streamingState.parsedData.probability} 
-              areasForResearch={streamingState.parsedData.areasForResearch}
-            />
-          </div>
-        )}
-        
-        {canSave && (
-          <div className="flex justify-end">
-            <Button
-              onClick={saveResearch}
-              size="sm"
-              className="text-xs"
-            >
-              Save Research
-            </Button>
-          </div>
-        )}
-      </div>
+          
+          {analysis && (
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-medium mb-2">Analysis</h3>
+              <AnalysisDisplay content={analysis} />
+            </div>
+          )}
+        </>
+      )}
     </Card>
-  )
+  );
 }

@@ -1,85 +1,56 @@
 
-import { Card } from "@/components/ui/card"
-import { format } from "date-fns"
-import { ResearchResult } from "./types"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { FileText, Globe } from "lucide-react"
+import { getFaviconUrl } from "@/utils/favicon"
 
 interface SitePreviewListProps {
-  results: ResearchResult[]
-  compact?: boolean
+  results: Array<{
+    url: string
+    title?: string
+  }>
 }
 
-export function SitePreviewList({ results, compact = false }: SitePreviewListProps) {
-  if (!results.length) {
-    return null
-  }
-
-  if (compact) {
-    return (
-      <div className="text-sm">
-        <ul className="list-disc pl-5 space-y-1">
-          {results.map((result, index) => (
-            <li key={index}>
-              <a 
-                href={result.url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                {result.title || "Unnamed source"}
-              </a>
-            </li>
-          ))}
-        </ul>
-      </div>
-    )
-  }
+export function SitePreviewList({ results }: SitePreviewListProps) {
+  if (!results.length) return null;
 
   return (
-    <div className="space-y-3">
+    <ScrollArea className="h-[200px] rounded-md border p-4">
+      <div className="mb-2 text-sm text-muted-foreground">
+        {results.length} {results.length === 1 ? 'source' : 'sources'} collected
+      </div>
       {results.map((result, index) => (
-        <Card key={index} className="p-3 text-sm">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              {result.favicon && (
-                <img 
-                  src={result.favicon} 
-                  alt="" 
-                  className="w-4 h-4" 
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = 'none'
-                  }}
-                />
-              )}
-              <a 
-                href={result.url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="font-medium text-primary hover:underline line-clamp-1"
-              >
-                {result.title || "Unnamed source"}
-              </a>
-            </div>
-            
-            {result.source && (
-              <div className="text-muted-foreground text-xs flex items-center gap-2">
-                <span>{result.source}</span>
-                {result.date && (
-                  <>
-                    <span>•</span>
-                    <span>{format(new Date(result.date), 'MMM d, yyyy')}</span>
-                  </>
-                )}
-              </div>
-            )}
-            
-            {result.snippet && (
-              <p className="line-clamp-2 text-muted-foreground">
-                {result.snippet}
-              </p>
-            )}
+        <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
+          <div className="flex items-center gap-2">
+            <img 
+              src={getFaviconUrl(result.url)} 
+              alt=""
+              className="w-4 h-4"
+              onError={(e) => {
+                const IconComponent = result.title ? FileText : Globe;
+                const svgString = `data:image/svg+xml,${encodeURIComponent(
+                  `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${
+                    result.title 
+                      ? '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline>'
+                      : '<circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>'
+                  }</svg>`
+                )}`;
+                e.currentTarget.src = svgString;
+              }}
+            />
+            <h4 className="text-sm font-medium">
+              {result.title || new URL(result.url).hostname}
+            </h4>
           </div>
-        </Card>
+          <a 
+            href={result.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs text-blue-500 hover:underline block mt-1"
+          >
+            {result.url}
+          </a>
+        </div>
       ))}
-    </div>
+    </ScrollArea>
   )
 }

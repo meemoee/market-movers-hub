@@ -1,44 +1,34 @@
-
 import { Button } from "@/components/ui/button"
+import { Loader2, Search } from "lucide-react"
 
-export interface ResearchHeaderProps {
-  onStartResearch: () => void
-  onResearch?: () => void
-  query?: string
-  onQueryChange?: (query: string) => void
-  isLoading?: boolean
-  isAnalyzing?: boolean
+interface ResearchHeaderProps {
+  isLoading: boolean
+  isAnalyzing: boolean
+  onResearch: () => void
 }
 
-export function ResearchHeader({ 
-  onStartResearch, 
-  onResearch,
-  query = "",
-  onQueryChange = () => {},
-  isLoading = false,
-  isAnalyzing = false
-}: ResearchHeaderProps) {
-  // Use onResearch if provided, otherwise fall back to onStartResearch
-  const handleResearch = onResearch || onStartResearch;
-  
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
   return (
-    <div className="flex flex-col gap-2 mb-4">
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder="Enter research query..."
-          className="flex-grow p-2 bg-background border border-input rounded-md text-sm"
-          disabled={isLoading || isAnalyzing}
-        />
-        <Button 
-          onClick={handleResearch}
-          disabled={isLoading || isAnalyzing}
-        >
-          {isLoading || isAnalyzing ? 'Researching...' : 'Research'}
-        </Button>
-      </div>
+    <div className="flex items-center justify-between">
+      <h3 className="text-lg font-semibold">Web Research</h3>
+      <Button 
+        onClick={onResearch} 
+        disabled={isLoading || isAnalyzing}
+        variant="outline"
+        size="sm"
+      >
+        {isLoading || isAnalyzing ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {isAnalyzing ? 'Analyzing...' : 'Researching...'}
+          </>
+        ) : (
+          <>
+            <Search className="mr-2 h-4 w-4" />
+            Research
+          </>
+        )}
+      </Button>
     </div>
   )
 }
