@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button"
 
 export interface ResearchHeaderProps {
   onStartResearch: () => void
+  onResearch?: () => void
   query?: string
   onQueryChange?: (query: string) => void
   isLoading?: boolean
@@ -11,11 +12,15 @@ export interface ResearchHeaderProps {
 
 export function ResearchHeader({ 
   onStartResearch, 
+  onResearch,
   query = "",
   onQueryChange = () => {},
   isLoading = false,
   isAnalyzing = false
 }: ResearchHeaderProps) {
+  // Use onResearch if provided, otherwise fall back to onStartResearch
+  const handleResearch = onResearch || onStartResearch;
+  
   return (
     <div className="flex flex-col gap-2 mb-4">
       <div className="flex items-center gap-2">
@@ -28,7 +33,7 @@ export function ResearchHeader({
           disabled={isLoading || isAnalyzing}
         />
         <Button 
-          onClick={onStartResearch}
+          onClick={handleResearch}
           disabled={isLoading || isAnalyzing}
         >
           {isLoading || isAnalyzing ? 'Researching...' : 'Research'}

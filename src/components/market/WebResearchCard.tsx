@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -1013,9 +1012,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
         
         <ResearchHeader
+          onStartResearch={handleResearch}
           isLoading={isLoading}
           isAnalyzing={isAnalyzing}
-          onResearch={handleResearch}
         />
         
         {error && (
@@ -1027,7 +1026,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         {renderQueryDisplay()}
 
         {progress.length > 0 && (
-          <ProgressDisplay progress={progress} />
+          <ProgressDisplay messages={progress} />
         )}
         
         {iterations.length > 0 && (
@@ -1107,7 +1106,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         {streamingState.parsedData && (
           <div>
             <h4 className="text-base font-medium pb-2">Insights</h4>
-            <InsightsDisplay streamingState={streamingState} />
+            <InsightsDisplay 
+              probability={streamingState.parsedData.probability} 
+              areasForResearch={streamingState.parsedData.areasForResearch}
+            />
           </div>
         )}
         
