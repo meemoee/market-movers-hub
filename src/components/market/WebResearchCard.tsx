@@ -14,12 +14,9 @@ import {
   Slider 
 } from "@/components/ui/slider"
 import { supabase } from "@/integrations/supabase/client"
-import { ResearchHeader } from "./research/ResearchHeader"
-import { ProgressDisplay } from "./research/ProgressDisplay"
-import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./insights/InsightsDisplay"
-import { ChevronDown, Settings } from 'lucide-react'
+import { ChevronDown, Search, Settings } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useToast } from "@/components/ui/use-toast"
@@ -39,11 +36,36 @@ interface WebResearchCardProps {
   question?: string
 }
 
+// Define interfaces for our data structures
+interface ResearchSession {
+  id: string
+  market_id: string
+  question: string
+  status: string
+  created_at: string
+}
+
+interface ResearchIteration {
+  id: string
+  session_id: string
+  query: string
+  num_results: number
+  search_results?: { title: string, url: string }[]
+  analysis?: string
+  status: string
+  created_at: string
+}
+
+interface SourceItem {
+  title: string
+  url: string
+}
+
 export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
-  const [researchSession, setResearchSession] = useState<any>(null)
-  const [iterations, setIterations] = useState<any[]>([])
+  const [researchSession, setResearchSession] = useState<ResearchSession | null>(null)
+  const [iterations, setIterations] = useState<ResearchIteration[]>([])
   const [userQuery, setUserQuery] = useState<string>('')
   const [showSettings, setShowSettings] = useState(false)
   const [numResults, setNumResults] = useState<number>(3)
@@ -55,36 +77,58 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
     content: ''
   })
 
-  // Fetch existing research sessions for this market
+  // Fetch existing research sessions for this market using web_research table
   const { data: existingResearch, isLoading: isLoadingExisting, refetch: refetchSessions } = useQuery({
-    queryKey: ['research-sessions', marketId],
+    queryKey: ['web-research', marketId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('research_sessions')
+        .from('web_research')
         .select('*')
         .eq('market_id', marketId)
         .order('created_at', { ascending: false })
         .limit(1)
       
       if (error) throw error
-      return data?.[0] || null
+      
+      // Convert to our internal format
+      if (data && data.length > 0) {
+        return {
+          id: data[0].id,
+          market_id: data[0].market_id,
+          question: data[0].query,
+          status: 'active',
+          created_at: data[0].created_at
+        } as ResearchSession
+      }
+      return null
     }
   })
 
-  // Fetch iterations if we have a session
+  // Fetch iterations if we have a session - using the iterations field in web_research
   const { data: researchIterations, isLoading: isLoadingIterations, refetch: refetchIterations } = useQuery({
-    queryKey: ['research-iterations', researchSession?.id],
+    queryKey: ['web-research-iterations', researchSession?.id],
     queryFn: async () => {
       if (!researchSession?.id) return []
       
       const { data, error } = await supabase
-        .from('research_iterations')
-        .select('*')
-        .eq('session_id', researchSession.id)
-        .order('created_at', { ascending: true })
+        .from('web_research')
+        .select('iterations')
+        .eq('id', researchSession.id)
       
       if (error) throw error
-      return data || []
+      
+      // Convert from JSON to our internal format
+      const iterations = data[0]?.iterations as any[] || []
+      return iterations.map(iter => ({
+        id: iter.id || crypto.randomUUID(),
+        session_id: researchSession.id,
+        query: iter.query,
+        num_results: iter.num_results || 3,
+        search_results: iter.search_results,
+        analysis: iter.analysis,
+        status: iter.status || 'completed',
+        created_at: iter.created_at || new Date().toISOString()
+      })) as ResearchIteration[]
     },
     enabled: !!researchSession?.id
   })
@@ -106,26 +150,31 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
     try {
       setIsLoading(true)
       
-      // Create new research session
-      const { data: session, error } = await supabase
-        .from('research_sessions')
+      // Create new research session in web_research table
+      const { data, error } = await supabase
+        .from('web_research')
         .insert({
           market_id: marketId,
-          question: question || '',
-          status: 'active'
+          query: question || '',
+          analysis: 'No analysis yet',
+          sources: [],
+          areas_for_research: [],
+          probability: 'Unknown',
+          user_id: '00000000-0000-0000-0000-000000000000', // Placeholder
+          iterations: []
         })
         .select()
       
       if (error) throw error
       
-      // Fetch the session to get its ID
-      const { data: newSession } = await supabase
-        .from('research_sessions')
-        .select('*')
-        .eq('market_id', marketId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single()
+      // Set the new session
+      const newSession = {
+        id: data[0].id,
+        market_id: data[0].market_id,
+        question: data[0].query,
+        status: 'active',
+        created_at: data[0].created_at
+      } as ResearchSession
       
       setResearchSession(newSession)
       setIterations([])
@@ -166,26 +215,39 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
     try {
       setIsLoading(true)
       
+      // Get the current iterations
+      const { data: currentData, error: currentError } = await supabase
+        .from('web_research')
+        .select('iterations')
+        .eq('id', researchSession.id)
+        .single()
+      
+      if (currentError) throw currentError
+      
       // Create new iteration
-      const { data: iteration, error } = await supabase
-        .from('research_iterations')
-        .insert({
-          session_id: researchSession.id,
-          query: userQuery,
-          num_results: numResults,
-          status: 'pending'
-        })
-        .select()
+      const newIteration = {
+        id: crypto.randomUUID(),
+        query: userQuery,
+        num_results: numResults,
+        status: 'pending',
+        created_at: new Date().toISOString(),
+        search_results: []
+      }
       
-      if (error) throw error
+      // Update the iterations in the web_research table
+      const iterationsArray = [...(currentData.iterations || []), newIteration]
       
-      // Refresh iterations
-      await refetchIterations()
+      const { error: updateError } = await supabase
+        .from('web_research')
+        .update({ iterations: iterationsArray })
+        .eq('id', researchSession.id)
+      
+      if (updateError) throw updateError
       
       // Execute web research
-      const { data: updatedIteration, error: webError } = await supabase.functions.invoke('web-research', {
+      const { data: searchResults, error: webError } = await supabase.functions.invoke('web-research', {
         body: {
-          iterationId: iteration[0].id,
+          iterationId: newIteration.id,
           query: userQuery,
           numResults: numResults,
           marketId,
@@ -194,6 +256,29 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
       })
       
       if (webError) throw webError
+      
+      // Update the iteration with search results
+      const { data: updatedData } = await supabase
+        .from('web_research')
+        .select('iterations')
+        .eq('id', researchSession.id)
+        .single()
+      
+      const updatedIterations = updatedData.iterations.map((iter: any) => {
+        if (iter.id === newIteration.id) {
+          return {
+            ...iter,
+            search_results: searchResults?.results || [],
+            status: 'completed'
+          }
+        }
+        return iter
+      })
+      
+      await supabase
+        .from('web_research')
+        .update({ iterations: updatedIterations })
+        .eq('id', researchSession.id)
       
       // Reset user query
       setUserQuery('')
@@ -224,64 +309,62 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
         body: {
           iterationId,
           marketId
-        },
-        responseType: 'stream'
+        }
       });
       
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Failed to get stream reader');
-      
-      // Set up a text decoder to handle chunks
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        // Decode the chunk
-        const chunk = decoder.decode(value, { stream: true });
-        
-        // Process each line in the chunk (SSE format)
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data:')) {
-            try {
-              // Extract just the data part
-              const dataContent = line.substring(5).trim();
-              
-              if (dataContent === '[DONE]') continue;
-              
-              // Parse the JSON data
-              const data = JSON.parse(dataContent);
-              
-              if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
-                // Extract the content from the delta
-                const content = data.choices[0].delta.content;
-                
-                // Update the streaming data immediately
-                requestAnimationFrame(() => {
-                  setStreamingData(prev => ({
-                    iterationId,
-                    content: prev.content + content
-                  }));
-                });
-              }
-            } catch (e) {
-              console.warn('Error parsing SSE data:', e);
-            }
-          }
-        }
+      if (response.error) {
+        throw new Error(response.error.message);
       }
       
-      // Set streaming complete by updating the iteration in the database
+      // Since we can't use streaming directly with the Supabase client,
+      // let's simulate streaming by processing the response in chunks
+      const content = response.data.analysis || '';
+      
+      // Simulate streaming by processing each character with slight delay
+      for (let i = 0; i < content.length; i += 3) {
+        const chunk = content.substring(i, i + 3);
+        
+        // Update the state immediately with each chunk
+        await new Promise<void>(resolve => {
+          requestAnimationFrame(() => {
+            setStreamingData(prev => ({
+              iterationId,
+              content: prev.content + chunk
+            }));
+            resolve();
+          });
+        });
+        
+        // Small delay to simulate streaming
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      
+      // Update the iterations in the database
+      const { data } = await supabase
+        .from('web_research')
+        .select('iterations')
+        .eq('id', researchSession?.id)
+        .single();
+        
+      if (!data) throw new Error('No session data found');
+      
+      const updatedIterations = data.iterations.map((iter: any) => {
+        if (iter.id === iterationId) {
+          return {
+            ...iter,
+            analysis: streamingData.content,
+            status: 'completed'
+          };
+        }
+        return iter;
+      });
+      
       const { error } = await supabase
-        .from('research_iterations')
+        .from('web_research')
         .update({ 
-          analysis: streamingData.content,
-          status: 'completed'
+          iterations: updatedIterations
         })
-        .eq('id', iterationId);
+        .eq('id', researchSession?.id);
         
       if (error) throw error;
       
@@ -302,21 +385,40 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
         variant: "destructive"
       });
       
-      // Update iteration status to error
-      await supabase
-        .from('research_iterations')
-        .update({ status: 'error' })
-        .eq('id', iterationId);
+      // Update iteration status to error in the database
+      if (researchSession?.id) {
+        const { data } = await supabase
+          .from('web_research')
+          .select('iterations')
+          .eq('id', researchSession.id)
+          .single();
+        
+        if (data) {
+          const updatedIterations = data.iterations.map((iter: any) => {
+            if (iter.id === iterationId) {
+              return {
+                ...iter,
+                status: 'error'
+              };
+            }
+            return iter;
+          });
+          
+          await supabase
+            .from('web_research')
+            .update({ iterations: updatedIterations })
+            .eq('id', researchSession.id);
+        }
+      }
     }
   };
   
   // Extract sources from the search results to display
-  const getSourcesForIteration = (iteration: any) => {
+  const getSourcesForIteration = (iteration: ResearchIteration): SourceItem[] => {
     if (!iteration?.search_results) return []
     
     try {
-      const results = iteration.search_results as { title: string, url: string }[]
-      return results.map(r => ({ title: r.title, url: r.url }))
+      return iteration.search_results.map(r => ({ title: r.title, url: r.url }))
     } catch (e) {
       console.error('Error parsing search results:', e)
       return []
@@ -325,16 +427,39 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
   
   return (
     <Card className="relative overflow-hidden">
-      <ResearchHeader 
-        title="Web Research"
-        description={question ? `Research for: ${question}` : 'Search the web for information'}
-        onStartNewSession={startNewSession}
-        hasExistingSession={!!researchSession?.id}
-      />
+      <div className="p-6 pb-4 border-b border-border">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Web Research</h3>
+            <p className="text-sm text-muted-foreground">
+              {question ? `Research for: ${question}` : 'Search the web for information'}
+            </p>
+          </div>
+          
+          {researchSession && (
+            <Button 
+              onClick={startNewSession}
+              variant="outline"
+              size="sm"
+            >
+              New Session
+            </Button>
+          )}
+        </div>
+      </div>
       
       {isLoading && (
         <div className="p-6">
-          <ProgressDisplay status="Researching..." />
+          <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40">
+            <ScrollArea className="h-full">
+              <div className="p-4 space-y-2">
+                <div className="flex items-center gap-3 py-1 text-sm animate-pulse">
+                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+                  <span className="text-foreground">Researching...</span>
+                </div>
+              </div>
+            </ScrollArea>
+          </div>
         </div>
       )}
       
@@ -441,7 +566,37 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
                       {/* Sources */}
                       <div>
                         <h4 className="text-sm font-medium mb-2">Sources</h4>
-                        <SitePreviewList sites={getSourcesForIteration(iteration)} />
+                        <div className="ScrollArea className='h-[200px] rounded-md border p-4'">
+                          <div className="mb-2 text-sm text-muted-foreground">
+                            {getSourcesForIteration(iteration).length} {getSourcesForIteration(iteration).length === 1 ? 'source' : 'sources'} collected
+                          </div>
+                          {getSourcesForIteration(iteration).map((result, idx) => (
+                            <div key={idx} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
+                              <div className="flex items-center gap-2">
+                                <img 
+                                  src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}`}
+                                  alt=""
+                                  className="w-4 h-4"
+                                  onError={(e) => {
+                                    const target = e.currentTarget;
+                                    target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Cline x1='2' y1='12' x2='22' y2='12'%3E%3C/line%3E%3Cpath d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'%3E%3C/path%3E%3C/svg%3E";
+                                  }}
+                                />
+                                <h4 className="text-sm font-medium">
+                                  {result.title || new URL(result.url).hostname}
+                                </h4>
+                              </div>
+                              <a 
+                                href={result.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-500 hover:underline block mt-1"
+                              >
+                                {result.url}
+                              </a>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       
                       {/* Analysis */}
