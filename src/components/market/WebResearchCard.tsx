@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -937,4 +938,60 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                           <div className="p-4 space-y-2">
                             {iter.results.map((result, idx) => (
                               <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
-                                <a
+                                <a 
+                                  href={result.url} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-primary hover:underline truncate block"
+                                >
+                                  {result.title || result.url}
+                                </a>
+                                <p className="mt-1 line-clamp-2 text-muted-foreground">
+                                  {result.content?.substring(0, 150)}...
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </ScrollArea>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Analysis</h4>
+                      <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
+                        <AnalysisDisplay content={iter.analysis} />
+                      </div>
+                    </div>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        </div>
+      )}
+
+      {streamingState.parsedData && (
+        <InsightsDisplay 
+          probability={streamingState.parsedData.probability} 
+          areasForResearch={streamingState.parsedData.areasForResearch} 
+        />
+      )}
+
+      {results.length > 0 && !iterations.length && (
+        <>
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-medium mb-2">Search Results</h3>
+            <SitePreviewList results={results} />
+          </div>
+          
+          {analysis && (
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-medium mb-2">Analysis</h3>
+              <AnalysisDisplay content={analysis} />
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
