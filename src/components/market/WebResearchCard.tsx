@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -35,7 +36,6 @@ import { Badge } from "@/components/ui/badge"
 interface WebResearchCardProps {
   description: string;
   marketId: string;
-  title?: string;
 }
 
 interface ResearchResult {
@@ -73,7 +73,7 @@ interface SavedResearch {
   iterations?: ResearchIteration[];
 }
 
-export function WebResearchCard({ description, marketId, title = '' }: WebResearchCardProps) {
+export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
@@ -266,7 +266,7 @@ export function WebResearchCard({ description, marketId, title = '' }: WebResear
         if (iteration < maxIterations) {
           const simplifiedQueries = [
             `${description.split(' ').slice(0, 10).join(' ')}`,
-            `${title || ''} latest updates`,
+            `${marketId} latest updates`,
             `${description.split(' ').slice(0, 5).join(' ')} news`
           ];
           
@@ -365,9 +365,9 @@ export function WebResearchCard({ description, marketId, title = '' }: WebResear
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
             body: JSON.stringify({ 
               query: description,
-              title: title,
               previousResults: currentAnalysis,
               iteration: iteration,
+              marketId: marketId,
               marketDescription: description
             })
           })
@@ -671,23 +671,20 @@ export function WebResearchCard({ description, marketId, title = '' }: WebResear
     try {
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
-      if (title) {
-        setProgress(prev => [...prev, `Market title: ${title}`])
-      }
       setProgress(prev => [...prev, `Market question: ${description}`])
       setProgress(prev => [...prev, "Generating initial search queries..."])
 
       try {
         console.log("Calling generate-queries with:", { 
-          title,
           description, 
+          marketId,
           descriptionLength: description ? description.length : 0 
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
           body: JSON.stringify({ 
             query: description,
-            title: title,
+            marketId,
             marketDescription: description
           })
         });
@@ -776,6 +773,7 @@ export function WebResearchCard({ description, marketId, title = '' }: WebResear
     });
   };
 
+  // Render the live query display
   const renderQueryDisplay = () => {
     if (!currentQueries.length) return null;
     
@@ -894,6 +892,7 @@ export function WebResearchCard({ description, marketId, title = '' }: WebResear
         </div>
       )}
 
+      {/* New live query display */}
       {(isLoading || isAnalyzing) && renderQueryDisplay()}
 
       <ProgressDisplay messages={progress} />

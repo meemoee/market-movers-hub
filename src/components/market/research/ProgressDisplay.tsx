@@ -1,3 +1,4 @@
+
 import { cn } from "@/lib/utils"
 import { useEffect, useState, useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -23,36 +24,24 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
     }
   }, [messages]);
 
-  // Filter out "Query X:" messages that are just repeating the description
-  const filteredMessages = messages.filter(message => {
-    // Keep non-query messages
-    if (!message.includes('Query ') || !message.includes(': "')) {
-      return true;
-    }
-    
-    // Filter out queries that are just repetitions of description snippets
-    const queryText = message.split(': "')[1]?.replace('"', '') || '';
-    return !queryText.startsWith('This market will resolve');
-  });
-
-  if (!filteredMessages.length) return null;
+  if (!messages.length) return null
   
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
-      <ScrollArea className="h-44">
+      <ScrollArea className="h-40">
         <div className="p-4 space-y-2">
-          {filteredMessages.map((message, index) => (
+          {messages.map((message, index) => (
             <div 
               key={`${index}-${message.substring(0, 20)}`}
               className={cn(
                 "flex items-center gap-3 py-1 text-sm",
-                index === filteredMessages.length - 1 ? "animate-pulse" : ""
+                index === messages.length - 1 ? "animate-pulse" : ""
               )}
             >
-              {index === filteredMessages.length - 1 && (
+              {index === messages.length - 1 && (
                 <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
               )}
-              <span className={index === filteredMessages.length - 1 ? "text-foreground" : "text-muted-foreground"}>
+              <span className={index === messages.length - 1 ? "text-foreground" : "text-muted-foreground"}>
                 {message}
               </span>
             </div>
