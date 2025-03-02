@@ -11,12 +11,12 @@ interface StreamingState {
 }
 
 interface InsightsDisplayProps {
-  probability: string;
-  areasForResearch: string[];
+  probability?: string;
+  areasForResearch?: string[];
   streamingState?: StreamingState;
 }
 
-export function InsightsDisplay({ probability, areasForResearch, streamingState }: InsightsDisplayProps) {
+export function InsightsDisplay({ probability = "", areasForResearch = [], streamingState }: InsightsDisplayProps) {
   // Use streamingState data if available, otherwise fall back to direct props
   const probabilityValue = streamingState?.parsedData?.probability || probability;
   const areasForResearchList = streamingState?.parsedData?.areasForResearch || areasForResearch;
