@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -492,11 +491,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         if (done) {
           console.log("Insights stream complete")
           
-          // When stream is complete, make a final attempt to parse the JSON
+          // When stream is complete, try to clean and parse the JSON
           try {
-            const finalData = JSON.parse(accumulatedJson);
+            // Clean any markdown code block syntax from the JSON string
+            let cleanJson = accumulatedJson;
+            if (cleanJson.startsWith('```json')) {
+              cleanJson = cleanJson.replace(/^```json\n/, '').replace(/```$/, '');
+            } else if (cleanJson.startsWith('```')) {
+              cleanJson = cleanJson.replace(/^```\n/, '').replace(/```$/, '');
+            }
+            
+            console.log("Attempting to parse cleaned JSON:", cleanJson.substring(0, 100) + "...");
+            
+            const finalData = JSON.parse(cleanJson);
             setStreamingState({
-              rawText: accumulatedJson,
+              rawText: cleanJson,
               parsedData: {
                 probability: finalData.probability || "Unknown",
                 areasForResearch: Array.isArray(finalData.areasForResearch) ? finalData.areasForResearch : []
@@ -513,6 +522,38 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             }
           } catch (e) {
             console.error('Final JSON parsing error:', e);
+            
+            // Additional fallback: Try to extract JSON with regex
+            try {
+              const jsonMatch = accumulatedJson.match(/\{[\s\S]*?\}/);
+              if (jsonMatch && jsonMatch[0]) {
+                const extractedJson = jsonMatch[0];
+                console.log("Attempting regex extraction:", extractedJson.substring(0, 100) + "...");
+                
+                const fallbackData = JSON.parse(extractedJson);
+                setStreamingState({
+                  rawText: extractedJson,
+                  parsedData: {
+                    probability: fallbackData.probability || "Unknown",
+                    areasForResearch: Array.isArray(fallbackData.areasForResearch) ? fallbackData.areasForResearch : []
+                  }
+                });
+                
+                setProgress(prev => [...prev, `Extracted probability using fallback: ${fallbackData.probability || "Unknown"}`]);
+              } else {
+                throw new Error("Could not extract valid JSON with regex");
+              }
+            } catch (regexError) {
+              console.error("Regex extraction failed:", regexError);
+              // Last resort: If we couldn't parse the JSON, set a default state
+              setStreamingState({
+                rawText: accumulatedJson,
+                parsedData: {
+                  probability: "Unknown (parsing error)",
+                  areasForResearch: ["Could not parse research areas due to format error."]
+                }
+              });
+            }
           }
           
           break;
@@ -537,26 +578,35 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 console.log("Received insights content chunk:", content.substring(0, 50) + "...")
                 accumulatedJson += content
                 
-                setStreamingState(prev => {
-                  const newState = {
-                    rawText: accumulatedJson,
-                    parsedData: prev.parsedData
+                // Try parsing on each chunk, but don't throw errors during streaming
+                try {
+                  // Strip markdown code block syntax if present
+                  let tempJson = accumulatedJson;
+                  if (tempJson.startsWith('```json')) {
+                    tempJson = tempJson.replace(/^```json\n/, '');
+                  } else if (tempJson.startsWith('```')) {
+                    tempJson = tempJson.replace(/^```\n/, '');
                   }
-
-                  try {
-                    const parsedJson = JSON.parse(accumulatedJson)
-                    if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
-                      newState.parsedData = parsedJson
-                    }
-                  } catch {
-                    // Continue accumulating if not valid JSON yet
+                  // Remove trailing backticks if present
+                  if (tempJson.endsWith('```')) {
+                    tempJson = tempJson.replace(/```$/, '');
                   }
-
-                  return newState
-                })
+                  
+                  const parsedJson = JSON.parse(tempJson);
+                  
+                  if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
+                    setStreamingState({
+                      rawText: tempJson,
+                      parsedData: parsedJson
+                    });
+                  }
+                } catch (e) {
+                  // Silently continue accumulating if not valid JSON yet
+                  console.debug('JSON not complete yet, continuing to accumulate');
+                }
               }
             } catch (e) {
-              console.debug('Chunk parse error (expected):', e)
+              console.debug('Chunk parse error (expected during streaming):', e)
             }
           }
         }
