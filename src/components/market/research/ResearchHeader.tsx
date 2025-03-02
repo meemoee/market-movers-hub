@@ -1,34 +1,37 @@
+
 import { Button } from "@/components/ui/button"
-import { Loader2, Search } from "lucide-react"
 
 interface ResearchHeaderProps {
-  isLoading: boolean
-  isAnalyzing: boolean
-  onResearch: () => void
+  onStartResearch: () => void
+  isResearching: boolean
+  query: string
+  onQueryChange: (query: string) => void
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
+export function ResearchHeader({ 
+  onStartResearch, 
+  isResearching,
+  query,
+  onQueryChange
+}: ResearchHeaderProps) {
   return (
-    <div className="flex items-center justify-between">
-      <h3 className="text-lg font-semibold">Web Research</h3>
-      <Button 
-        onClick={onResearch} 
-        disabled={isLoading || isAnalyzing}
-        variant="outline"
-        size="sm"
-      >
-        {isLoading || isAnalyzing ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {isAnalyzing ? 'Analyzing...' : 'Researching...'}
-          </>
-        ) : (
-          <>
-            <Search className="mr-2 h-4 w-4" />
-            Research
-          </>
-        )}
-      </Button>
+    <div className="flex flex-col gap-2 mb-4">
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          placeholder="Enter research query..."
+          className="flex-grow p-2 bg-background border border-input rounded-md text-sm"
+          disabled={isResearching}
+        />
+        <Button 
+          onClick={onStartResearch}
+          disabled={isResearching || !query.trim()}
+        >
+          {isResearching ? 'Researching...' : 'Research'}
+        </Button>
+      </div>
     </div>
   )
 }
