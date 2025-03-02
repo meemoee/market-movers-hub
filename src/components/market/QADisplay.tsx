@@ -1,3 +1,4 @@
+<lov-code>
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -33,11 +34,6 @@ interface QANode {
   };
 }
 
-interface StreamingContent {
-  content: string;
-  citations: string[];
-}
-
 type SavedResearch = Database['public']['Tables']['web_research']['Row'] & {
   areas_for_research: string[];
   sources: string[];
@@ -57,7 +53,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
-  const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
+  const [streamingContent, setStreamingContent] = useState<{ [key: string]: string }>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
@@ -65,6 +61,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
+  const abortControllerRef = useState<AbortController | null>(null);
 
   const navigateToExtension = (extension: QANode) => {
     setNavigationHistory(prev => [...prev, qaData]);
@@ -263,92 +260,106 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   }
 
-  async function processStream(reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> {
+  // Simplified processing of stream data directly from OpenRouter
+  const processStreamFromOpenRouter = async (nodeId: string, readableStream: ReadableStream<Uint8Array>): Promise<string> => {
+    const reader = readableStream.getReader();
+    const decoder = new TextDecoder();
     let accumulatedContent = '';
-    let accumulatedCitations: string[] = [];
-    let buffer = '';
 
     try {
       while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          // When stream is done, find the node and evaluate it
-          const node = qaData.find(n => n.id === nodeId) || 
-                      rootExtensions.find(n => n.id === nodeId);
-          if (node && node.analysis) {
-            console.log('Evaluating node after stream completion:', nodeId);
-            await evaluateQAPair(node);
-          }
-          break;
-        }
-        const decoded = new TextDecoder().decode(value);
-        buffer += decoded;
-
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-        for (const part of parts) {
-          if (part.trim() && isLineComplete(part.trim())) {
-            processPart(part);
-            buffer = '';
-          } else {
-            processPart(part);
+        const { value, done } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            
+            if (jsonStr === '[DONE]') continue;
+            
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content || '';
+              
+              if (content) {
+                accumulatedContent += content;
+                
+                // Update both streaming state and node data simultaneously
+                setStreamingContent(prev => ({
+                  ...prev,
+                  [nodeId]: accumulatedContent
+                }));
+                
+                setQaData(prev => {
+                  const updateNode = (nodes: QANode[]): QANode[] =>
+                    nodes.map(node => {
+                      if (node.id === nodeId) {
+                        return {
+                          ...node,
+                          analysis: accumulatedContent
+                        };
+                      }
+                      if (node.children.length > 0) {
+                        return { ...node, children: updateNode(node.children) };
+                      }
+                      return node;
+                    });
+                  return updateNode(prev);
+                });
+              }
+            } catch (e) {
+              // Ignore JSON parse errors during streaming
+              console.debug('Chunk parse error (expected during streaming):', e);
+            }
           }
         }
       }
+      
+      // After streaming completes, evaluate the node
+      const node = findNodeById(qaData, nodeId) || findNodeById(rootExtensions, nodeId);
+      if (node && accumulatedContent) {
+        await evaluateQAPair(node);
+      }
+      
+      return accumulatedContent;
     } catch (error) {
       console.error('Error processing stream:', error);
       throw error;
     }
-
-    function processPart(text: string) {
-      const lines = text.split('\n').filter(line => line.startsWith('data: '));
-      for (const line of lines) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        const { content, citations } = cleanStreamContent(jsonStr);
-        if (content) {
-          accumulatedContent += content;
-          accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-
-          setStreamingContent(prev => ({
-            ...prev,
-            [nodeId]: {
-              content: accumulatedContent,
-              citations: accumulatedCitations,
-            },
-          }));
-          
-          setQaData(prev => {
-            const updateNode = (nodes: QANode[]): QANode[] =>
-              nodes.map(node => {
-                if (node.id === nodeId) {
-                  return {
-                    ...node,
-                    analysis: accumulatedContent,
-                    citations: accumulatedCitations,
-                  };
-                }
-                if (node.children.length > 0) {
-                  return { ...node, children: updateNode(node.children) };
-                }
-                return node;
-              });
-            return updateNode(prev);
-          });
-        }
+  };
+  
+  // Helper to find a node by ID
+  const findNodeById = (nodes: QANode[], nodeId: string): QANode | null => {
+    for (const node of nodes) {
+      if (node.id === nodeId) return node;
+      if (node.children.length > 0) {
+        const found = findNodeById(node.children, nodeId);
+        if (found) return found;
       }
     }
-
-    return accumulatedContent;
-  }
+    return null;
+  };
 
   const analyzeQuestion = async (question: string, parentId: string | null = null, depth: number = 0) => {
     if (depth >= 3) return;
+    
+    // Cancel any existing stream
+    if (abortControllerRef[0]) {
+      abortControllerRef[0].abort();
+    }
+    
+    const controller = new AbortController();
+    abortControllerRef[0] = controller;
+    
     const nodeId = `node-${Date.now()}-${depth}`;
     setCurrentNodeId(nodeId);
     setExpandedNodes(prev => new Set([...prev, nodeId]));
 
     try {
+      // Add empty node to the tree
       setQaData(prev => {
         const newNode: QANode = {
           id: nodeId,
@@ -356,24 +367,29 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           analysis: '',
           children: [],
         };
+        
         if (!parentId) return [newNode];
+        
         const updateChildren = (nodes: QANode[]): QANode[] =>
           nodes.map(node => {
             if (node.id === parentId) return { ...node, children: [...node.children, newNode] };
             if (node.children.length > 0) return { ...node, children: updateChildren(node.children) };
             return node;
           });
+          
         return updateChildren(prev);
       });
 
+      // Initialize streaming state
       setStreamingContent(prev => ({
         ...prev,
-        [nodeId]: { content: '', citations: [] },
+        [nodeId]: ''
       }));
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
+      // Get direct stream from Supabase Function
+      const { data, error } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
           question, 
@@ -385,16 +401,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             areasForResearch: selectedResearchData.areas_for_research
           } : null
         }),
+        signal: controller.signal
       });
       
-      if (analysisError) throw analysisError;
+      if (error) throw error;
 
-      const reader = new Response(analysisData.body).body?.getReader();
-      if (!reader) throw new Error('Failed to create reader');
-
-      const analysis = await processStream(reader, nodeId);
+      // Process the stream directly
+      const analysis = await processStreamFromOpenRouter(nodeId, data.body);
       console.log('Completed analysis for node', nodeId, ':', analysis);
-
+      
+      // Update the node with complete analysis
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -409,14 +425,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      const currentNode: QANode = {
-        id: nodeId,
-        question,
-        analysis,
-        children: [] // Add the required children property
-      };
-      await evaluateQAPair(currentNode);
-
+      // If this is a root node, generate follow-up questions
       if (!parentId) {
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({ 
@@ -434,20 +443,29 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         });
         
         if (followUpError) throw followUpError;
-        const followUpQuestions = followUpData;
-        for (const item of followUpQuestions) {
+        
+        // Process each follow-up question
+        for (const item of followUpData) {
           if (item?.question) {
             await analyzeQuestion(item.question, nodeId, depth + 1);
           }
         }
       }
     } catch (error) {
-      console.error('Analysis error:', error);
-      toast({
-        variant: "destructive",
-        title: "Analysis Error",
-        description: error instanceof Error ? error.message : "Failed to analyze the question",
-      });
+      if (error.name !== 'AbortError') {
+        console.error('Analysis error:', error);
+        toast({
+          variant: "destructive",
+          title: "Analysis Error",
+          description: error instanceof Error ? error.message : "Failed to analyze the question",
+        });
+      }
+    } finally {
+      if (abortControllerRef[0] === controller) {
+        abortControllerRef[0] = null;
+      }
+      setIsAnalyzing(false);
+      setCurrentNodeId(null);
     }
   };
 
@@ -499,10 +517,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     nodes.forEach(node => {
       setStreamingContent(prev => ({
         ...prev,
-        [node.id]: {
-          content: node.analysis,
-          citations: node.citations || [],
-        },
+        [node.id]: node.analysis,
       }));
       if (node.children.length > 0) {
         populateStreamingContent(node.children);
@@ -733,11 +748,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
-    const streamContent = streamingContent[node.id];
+    const streamContent = streamingContent[node.id] || '';
     const isExpanded = expandedNodes.has(node.id);
-    const analysisContent = isStreaming ? streamContent?.content : node.analysis;
-    const citations = isStreaming ? streamContent?.citations : node.citations;
-    
+    const analysisContent = isStreaming ? streamContent : node.analysis;
     const nodeExtensions = getNodeExtensions(node.id);
     
     const markdownComponents: MarkdownComponents = {
@@ -766,7 +779,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       em: ({ children }) => <em className="italic">{children}</em>,
       strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
       h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h1>,
       h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
       hr: () => <hr className="my-4 border-muted" />,
     };
@@ -794,7 +807,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               <div className="flex items-start gap-2">
                 <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
                   {node.question}
-                  {getExtensionInfo(node)}
+                  {node.isExtendedRoot ? '' : getNodeExtensions(node.id).length > 0 ? ` (Expanded ${getNodeExtensions(node.id).length} times)` : ''}
                 </h3>
                 {!node.isExtendedRoot && (
                   <button 
@@ -821,7 +834,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           content={analysisContent} 
                           isStreaming={isStreaming}
                         />
-                        {renderCitations(citations)}
+                        {/* Citations would go here */}
                         
                         <div className="mt-4 flex items-center gap-2">
                           {node.evaluation && (
@@ -891,70 +904,3 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             variant="outline" 
             size="sm"
             onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
