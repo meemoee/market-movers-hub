@@ -39,7 +39,7 @@ serve(async (req) => {
       ]
     }`;
     
-    console.log("Sending request to OpenRouter with Gemini Flash model");
+    console.log("Sending request to OpenRouter with google/gemini-flash model");
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
