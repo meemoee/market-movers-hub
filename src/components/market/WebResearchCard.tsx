@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -298,6 +299,30 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       let accumulatedContent = '';
       let iterationAnalysis = ''; // For storing in the iterations array
       
+      // Create an empty iteration entry immediately so streaming updates work properly
+      setIterations(prev => {
+        const updatedIterations = [...prev];
+        const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+        
+        if (currentIterIndex >= 0) {
+          // Update existing iteration if it exists
+          updatedIterations[currentIterIndex] = {
+            ...updatedIterations[currentIterIndex],
+            analysis: "" // Initialize with empty analysis
+          };
+        } else {
+          // Add new iteration if it doesn't exist
+          updatedIterations.push({
+            iteration,
+            queries: currentQueries,
+            results: iterationResults,
+            analysis: "" // Initialize with empty analysis
+          });
+        }
+        
+        return updatedIterations;
+      });
+      
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
         let buffer = '';
@@ -328,6 +353,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   console.log("Received content chunk:", content.substring(0, 50) + "...")
                   accumulatedContent += content;
                   iterationAnalysis += content; // Save for iterations array too
+                  
+                  // Update both the main analysis state and the iterations array in real-time
                   setAnalysis(accumulatedContent);
                   
                   // Store the current iteration analysis in real-time
@@ -341,18 +368,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                         ...updatedIterations[currentIterIndex],
                         analysis: iterationAnalysis
                       };
-                    } else if (iteration <= prev.length + 1) {
-                      // Add new iteration
-                      updatedIterations.push({
-                        iteration,
-                        queries: currentQueries,
-                        results: iterationResults,
-                        analysis: iterationAnalysis
-                      });
                     }
                     
                     return updatedIterations;
                   });
+                  
+                  // Make sure the iteration is expanded when streaming analysis
+                  if (!expandedIterations.includes(`iteration-${iteration}`)) {
+                    setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
+                  }
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)
@@ -969,7 +993,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         <div>
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
           <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
-            <AnalysisDisplay content={iter.analysis} />
+            <AnalysisDisplay content={iter.analysis || "Analysis in progress..."} />
           </div>
         </div>
       </div>
