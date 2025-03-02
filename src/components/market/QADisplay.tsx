@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
+import { AnalysisDisplay } from './research/AnalysisDisplay';
 
 interface QANode {
   id: string;
@@ -49,7 +50,7 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
-  marketDescription?: string;  // Added this prop definition
+  marketDescription?: string;
 }
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
@@ -500,7 +501,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         ...prev,
         [node.id]: {
           content: node.analysis,
-          citations: node.citations || [], // Make sure to populate citations
+          citations: node.citations || [],
         },
       }));
       if (node.children.length > 0) {
@@ -519,10 +520,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setQaData(mainRoots);
     setStreamingContent({});
     
-    // Populate streaming content for both main roots and extensions
     populateStreamingContent([...mainRoots, ...extensions]);
     
-    // Evaluate all nodes that don't have evaluations
     const evaluateAllNodes = async (nodes: QANode[]) => {
       console.log('Evaluating nodes:', nodes.length);
       for (const node of nodes) {
@@ -675,7 +674,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const isLineComplete = (line: string): boolean => {
-    // Check if the line ends with a proper sentence ending
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
@@ -703,7 +701,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Update qaData with evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -718,7 +715,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Update rootExtensions with evaluation
       setRootExtensions(prev => 
         prev.map(ext => 
           ext.id === node.id ? { ...ext, evaluation: data } : ext
@@ -821,12 +817,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                   <div className="flex-1">
                     {isExpanded ? (
                       <>
-                        <ReactMarkdown
-                          components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent}
-                        </ReactMarkdown>
+                        <AnalysisDisplay 
+                          content={analysisContent} 
+                          isStreaming={isStreaming}
+                        />
                         {renderCitations(citations)}
                         
                         <div className="mt-4 flex items-center gap-2">
