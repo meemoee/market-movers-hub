@@ -266,7 +266,7 @@ export function WebResearchCard({ description, marketId, title = '' }: WebResear
         if (iteration < maxIterations) {
           const simplifiedQueries = [
             `${description.split(' ').slice(0, 10).join(' ')}`,
-            `${marketId} latest updates`,
+            `${title || ''} latest updates`,
             `${description.split(' ').slice(0, 5).join(' ')} news`
           ];
           

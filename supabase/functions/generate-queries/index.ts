@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 interface GenerateQueriesRequest {
   query: string;
+  title?: string;
   previousResults?: string;
   iteration?: number;
   marketId?: string;
@@ -21,9 +22,9 @@ Deno.serve(async (req) => {
 
   try {
     const requestData: GenerateQueriesRequest = await req.json();
-    const { query, previousResults, iteration = 0, marketId, marketDescription } = requestData;
+    const { query, title, previousResults, iteration = 0, marketDescription } = requestData;
 
-    if (!query) {
+    if (!query && !marketDescription) {
       return new Response(
         JSON.stringify({ error: "Query parameter is required" }),
         {
@@ -34,68 +35,72 @@ Deno.serve(async (req) => {
     }
 
     console.log("Generate queries request:", { 
-      query, 
+      query: query?.substring(0, 100), 
+      title,
       iteration,
-      marketId,
       marketDescription: marketDescription?.substring(0, 100)
     });
 
-    let marketInfo = "";
-    let searchContext = "";
-
-    // Get market data if marketId is provided
-    if (marketId) {
-      const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-      const { data: marketData, error: marketError } = await supabase
-        .from("markets")
-        .select("question, description")
-        .eq("id", marketId)
-        .single();
-
-      if (!marketError && marketData) {
-        console.log("Found market data:", {
-          id: marketId,
-          question: marketData.question,
-          description: marketData.description?.substring(0, 100)
-        });
-        
-        marketInfo = `Market ID: ${marketId}
-Market Question: ${marketData.question}
-Market Description: ${marketData.description || ""}`;
-        
-        searchContext = marketData.question;
-      } else {
-        console.log("Using marketDescription as fallback:", marketDescription?.substring(0, 100));
-        marketInfo = `Market ID: ${marketId}
-Market Description: ${marketDescription || ""}`;
-        
-        searchContext = marketDescription || "";
-      }
-    } else if (marketDescription) {
-      marketInfo = `Market Description: ${marketDescription}`;
-      searchContext = marketDescription;
+    // Prioritize using the question or description
+    const searchContext = query || marketDescription || "";
+    let searchTitle = title || "";
+    
+    // Clean up and extract key components from the market description
+    const cleanQuery = searchContext.trim();
+    const questionMatch = cleanQuery.match(/^(.*?)\?/);
+    const keywords = cleanQuery.split(/\s+/).filter(word => word.length > 3);
+    
+    // Create search phrases from the title and description
+    let keyPhrase = "";
+    if (searchTitle) {
+      keyPhrase = searchTitle;
+    } else if (questionMatch && questionMatch[0]) {
+      keyPhrase = questionMatch[0];
+    } else if (keywords.length >= 3) {
+      keyPhrase = keywords.slice(0, 5).join(' ');
+    } else {
+      keyPhrase = cleanQuery.split('.')[0];
     }
-
-    // Filter out excess spaces and ensure a clean query
-    const cleanQuery = searchContext || query;
+    
+    // Limit key phrase to a reasonable length
+    if (keyPhrase.length > 100) {
+      keyPhrase = keyPhrase.substring(0, 100);
+    }
     
     // Generating search queries based on the market information and iteration
     let queries: string[] = [];
     
     if (iteration === 0) {
-      // Initial queries - focused on core information
-      queries = [
-        `${cleanQuery} latest news`,
-        `${cleanQuery} prediction`,
-        `${marketId || ""} ${cleanQuery} analysis`,
-      ];
+      // Initial focused queries based on key phrase and title
+      if (searchTitle) {
+        queries = [
+          `${searchTitle} ${keyPhrase.substring(0, 50)} latest information`,
+          `${keyPhrase.substring(0, 70)} recent updates`,
+          `${searchTitle} analysis prediction`
+        ];
+      } else {
+        queries = [
+          `${keyPhrase} latest information`,
+          `${keyPhrase} recent updates`,
+          `${keyPhrase} analysis prediction`
+        ];
+      }
     } else if (previousResults) {
-      // Refine queries based on previous results
-      // Use simple queries for now to ensure we get results
+      // Extract important terms from previous results
+      const terms = previousResults
+        .split(/\s+/)
+        .filter(word => word.length > 5)
+        .filter(word => !['information', 'analysis', 'however', 'therefore'].includes(word.toLowerCase()))
+        .slice(0, 10);
+      
+      const uniqueTerms = [...new Set(terms)];
+      const relevantTerms = uniqueTerms.slice(0, 3).join(' ');
+      
+      // Generate more specific queries based on previous results
       queries = [
-        `${cleanQuery} latest information`,
-        `${cleanQuery} analysis ${new Date().getFullYear()}`,
-        `${cleanQuery} expert opinion`,
+        `${keyPhrase} ${relevantTerms} recent developments`,
+        `${keyPhrase} expert analysis ${new Date().getFullYear()}`,
+        searchTitle ? `${searchTitle} ${relevantTerms} latest news` : `${keyPhrase} latest news`
       ];
     }
 
