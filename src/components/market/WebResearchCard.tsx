@@ -362,13 +362,25 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."])
         
         try {
+          // Get all previous analyses to provide better context for query generation
+          const previousAnalyses = iterations.map(iter => iter.analysis);
+          
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
             body: JSON.stringify({ 
               query: description,
               previousResults: currentAnalysis,
+              previousAnalyses: previousAnalyses, // Send all previous analyses
               iteration: iteration,
               marketId: marketId,
-              marketDescription: description
+              marketDescription: description,
+              // Extract areas needing further research from previous iterations
+              areasNeedingResearch: iterations
+                .filter(iter => iter.iteration < iteration)
+                .flatMap(iter => {
+                  // Try to extract areas needing research from analysis text
+                  const matches = iter.analysis.match(/need(s|ing)?\s+(to|further|more)?\s+(research|investigation|explore|look into|clarify).*?[:\.]/gi);
+                  return matches || [];
+                })
             })
           })
 

@@ -1,5 +1,5 @@
 
-import { Target, ArrowDown } from "lucide-react"
+import { Target, ArrowDown, Search } from "lucide-react"
 
 interface InsightsDisplayProps {
   probability: string;
@@ -27,12 +27,15 @@ export function InsightsDisplay({ probability, areasForResearch }: InsightsDispl
           <>
             <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
             <div>
-              <div className="text-sm font-medium mb-2">Areas Needing Research:</div>
-              <ul className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                <Search className="h-3 w-3 text-primary" />
+                <span>Areas Needing Further Research:</span>
+              </div>
+              <ul className="space-y-2">
                 {areasForResearch.map((area, index) => (
-                  <li key={index} className="text-sm text-muted-foreground flex items-center gap-2">
-                    <ArrowDown className="h-3 w-3" />
-                    {area}
+                  <li key={index} className="text-sm text-muted-foreground flex items-start gap-2 p-2 rounded-md bg-black/5 dark:bg-white/5">
+                    <ArrowDown className="h-3 w-3 mt-1 flex-shrink-0" />
+                    <span>{area}</span>
                   </li>
                 ))}
               </ul>
