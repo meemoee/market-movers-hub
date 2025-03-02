@@ -18,9 +18,14 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
   }, [messages])
   
   useEffect(() => {
-    // Auto-scroll to the bottom when new messages arrive
+    // Auto-scroll to the bottom within the ScrollArea component only
+    // Using scrollIntoView with block: "end" and a more gentle behavior
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'end',
+        inline: 'nearest'
+      });
     }
   }, [messages]);
 

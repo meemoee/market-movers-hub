@@ -13,7 +13,7 @@ export function InsightsDisplay({ probability, areasForResearch }: InsightsDispl
   }
 
   return (
-    <div className="space-y-4 bg-accent/5 rounded-md p-4">
+    <div className="space-y-4 bg-accent/5 rounded-md p-4 overflow-hidden">
       <div className={`space-y-4 p-3 rounded-lg ${getProbabilityColor(probability)}`}>
         <div className="flex items-center gap-2">
           <Target className="h-4 w-4 text-primary" />
