@@ -323,6 +323,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return updatedIterations;
       });
       
+      // Make sure the relevant iteration is expanded immediately when analysis starts
+      setExpandedIterations(prev => {
+        if (!prev.includes(`iteration-${iteration}`)) {
+          return [...prev, `iteration-${iteration}`];
+        }
+        return prev;
+      });
+      
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
         let buffer = '';
@@ -351,6 +359,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 const { content } = cleanStreamContent(jsonStr)
                 if (content) {
                   console.log("Received content chunk:", content.substring(0, 50) + "...")
+                  // Add the new content to progress updates to help debug
+                  setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
+                  
                   accumulatedContent += content;
                   iterationAnalysis += content; // Save for iterations array too
                   
@@ -363,7 +374,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
                     
                     if (currentIterIndex >= 0) {
-                      // Update existing iteration
+                      // Update existing iteration with the new chunk of content
                       updatedIterations[currentIterIndex] = {
                         ...updatedIterations[currentIterIndex],
                         analysis: iterationAnalysis
@@ -372,11 +383,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     
                     return updatedIterations;
                   });
-                  
-                  // Make sure the iteration is expanded when streaming analysis
-                  if (!expandedIterations.includes(`iteration-${iteration}`)) {
-                    setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
-                  }
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)
@@ -993,7 +999,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         <div>
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
           <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
-            <AnalysisDisplay content={iter.analysis || "Analysis in progress..."} />
+            <AnalysisDisplay 
+              content={iter.analysis || "Analysis in progress..."} 
+              isStreaming={isAnalyzing && iter.iteration === currentIteration}
+            />
           </div>
         </div>
       </div>
