@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -367,7 +366,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               query: description,
               previousResults: currentAnalysis,
               iteration: iteration,
-              marketId: marketId,
               marketDescription: description
             })
           })
@@ -677,14 +675,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       try {
         console.log("Calling generate-queries with:", { 
           description, 
-          marketId,
           descriptionLength: description ? description.length : 0 
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
           body: JSON.stringify({ 
             query: description,
-            marketId,
             marketDescription: description
           })
         });
@@ -773,7 +769,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     });
   };
 
-  // Render the live query display
   const renderQueryDisplay = () => {
     if (!currentQueries.length) return null;
     
@@ -892,7 +887,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
 
-      {/* New live query display */}
       {(isLoading || isAnalyzing) && renderQueryDisplay()}
 
       <ProgressDisplay messages={progress} />
