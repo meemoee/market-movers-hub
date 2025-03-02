@@ -375,7 +375,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     return updatedIterations;
                   });
                   
-                  // Force an immediate React render
+                  // Force React to re-render immediately
                   await new Promise(resolve => setTimeout(resolve, 0));
                 }
               } catch (e) {
