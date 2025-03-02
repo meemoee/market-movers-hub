@@ -1,6 +1,7 @@
 
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileText, Globe } from "lucide-react"
+import { getFaviconUrl } from "@/utils/favicon"
 
 interface SitePreviewListProps {
   results: Array<{
@@ -21,7 +22,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
         <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
           <div className="flex items-center gap-2">
             <img 
-              src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}`}
+              src={getFaviconUrl(result.url)} 
               alt=""
               className="w-4 h-4"
               onError={(e) => {

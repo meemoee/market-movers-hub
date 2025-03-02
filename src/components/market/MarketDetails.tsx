@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -127,11 +126,11 @@ export function MarketDetails({
         />
       )}
 
-      {marketId && question && (
+      {description && (
         <div>
           <WebResearchCard 
+            description={description} 
             marketId={marketId}
-            question={question}
           />
         </div>
       )}

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -14,9 +13,12 @@ import {
   Slider 
 } from "@/components/ui/slider"
 import { supabase } from "@/integrations/supabase/client"
+import { ResearchHeader } from "./research/ResearchHeader"
+import { ProgressDisplay } from "./research/ProgressDisplay"
+import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./insights/InsightsDisplay"
-import { ChevronDown, Search, Settings } from 'lucide-react'
+import { ChevronDown, Settings } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useToast } from "@/components/ui/use-toast"
@@ -30,649 +32,1171 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 
-// Properly structured interface definition for the component props
 interface WebResearchCardProps {
-  marketId: string
-  question?: string
+  description: string;
+  marketId: string;
 }
 
-// Define interfaces for our data structures
-interface ResearchSession {
-  id: string
-  market_id: string
-  question: string
-  status: string
-  created_at: string
+interface ResearchResult {
+  url: string;
+  content: string;
+  title?: string;
+}
+
+interface StreamingState {
+  rawText: string;
+  parsedData: {
+    probability: string;
+    areasForResearch: string[];
+  } | null;
 }
 
 interface ResearchIteration {
-  id: string
-  session_id: string
-  query: string
-  num_results: number
-  search_results?: { title: string, url: string }[]
-  analysis?: string
-  status: string
-  created_at: string
+  iteration: number;
+  queries: string[];
+  results: ResearchResult[];
+  analysis: string;
 }
 
-interface SourceItem {
-  title: string
-  url: string
+interface SavedResearch {
+  id: string;
+  user_id: string;
+  query: string;
+  sources: ResearchResult[];
+  analysis: string;
+  probability: string;
+  areas_for_research: string[];
+  created_at: string;
+  updated_at: string;
+  market_id: string;
+  iterations?: ResearchIteration[];
 }
 
-export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
-  const { toast } = useToast()
+export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [researchSession, setResearchSession] = useState<ResearchSession | null>(null)
-  const [iterations, setIterations] = useState<ResearchIteration[]>([])
-  const [userQuery, setUserQuery] = useState<string>('')
-  const [showSettings, setShowSettings] = useState(false)
-  const [numResults, setNumResults] = useState<number>(3)
-  const [streamingData, setStreamingData] = useState<{
-    iterationId: string | null,
-    content: string
-  }>({
-    iterationId: null,
-    content: ''
+  const [progress, setProgress] = useState<string[]>([])
+  const [results, setResults] = useState<ResearchResult[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [analysis, setAnalysis] = useState('')
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [streamingState, setStreamingState] = useState<StreamingState>({
+    rawText: '',
+    parsedData: null
   })
+  const [maxIterations, setMaxIterations] = useState(3)
+  const [currentIteration, setCurrentIteration] = useState(0)
+  const [iterations, setIterations] = useState<ResearchIteration[]>([])
+  const [expandedIterations, setExpandedIterations] = useState<string[]>(['iteration-1'])
+  const [currentQueries, setCurrentQueries] = useState<string[]>([])
+  const [currentQueryIndex, setCurrentQueryIndex] = useState<number>(-1)
+  const { toast } = useToast()
 
-  // Fetch existing research sessions for this market using web_research table
-  const { data: existingResearch, isLoading: isLoadingExisting, refetch: refetchSessions } = useQuery({
-    queryKey: ['web-research', marketId],
+  const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
+    queryKey: ['saved-research', marketId],
     queryFn: async () => {
+      const { data: user } = await supabase.auth.getUser()
+      if (!user.user) throw new Error('Not authenticated')
+
       const { data, error } = await supabase
         .from('web_research')
         .select('*')
         .eq('market_id', marketId)
+        .eq('user_id', user.user.id)
         .order('created_at', { ascending: false })
-        .limit(1)
-      
+
       if (error) throw error
       
-      // Convert to our internal format
-      if (data && data.length > 0) {
-        return {
-          id: data[0].id,
-          market_id: data[0].market_id,
-          question: data[0].query,
-          status: 'active',
-          created_at: data[0].created_at
-        } as ResearchSession
-      }
-      return null
+      return (data as any[]).map(item => ({
+        ...item,
+        sources: item.sources as ResearchResult[],
+        areas_for_research: item.areas_for_research as string[],
+        iterations: item.iterations as ResearchIteration[] || []
+      })) as SavedResearch[]
     }
   })
 
-  // Fetch iterations if we have a session - using the iterations field in web_research
-  const { data: researchIterations, isLoading: isLoadingIterations, refetch: refetchIterations } = useQuery({
-    queryKey: ['web-research-iterations', researchSession?.id],
-    queryFn: async () => {
-      if (!researchSession?.id) return []
-      
-      const { data, error } = await supabase
-        .from('web_research')
-        .select('iterations')
-        .eq('id', researchSession.id)
-      
-      if (error) throw error
-      
-      // Convert from JSON to our internal format with proper type checking
-      const iterationsJson = data[0]?.iterations as Json | null || []
-      const iterationsArray = Array.isArray(iterationsJson) ? iterationsJson : []
-      
-      return iterationsArray.map((iter: any) => ({
-        id: iter.id || crypto.randomUUID(),
-        session_id: researchSession.id,
-        query: iter.query,
-        num_results: iter.num_results || 3,
-        search_results: iter.search_results,
-        analysis: iter.analysis,
-        status: iter.status || 'completed',
-        created_at: iter.created_at || new Date().toISOString()
-      })) as ResearchIteration[]
-    },
-    enabled: !!researchSession?.id
-  })
-
-  // Update local state when data is fetched
-  useEffect(() => {
-    if (existingResearch) {
-      setResearchSession(existingResearch)
-    }
-  }, [existingResearch])
-
-  useEffect(() => {
-    if (researchIterations) {
-      setIterations(researchIterations)
-    }
-  }, [researchIterations])
-
-  const startNewSession = async () => {
-    try {
-      setIsLoading(true)
-      
-      // Get the current user or use placeholder for anonymous users
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id || '00000000-0000-0000-0000-000000000000';
-      
-      // Create new research session in web_research table
-      const { data, error } = await supabase
-        .from('web_research')
-        .insert({
-          market_id: marketId,
-          query: question || '',
-          analysis: 'No analysis yet',
-          sources: [],
-          areas_for_research: [],
-          probability: 'Unknown',
-          user_id: userId,
-          iterations: []
-        })
-        .select()
-      
-      if (error) throw error
-      
-      // Set the new session
-      const newSession = {
-        id: data[0].id,
-        market_id: data[0].market_id,
-        question: data[0].query,
-        status: 'active',
-        created_at: data[0].created_at
-      } as ResearchSession
-      
-      setResearchSession(newSession)
-      setIterations([])
-      await refetchSessions()
-      await refetchIterations()
-      
-    } catch (error) {
-      console.error('Error starting research session:', error)
-      toast({
-        title: "Error",
-        description: "Failed to start research session",
-        variant: "destructive"
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const runResearchIteration = async () => {
-    if (!researchSession?.id) {
-      toast({
-        title: "Error",
-        description: "No active research session found",
-        variant: "destructive"
-      })
-      return
+  const loadSavedResearch = (research: SavedResearch) => {
+    setResults(research.sources)
+    setAnalysis(research.analysis)
+    
+    if (research.iterations && research.iterations.length > 0) {
+      setIterations(research.iterations)
+      setExpandedIterations([`iteration-${research.iterations.length}`])
     }
     
-    if (!userQuery.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a search query",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    try {
-      setIsLoading(true)
-      
-      // Get the current user data
-      const { data: currentData, error: currentError } = await supabase
-        .from('web_research')
-        .select('iterations')
-        .eq('id', researchSession.id)
-        .single()
-      
-      if (currentError) throw currentError
-      
-      // Create new iteration
-      const newIteration = {
-        id: crypto.randomUUID(),
-        query: userQuery,
-        num_results: numResults,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        search_results: []
+    setStreamingState({
+      rawText: JSON.stringify({
+        probability: research.probability,
+        areasForResearch: research.areas_for_research
+      }, null, 2),
+      parsedData: {
+        probability: research.probability,
+        areasForResearch: research.areas_for_research
       }
-      
-      // Handle case where iterations might be null or not an array
-      const currentIterations = currentData.iterations || []
-      const iterationsArray = Array.isArray(currentIterations) ? currentIterations : []
-      
-      // Update the iterations in the web_research table
-      const updatedIterations = [...iterationsArray, newIteration]
-      
-      const { error: updateError } = await supabase
-        .from('web_research')
-        .update({ iterations: updatedIterations })
-        .eq('id', researchSession.id)
-      
-      if (updateError) throw updateError
-      
-      // Execute web research
-      const { data: searchResults, error: webError } = await supabase.functions.invoke('web-research', {
-        body: {
-          iterationId: newIteration.id,
-          query: userQuery,
-          numResults: numResults,
-          marketId,
-          marketQuestion: question || ''
-        }
-      })
-      
-      if (webError) throw webError
-      
-      // Update the iteration with search results
-      const { data: updatedData } = await supabase
-        .from('web_research')
-        .select('iterations')
-        .eq('id', researchSession.id)
-        .single()
-      
-      // Ensure updatedData.iterations is an array
-      const updatedIterationsJson = updatedData.iterations || []
-      const updatedIterationsArray = Array.isArray(updatedIterationsJson) ? updatedIterationsJson : []
-      
-      const finalUpdatedIterations = updatedIterationsArray.map((iter: any) => {
-        if (iter.id === newIteration.id) {
-          return {
-            ...iter,
-            search_results: searchResults?.results || [],
-            status: 'completed'
-          }
-        }
-        return iter
-      })
-      
-      await supabase
-        .from('web_research')
-        .update({ iterations: finalUpdatedIterations })
-        .eq('id', researchSession.id)
-      
-      // Reset user query
-      setUserQuery('')
-      await refetchIterations()
-      
-    } catch (error) {
-      console.error('Error running research iteration:', error)
-      toast({
-        title: "Error",
-        description: "Failed to run research iteration",
-        variant: "destructive"
-      })
-    } finally {
-      setIsLoading(false)
-    }
+    })
   }
 
-  // Process streaming analysis and update UI with the chunk data
-  const processAnalysisStream = async (iterationId: string) => {
+  const isCompleteMarkdown = (text: string): boolean => {
+    const stack: string[] = [];
+    let inCode = false;
+    let inList = false;
+    let currentNumber = '';
+    
+    for (let i = 0; i < text.length; i++) {
+      const char = text[i];
+      const nextChar = text[i + 1];
+      const prevChar = text[i - 1];
+      
+      if (char === '`' && nextChar === '`' && text[i + 2] === '`') {
+        inCode = !inCode;
+        i += 2;
+        continue;
+      }
+      
+      if (inCode) continue;
+      
+      if (/^\d$/.test(char)) {
+        currentNumber += char;
+        continue;
+      }
+      if (char === '.' && currentNumber !== '') {
+        inList = true;
+        currentNumber = '';
+        continue;
+      }
+      
+      if (char === '\n') {
+        inList = false;
+        currentNumber = '';
+      }
+      
+      if (char === '*' && nextChar === '*') {
+        const pattern = '**';
+        if (stack.length > 0 && stack[stack.length - 1] === pattern) {
+          stack.pop();
+        } else {
+          stack.push(pattern);
+        }
+        i++;
+        continue;
+      }
+      
+      if ((char === '*' || char === '`' || char === '_') && 
+          !(prevChar && nextChar && /\w/.test(prevChar) && /\w/.test(nextChar))) {
+        if (stack.length > 0 && stack[stack.length - 1] === char) {
+          stack.pop();
+        } else {
+          stack.push(char);
+        }
+      }
+    }
+    
+    return stack.length === 0 && !inCode && !inList;
+  };
+
+  const cleanStreamContent = (chunk: string): { content: string } => {
     try {
-      // Reset and prepare for streaming
-      setStreamingData({
-        iterationId,
-        content: ''
-      });
+      let dataStr = chunk;
+      if (dataStr.startsWith('data: ')) {
+        dataStr = dataStr.slice(6);
+      }
+      dataStr = dataStr.trim();
       
-      const response = await supabase.functions.invoke('analyze-web-content', {
-        body: {
-          iterationId,
-          marketId
-        }
-      });
-      
-      if (response.error) {
-        throw new Error(response.error.message);
+      if (dataStr === '[DONE]') {
+        return { content: '' };
       }
       
-      // Since we can't use streaming directly with the Supabase client,
-      // let's simulate streaming by processing the response in chunks
-      const content = response.data?.analysis || '';
-      
-      // Simulate streaming by processing each character with slight delay
-      for (let i = 0; i < content.length; i += 3) {
-        const chunk = content.substring(i, i + 3);
-        
-        // Update the state immediately with each chunk
-        await new Promise<void>(resolve => {
-          requestAnimationFrame(() => {
-            setStreamingData(prev => ({
-              iterationId,
-              content: prev.content + chunk
-            }));
-            resolve();
-          });
-        });
-        
-        // Small delay to simulate streaming
-        await new Promise(resolve => setTimeout(resolve, 5));
-      }
-      
-      // Update the iterations in the database
-      const { data } = await supabase
-        .from('web_research')
-        .select('iterations')
-        .eq('id', researchSession?.id)
-        .single();
-        
-      if (!data) throw new Error('No session data found');
-      
-      // Ensure data.iterations is an array
-      const iterationsJson = data.iterations || []
-      const iterationsArray = Array.isArray(iterationsJson) ? iterationsJson : []
-      
-      const updatedIterations = iterationsArray.map((iter: any) => {
-        if (iter.id === iterationId) {
-          return {
-            ...iter,
-            analysis: streamingData.content,
-            status: 'completed'
-          };
-        }
-        return iter;
-      });
-      
-      const { error } = await supabase
-        .from('web_research')
-        .update({ 
-          iterations: updatedIterations
-        })
-        .eq('id', researchSession?.id);
-        
-      if (error) throw error;
-      
-      // Clear streaming state after saving to DB
-      setStreamingData({
-        iterationId: null,
-        content: ''
-      });
-      
-      // Refresh iterations to get the updated data
-      await refetchIterations();
-      
-    } catch (error) {
-      console.error('Error analyzing content:', error);
-      toast({
-        title: "Error",
-        description: "Failed to analyze content",
-        variant: "destructive"
-      });
-      
-      // Update iteration status to error in the database
-      if (researchSession?.id) {
-        const { data } = await supabase
-          .from('web_research')
-          .select('iterations')
-          .eq('id', researchSession.id)
-          .single();
-        
-        if (data) {
-          // Ensure data.iterations is an array
-          const iterationsJson = data.iterations || []
-          const iterationsArray = Array.isArray(iterationsJson) ? iterationsJson : []
-          
-          const updatedIterations = iterationsArray.map((iter: any) => {
-            if (iter.id === iterationId) {
-              return {
-                ...iter,
-                status: 'error'
-              };
-            }
-            return iter;
-          });
-          
-          await supabase
-            .from('web_research')
-            .update({ iterations: updatedIterations })
-            .eq('id', researchSession.id);
-        }
-      }
+      const parsed = JSON.parse(dataStr);
+      const content = parsed.choices?.[0]?.delta?.content || 
+                     parsed.choices?.[0]?.message?.content || '';
+      return { content };
+    } catch (e) {
+      console.debug('Chunk parse error (expected during streaming):', e);
+      return { content: '' };
     }
   };
-  
-  // Extract sources from the search results to display
-  const getSourcesForIteration = (iteration: ResearchIteration): SourceItem[] => {
-    if (!iteration?.search_results) return []
-    
+
+  const saveResearch = async () => {
     try {
-      // Ensure search_results is an array
-      const searchResults = iteration.search_results;
-      if (!Array.isArray(searchResults)) return [];
-      
-      return searchResults.map(r => ({ title: r.title, url: r.url }))
-    } catch (e) {
-      console.error('Error parsing search results:', e)
-      return []
+      const { data: user } = await supabase.auth.getUser()
+      if (!user.user) {
+        throw new Error('Not authenticated')
+      }
+
+      const { error } = await supabase.from('web_research').insert({
+        user_id: user.user.id,
+        query: description,
+        sources: results as unknown as Json,
+        analysis,
+        probability: streamingState.parsedData?.probability || '',
+        areas_for_research: streamingState.parsedData?.areasForResearch as unknown as Json,
+        market_id: marketId,
+        iterations: iterations as unknown as Json
+      })
+
+      if (error) throw error
+
+      toast({
+        title: "Research saved",
+        description: "Your research has been saved automatically.",
+      })
+
+      refetchSavedResearch()
+    } catch (error) {
+      console.error('Error saving research:', error)
+      toast({
+        title: "Error",
+        description: "Failed to save research automatically. Please try again.",
+        variant: "destructive"
+      })
     }
   }
-  
-  return (
-    <Card className="relative overflow-hidden">
-      <div className="p-6 pb-4 border-b border-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-semibold">Web Research</h3>
-            <p className="text-sm text-muted-foreground">
-              {question ? `Research for: ${question}` : 'Search the web for information'}
-            </p>
-          </div>
+
+  const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[]) => {
+    try {
+      setIsAnalyzing(true)
+      setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
+      
+      console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
+      
+      if (allContent.length === 0) {
+        setProgress(prev => [...prev, "No content to analyze. Trying simpler queries..."]);
+        
+        if (iteration < maxIterations) {
+          const simplifiedQueries = [
+            `${description.split(' ').slice(0, 10).join(' ')}`,
+            `${marketId} latest updates`,
+            `${description.split(' ').slice(0, 5).join(' ')} news`
+          ];
           
-          {researchSession && (
-            <Button 
-              onClick={startNewSession}
-              variant="outline"
-              size="sm"
+          setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
+          setCurrentQueries(simplifiedQueries);
+          await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent]);
+          return;
+        }
+      }
+      
+      const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
+        body: JSON.stringify({ 
+          content: allContent.join('\n\n'),
+          query: description,
+          question: description,
+          marketId: marketId,
+          marketDescription: description,
+          previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+          areasForResearch: streamingState.parsedData?.areasForResearch || []
+        })
+      })
+
+      if (analysisResponse.error) {
+        console.error("Error from analyze-web-content:", analysisResponse.error)
+        throw analysisResponse.error
+      }
+
+      console.log("Received response from analyze-web-content")
+
+      let accumulatedContent = '';
+      let iterationAnalysis = ''; // For storing in the iterations array
+      
+      // Create an empty iteration entry immediately so streaming updates work properly
+      setIterations(prev => {
+        const updatedIterations = [...prev];
+        const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+        
+        if (currentIterIndex >= 0) {
+          // Update existing iteration if it exists
+          updatedIterations[currentIterIndex] = {
+            ...updatedIterations[currentIterIndex],
+            analysis: "" // Initialize with empty analysis
+          };
+        } else {
+          // Add new iteration if it doesn't exist
+          updatedIterations.push({
+            iteration,
+            queries: currentQueries,
+            results: iterationResults,
+            analysis: "" // Initialize with empty analysis
+          });
+        }
+        
+        return updatedIterations;
+      });
+      
+      // Make sure the relevant iteration is expanded immediately when analysis starts
+      setExpandedIterations(prev => {
+        if (!prev.includes(`iteration-${iteration}`)) {
+          return [...prev, `iteration-${iteration}`];
+        }
+        return prev;
+      });
+      
+      const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+        const textDecoder = new TextDecoder()
+        let buffer = '';
+        
+        const processChunk = async (chunk: string) => {
+          console.log("Processing chunk:", chunk.substring(0, 50) + "...")
+          
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              if (jsonStr === '[DONE]') continue
+              
+              try {
+                const { content } = cleanStreamContent(jsonStr)
+                if (content) {
+                  console.log("Received content chunk:", content.substring(0, 50) + "...")
+                  // Add the new content to progress updates to help debug
+                  setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
+                  
+                  accumulatedContent += content;
+                  iterationAnalysis += content; // Save for iterations array too
+                  
+                  // Update both the main analysis state and the iterations array in real-time
+                  setAnalysis(accumulatedContent);
+                  
+                  // Store the current iteration analysis in real-time
+                  setIterations(prev => {
+                    const updatedIterations = [...prev];
+                    const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+                    
+                    if (currentIterIndex >= 0) {
+                      // Update existing iteration with the new chunk of content
+                      updatedIterations[currentIterIndex] = {
+                        ...updatedIterations[currentIterIndex],
+                        analysis: iterationAnalysis
+                      };
+                    }
+                    
+                    return updatedIterations;
+                  });
+                  
+                  // Force an immediate React render
+                  await new Promise(resolve => setTimeout(resolve, 0));
+                }
+              } catch (e) {
+                console.error('Error parsing analysis SSE data:', e)
+              }
+            }
+          }
+        };
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Analysis stream complete")
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received analysis chunk of size:", chunk.length)
+          
+          // Process each chunk individually and force a render after each one
+          await processChunk(chunk);
+        }
+
+        return accumulatedContent;
+      }
+
+      const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
+      
+      if (!analysisReader) {
+        throw new Error('Failed to get reader from analysis response')
+      }
+      
+      const currentAnalysis = await processAnalysisStream(analysisReader)
+      
+      // Final update to the iterations array with the complete analysis
+      setIterations(prev => {
+        const updatedIterations = [...prev];
+        const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+        
+        if (currentIterIndex >= 0) {
+          // Update existing iteration
+          updatedIterations[currentIterIndex] = {
+            ...updatedIterations[currentIterIndex],
+            analysis: iterationAnalysis
+          };
+        } else {
+          // Add new iteration if it doesn't exist
+          updatedIterations.push({
+            iteration,
+            queries: currentQueries,
+            results: iterationResults,
+            analysis: iterationAnalysis
+          });
+        }
+        
+        return updatedIterations;
+      });
+      
+      if (iteration === maxIterations) {
+        setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
+        await extractInsights(allContent, currentAnalysis)
+      } else {
+        setProgress(prev => [...prev, "Generating new queries based on analysis..."])
+        
+        try {
+          const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
+            body: JSON.stringify({ 
+              query: description,
+              previousResults: currentAnalysis,
+              iteration: iteration,
+              marketId: marketId,
+              marketDescription: description,
+              areasForResearch: streamingState.parsedData?.areasForResearch || [],
+              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n')
+            })
+          })
+
+          if (refinedQueriesError) {
+            console.error("Error from generate-queries:", refinedQueriesError)
+            throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
+          }
+
+          if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
+            console.error("Invalid refined queries response:", refinedQueriesData)
+            throw new Error('Invalid refined queries response')
+          }
+
+          console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
+          setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
+          
+          // Display new queries immediately and set them as current
+          setCurrentQueries(refinedQueriesData.queries);
+          setCurrentQueryIndex(-1);
+          
+          refinedQueriesData.queries.forEach((query: string, index: number) => {
+            setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
+          })
+
+          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
+        } catch (error) {
+          console.error("Error generating refined queries:", error)
+          
+          const fallbackQueries = [
+            `${description} latest information`,
+            `${description} expert analysis`,
+            `${description} key details`
+          ]
+          
+          setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
+          setCurrentQueries(fallbackQueries);
+          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
+        }
+      }
+
+      return currentAnalysis
+    } catch (error) {
+      console.error("Error in processQueryResults:", error);
+      setError(`Error analyzing content: ${error.message}`);
+      setIsAnalyzing(false);
+    }
+  }
+
+  const extractInsights = async (allContent: string[], finalAnalysis: string) => {
+    setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
+    
+    const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
+      body: {
+        webContent: allContent.join('\n\n'),
+        analysis: finalAnalysis,
+        marketId: marketId,
+        marketQuestion: description
+      }
+    })
+
+    if (insightsResponse.error) {
+      console.error("Error from extract-research-insights:", insightsResponse.error)
+      throw insightsResponse.error
+    }
+
+    console.log("Received response from extract-research-insights")
+
+    let accumulatedJson = ''
+    
+    const processInsightsStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+      const textDecoder = new TextDecoder()
+      let buffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) {
+          console.log("Insights stream complete")
+          
+          // When stream is complete, try to clean and parse the JSON
+          try {
+            // Clean any markdown code block syntax from the JSON string
+            let cleanJson = accumulatedJson;
+            if (cleanJson.startsWith('```json')) {
+              cleanJson = cleanJson.replace(/^```json\n/, '').replace(/```$/, '');
+            } else if (cleanJson.startsWith('```')) {
+              cleanJson = cleanJson.replace(/^```\n/, '').replace(/```$/, '');
+            }
+            
+            console.log("Attempting to parse cleaned JSON:", cleanJson.substring(0, 100) + "...");
+            
+            const finalData = JSON.parse(cleanJson);
+            setStreamingState({
+              rawText: cleanJson,
+              parsedData: {
+                probability: finalData.probability || "Unknown",
+                areasForResearch: Array.isArray(finalData.areasForResearch) ? finalData.areasForResearch : []
+              }
+            });
+            
+            // Add a summary of extracted insights to progress
+            setProgress(prev => [...prev, `Extracted probability: ${finalData.probability || "Unknown"}`]);
+            if (Array.isArray(finalData.areasForResearch) && finalData.areasForResearch.length > 0) {
+              setProgress(prev => [
+                ...prev, 
+                `Identified ${finalData.areasForResearch.length} areas needing further research`
+              ]);
+            }
+          } catch (e) {
+            console.error('Final JSON parsing error:', e);
+            
+            // Additional fallback: Try to extract JSON with regex
+            try {
+              const jsonMatch = accumulatedJson.match(/\{[\s\S]*?\}/);
+              if (jsonMatch && jsonMatch[0]) {
+                const extractedJson = jsonMatch[0];
+                console.log("Attempting regex extraction:", extractedJson.substring(0, 100) + "...");
+                
+                const fallbackData = JSON.parse(extractedJson);
+                setStreamingState({
+                  rawText: extractedJson,
+                  parsedData: {
+                    probability: fallbackData.probability || "Unknown",
+                    areasForResearch: Array.isArray(fallbackData.areasForResearch) ? fallbackData.areasForResearch : []
+                  }
+                });
+                
+                setProgress(prev => [...prev, `Extracted probability using fallback: ${fallbackData.probability || "Unknown"}`]);
+              } else {
+                throw new Error("Could not extract valid JSON with regex");
+              }
+            } catch (regexError) {
+              console.error("Regex extraction failed:", regexError);
+              // Last resort: If we couldn't parse the JSON, set a default state
+              setStreamingState({
+                rawText: accumulatedJson,
+                parsedData: {
+                  probability: "Unknown (parsing error)",
+                  areasForResearch: ["Could not parse research areas due to format error."]
+                }
+              });
+            }
+          }
+          
+          break;
+        }
+        
+        const chunk = textDecoder.decode(value)
+        console.log("Received insights chunk of size:", chunk.length)
+        
+        buffer += chunk
+        const lines = buffer.split('\n\n')
+        buffer = lines.pop() || ''
+        
+        for (const line of lines) {
+          if (line.trim() && line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim()
+            if (jsonStr === '[DONE]') continue
+            
+            try {
+              const { content } = cleanStreamContent(jsonStr)
+              
+              if (content) {
+                console.log("Received insights content chunk:", content.substring(0, 50) + "...")
+                accumulatedJson += content
+                
+                // Try parsing on each chunk, but don't throw errors during streaming
+                try {
+                  // Strip markdown code block syntax if present
+                  let tempJson = accumulatedJson;
+                  if (tempJson.startsWith('```json')) {
+                    tempJson = tempJson.replace(/^```json\n/, '');
+                  } else if (tempJson.startsWith('```')) {
+                    tempJson = tempJson.replace(/^```\n/, '');
+                  }
+                  // Remove trailing backticks if present
+                  if (tempJson.endsWith('```')) {
+                    tempJson = tempJson.replace(/```$/, '');
+                  }
+                  
+                  const parsedJson = JSON.parse(tempJson);
+                  
+                  if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
+                    setStreamingState({
+                      rawText: tempJson,
+                      parsedData: parsedJson
+                    });
+                  }
+                } catch (e) {
+                  // Silently continue accumulating if not valid JSON yet
+                  console.debug('JSON not complete yet, continuing to accumulate');
+                }
+              }
+            } catch (e) {
+              console.debug('Chunk parse error (expected during streaming):', e)
+            }
+          }
+        }
+      }
+    }
+
+    const insightsReader = new Response(insightsResponse.data.body).body?.getReader()
+    
+    if (!insightsReader) {
+      throw new Error('Failed to get reader from insights response')
+    }
+    
+    await processInsightsStream(insightsReader)
+  }
+
+  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
+    try {
+      setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
+      setCurrentIteration(iteration)
+      setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
+      
+      console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
+      console.log(`Market ID for web-scrape: ${marketId}`)
+      console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
+      
+      // Set the current queries for display
+      setCurrentQueries(queries);
+      setCurrentQueryIndex(-1);
+      
+      // Ensure queries don't exceed reasonable length - shorter queries are processed faster
+      const shortenedQueries = queries.map(query => {
+        // Remove any accidental market ID and limit query length
+        const cleanedQuery = query.replace(new RegExp(` ${marketId}$`), '');
+        if (cleanedQuery.length > 200) {
+          return cleanedQuery.substring(0, 200);
+        }
+        return cleanedQuery;
+      });
+      
+      const response = await supabase.functions.invoke('web-scrape', {
+        body: JSON.stringify({ 
+          queries: shortenedQueries,
+          marketId: marketId,
+          marketDescription: description
+        })
+      })
+
+      if (response.error) {
+        console.error("Error from web-scrape:", response.error)
+        throw response.error
+      }
+
+      console.log("Received response from web-scrape function:", response)
+      
+      const allContent: string[] = [...previousContent]
+      const iterationResults: ResearchResult[] = []
+      let messageCount = 0;
+      let hasResults = false;
+
+      const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+        const textDecoder = new TextDecoder()
+        let buffer = '';
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Stream reading complete")
+            setProgress(prev => [...prev, `Search Completed for iteration ${iteration}`])
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received chunk:", chunk)
+          
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              
+              if (jsonStr === '[DONE]') {
+                console.log("Received [DONE] marker")
+                continue
+              }
+              
+              try {
+                console.log("Parsing JSON from line:", jsonStr)
+                const parsed = JSON.parse(jsonStr)
+                
+                if (parsed.type === 'results' && Array.isArray(parsed.data)) {
+                  console.log("Received results:", parsed.data)
+                  iterationResults.push(...parsed.data)
+                  setResults(prev => {
+                    const combined = [...prev, ...parsed.data]
+                    const uniqueResults = Array.from(
+                      new Map(combined.map(item => [item.url, item])).values()
+                    )
+                    return uniqueResults
+                  })
+                  
+                  parsed.data.forEach((result: ResearchResult) => {
+                    if (result?.content) {
+                      allContent.push(result.content)
+                    }
+                  })
+                  
+                  hasResults = true;
+                } else if (parsed.type === 'message' && parsed.message) {
+                  console.log("Received message:", parsed.message)
+                  messageCount++;
+                  
+                  // Extract and update current query index
+                  const queryMatch = parsed.message.match(/processing query (\d+)\/\d+: (.*)/i);
+                  if (queryMatch && queryMatch[1] && queryMatch[2]) {
+                    const queryIndex = parseInt(queryMatch[1], 10) - 1;
+                    setCurrentQueryIndex(queryIndex);
+                    
+                    // Display clean query without market ID
+                    const cleanQueryText = queryMatch[2].replace(new RegExp(` ${marketId}$`), '');
+                    setProgress(prev => [...prev, `Iteration ${iteration}: Searching "${cleanQueryText}"`]);
+                  } else {
+                    // Fallback for other messages
+                    setProgress(prev => [...prev, parsed.message]);
+                  }
+                } else if (parsed.type === 'error' && parsed.message) {
+                  console.error("Received error from stream:", parsed.message)
+                  setProgress(prev => [...prev, `Error: ${parsed.message}`])
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e, "Raw data:", jsonStr)
+              }
+            }
+          }
+        }
+      }
+
+      const reader = new Response(response.data.body).body?.getReader()
+      
+      if (!reader) {
+        throw new Error('Failed to get reader from response')
+      }
+      
+      await processStream(reader)
+
+      console.log(`Results after stream processing for iteration ${iteration}:`, iterationResults.length)
+      console.log("Content collected:", allContent.length, "items")
+
+      if (allContent.length === 0) {
+        setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
+        setError('No content collected from web scraping. Try a more specific query or different keywords.')
+        setIsLoading(false)
+        setIsAnalyzing(false)
+        return
+      }
+
+      await processQueryResults(allContent, iteration, queries, iterationResults)
+    } catch (error) {
+      console.error(`Error in web research iteration ${iteration}:`, error)
+      setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setIsLoading(false)
+      setIsAnalyzing(false)
+    }
+  }
+
+  const handleResearch = async () => {
+    setIsLoading(true)
+    setProgress([])
+    setResults([])
+    setError(null)
+    setAnalysis('')
+    setIsAnalyzing(false)
+    setStreamingState({ rawText: '', parsedData: null })
+    setCurrentIteration(0)
+    setIterations([])
+    setExpandedIterations(['iteration-1'])
+    setCurrentQueries([])
+    setCurrentQueryIndex(-1)
+
+    try {
+      setProgress(prev => [...prev, "Starting iterative web research..."])
+      setProgress(prev => [...prev, `Researching market: ${marketId}`])
+      setProgress(prev => [...prev, `Market question: ${description}`])
+      setProgress(prev => [...prev, "Generating initial search queries..."])
+
+      try {
+        console.log("Calling generate-queries with:", { 
+          description, 
+          marketId,
+          descriptionLength: description ? description.length : 0 
+        });
+        
+        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
+          body: JSON.stringify({ 
+            query: description,
+            marketId: marketId,
+            marketDescription: description,
+            question: description,
+            iteration: 1 // Explicitly mark this as iteration 1
+          })
+        });
+
+        if (queriesError) {
+          console.error("Error from generate-queries:", queriesError)
+          throw new Error(`Error generating queries: ${queriesError.message}`)
+        }
+
+        console.log("Received queries data:", queriesData)
+
+        if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
+          console.error("Invalid queries response:", queriesData)
+          throw new Error('Invalid queries response')
+        }
+
+        // Filter out any queries that might have accidental market ID appended
+        const cleanQueries = queriesData.queries.map(q => q.replace(new RegExp(` ${marketId}$`), ''));
+        
+        console.log("Generated clean queries:", cleanQueries)
+        setProgress(prev => [...prev, `Generated ${cleanQueries.length} search queries`])
+        
+        // Set current queries immediately for display
+        setCurrentQueries(cleanQueries);
+        
+        cleanQueries.forEach((query: string, index: number) => {
+          setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
+        });
+
+        await handleWebScrape(cleanQueries, 1);
+      } catch (error) {
+        console.error("Error generating initial queries:", error);
+        
+        const cleanDescription = description.trim();
+        let keywords = cleanDescription.split(/\s+/).filter(word => word.length > 3);
+        
+        const fallbackQueries = keywords.length >= 3 
+          ? [
+              `${keywords.slice(0, 5).join(' ')}`,
+              `${keywords.slice(0, 3).join(' ')} latest information`,
+              `${keywords.slice(0, 3).join(' ')} analysis prediction`
+            ]
+          : [
+              `${description.split(' ').slice(0, 10).join(' ')}`,
+              `${description.split(' ').slice(0, 8).join(' ')} latest`,
+              `${description.split(' ').slice(0, 8).join(' ')} prediction`
+            ];
+        
+        // Set fallback queries for display
+        setCurrentQueries(fallbackQueries);
+        
+        setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
+        await handleWebScrape(fallbackQueries, 1);
+      }
+
+      setProgress(prev => [...prev, "Research complete!"])
+
+    } catch (error) {
+      console.error('Error in web research:', error)
+      setError(`Error occurred during research: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsLoading(false)
+      setIsAnalyzing(false)
+    }
+  }
+
+  const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
+
+  useEffect(() => {
+    const shouldAutoSave = !isLoading && 
+                          !isAnalyzing && 
+                          results.length > 0 && 
+                          analysis && 
+                          streamingState.parsedData &&
+                          !error;
+
+    if (shouldAutoSave) {
+      saveResearch();
+    }
+  }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error]);
+
+  const toggleIterationExpand = (iterationId: string) => {
+    setExpandedIterations(prev => {
+      if (prev.includes(iterationId)) {
+        return prev.filter(id => id !== iterationId);
+      } else {
+        return [...prev, iterationId];
+      }
+    });
+  };
+
+  const renderQueryDisplay = () => {
+    if (!currentQueries.length) return null;
+    
+    return (
+      <div className="mb-4 border rounded-md p-4 bg-accent/5">
+        <h4 className="text-sm font-medium mb-2">
+          Current Queries (Iteration {currentIteration || 1})
+        </h4>
+        <div className="space-y-2">
+          {currentQueries.map((query, index) => (
+            <div 
+              key={index} 
+              className={`flex items-center gap-2 p-2 rounded-md text-sm ${
+                currentQueryIndex === index ? 'bg-primary/10 border border-primary/30' : 'border border-transparent'
+              }`}
             >
-              New Session
-            </Button>
-          )}
+              {currentQueryIndex === index && (
+                <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              )}
+              <span className={currentQueryIndex === index ? 'font-medium' : ''}>
+                {index + 1}. {query}
+              </span>
+            </div>
+          ))}
         </div>
       </div>
-      
-      {isLoading && (
-        <div className="p-6">
-          <div className="rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40">
-            <ScrollArea className="h-full">
+    );
+  };
+
+  const renderIterationContent = (iter: ResearchIteration) => {
+    const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
+    
+    return (
+      <div className="space-y-4">
+        <div>
+          <h4 className="text-sm font-medium mb-2">Search Queries</h4>
+          <div className="flex flex-wrap gap-2">
+            {iter.queries.map((query, idx) => (
+              <Badge key={idx} variant="secondary" className="text-xs">
+                {query}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        
+        {iter.results.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
+            <ScrollArea className="h-[150px] rounded-md border">
               <div className="p-4 space-y-2">
-                <div className="flex items-center gap-3 py-1 text-sm animate-pulse">
-                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
-                  <span className="text-foreground">Researching...</span>
-                </div>
+                {iter.results.map((result, idx) => (
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                    <a 
+                      href={result.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline truncate block"
+                    >
+                      {result.title || result.url}
+                    </a>
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                      {result.content?.substring(0, 150)}...
+                    </p>
+                  </div>
+                ))}
               </div>
             </ScrollArea>
           </div>
+        )}
+        
+        <div>
+          <h4 className="text-sm font-medium mb-2">Analysis</h4>
+          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
+            <AnalysisDisplay 
+              content={iter.analysis || "Analysis in progress..."} 
+              isStreaming={isCurrentlyStreaming}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="p-4 space-y-4">
+      <div className="flex items-center justify-between">
+        <ResearchHeader 
+          isLoading={isLoading}
+          isAnalyzing={isAnalyzing}
+          onResearch={handleResearch}
+        />
+        
+        <div className="flex space-x-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm">Research Settings</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Number of Iterations</span>
+                    <span className="text-sm font-medium">{maxIterations}</span>
+                  </div>
+                  <Slider
+                    value={[maxIterations]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={(values) => setMaxIterations(values[0])}
+                    disabled={isLoading || isAnalyzing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Higher values will provide more thorough research but take longer to complete.
+                  </p>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+          
+          {savedResearch && savedResearch.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[300px]">
+                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {savedResearch.map((research) => (
+                  <DropdownMenuItem 
+                    key={research.id}
+                    onClick={() => loadSavedResearch(research)}
+                    className="flex flex-col items-start"
+                  >
+                    <div className="font-medium truncate w-full">
+                      {research.query}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
+          {error}
         </div>
       )}
-      
-      {researchSession?.id && !isLoading && (
-        <div className="p-6 pt-0 space-y-4">
-          {/* Search input */}
-          <div className="flex items-end gap-2">
-            <div className="flex-1">
-              <p className="text-sm text-muted-foreground mb-1.5">Search query</p>
-              <input
-                type="text"
-                value={userQuery}
-                onChange={e => setUserQuery(e.target.value)}
-                placeholder="Enter a search query..."
-                className="w-full px-3 py-2 text-sm rounded-md border border-input bg-background"
-              />
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <Popover open={showSettings} onOpenChange={setShowSettings}>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="icon">
-                    <Settings className="h-4 w-4" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80">
-                  <div className="space-y-4">
-                    <h4 className="font-medium text-sm">Research Settings</h4>
-                    
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <label className="text-sm">Number of results</label>
-                        <span className="text-sm text-muted-foreground">{numResults}</span>
-                      </div>
-                      <Slider
-                        defaultValue={[numResults]}
-                        min={1}
-                        max={5}
-                        step={1}
-                        onValueChange={(values) => setNumResults(values[0])}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-              
-              <Button 
-                onClick={runResearchIteration}
-                disabled={isLoading || !userQuery}
-              >
-                Search
-              </Button>
-            </div>
+
+      {currentIteration > 0 && (
+        <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
+          <div 
+            className="bg-primary h-full transition-all duration-500 ease-in-out"
+            style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>Iteration {currentIteration} of {maxIterations}</span>
+            <span>{Math.round((currentIteration / maxIterations) * 100)}% complete</span>
           </div>
-          
-          {/* Iterations */}
-          {iterations.length > 0 ? (
+        </div>
+      )}
+
+      {(isLoading || isAnalyzing) && renderQueryDisplay()}
+
+      <ProgressDisplay messages={progress} />
+      
+      {iterations.length > 0 && (
+        <div className="border rounded-md overflow-hidden">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
             <Accordion 
-              type="single" 
-              collapsible 
-              defaultValue={iterations[iterations.length - 1]?.id}
-              className="w-full space-y-2"
+              type="multiple" 
+              value={expandedIterations} 
+              onValueChange={setExpandedIterations}
+              className="w-full"
             >
-              {iterations.map((iteration, index) => (
+              {iterations.map((iter) => (
                 <AccordionItem 
-                  key={iteration.id}
-                  value={iteration.id}
-                  className="border p-1 rounded-lg"
+                  key={`iteration-${iter.iteration}`} 
+                  value={`iteration-${iter.iteration}`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
                 >
-                  <AccordionTrigger className="px-4 py-2 hover:no-underline">
-                    <div className="flex items-center gap-4 w-full">
-                      <div className="flex-1 text-left">
-                        <span className="font-medium">Iteration {index + 1}: </span>
-                        <span className="text-muted-foreground">{iteration.query}</span>
-                      </div>
-                      
-                      <div className="flex items-center gap-2">
-                        {iteration.status === 'completed' ? (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-500 hover:bg-green-500/20">
-                            Completed
-                          </Badge>
-                        ) : iteration.status === 'pending' || iteration.status === 'processing' ? (
-                          <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20">
-                            {streamingData.iterationId === iteration.id ? 'Streaming' : 'Processing'}
-                          </Badge>
-                        ) : iteration.status === 'error' ? (
-                          <Badge variant="outline" className="bg-red-500/10 text-red-500 hover:bg-red-500/20">
-                            Error
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Unknown</Badge>
-                        )}
-                        
-                        <span className="text-xs text-muted-foreground">
-                          {format(new Date(iteration.created_at), 'MMM d, h:mm a')}
-                        </span>
-                      </div>
+                  <AccordionTrigger className="px-2 py-2 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
+                             className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
+                        Iteration {iter.iteration}
+                        {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
+                      </Badge>
+                      <span className="text-sm">
+                        {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
+                      </span>
                     </div>
                   </AccordionTrigger>
-                  
-                  <AccordionContent className="px-4 pb-4 pt-2">
-                    <div className="space-y-4">
-                      {/* Sources */}
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Sources</h4>
-                        <div className="ScrollArea className='h-[200px] rounded-md border p-4'">
-                          <div className="mb-2 text-sm text-muted-foreground">
-                            {getSourcesForIteration(iteration).length} {getSourcesForIteration(iteration).length === 1 ? 'source' : 'sources'} collected
-                          </div>
-                          {getSourcesForIteration(iteration).map((result, idx) => (
-                            <div key={idx} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
-                              <div className="flex items-center gap-2">
-                                <img 
-                                  src={`https://www.google.com/s2/favicons?domain=${new URL(result.url).hostname}`}
-                                  alt=""
-                                  className="w-4 h-4"
-                                  onError={(e) => {
-                                    const target = e.currentTarget;
-                                    target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'%3E%3C/circle%3E%3Cline x1='2' y1='12' x2='22' y2='12'%3E%3C/line%3E%3Cpath d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'%3E%3C/path%3E%3C/svg%3E";
-                                  }}
-                                />
-                                <h4 className="text-sm font-medium">
-                                  {result.title || new URL(result.url).hostname}
-                                </h4>
-                              </div>
-                              <a 
-                                href={result.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer"
-                                className="text-xs text-blue-500 hover:underline block mt-1"
-                              >
-                                {result.url}
-                              </a>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      
-                      {/* Analysis */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-sm font-medium">Analysis</h4>
-                          
-                          {iteration.status !== 'completed' && iteration.status !== 'error' && !streamingData.iterationId && (
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => processAnalysisStream(iteration.id)}
-                            >
-                              Analyze
-                            </Button>
-                          )}
-                        </div>
-                        
-                        {streamingData.iterationId === iteration.id ? (
-                          <AnalysisDisplay 
-                            content={streamingData.content} 
-                            isStreaming={true}
-                          />
-                        ) : iteration.analysis ? (
-                          <AnalysisDisplay content={iteration.analysis} />
-                        ) : iteration.status === 'error' ? (
-                          <p className="text-sm text-red-500">Error analyzing content</p>
-                        ) : (
-                          <p className="text-sm text-muted-foreground italic">No analysis yet</p>
-                        )}
-                      </div>
-                    </div>
+                  <AccordionContent className="px-2 pb-2">
+                    {renderIterationContent(iter)}
                   </AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>
-          ) : (
-            <div className="py-8 text-center">
-              <p className="text-muted-foreground">Run a search to start researching</p>
+          </ScrollArea>
+        </div>
+      )}
+
+      {streamingState.parsedData && (
+        <div className="border rounded-md p-4 mt-4">
+          <h3 className="text-lg font-medium mb-2">Final Research Analysis</h3>
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Probability Estimate</h4>
+              <div className="text-xl font-semibold">
+                {streamingState.parsedData.probability}
+              </div>
             </div>
-          )}
+            
+            <div>
+              <h4 className="text-sm font-medium mb-2">Areas Needing Further Research</h4>
+              <ScrollArea className="h-[200px] w-full rounded border p-2">
+                <div className="space-y-2">
+                  {streamingState.parsedData.areasForResearch.map((area, index) => (
+                    <div key={index} className="p-2 bg-accent/20 rounded">
+                      {index + 1}. {area}
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            </div>
+          </div>
         </div>
       )}
       
-      {!researchSession?.id && !isLoading && (
-        <div className="p-6 pt-0 flex flex-col items-center justify-center py-12">
-          <p className="text-muted-foreground mb-4">No research session active</p>
-          <Button onClick={startNewSession}>Start Research</Button>
-        </div>
+      <InsightsDisplay 
+        probability={streamingState.parsedData?.probability || ""} 
+        areasForResearch={streamingState.parsedData?.areasForResearch || []} 
+      />
+
+      {results.length > 0 && !iterations.length && (
+        <>
+          <div className="border-t pt-4">
+            <h3 className="text-lg font-medium mb-2">Search Results</h3>
+            <SitePreviewList results={results} />
+          </div>
+          
+          {analysis && (
+            <div className="border-t pt-4">
+              <h3 className="text-lg font-medium mb-2">Analysis</h3>
+              <AnalysisDisplay content={analysis} />
+            </div>
+          )}
+        </>
       )}
     </Card>
-  )
+  );
 }

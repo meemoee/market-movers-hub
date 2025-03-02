@@ -22,13 +22,14 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     // Only auto-scroll if content is growing (new chunks arriving)
     // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
+      console.log("Auto-scrolling due to new content chunk")
       scrollContainer.scrollTop = scrollContainer.scrollHeight
     }
     
     prevContentLength.current = currentContentLength
   }, [content, isStreaming]) // Track both content changes and streaming state
   
-  // Continuously scroll during streaming with higher frequency
+  // Continuously scroll during streaming
   useEffect(() => {
     if (!isStreaming || !scrollRef.current) return
     
@@ -36,7 +37,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
-    }, 50) // More frequent scrolling during streaming
+    }, 100)
     
     return () => clearInterval(interval)
   }, [isStreaming])
