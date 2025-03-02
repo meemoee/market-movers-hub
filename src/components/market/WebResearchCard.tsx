@@ -118,8 +118,10 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
       if (error) throw error
       
       // Convert from JSON to our internal format
-      const iterations = data[0]?.iterations as any[] || []
-      return iterations.map(iter => ({
+      const iterationsJson = data[0]?.iterations as Json | null || []
+      const iterationsArray = Array.isArray(iterationsJson) ? iterationsJson : []
+      
+      return iterationsArray.map((iter: any) => ({
         id: iter.id || crypto.randomUUID(),
         session_id: researchSession.id,
         query: iter.query,
@@ -234,12 +236,16 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
         search_results: []
       }
       
+      // Handle case where iterations might be null or not an array
+      const currentIterations = currentData.iterations || []
+      const iterationsArray = Array.isArray(currentIterations) ? currentIterations : []
+      
       // Update the iterations in the web_research table
-      const iterationsArray = [...(currentData.iterations || []), newIteration]
+      const updatedIterations = [...iterationsArray, newIteration]
       
       const { error: updateError } = await supabase
         .from('web_research')
-        .update({ iterations: iterationsArray })
+        .update({ iterations: updatedIterations })
         .eq('id', researchSession.id)
       
       if (updateError) throw updateError
@@ -264,7 +270,11 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
         .eq('id', researchSession.id)
         .single()
       
-      const updatedIterations = updatedData.iterations.map((iter: any) => {
+      // Ensure updatedData.iterations is an array
+      const updatedIterationsJson = updatedData.iterations || []
+      const updatedIterationsArray = Array.isArray(updatedIterationsJson) ? updatedIterationsJson : []
+      
+      const finalUpdatedIterations = updatedIterationsArray.map((iter: any) => {
         if (iter.id === newIteration.id) {
           return {
             ...iter,
@@ -277,7 +287,7 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
       
       await supabase
         .from('web_research')
-        .update({ iterations: updatedIterations })
+        .update({ iterations: finalUpdatedIterations })
         .eq('id', researchSession.id)
       
       // Reset user query
@@ -348,7 +358,11 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
         
       if (!data) throw new Error('No session data found');
       
-      const updatedIterations = data.iterations.map((iter: any) => {
+      // Ensure data.iterations is an array
+      const iterationsJson = data.iterations || []
+      const iterationsArray = Array.isArray(iterationsJson) ? iterationsJson : []
+      
+      const updatedIterations = iterationsArray.map((iter: any) => {
         if (iter.id === iterationId) {
           return {
             ...iter,
@@ -394,7 +408,11 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
           .single();
         
         if (data) {
-          const updatedIterations = data.iterations.map((iter: any) => {
+          // Ensure data.iterations is an array
+          const iterationsJson = data.iterations || []
+          const iterationsArray = Array.isArray(iterationsJson) ? iterationsJson : []
+          
+          const updatedIterations = iterationsArray.map((iter: any) => {
             if (iter.id === iterationId) {
               return {
                 ...iter,
@@ -418,7 +436,11 @@ export function WebResearchCard({ marketId, question }: WebResearchCardProps) {
     if (!iteration?.search_results) return []
     
     try {
-      return iteration.search_results.map(r => ({ title: r.title, url: r.url }))
+      // Ensure search_results is an array
+      const searchResults = iteration.search_results;
+      if (!Array.isArray(searchResults)) return [];
+      
+      return searchResults.map(r => ({ title: r.title, url: r.url }))
     } catch (e) {
       console.error('Error parsing search results:', e)
       return []

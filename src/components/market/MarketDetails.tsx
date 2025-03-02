@@ -127,7 +127,7 @@ export function MarketDetails({
         />
       )}
 
-      {description && (
+      {marketId && question && (
         <div>
           <WebResearchCard 
             marketId={marketId}
