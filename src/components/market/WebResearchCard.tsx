@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -345,6 +344,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       const currentAnalysis = await processAnalysisStream(analysisReader)
       
+      // Update iterations with the new data
       setIterations(prev => [
         ...prev, 
         {
@@ -362,10 +362,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."])
         
         try {
+          // Collect previous iterations' analysis for better context
+          const previousAnalysis = iterations.map(iter => ({
+            iteration: iter.iteration,
+            analysis: iter.analysis,
+            queries: iter.queries
+          }));
+          
+          // Create a more comprehensive context for the next query generation
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
             body: JSON.stringify({ 
               query: description,
               previousResults: currentAnalysis,
+              previousIterations: previousAnalysis,
+              currentIteration: iteration,
+              areasForResearch: streamingState.parsedData?.areasForResearch || [],
               iteration: iteration,
               marketId: marketId,
               marketDescription: description
