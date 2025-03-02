@@ -26,7 +26,7 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
           probabilityMin,
           probabilityMax
         }
-      })
+      });
 
       if (error) {
         console.error('Error searching markets:', error);
@@ -48,11 +48,11 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
         data: data?.data || [],
         hasMore: data?.hasMore || false,
         total: data?.total
-      }
+      };
     },
     enabled: true,
     staleTime: 0,
     retry: 2,
     retryDelay: 1000
-  })
+  });
 }

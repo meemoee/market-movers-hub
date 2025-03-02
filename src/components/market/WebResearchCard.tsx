@@ -652,13 +652,19 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress(prev => [...prev, "Generating initial search queries..."])
 
       try {
+        console.log("Calling generate-queries with:", { 
+          description, 
+          marketId,
+          descriptionLength: description ? description.length : 0 
+        });
+        
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-          body: { 
+          body: JSON.stringify({ 
             query: description,
-            marketId: marketId,
+            marketId,
             marketDescription: description
-          }
-        })
+          })
+        });
 
         if (queriesError) {
           console.error("Error from generate-queries:", queriesError)
@@ -677,20 +683,29 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         queriesData.queries.forEach((query: string, index: number) => {
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
-        })
+        });
 
-        await handleWebScrape(queriesData.queries, 1)
+        await handleWebScrape(queriesData.queries, 1);
       } catch (error) {
-        console.error("Error generating initial queries:", error)
+        console.error("Error generating initial queries:", error);
         
-        const fallbackQueries = [
-          `${description.split(' ').slice(0, 8).join(' ')}`,
-          `${description.split(' ').slice(0, 8).join(' ')} analysis`,
-          `${description.split(' ').slice(0, 8).join(' ')} prediction`
-        ]
+        const cleanDescription = description.trim();
+        let keywords = cleanDescription.split(/\s+/).filter(word => word.length > 3);
         
-        setProgress(prev => [...prev, `Using simplified fallback queries due to error: ${error.message}`])
-        await handleWebScrape(fallbackQueries, 1)
+        const fallbackQueries = keywords.length >= 3 
+          ? [
+              `${keywords.slice(0, 5).join(' ')}`,
+              `${keywords.slice(0, 3).join(' ')} latest information`,
+              `${keywords.slice(0, 3).join(' ')} analysis prediction`
+            ]
+          : [
+              `${description.split(' ').slice(0, 10).join(' ')}`,
+              `${description.split(' ').slice(0, 8).join(' ')} latest`,
+              `${description.split(' ').slice(0, 8).join(' ')} prediction`
+            ];
+        
+        setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
+        await handleWebScrape(fallbackQueries, 1);
       }
 
       setProgress(prev => [...prev, "Research complete!"])
