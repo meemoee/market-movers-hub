@@ -1,4 +1,4 @@
-<lov-code>
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -308,7 +308,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           // Update existing iteration if it exists
           updatedIterations[currentIterIndex] = {
             ...updatedIterations[currentIterIndex],
-            analysis: "" // Initialize with empty analysis
+            analysis: "Analysis in progress..." // Initialize with loading message
           };
         } else {
           // Add new iteration if it doesn't exist
@@ -316,7 +316,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             iteration,
             queries: currentQueries,
             results: iterationResults,
-            analysis: "" // Initialize with empty analysis
+            analysis: "Analysis in progress..." // Initialize with loading message
           });
         }
         
@@ -932,4 +932,202 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           Current Queries (Iteration {currentIteration || 1})
         </h4>
         <div className="space-y-2">
-          {currentQueries.
+          {currentQueries.map((query, idx) => (
+            <div 
+              key={`query-${idx}`} 
+              className={`p-2 rounded-md text-sm ${currentQueryIndex === idx ? 'bg-accent text-accent-foreground font-medium' : 'bg-muted/40'}`}
+            >
+              {query}
+              {currentQueryIndex === idx && (
+                <span className="ml-2 inline-block animate-pulse">●</span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="mt-4">
+      <div className="p-6">
+        <ResearchHeader 
+          title="AI Web Research" 
+          description="Analyze web content for relevant information"
+        />
+
+        {error && (
+          <div className="bg-destructive/10 text-destructive p-4 rounded-md mt-4 mb-4">
+            {error}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            {!isLoading && (
+              <Button onClick={handleResearch} disabled={isLoading}>
+                {isLoading ? "Researching..." : "Research Web"}
+              </Button>
+            )}
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="icon" disabled={isLoading}>
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-4">
+                  <h4 className="font-medium">Research Settings</h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="iterations" className="text-sm">
+                        Max Iterations: {maxIterations}
+                      </label>
+                    </div>
+                    <Slider
+                      id="iterations"
+                      min={1}
+                      max={5}
+                      step={1}
+                      value={[maxIterations]}
+                      onValueChange={(value) => setMaxIterations(value[0])}
+                      disabled={isLoading}
+                    />
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {savedResearch && savedResearch.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={isLoading}>
+                    Load Saved <ChevronDown className="ml-2 h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuLabel>Saved Research</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {savedResearch.map((research) => (
+                    <DropdownMenuItem 
+                      key={research.id}
+                      onClick={() => loadSavedResearch(research)}
+                    >
+                      {format(new Date(research.created_at), 'MMM d, h:mm a')}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+
+          {isLoading && (
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+              <span className="text-sm">Researching...</span>
+            </div>
+          )}
+          
+          {isAnalyzing && (
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2"></div>
+              <span className="text-sm">Analyzing content...</span>
+            </div>
+          )}
+        </div>
+
+        {isLoading && renderQueryDisplay()}
+
+        {progress.length > 0 && (
+          <ProgressDisplay messages={progress} />
+        )}
+
+        {!isLoading && (
+          <>
+            {iterations.length > 0 && (
+              <div className="mb-6 border rounded-md overflow-hidden">
+                <h3 className="font-medium p-4 bg-muted/30">Research Iterations</h3>
+                <ScrollArea className="h-[300px]">
+                  <Accordion 
+                    type="multiple" 
+                    value={expandedIterations} 
+                    className="w-full"
+                  >
+                    {iterations.map((iter) => (
+                      <AccordionItem 
+                        key={`iteration-${iter.iteration}`} 
+                        value={`iteration-${iter.iteration}`}
+                        className="px-4 border-b"
+                      >
+                        <AccordionTrigger className="py-2">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="rounded-full">
+                              {iter.iteration}/{maxIterations}
+                            </Badge>
+                            <span>Iteration {iter.iteration}</span>
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <div className="space-y-4 pt-2">
+                            <div>
+                              <h4 className="text-sm font-medium mb-2">Queries</h4>
+                              <div className="space-y-1">
+                                {iter.queries.map((q, i) => (
+                                  <div key={i} className="text-sm p-2 bg-muted/30 rounded-md">
+                                    {q}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-sm font-medium mb-2">Analysis</h4>
+                              <div className="text-sm p-3 bg-muted/30 rounded-md">
+                                {iter.analysis || "Analysis in progress..."}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <h4 className="text-sm font-medium mb-2">
+                                Sources ({iter.results.length})
+                              </h4>
+                              <SitePreviewList sites={iter.results} />
+                            </div>
+                          </div>
+                        </AccordionContent>
+                      </AccordionItem>
+                    ))}
+                  </Accordion>
+                </ScrollArea>
+              </div>
+            )}
+
+            {results.length > 0 && !iterations.length && (
+              <div className="mt-4 mb-6">
+                <h3 className="font-medium mb-2">Search Results</h3>
+                <SitePreviewList sites={results} />
+              </div>
+            )}
+
+            {analysis && (
+              <div className="mt-4">
+                <h3 className="font-medium mb-2">Analysis</h3>
+                <AnalysisDisplay content={analysis} />
+              </div>
+            )}
+
+            {streamingState.parsedData && (
+              <div className="mt-6">
+                <InsightsDisplay 
+                  probability={streamingState.parsedData.probability}
+                  areasForResearch={streamingState.parsedData.areasForResearch}
+                />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
