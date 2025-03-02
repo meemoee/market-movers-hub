@@ -500,7 +500,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
       
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
-      console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
       
       const shortenedQueries = queries.map(query => {
@@ -517,7 +516,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const response = await supabase.functions.invoke('web-scrape', {
         body: { 
           queries: shortenedQueries,
-          marketId: marketId,
           marketDescription: description
         }
       })
@@ -647,15 +645,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
     try {
       setProgress(prev => [...prev, "Starting iterative web research..."])
-      setProgress(prev => [...prev, `Researching market: ${marketId}`])
-      setProgress(prev => [...prev, `Market question: ${description}`])
+      setProgress(prev => [...prev, `Researching market question: ${description}`])
       setProgress(prev => [...prev, "Generating initial search queries..."])
 
       try {
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
           body: { 
             query: description,
-            marketId: marketId,
             marketDescription: description
           }
         })
@@ -667,19 +663,19 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
         console.log("Received queries data:", queriesData)
 
-        if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
+        if (!queriesData || !Array.isArray(queriesData)) {
           console.error("Invalid queries response:", queriesData)
           throw new Error('Invalid queries response')
         }
 
-        console.log("Generated queries:", queriesData.queries)
-        setProgress(prev => [...prev, `Generated ${queriesData.queries.length} search queries`])
+        console.log("Generated queries:", queriesData)
+        setProgress(prev => [...prev, `Generated ${queriesData.length} search queries`])
         
-        queriesData.queries.forEach((query: string, index: number) => {
+        queriesData.forEach((query: string, index: number) => {
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
         })
 
-        await handleWebScrape(queriesData.queries, 1)
+        await handleWebScrape(queriesData, 1)
       } catch (error) {
         console.error("Error generating initial queries:", error)
         
