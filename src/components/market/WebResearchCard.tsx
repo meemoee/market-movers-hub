@@ -323,6 +323,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return updatedIterations;
       });
       
+      // Make sure the iteration is expanded when starting analysis
+      if (!expandedIterations.includes(`iteration-${iteration}`)) {
+        setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
+      }
+      
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
         let buffer = '';
@@ -372,11 +377,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     
                     return updatedIterations;
                   });
-                  
-                  // Make sure the iteration is expanded when streaming analysis
-                  if (!expandedIterations.includes(`iteration-${iteration}`)) {
-                    setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
-                  }
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)
