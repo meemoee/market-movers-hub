@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -368,7 +367,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               previousResults: currentAnalysis,
               iteration: iteration,
               marketId: marketId,
-              marketDescription: description
+              marketDescription: description,
+              areasForResearch: streamingState.parsedData?.areasForResearch || []
             })
           })
 
@@ -686,7 +686,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             query: description,
             marketId: marketId,
             marketDescription: description,
-            question: description
+            question: description,
+            iteration: 1 // Explicitly mark this as iteration 1
           })
         });
 
