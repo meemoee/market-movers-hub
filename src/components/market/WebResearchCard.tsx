@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -377,6 +376,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     
                     return updatedIterations;
                   });
+                  
+                  // Add each content chunk to progress messages to make streaming visible
+                  if (content.length > 0) {
+                    setProgress(prev => [...prev, `Analyzing: ${content.substring(0, 60)}${content.length > 60 ? '...' : ''}`]);
+                  }
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)

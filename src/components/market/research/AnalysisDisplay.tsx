@@ -25,10 +25,12 @@ export function AnalysisDisplay({ content }: AnalysisDisplayProps) {
   if (!content) return null;
 
   return (
-    <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5" ref={scrollAreaRef}>
-      <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
-        {content}
-      </ReactMarkdown>
-    </ScrollArea>
+    <div className="w-full">
+      <ScrollArea className="h-[200px] rounded-md border p-4 bg-accent/5" ref={scrollAreaRef}>
+        <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
+          {content}
+        </ReactMarkdown>
+      </ScrollArea>
+    </div>
   )
 }

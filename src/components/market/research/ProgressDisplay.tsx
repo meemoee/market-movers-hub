@@ -34,7 +34,7 @@ export function ProgressDisplay({ progress }: ProgressDisplayProps) {
   
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
-      <ScrollArea className="h-full">
+      <ScrollArea className="h-full w-full">
         <div className="p-4 space-y-2">
           {progress.map((message, index) => (
             <div 
