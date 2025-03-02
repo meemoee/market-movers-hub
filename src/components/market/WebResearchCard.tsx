@@ -970,7 +970,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
     
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 w-full overflow-hidden">
         <div>
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
           <div className="flex flex-wrap gap-2">
@@ -1009,7 +1009,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         <div>
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
-          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
+          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 overflow-x-hidden">
             <AnalysisDisplay 
               content={iter.analysis || "Analysis in progress..."} 
               isStreaming={isCurrentlyStreaming}
@@ -1140,7 +1140,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       </span>
                     </div>
                   </AccordionTrigger>
-                  <AccordionContent className="px-2 pb-2">
+                  <AccordionContent className="px-2 pb-2 overflow-x-hidden">
                     {renderIterationContent(iter)}
                   </AccordionContent>
                 </AccordionItem>
