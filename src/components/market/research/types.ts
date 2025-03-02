@@ -1,7 +1,10 @@
 
 export interface ResearchResult {
+  title: string;
   url: string;
   content: string;
-  title?: string;
-  snippet?: string;
+  snippet: string;
+  source?: string;
+  date?: string;
+  favicon?: string;
 }

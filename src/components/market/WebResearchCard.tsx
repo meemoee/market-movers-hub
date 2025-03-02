@@ -1,4 +1,4 @@
-<lov-code>
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -930,4 +930,199 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             <div 
               key={index} 
               className={`flex items-center gap-2 p-2 rounded-md text-sm ${
-                currentQueryIndex
+                currentQueryIndex === index ? 'bg-accent text-accent-foreground' : 'text-muted-foreground'
+              }`}
+            >
+              <span className="w-6 flex justify-center">
+                {currentQueryIndex === index ? (
+                  <span className="animate-pulse">→</span>
+                ) : (
+                  index + 1
+                )}
+              </span>
+              <span className={currentQueryIndex === index ? 'font-medium' : ''}>
+                {query}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Card className="w-full mt-6">
+      <div className="p-6 space-y-4">
+        <div className="flex items-center justify-between pb-2">
+          <h3 className="text-xl font-semibold">Web Research</h3>
+          
+          <div className="flex items-center gap-2">
+            {savedResearch && savedResearch.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 px-2">
+                    <ChevronDown className="h-4 w-4 mr-1" />
+                    Previous Research
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Saved Research</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {savedResearch.map((research) => (
+                    <DropdownMenuItem
+                      key={research.id}
+                      onClick={() => loadSavedResearch(research)}
+                    >
+                      <span className="truncate">
+                        {format(new Date(research.created_at), 'MMM d, yyyy h:mm a')}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+            
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <div className="space-y-4">
+                  <h4 className="font-medium">Research Settings</h4>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label htmlFor="max-iterations" className="text-sm">
+                        Maximum iterations: {maxIterations}
+                      </label>
+                    </div>
+                    <Slider 
+                      id="max-iterations"
+                      defaultValue={[maxIterations]} 
+                      max={5}
+                      min={1}
+                      step={1}
+                      onValueChange={(value) => setMaxIterations(value[0])}
+                    />
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+        
+        <ResearchHeader
+          isLoading={isLoading}
+          isAnalyzing={isAnalyzing}
+          onResearch={handleResearch}
+        />
+        
+        {error && (
+          <div className="bg-destructive/10 border border-destructive text-destructive p-3 rounded-md text-sm">
+            {error}
+          </div>
+        )}
+        
+        {renderQueryDisplay()}
+
+        {progress.length > 0 && (
+          <ProgressDisplay progress={progress} />
+        )}
+        
+        {iterations.length > 0 && (
+          <Accordion
+            type="multiple"
+            value={expandedIterations}
+            className="border rounded-md mb-4"
+          >
+            {iterations.map((iteration) => (
+              <AccordionItem 
+                key={`iteration-${iteration.iteration}`} 
+                value={`iteration-${iteration.iteration}`}
+                className="border-b last:border-b-0"
+              >
+                <AccordionTrigger className="py-3 px-4 hover:no-underline">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="rounded-full h-6 w-6 p-0 flex items-center justify-center font-normal">
+                      {iteration.iteration}
+                    </Badge>
+                    <span>Research Iteration {iteration.iteration}</span>
+                    {iteration === iterations[iterations.length - 1] && currentIteration === iteration.iteration && (isLoading || isAnalyzing) && (
+                      <Badge variant="secondary" className="ml-2 animate-pulse">Active</Badge>
+                    )}
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent className="px-4 pb-4 pt-1">
+                  <div className="space-y-3">
+                    {iteration.queries.length > 0 && (
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-medium">Queries:</h4>
+                        <ul className="text-sm list-disc pl-5 space-y-1">
+                          {iteration.queries.map((query, i) => (
+                            <li key={i}>{query}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {iteration.results.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Sources found ({iteration.results.length}):</h4>
+                        <SitePreviewList results={iteration.results} compact />
+                      </div>
+                    )}
+                    
+                    {iteration.analysis && (
+                      <div>
+                        <h4 className="text-sm font-medium mb-2">Analysis:</h4>
+                        <div className="bg-muted/50 rounded-md p-3">
+                          <ScrollArea className="h-[200px]">
+                            <AnalysisDisplay content={iteration.analysis} />
+                          </ScrollArea>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
+        )}
+        
+        {results.length > 0 && (
+          <div>
+            <h4 className="text-base font-medium pb-2">Sources</h4>
+            <SitePreviewList results={results} />
+          </div>
+        )}
+        
+        {analysis && (
+          <div>
+            <h4 className="text-base font-medium pb-2">Analysis</h4>
+            <AnalysisDisplay content={analysis} />
+          </div>
+        )}
+        
+        {streamingState.parsedData && (
+          <div>
+            <h4 className="text-base font-medium pb-2">Insights</h4>
+            <InsightsDisplay streamingState={streamingState} />
+          </div>
+        )}
+        
+        {canSave && (
+          <div className="flex justify-end">
+            <Button
+              onClick={saveResearch}
+              size="sm"
+              className="text-xs"
+            >
+              Save Research
+            </Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+}

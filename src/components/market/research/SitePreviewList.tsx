@@ -1,61 +1,84 @@
 
-import { useEffect, useRef } from "react"
+import { Card } from "@/components/ui/card"
+import { format } from "date-fns"
 import { ResearchResult } from "./types"
-import { Badge } from "@/components/ui/badge"
-import { Link } from "lucide-react"
 
 interface SitePreviewListProps {
   results: ResearchResult[]
-  onSelectResult?: (result: ResearchResult) => void
-  selectedIndex?: number
-  className?: string
+  compact?: boolean
 }
 
-export function SitePreviewList({ 
-  results, 
-  onSelectResult,
-  selectedIndex = -1,
-  className = ""
-}: SitePreviewListProps) {
-  const selectedRef = useRef<HTMLDivElement>(null)
+export function SitePreviewList({ results, compact = false }: SitePreviewListProps) {
+  if (!results.length) {
+    return null
+  }
 
-  // Scroll into view when selectedIndex changes
-  useEffect(() => {
-    if (selectedIndex >= 0 && selectedRef.current) {
-      selectedRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    }
-  }, [selectedIndex])
-
-  if (!results.length) return null
+  if (compact) {
+    return (
+      <div className="text-sm">
+        <ul className="list-disc pl-5 space-y-1">
+          {results.map((result, index) => (
+            <li key={index}>
+              <a 
+                href={result.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                {result.title || "Unnamed source"}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
 
   return (
-    <div className={`space-y-3 ${className}`}>
+    <div className="space-y-3">
       {results.map((result, index) => (
-        <div 
-          key={index}
-          ref={index === selectedIndex ? selectedRef : null}
-          className={`p-3 rounded-md border relative transition-colors ${
-            index === selectedIndex ? 'bg-accent/40 border-accent' : 'hover:bg-accent/10 border-transparent'
-          } ${onSelectResult ? 'cursor-pointer' : ''}`}
-          onClick={() => onSelectResult?.(result)}
-        >
-          <div className="flex items-start gap-2">
-            <Link className="w-5 h-5 mt-0.5 flex-shrink-0 text-muted-foreground" />
-            <div className="space-y-1 w-full overflow-hidden">
-              <h4 className="font-medium text-sm line-clamp-1">
-                {result.title || result.url.split('/').slice(-1)[0]}
-              </h4>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Badge variant="outline" className="text-xs bg-primary/10">
-                  {new URL(result.url).hostname}
-                </Badge>
-              </div>
-              <p className="text-xs text-muted-foreground line-clamp-2">
-                {result.snippet || "No preview available"}
-              </p>
+        <Card key={index} className="p-3 text-sm">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              {result.favicon && (
+                <img 
+                  src={result.favicon} 
+                  alt="" 
+                  className="w-4 h-4" 
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none'
+                  }}
+                />
+              )}
+              <a 
+                href={result.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="font-medium text-primary hover:underline line-clamp-1"
+              >
+                {result.title || "Unnamed source"}
+              </a>
             </div>
+            
+            {result.source && (
+              <div className="text-muted-foreground text-xs flex items-center gap-2">
+                <span>{result.source}</span>
+                {result.date && (
+                  <>
+                    <span>•</span>
+                    <span>{format(new Date(result.date), 'MMM d, yyyy')}</span>
+                  </>
+                )}
+              </div>
+            )}
+            
+            {result.snippet && (
+              <p className="line-clamp-2 text-muted-foreground">
+                {result.snippet}
+              </p>
+            )}
           </div>
-        </div>
+        </Card>
       ))}
     </div>
   )
