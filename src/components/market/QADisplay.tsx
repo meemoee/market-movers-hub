@@ -56,13 +56,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
-  const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
+  const [streamingContent, setStreamingContent<{ [key: string]: StreamingContent }>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
   const [selectedQATree, setSelectedQATree] = useState<string>('none');
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
-  const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
+  const [navigationHistory, setNavigationHistory<QANode[][]>([])
   const queryClient = useQueryClient();
 
   const navigateToExtension = (extension: QANode) => {
@@ -733,6 +733,37 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
+  // Enhanced function to preprocess markdown content before rendering
+  const preprocessMarkdown = (content: string): string => {
+    if (!content) return '';
+    
+    // Fix common markdown issues
+    return content
+      // Fix improperly escaped asterisks
+      .replace(/\\\*/g, '*')
+      // Remove unnecessary escape characters
+      .replace(/\\([^*_`~[\]()#+-])/g, '$1')
+      // Fix broken bold/italic formatting
+      .replace(/\*\*\s*\*\*/g, '')
+      .replace(/\*\s*\*/g, '')
+      // Fix broken code formatting
+      .replace(/`\s*`/g, '')
+      // Fix broken links
+      .replace(/\[\s*\]/g, '')
+      .replace(/\(\s*\)/g, '')
+      // Fix multiple colons
+      .replace(/:{2,}/g, ':')
+      // Normalize whitespace between paragraphs
+      .replace(/\n{3,}/g, '\n\n')
+      // Ensure code blocks are properly formatted
+      .replace(/```([^`]+)```/g, (_, code) => {
+        return '```\n' + code.trim() + '\n```';
+      })
+      // Fix lists that don't have proper spacing
+      .replace(/^(\d+\.|\*|\-)\s*([^\n]+)/gm, '$1 $2')
+      .trim();
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -772,6 +803,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
       hr: () => <hr className="my-4 border-muted" />,
     };
+
+    // Process markdown content to ensure proper formatting
+    const processedContent = preprocessMarkdown(analysisContent || '');
 
     return (
       <div key={node.id} className="relative flex flex-col">
@@ -823,7 +857,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           components={markdownComponents}
                           className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                         >
-                          {analysisContent}
+                          {processedContent}
                         </ReactMarkdown>
                         {renderCitations(citations)}
                         
@@ -853,112 +887,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                                   key={extension.id}
                                   className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
                                   onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        {navigationHistory.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
+                                    e.stopPropagation
