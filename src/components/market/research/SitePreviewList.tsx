@@ -25,7 +25,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
             >
               {result.title || result.url}
             </a>
-            <p className="mt-1 line-clamp-2 text-muted-foreground break-words">
+            <p className="mt-1 line-clamp-2 text-muted-foreground break-words overflow-hidden">
               {result.content?.substring(0, 150)}...
             </p>
           </div>

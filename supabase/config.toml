@@ -65,19 +65,22 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-[auth.hooks]
-enabled = false
+# Remove the invalid [auth.hooks] section
+# [auth.hooks]
+# enabled = false
 
-[analytics]
-enabled = false
+# Remove the invalid [analytics] section 
+# [analytics]
+# enabled = false
 
-[vector]
-enabled = false
+# Remove the invalid [vector] section
+# [vector]
+# enabled = false
 
-[experimental]
-enabled = false
+# Remove the invalid [experimental] section
+# [experimental]
+# enabled = false
 
-[[functions]]
-name = "functions"
+# Update the functions section to use the proper format
+[functions.functions]
 verify_jwt = false
-port = 54328
