@@ -1,3 +1,4 @@
+<lov-code>
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -263,7 +264,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     if (!node.isExtendedRoot) {
       const extensionCount = rootExtensions.filter(n => n.originalNodeId === node.id).length;
       return extensionCount > 0 ? ` (Expanded ${extensionCount} times)` : '';
-    }
+    }\
     return '';
   };
 
@@ -888,4 +889,3 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           <div className="mt-4 space-y-2">
                             <div className="text-xs font-medium text-muted-foreground">
                               Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
