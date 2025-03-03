@@ -1,4 +1,3 @@
-<lov-code>
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -169,7 +168,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     if (text.match(/\([^)]*$/)) return false; // Unclosed parenthesis
     if (text.match(/\[[^\]]*$/)) return false; // Unclosed square bracket
     
-    for (let i = 0; < text.length; i++) {
+    for (let i = 0; i < text.length; i++) {
       const char = text[i];
       const nextChar = text[i + 1];
       const prevChar = text[i - 1];
@@ -699,7 +698,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       setRootExtensions(prev => {
         const currentTree = qaData[0];
-        return prev.map(ext => ext.id === nodeId ? currentTree : ext);
+        return prev.map(ext => ext.id === nodeId ? currentTree : ext);\
       });
 
     } catch (error) {
@@ -919,4 +918,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
       h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
       h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-      hr: () => <hr className
+      hr: () => <hr className="my
