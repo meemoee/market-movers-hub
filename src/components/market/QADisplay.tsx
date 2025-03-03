@@ -175,67 +175,70 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return stack.length === 0 && !inCode && !inList;
   };
 
-  // New sanitizeMarkdown function
-  const sanitizeMarkdown = (content: string): string => {
+  // This function will now be less aggressive in streaming mode
+  const sanitizeMarkdown = (content: string, isStreaming: boolean = false): string => {
     if (!content) return '';
     
     let sanitized = content;
     
-    // Fix unbalanced markdown formatting
-    const countOccurrences = (str: string, char: string) => {
-      return (str.match(new RegExp(`\\${char}`, 'g')) || []).length;
-    };
-    
-    // Fix unclosed bold/italic formatting
-    ['*', '_', '**', '__'].forEach(marker => {
-      const count = marker.length === 1 
-        ? countOccurrences(sanitized, marker)
-        : (sanitized.match(new RegExp(`\\${marker[0]}{2}`, 'g')) || []).length;
-      
-      if (count % 2 !== 0) {
-        sanitized = sanitized + marker;
-      }
-    });
-    
-    // Fix unclosed code blocks
-    const codeBlockCount = (sanitized.match(/```/g) || []).length;
-    if (codeBlockCount % 2 !== 0) {
-      sanitized = sanitized + '\n```';
-    }
-    
-    // Fix unclosed inline code
-    const inlineCodeCount = (sanitized.match(/`(?!``)/g) || []).length;
-    if (inlineCodeCount % 2 !== 0) {
-      sanitized = sanitized + '`';
-    }
-    
-    // Clean up incomplete links
-    sanitized = sanitized
-      .replace(/\[([^\]]*)\](?!\()/g, '$1') // [text] without (url)
-      .replace(/\[([^\]]*)\]\(\s*\)/g, '$1') // [text]() with empty url
-      .replace(/\[\s*\]\(([^)]*)\)/g, '$1'); // []() with empty text
-    
-    // Fix common LLM markdown errors
+    // Basic cleanup that's safe even during streaming
     sanitized = sanitized
       .replace(/\*\*\s*\*\*/g, '') // Remove empty bold tags
       .replace(/\*\s*\*/g, '') // Remove empty italic tags
       .replace(/`\s*`/g, '') // Remove empty code tags
       .replace(/\(\s*\)/g, '') // Remove empty parentheses
-      .replace(/:{2,}/g, ':') // Fix multiple colons
+      .replace(/:{2,}/g, ':'); // Fix multiple colons
+    
+    // Only apply more aggressive fixes when not streaming
+    if (!isStreaming) {
+      // Fix unbalanced markdown formatting
+      const countOccurrences = (str: string, char: string) => {
+        return (str.match(new RegExp(`\\${char}`, 'g')) || []).length;
+      };
+      
+      // Fix unclosed bold/italic formatting
+      ['*', '_', '**', '__'].forEach(marker => {
+        const count = marker.length === 1 
+          ? countOccurrences(sanitized, marker)
+          : (sanitized.match(new RegExp(`\\${marker[0]}{2}`, 'g')) || []).length;
+        
+        if (count % 2 !== 0) {
+          sanitized = sanitized + marker;
+        }
+      });
+      
+      // Fix unclosed code blocks
+      const codeBlockCount = (sanitized.match(/```/g) || []).length;
+      if (codeBlockCount % 2 !== 0) {
+        sanitized = sanitized + '\n```';
+      }
+      
+      // Fix unclosed inline code
+      const inlineCodeCount = (sanitized.match(/`(?!``)/g) || []).length;
+      if (inlineCodeCount % 2 !== 0) {
+        sanitized = sanitized + '`';
+      }
+      
+      // Clean up incomplete links
+      sanitized = sanitized
+        .replace(/\[([^\]]*)\](?!\()/g, '$1') // [text] without (url)
+        .replace(/\[([^\]]*)\]\(\s*\)/g, '$1') // [text]() with empty url
+        .replace(/\[\s*\]\(([^)]*)\)/g, '$1'); // []() with empty text
       
       // Special handling for asterisks that should be escaped
-      .replace(/(?<!\*)\*(?!\*)\s(?!\*)/g, '\\* ') // Standalone asterisks at start of list items
-      .replace(/(?<![\\`*_])\*\s*\*(?![\\`*_])/g, '\\* \\*') // Double asterisks not meant as formatting
+      sanitized = sanitized
+        .replace(/(?<!\*)\*(?!\*)\s(?!\*)/g, '\\* ') // Standalone asterisks at start of list items
+        .replace(/(?<![\\`*_])\*\s*\*(?![\\`*_])/g, '\\* \\*'); // Double asterisks not meant as formatting
       
       // Fix lists without proper formatting
-      .replace(/^(\d+)\.(?!\s)/gm, '$1. ') // Fix numbered lists without space
-      .replace(/^-(?!\s)/gm, '- ') // Fix bullet lists without space
+      sanitized = sanitized
+        .replace(/^(\d+)\.(?!\s)/gm, '$1. ') // Fix numbered lists without space
+        .replace(/^-(?!\s)/gm, '- '); // Fix bullet lists without space
       
       // Fix common equation markers sometimes used by LLMs
-      .replace(/\$\$(.*?)\$\$/g, '_$1_') // Convert equation markers to italics
-      
-      // Normalize whitespace while preserving code blocks
-      .replace(/(?!```[\s\S]*?)[ \t]+(?![\s\S]*?```)/g, ' ');
+      sanitized = sanitized
+        .replace(/\$\$(.*?)\$\$/g, '_$1_'); // Convert equation markers to italics
+    }
     
     return sanitized.trim();
   };
@@ -262,10 +265,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
-  // Improved processStreamContent function
+  // Modified to support streaming content properly
   const processStreamContent = (content: string, prevContent: string = ''): string => {
     let combinedContent = prevContent + content;
-    return sanitizeMarkdown(combinedContent);
+    
+    // During streaming, use less aggressive sanitization
+    return sanitizeMarkdown(combinedContent, true);
   };
 
   const getExtensionInfo = (node: QANode): string => {
@@ -322,15 +327,39 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
+          // When stream is done, fully sanitize the content
+          const finalContent = sanitizeMarkdown(accumulatedContent, false);
+          
+          // Update the node with fully sanitized content
+          setQaData(prev => {
+            const updateNode = (nodes: QANode[]): QANode[] =>
+              nodes.map(node => {
+                if (node.id === nodeId) {
+                  return {
+                    ...node,
+                    analysis: finalContent,
+                    citations: accumulatedCitations,
+                  };
+                }
+                if (node.children.length > 0) {
+                  return { ...node, children: updateNode(node.children) };
+                }
+                return node;
+              });
+            return updateNode(prev);
+          });
+          
           // When stream is done, find the node and evaluate it
           const node = qaData.find(n => n.id === nodeId) || 
                       rootExtensions.find(n => n.id === nodeId);
           if (node && node.analysis) {
             console.log('Evaluating node after stream completion:', nodeId);
-            await evaluateQAPair(node);
+            await evaluateQAPair({...node, analysis: finalContent});
           }
-          break;
+          
+          return finalContent;
         }
+        
         const decoded = new TextDecoder().decode(value);
         buffer += decoded;
 
@@ -360,10 +389,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
+          // Simple sanitization during streaming
+          const streamingSanitized = sanitizeMarkdown(accumulatedContent, true);
+
           setStreamingContent(prev => ({
             ...prev,
             [nodeId]: {
-              content: accumulatedContent,
+              content: streamingSanitized,
               citations: accumulatedCitations,
             },
           }));
@@ -374,7 +406,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                 if (node.id === nodeId) {
                   return {
                     ...node,
-                    analysis: accumulatedContent,
+                    analysis: streamingSanitized,
                     citations: accumulatedCitations,
                   };
                 }
