@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -905,4 +906,151 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           )}
                         </div>
                         
-                        {nodeExtensions.length >
+                        {nodeExtensions.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Related expansions:
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {nodeExtensions.map(ext => (
+                                <button
+                                  key={ext.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateToExtension(ext);
+                                  }}
+                                  className="px-2 py-1 bg-accent/50 hover:bg-accent rounded text-xs flex items-center gap-1"
+                                >
+                                  <span>Expansion {new Date(parseInt(ext.id.split('-')[1])).toLocaleDateString()}</span>
+                                  <ArrowRight className="h-3 w-3" />
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="pt-1 text-sm">
+                        {getPreviewText(analysisContent || '')}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              {isExpanded && node.children.length > 0 && (
+                <div className="mt-4 space-y-4">
+                  {node.children.map(childNode => renderQANode(childNode, depth + 1))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1 flex-grow">
+          <h3 className="font-medium">{marketQuestion}</h3>
+          {marketDescription && (
+            <p className="text-xs text-muted-foreground line-clamp-2">{marketDescription}</p>
+          )}
+        </div>
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
+          {savedResearch && savedResearch.length > 0 && (
+            <Select value={selectedResearch} onValueChange={setSelectedResearch}>
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Use research context..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No research context</SelectItem>
+                {savedResearch.map(research => (
+                  <SelectItem key={research.id} value={research.id}>
+                    {new Date(research.created_at).toLocaleDateString()} ({Math.round(research.probability * 100)}%)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          {savedQATrees && savedQATrees.length > 0 && (
+            <Select 
+              value={selectedQATree} 
+              onValueChange={(value) => {
+                setSelectedQATree(value);
+                if (value !== 'none') {
+                  const selectedTree = savedQATrees.find(tree => tree.id === value);
+                  if (selectedTree) {
+                    loadSavedQATree(selectedTree.tree_data);
+                  }
+                }
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-[180px]">
+                <SelectValue placeholder="Load saved analysis..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Create new analysis</SelectItem>
+                {savedQATrees.map(tree => (
+                  <SelectItem key={tree.id} value={tree.id}>
+                    {new Date(tree.created_at).toLocaleDateString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          {qaData.length > 0 && !isAnalyzing && navigationHistory.length > 0 && (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={navigateBack}
+            >
+              Back to previous
+            </Button>
+          )}
+          
+          {qaData.length > 0 && !isAnalyzing ? (
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={saveQATree}
+            >
+              Save Analysis
+            </Button>
+          ) : (
+            <Button 
+              onClick={handleAnalyze}
+              disabled={isAnalyzing}
+              className="w-full sm:w-auto"
+            >
+              {isAnalyzing ? 'Analyzing...' : 'Analyze Question'}
+            </Button>
+          )}
+        </div>
+      </div>
+      
+      {isAnalyzing ? (
+        <div className="p-6 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <p className="text-sm text-muted-foreground">Analyzing question...</p>
+          </div>
+        </div>
+      ) : qaData.length > 0 ? (
+        <ScrollArea className="h-[500px]">
+          <div className="p-6">
+            {qaData.map(node => renderQANode(node))}
+          </div>
+        </ScrollArea>
+      ) : (
+        <div className="p-6 text-center text-muted-foreground">
+          <p>Click "Analyze Question" to generate a question and answer tree</p>
+        </div>
+      )}
+    </Card>
+  );
+}
