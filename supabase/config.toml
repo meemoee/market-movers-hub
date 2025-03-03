@@ -69,4 +69,5 @@ redirect_uri = ""
 enabled = false
 
 [functions]
+enabled = true
 port = 54328
