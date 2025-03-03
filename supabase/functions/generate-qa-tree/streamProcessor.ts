@@ -1,40 +1,33 @@
 
-export async function streamProcessor(response, readable, writable) {
-  const reader = response.body?.getReader();
-  const writer = writable.getWriter();
+// Helper function for stream processing
 
-  if (!reader) {
-    await writer.close();
-    return;
-  }
+export const processStream = async (
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  abortSignal?: AbortSignal
+): Promise<ReadableStream<Uint8Array>> => {
+  const encoder = new TextEncoder();
+  
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        while (true) {
+          if (abortSignal?.aborted) {
+            controller.close();
+            break;
+          }
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      
-      const chunk = new TextDecoder().decode(value);
-      const lines = chunk.split('\n');
-      
-      for (const line of lines) {
-        if (line.trim() === '') continue;
-        
-        if (line.trim() === 'data: [DONE]') {
-          await writer.write(new TextEncoder().encode('data: [DONE]\n\n'));
-          continue;
+          const { done, value } = await reader.read();
+          if (done) {
+            controller.close();
+            break;
+          }
+
+          controller.enqueue(value);
         }
-        
-        if (line.startsWith('data: ')) {
-          await writer.write(new TextEncoder().encode(line + '\n\n'));
-        }
+      } catch (error) {
+        console.error('Stream processing error:', error);
+        controller.error(error);
       }
-      
-      // Flush after each chunk
-      await writer.ready;
     }
-  } catch (e) {
-    console.error("Stream processing error:", e);
-  } finally {
-    await writer.close();
-  }
-}
+  });
+};
