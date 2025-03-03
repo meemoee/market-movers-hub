@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
+import { AnalysisDisplay } from './research/AnalysisDisplay';
 
 interface QANode {
   id: string;
@@ -50,7 +51,7 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
-  marketDescription?: string;  // Added this prop definition
+  marketDescription?: string;
 }
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
@@ -65,6 +66,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const navigateToExtension = (extension: QANode) => {
     setNavigationHistory(prev => [...prev, qaData]);
@@ -193,7 +195,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                      parsed.choices?.[0]?.message?.content || '';
       return { content, citations: [] };
     } catch (e) {
-      console.debug('Chunk parse error (expected during streaming):', e);
+      // Silent failure during streaming is expected
       return { content: '', citations: [] };
     }
   };
@@ -371,19 +373,31 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         [nodeId]: { content: '', citations: [] },
       }));
 
+      // Cancel any existing ongoing stream requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Create a new AbortController for this request
+      abortControllerRef.current = new AbortController();
+
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
+      // Updated to specify Gemini model via OpenRouter
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
           question, 
           isFollowUp: false,
+          marketQuestion,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true,  // Flag to use OpenRouter
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
             areasForResearch: selectedResearchData.areas_for_research
           } : null
-        }),
+        })
       });
       
       if (analysisError) throw analysisError;
@@ -394,7 +408,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const analysis = await processStream(reader, nodeId);
       console.log('Completed analysis for node', nodeId, ':', analysis);
 
-      // Update the node with the complete analysis and trigger evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -409,7 +422,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Create a complete QANode object for evaluation
       const currentNode: QANode = {
         id: nodeId,
         question,
@@ -419,12 +431,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       await evaluateQAPair(currentNode);
 
       if (!parentId) {
+        // Updated to specify Gemini model for follow-up questions
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({ 
             marketId, 
             question, 
             parentContent: analysis, 
             isFollowUp: true,
+            marketQuestion,
+            model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+            useOpenRouter: true,  // Flag to use OpenRouter
             researchContext: selectedResearchData ? {
               analysis: selectedResearchData.analysis,
               probability: selectedResearchData.probability,
@@ -501,7 +517,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         ...prev,
         [node.id]: {
           content: node.analysis,
-          citations: node.citations || [], // Make sure to populate citations
+          citations: node.citations || [],
         },
       }));
       if (node.children.length > 0) {
@@ -520,10 +536,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setQaData(mainRoots);
     setStreamingContent({});
     
-    // Populate streaming content for both main roots and extensions
     populateStreamingContent([...mainRoots, ...extensions]);
     
-    // Evaluate all nodes that don't have evaluations
     const evaluateAllNodes = async (nodes: QANode[]) => {
       console.log('Evaluating nodes:', nodes.length);
       for (const node of nodes) {
@@ -609,20 +623,32 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       setQaData([newRootNode]);
 
+      // Cancel any existing ongoing stream requests
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      
+      // Create a new AbortController for this request
+      abortControllerRef.current = new AbortController();
+
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
+      // Updated to specify Gemini model via OpenRouter
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
           question: node.question,
           isFollowUp: false,
           historyContext,
+          marketQuestion,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true,  // Flag to use OpenRouter
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
             areasForResearch: selectedResearchData.areas_for_research
           } : null
-        }),
+        })
       });
       
       if (analysisError) throw analysisError;
@@ -632,19 +658,23 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const analysis = await processStream(reader, nodeId);
 
+      // Updated to specify Gemini model for follow-up questions
       const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
           question: node.question, 
           parentContent: analysis,
           historyContext,
+          marketQuestion,
           isFollowUp: true,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true,  // Flag to use OpenRouter
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
             areasForResearch: selectedResearchData.areas_for_research
           } : null
-        }),
+        })
       });
       
       if (followUpError) throw followUpError;
@@ -670,11 +700,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     } finally {
       setIsAnalyzing(false);
       setCurrentNodeId(null);
+      // Clear the abort controller when done
+      abortControllerRef.current = null;
     }
   };
 
   const isLineComplete = (line: string): boolean => {
-    // Check if the line ends with a proper sentence ending
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
@@ -694,7 +725,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const { data, error } = await supabase.functions.invoke('evaluate-qa-pair', {
         body: { 
           question: node.question,
-          analysis: node.analysis
+          analysis: node.analysis,
+          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
+          useOpenRouter: true  // Flag to use OpenRouter
         }
       });
 
@@ -702,7 +735,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Update qaData with evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -717,7 +749,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Update rootExtensions with evaluation
       setRootExtensions(prev => 
         prev.map(ext => 
           ext.id === node.id ? { ...ext, evaluation: data } : ext
@@ -820,12 +851,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                   <div className="flex-1">
                     {isExpanded ? (
                       <>
-                        <ReactMarkdown
-                          components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent}
-                        </ReactMarkdown>
+                        <AnalysisDisplay 
+                          content={analysisContent} 
+                          isStreaming={isStreaming}
+                        />
                         {renderCitations(citations)}
                         
                         <div className="mt-4 flex items-center gap-2">
@@ -963,4 +992,3 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     </Card>
   );
 }
-

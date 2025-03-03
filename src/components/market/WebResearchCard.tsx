@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -283,7 +282,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           query: description,
           question: description,
           marketId: marketId,
-          marketDescription: description
+          marketDescription: description,
+          previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+          areasForResearch: streamingState.parsedData?.areasForResearch || []
         })
       })
 
@@ -295,21 +296,46 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log("Received response from analyze-web-content")
 
       let accumulatedContent = '';
+      let iterationAnalysis = ''; // For storing in the iterations array
+      
+      // Create an empty iteration entry immediately so streaming updates work properly
+      setIterations(prev => {
+        const updatedIterations = [...prev];
+        const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+        
+        if (currentIterIndex >= 0) {
+          // Update existing iteration if it exists
+          updatedIterations[currentIterIndex] = {
+            ...updatedIterations[currentIterIndex],
+            analysis: "" // Initialize with empty analysis
+          };
+        } else {
+          // Add new iteration if it doesn't exist
+          updatedIterations.push({
+            iteration,
+            queries: currentQueries,
+            results: iterationResults,
+            analysis: "" // Initialize with empty analysis
+          });
+        }
+        
+        return updatedIterations;
+      });
+      
+      // Make sure the relevant iteration is expanded immediately when analysis starts
+      setExpandedIterations(prev => {
+        if (!prev.includes(`iteration-${iteration}`)) {
+          return [...prev, `iteration-${iteration}`];
+        }
+        return prev;
+      });
       
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
         const textDecoder = new TextDecoder()
         let buffer = '';
         
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log("Analysis stream complete")
-            break
-          }
-          
-          const chunk = textDecoder.decode(value)
-          console.log("Received analysis chunk of size:", chunk.length)
+        const processChunk = async (chunk: string) => {
+          console.log("Processing chunk:", chunk.substring(0, 50) + "...")
           
           buffer += chunk
           const lines = buffer.split('\n\n')
@@ -324,14 +350,54 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 const { content } = cleanStreamContent(jsonStr)
                 if (content) {
                   console.log("Received content chunk:", content.substring(0, 50) + "...")
+                  // Remove this line that adds content chunks to progress updates
+                  // setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
+                  
                   accumulatedContent += content;
+                  iterationAnalysis += content; // Save for iterations array too
+                  
+                  // Update both the main analysis state and the iterations array in real-time
                   setAnalysis(accumulatedContent);
+                  
+                  // Store the current iteration analysis in real-time
+                  setIterations(prev => {
+                    const updatedIterations = [...prev];
+                    const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+                    
+                    if (currentIterIndex >= 0) {
+                      // Update existing iteration with the new chunk of content
+                      updatedIterations[currentIterIndex] = {
+                        ...updatedIterations[currentIterIndex],
+                        analysis: iterationAnalysis
+                      };
+                    }
+                    
+                    return updatedIterations;
+                  });
+                  
+                  // Force an immediate React render
+                  await new Promise(resolve => setTimeout(resolve, 0));
                 }
               } catch (e) {
                 console.error('Error parsing analysis SSE data:', e)
               }
             }
           }
+        };
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Analysis stream complete")
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received analysis chunk of size:", chunk.length)
+          
+          // Process each chunk individually and force a render after each one
+          await processChunk(chunk);
         }
 
         return accumulatedContent;
@@ -345,15 +411,29 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       const currentAnalysis = await processAnalysisStream(analysisReader)
       
-      setIterations(prev => [
-        ...prev, 
-        {
-          iteration,
-          queries: currentQueries,
-          results: iterationResults,
-          analysis: currentAnalysis
+      // Final update to the iterations array with the complete analysis
+      setIterations(prev => {
+        const updatedIterations = [...prev];
+        const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+        
+        if (currentIterIndex >= 0) {
+          // Update existing iteration
+          updatedIterations[currentIterIndex] = {
+            ...updatedIterations[currentIterIndex],
+            analysis: iterationAnalysis
+          };
+        } else {
+          // Add new iteration if it doesn't exist
+          updatedIterations.push({
+            iteration,
+            queries: currentQueries,
+            results: iterationResults,
+            analysis: iterationAnalysis
+          });
         }
-      ])
+        
+        return updatedIterations;
+      });
       
       if (iteration === maxIterations) {
         setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
@@ -368,7 +448,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               previousResults: currentAnalysis,
               iteration: iteration,
               marketId: marketId,
-              marketDescription: description
+              marketDescription: description,
+              areasForResearch: streamingState.parsedData?.areasForResearch || [],
+              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n')
             })
           })
 
@@ -418,6 +500,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const extractInsights = async (allContent: string[], finalAnalysis: string) => {
+    setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
+    
     const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
       body: {
         webContent: allContent.join('\n\n'),
@@ -445,7 +529,73 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         if (done) {
           console.log("Insights stream complete")
-          break
+          
+          // When stream is complete, try to clean and parse the JSON
+          try {
+            // Clean any markdown code block syntax from the JSON string
+            let cleanJson = accumulatedJson;
+            if (cleanJson.startsWith('```json')) {
+              cleanJson = cleanJson.replace(/^```json\n/, '').replace(/```$/, '');
+            } else if (cleanJson.startsWith('```')) {
+              cleanJson = cleanJson.replace(/^```\n/, '').replace(/```$/, '');
+            }
+            
+            console.log("Attempting to parse cleaned JSON:", cleanJson.substring(0, 100) + "...");
+            
+            const finalData = JSON.parse(cleanJson);
+            setStreamingState({
+              rawText: cleanJson,
+              parsedData: {
+                probability: finalData.probability || "Unknown",
+                areasForResearch: Array.isArray(finalData.areasForResearch) ? finalData.areasForResearch : []
+              }
+            });
+            
+            // Add a summary of extracted insights to progress
+            setProgress(prev => [...prev, `Extracted probability: ${finalData.probability || "Unknown"}`]);
+            if (Array.isArray(finalData.areasForResearch) && finalData.areasForResearch.length > 0) {
+              setProgress(prev => [
+                ...prev, 
+                `Identified ${finalData.areasForResearch.length} areas needing further research`
+              ]);
+            }
+          } catch (e) {
+            console.error('Final JSON parsing error:', e);
+            
+            // Additional fallback: Try to extract JSON with regex
+            try {
+              const jsonMatch = accumulatedJson.match(/\{[\s\S]*?\}/);
+              if (jsonMatch && jsonMatch[0]) {
+                const extractedJson = jsonMatch[0];
+                console.log("Attempting regex extraction:", extractedJson.substring(0, 100) + "...");
+                
+                const fallbackData = JSON.parse(extractedJson);
+                setStreamingState({
+                  rawText: extractedJson,
+                  parsedData: {
+                    probability: fallbackData.probability || "Unknown",
+                    areasForResearch: Array.isArray(fallbackData.areasForResearch) ? fallbackData.areasForResearch : []
+                  }
+                });
+                
+                setProgress(prev => [...prev, `Extracted probability using fallback: ${fallbackData.probability || "Unknown"}`]);
+              } else {
+                throw new Error("Could not extract valid JSON with regex");
+              }
+            } catch (regexError) {
+              console.error("Regex extraction failed:", regexError);
+              // Last resort: If we couldn't parse the JSON, set a default state
+              setStreamingState({
+                rawText: accumulatedJson,
+                parsedData: {
+                  probability: "Unknown (parsing error)",
+                  areasForResearch: ["Could not parse research areas due to format error."]
+                }
+              });
+            }
+          }
+          
+          break;
         }
         
         const chunk = textDecoder.decode(value)
@@ -467,26 +617,35 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 console.log("Received insights content chunk:", content.substring(0, 50) + "...")
                 accumulatedJson += content
                 
-                setStreamingState(prev => {
-                  const newState = {
-                    rawText: accumulatedJson,
-                    parsedData: prev.parsedData
+                // Try parsing on each chunk, but don't throw errors during streaming
+                try {
+                  // Strip markdown code block syntax if present
+                  let tempJson = accumulatedJson;
+                  if (tempJson.startsWith('```json')) {
+                    tempJson = tempJson.replace(/^```json\n/, '');
+                  } else if (tempJson.startsWith('```')) {
+                    tempJson = tempJson.replace(/^```\n/, '');
                   }
-
-                  try {
-                    const parsedJson = JSON.parse(accumulatedJson)
-                    if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
-                      newState.parsedData = parsedJson
-                    }
-                  } catch {
-                    // Continue accumulating if not valid JSON yet
+                  // Remove trailing backticks if present
+                  if (tempJson.endsWith('```')) {
+                    tempJson = tempJson.replace(/```$/, '');
                   }
-
-                  return newState
-                })
+                  
+                  const parsedJson = JSON.parse(tempJson);
+                  
+                  if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
+                    setStreamingState({
+                      rawText: tempJson,
+                      parsedData: parsedJson
+                    });
+                  }
+                } catch (e) {
+                  // Silently continue accumulating if not valid JSON yet
+                  console.debug('JSON not complete yet, continuing to accumulate');
+                }
               }
             } catch (e) {
-              console.debug('Chunk parse error (expected):', e)
+              console.debug('Chunk parse error (expected during streaming):', e)
             }
           }
         }
@@ -686,7 +845,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             query: description,
             marketId: marketId,
             marketDescription: description,
-            question: description
+            question: description,
+            iteration: 1 // Explicitly mark this as iteration 1
           })
         });
 
@@ -806,6 +966,60 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     );
   };
 
+  const renderIterationContent = (iter: ResearchIteration) => {
+    const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
+    
+    return (
+      <div className="space-y-4">
+        <div>
+          <h4 className="text-sm font-medium mb-2">Search Queries</h4>
+          <div className="flex flex-wrap gap-2">
+            {iter.queries.map((query, idx) => (
+              <Badge key={idx} variant="secondary" className="text-xs">
+                {query}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        
+        {iter.results.length > 0 && (
+          <div>
+            <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
+            <ScrollArea className="h-[150px] rounded-md border">
+              <div className="p-4 space-y-2">
+                {iter.results.map((result, idx) => (
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                    <a 
+                      href={result.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline truncate block"
+                    >
+                      {result.title || result.url}
+                    </a>
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                      {result.content?.substring(0, 150)}...
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+        
+        <div>
+          <h4 className="text-sm font-medium mb-2">Analysis</h4>
+          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
+            <AnalysisDisplay 
+              content={iter.analysis || "Analysis in progress..."} 
+              isStreaming={isCurrentlyStreaming}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <Card className="p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -900,82 +1114,46 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <ProgressDisplay messages={progress} />
       
       {iterations.length > 0 && (
-        <div className="border rounded-md">
-          <Accordion type="multiple" value={expandedIterations} className="w-full">
-            {iterations.map((iter) => (
-              <AccordionItem 
-                key={`iteration-${iter.iteration}`} 
-                value={`iteration-${iter.iteration}`}
-                className={iter.iteration === maxIterations ? "border-b-0" : ""}
-              >
-                <AccordionTrigger className="px-4 py-2">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={iter.iteration === maxIterations ? "default" : "outline"}>
-                      Iteration {iter.iteration}
-                    </Badge>
-                    <span className="text-sm">
-                      {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
-                    </span>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent className="px-4 pb-4">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Search Queries</h4>
-                      <div className="flex flex-wrap gap-2">
-                        {iter.queries.map((query, idx) => (
-                          <Badge key={idx} variant="secondary" className="text-xs">
-                            {query}
-                          </Badge>
-                        ))}
-                      </div>
+        <div className="border rounded-md overflow-hidden">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
+            <Accordion 
+              type="multiple" 
+              value={expandedIterations} 
+              onValueChange={setExpandedIterations}
+              className="w-full"
+            >
+              {iterations.map((iter) => (
+                <AccordionItem 
+                  key={`iteration-${iter.iteration}`} 
+                  value={`iteration-${iter.iteration}`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
+                >
+                  <AccordionTrigger className="px-2 py-2 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
+                             className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
+                        Iteration {iter.iteration}
+                        {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
+                      </Badge>
+                      <span className="text-sm">
+                        {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
+                      </span>
                     </div>
-                    
-                    {iter.results.length > 0 && (
-                      <div>
-                        <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
-                        <ScrollArea className="h-[150px] rounded-md border">
-                          <div className="p-4 space-y-2">
-                            {iter.results.map((result, idx) => (
-                              <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
-                                <a 
-                                  href={result.url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-primary hover:underline truncate block"
-                                >
-                                  {result.title || result.url}
-                                </a>
-                                <p className="mt-1 line-clamp-2 text-muted-foreground">
-                                  {result.content?.substring(0, 150)}...
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        </ScrollArea>
-                      </div>
-                    )}
-                    
-                    <div>
-                      <h4 className="text-sm font-medium mb-2">Analysis</h4>
-                      <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2">
-                        <AnalysisDisplay content={iter.analysis} />
-                      </div>
-                    </div>
-                  </div>
-                </AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-2 pb-2">
+                    {renderIterationContent(iter)}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </ScrollArea>
         </div>
       )}
-
-      {streamingState.parsedData && (
-        <InsightsDisplay 
-          probability={streamingState.parsedData.probability} 
-          areasForResearch={streamingState.parsedData.areasForResearch} 
-        />
-      )}
+      
+      <InsightsDisplay 
+        probability={streamingState.parsedData?.probability || ""} 
+        areasForResearch={streamingState.parsedData?.areasForResearch || []} 
+      />
 
       {results.length > 0 && !iterations.length && (
         <>
