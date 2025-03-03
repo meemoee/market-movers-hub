@@ -25,7 +25,7 @@ serve(async (req) => {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-lite-001",
+        model: "google/gemini-pro",
         messages: [
           {
             role: "system",
@@ -47,20 +47,45 @@ serve(async (req) => {
     let evaluationText = data.choices[0].message.content
 
     try {
-      // Extract just the JSON part from the response
-      // First remove any markdown code blocks
-      evaluationText = evaluationText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+      // Clean up any potential markdown or code block syntax
+      evaluationText = evaluationText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim()
       console.log('Cleaned evaluation text:', evaluationText)
       
-      // Extract only the first valid JSON object from the response
-      // This handles cases where the model outputs additional text after the JSON
-      const jsonMatch = evaluationText.match(/^\s*({[\s\S]*?})/);
-      if (jsonMatch) {
-        evaluationText = jsonMatch[1];
-      }
+      // Fix: Instead of directly parsing potentially invalid JSON, attempt to extract the score and reason
+      // This handles cases where the AI returns formatted content with newlines and markdown
+      let evaluation;
       
-      // Parse the evaluation JSON
-      let evaluation = JSON.parse(evaluationText);
+      // First attempt - try to directly parse if it's valid JSON
+      try {
+        evaluation = JSON.parse(evaluationText);
+      } catch (parseError) {
+        // Second attempt - try to fix common JSON formatting issues
+        try {
+          // Fix unescaped control characters in JSON
+          const fixedJson = evaluationText
+            .replace(/\n/g, "\\n")
+            .replace(/\r/g, "\\r")
+            .replace(/\t/g, "\\t")
+            .replace(/\b/g, "\\b")
+            .replace(/\f/g, "\\f");
+          
+          evaluation = JSON.parse(fixedJson);
+        } catch (fixedParseError) {
+          // Third attempt - try regex extraction as a fallback
+          console.log('Attempting regex extraction as fallback');
+          const scoreMatch = evaluationText.match(/"score"\s*:\s*(\d+)/);
+          const reasonMatch = evaluationText.match(/"reason"\s*:\s*"([^"]*)"/);
+          
+          if (scoreMatch && reasonMatch) {
+            evaluation = {
+              score: parseInt(scoreMatch[1], 10),
+              reason: reasonMatch[1]
+            };
+          } else {
+            throw new Error('Could not extract valid evaluation data');
+          }
+        }
+      }
       
       // Validate the evaluation object structure
       if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
@@ -78,30 +103,6 @@ serve(async (req) => {
     } catch (error) {
       console.error('Error parsing evaluation JSON:', error);
       console.error('Received content:', evaluationText);
-      
-      // Fallback parsing method if JSON.parse fails
-      try {
-        // Try to extract score and reason using regex as a last resort
-        const scoreMatch = evaluationText.match(/"score"\s*:\s*(\d+)/);
-        const reasonMatch = evaluationText.match(/"reason"\s*:\s*"([^"]*)"/);
-        
-        if (scoreMatch && reasonMatch) {
-          const score = parseInt(scoreMatch[1], 10);
-          const reason = reasonMatch[1];
-          
-          console.log('Extracted using regex:', { score, reason });
-          
-          return new Response(JSON.stringify({
-            score: Math.max(0, Math.min(100, score)),
-            reason
-          }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-          });
-        }
-      } catch (regexError) {
-        console.error('Regex extraction also failed:', regexError);
-      }
-      
       throw new Error('Invalid evaluation format received');
     }
 
