@@ -56,7 +56,7 @@ interface FinalEvaluation {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
-  marketDescription?: string;  // Added this prop definition
+  marketDescription?: string;
 }
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
@@ -337,15 +337,26 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         areasForResearch: selectedResearchData.areas_for_research
       } : null;
       
+      console.log("Calling evaluate-qa-final with:", { 
+        marketQuestion, 
+        qaContextLength: qaContext.length,
+        hasResearchContext: !!researchContext
+      });
+      
       const { data, error } = await supabase.functions.invoke('evaluate-qa-final', {
-        body: JSON.stringify({ 
+        body: { 
           marketQuestion, 
           qaContext,
           researchContext
-        }),
+        },
       });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Edge function error:", error);
+        throw error;
+      }
+      
+      console.log("Final evaluation result:", data);
       
       setFinalEvaluation(data);
       toast({
