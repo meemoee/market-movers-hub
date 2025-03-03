@@ -68,7 +68,7 @@ redirect_uri = ""
 [analytics]
 enabled = false
 
-# Fix the functions section to use correct format
+# Functions configuration
 [functions]
-enabled = true
-port = 54328
+# Rather than having enabled = true and port = 54328 directly under [functions],
+# we need to define functions as an array of tables in supabase/functions/config.toml
