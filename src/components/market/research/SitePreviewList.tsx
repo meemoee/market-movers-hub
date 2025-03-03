@@ -1,4 +1,3 @@
-
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileText, Globe } from "lucide-react"
 import { getFaviconUrl } from "@/utils/favicon"
@@ -37,7 +36,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
                 e.currentTarget.src = svgString;
               }}
             />
-            <h4 className="text-sm font-medium">
+            <h4 className="text-sm font-medium truncate overflow-hidden">
               {result.title || new URL(result.url).hostname}
             </h4>
           </div>
@@ -45,7 +44,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
             href={result.url} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="text-xs text-blue-500 hover:underline block mt-1"
+            className="text-xs text-blue-500 hover:underline block mt-1 truncate overflow-hidden"
           >
             {result.url}
           </a>
