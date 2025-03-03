@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -93,7 +92,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setQaData([extension]);
     setCurrentExtensionId(extension.id);
     
-    // Load or generate final evaluation for this extension
     const extensionEvaluation = sequenceData.find(seq => seq.id === extension.id);
     if (extensionEvaluation) {
       setFinalEvaluation({
@@ -102,7 +100,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         analysis: extensionEvaluation.analysis
       });
     } else {
-      // Generate final evaluation for this extension
       generateFinalEvaluationForExtension(extension);
     }
   };
@@ -114,7 +111,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setNavigationHistory(prev => prev.slice(0, -1));
       setCurrentExtensionId(null);
       
-      // Reset to main evaluation if returning to root
       if (navigationHistory.length === 1) {
         const mainEvaluation = sequenceData.find(seq => seq.id === 'main');
         if (mainEvaluation) {
@@ -292,7 +288,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          // When stream is done, find the node and evaluate it
           const node = qaData.find(n => n.id === nodeId) || 
                       rootExtensions.find(n => n.id === nodeId);
           if (node && node.analysis) {
@@ -407,7 +402,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       setFinalEvaluation(data);
       
-      // Store this evaluation in sequenceData
       setSequenceData(prev => [
         ...prev.filter(item => item.id !== extension.id),
         {
@@ -471,7 +465,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       
       setFinalEvaluation(data);
       
-      // Store main evaluation in sequenceData
       setSequenceData(prev => [
         ...prev.filter(item => item.id !== 'main'),
         {
@@ -505,7 +498,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const completeTreeData = [...qaData, ...rootExtensions];
 
-      // Include sequence data when saving
       const { data, error } = await supabase
         .from('qa_trees')
         .insert({
@@ -777,11 +769,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setQaData(mainRoots);
     setStreamingContent({});
     
-    // Set sequence data if available
     if (savedSequenceData && savedSequenceData.length > 0) {
       setSequenceData(savedSequenceData);
       
-      // Set the main evaluation
       const mainEvaluation = savedSequenceData.find(seq => seq.id === 'main');
       if (mainEvaluation) {
         setFinalEvaluation({
@@ -985,7 +975,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
       h4: ({ children }) => <h4 className="text-base font-semibold mt-3 mb-1">{children}</h4>,
       blockquote: ({ children }) => (
-        <blockquote className="pl-4 border-l-2 border-muted-foreground/30 italic my-3 text-muted-foreground">
+        <blockquote className="pl-4 border-l-2 border-border/50 italic my-3 text-muted-foreground">
           {children}
         </blockquote>
       ),
@@ -1132,7 +1122,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                 <SelectItem value="none">No research</SelectItem>
                 {savedResearch?.map(research => (
                   <SelectItem key={research.id} value={research.id}>
-                    {research.title || 'Untitled'} - {research.probability}
+                    {research.probability || 'Unknown probability'} - {new Date(research.created_at).toLocaleString()}
                   </SelectItem>
                 ))}
               </SelectContent>
