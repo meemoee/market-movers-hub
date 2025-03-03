@@ -65,20 +65,24 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-[auth.hooks]
-enabled = false
-
-[analytics]
-enabled = false
-
-[vector]
-enabled = false
-
-[experimental]
-enabled = false
-
-[[functions]]
+# Define functions correctly with individual sections per function
+[functions.functions]
 name = "functions"
 enabled = true
 verify_jwt = false
 port = 54328
+
+# Vector configuration should use this format
+[vector.vector]
+enabled = false
+
+# Auth hooks configuration
+[auth.hooks]
+enabled = false
+
+# Experimental features configuration
+[experimental.experimental]
+enabled = false
+
+[analytics]
+enabled = false
