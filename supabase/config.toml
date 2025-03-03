@@ -65,22 +65,6 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-# Remove the invalid [auth.hooks] section
-# [auth.hooks]
-# enabled = false
-
-# Remove the invalid [analytics] section 
-# [analytics]
-# enabled = false
-
-# Remove the invalid [vector] section
-# [vector]
-# enabled = false
-
-# Remove the invalid [experimental] section
-# [experimental]
-# enabled = false
-
-# Update the functions section to use the proper format
-[functions.functions]
+# Define functions configurations properly
+[functions]
 verify_jwt = false
