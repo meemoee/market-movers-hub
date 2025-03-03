@@ -971,11 +971,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     return (
       <div className="space-y-4 w-full overflow-hidden">
-        <div className="w-full overflow-hidden">
+        <div>
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
-          <div className="flex flex-wrap gap-2 w-full">
+          <div className="flex flex-wrap gap-2">
             {iter.queries.map((query, idx) => (
-              <Badge key={idx} variant="secondary" className="text-xs break-words">
+              <Badge key={idx} variant="secondary" className="text-xs">
                 {query}
               </Badge>
             ))}
@@ -983,21 +983,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
         
         {iter.results.length > 0 && (
-          <div className="w-full overflow-hidden">
+          <div>
             <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
             <ScrollArea className="h-[150px] rounded-md border">
               <div className="p-4 space-y-2">
                 {iter.results.map((result, idx) => (
-                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded overflow-hidden">
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
                     <a 
                       href={result.url} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline truncate block max-w-full"
+                      className="text-primary hover:underline truncate block"
                     >
                       {result.title || result.url}
                     </a>
-                    <p className="mt-1 line-clamp-2 text-muted-foreground break-words">
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
                       {result.content?.substring(0, 150)}...
                     </p>
                   </div>
@@ -1007,9 +1007,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        <div className="w-full overflow-hidden">
+        <div>
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
-          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 overflow-hidden break-words">
+          <div className="text-sm prose prose-sm max-w-none prose-p:my-1 prose-headings:my-2 overflow-x-hidden">
             <AnalysisDisplay 
               content={iter.analysis || "Analysis in progress..."} 
               isStreaming={isCurrentlyStreaming}

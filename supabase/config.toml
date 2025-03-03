@@ -65,35 +65,20 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-[functions.analyze-web-content]
-verify_jwt = false
+[auth.hooks]
+enabled = false
 
-[functions.execute-market-order]
-verify_jwt = false
+[analytics]
+enabled = false
 
-[functions.get-top-movers]
-verify_jwt = false
+[vector]
+enabled = false
 
-[functions.price-history]
-verify_jwt = false
+[experimental]
+enabled = false
 
-[functions.brave-search]
+[[functions]]
+name = "functions"
+enabled = true
 verify_jwt = false
-
-[functions.extract-research-insights]
-verify_jwt = false
-
-[functions.generate-qa-tree]
-verify_jwt = false
-
-[functions.evaluate-qa-pair]
-verify_jwt = false
-
-[functions.market-analysis]
-verify_jwt = false
-
-[functions.web-research]
-verify_jwt = false
-
-[functions.web-scrape]
-verify_jwt = false
+port = 54328

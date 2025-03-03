@@ -16,16 +16,6 @@ export const supabase = createClient<Database>(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-    },
-    global: {
-      fetch: (url: RequestInfo | URL, options?: RequestInit) => {
-        // Add debugging for function calls
-        const urlString = url.toString();
-        if (urlString.includes('functions')) {
-          console.log('Supabase function call:', urlString);
-        }
-        return fetch(url, options);
-      }
     }
   }
 );
