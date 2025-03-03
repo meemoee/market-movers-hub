@@ -65,7 +65,6 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-# Correctly formatted function configuration
 [functions.analyze-web-content]
 verify_jwt = false
 

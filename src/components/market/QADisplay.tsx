@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -195,6 +196,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       return { content, citations: [] };
     } catch (e) {
       // Silent failure during streaming is expected
+      console.log('Error parsing stream chunk:', chunk);
       return { content: '', citations: [] };
     }
   };
@@ -268,11 +270,17 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     let accumulatedContent = '';
     let accumulatedCitations: string[] = [];
     let buffer = '';
+    let firstChunkProcessed = false;
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
+          // Process any remaining buffer
+          if (buffer.trim()) {
+            processPart(buffer);
+          }
+          
           // When stream is done, find the node and evaluate it
           const node = qaData.find(n => n.id === nodeId) || 
                       rootExtensions.find(n => n.id === nodeId);
@@ -282,16 +290,20 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           }
           break;
         }
+        
         const decoded = new TextDecoder().decode(value);
+        if (!firstChunkProcessed) {
+          console.log('First stream chunk received:', decoded);
+          firstChunkProcessed = true;
+        }
+        
         buffer += decoded;
 
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
+        
         for (const part of parts) {
-          if (part.trim() && isLineComplete(part.trim())) {
-            processPart(part);
-            buffer = '';
-          } else {
+          if (part.trim()) {
             processPart(part);
           }
         }
@@ -303,14 +315,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
     function processPart(text: string) {
       const lines = text.split('\n').filter(line => line.startsWith('data: '));
+      
       for (const line of lines) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        const { content, citations } = cleanStreamContent(jsonStr);
+        const { content, citations } = cleanStreamContent(line);
         if (content) {
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
+          // Update the streaming content state
           setStreamingContent(prev => ({
             ...prev,
             [nodeId]: {
@@ -319,6 +331,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             },
           }));
           
+          // Update the node in the qaData tree
           setQaData(prev => {
             const updateNode = (nodes: QANode[]): QANode[] =>
               nodes.map(node => {
@@ -340,6 +353,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
     }
 
+    console.log(`Stream processing complete for node ${nodeId}. Total content length: ${accumulatedContent.length}`);
     return accumulatedContent;
   }
 
@@ -382,15 +396,17 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
-      // Updated to specify Gemini model via OpenRouter
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
+      console.log('Requesting analysis for:', question);
+      
+      // Request the analysis stream
+      const { data: analysisResponse, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
           question, 
           isFollowUp: false,
           marketQuestion,
-          model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
-          useOpenRouter: true,  // Flag to use OpenRouter
+          model: "google/gemini-2.0-flash-lite-001",
+          useOpenRouter: true,
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -399,13 +415,22 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         })
       });
       
-      if (analysisError) throw analysisError;
+      if (analysisError) {
+        console.error('Analysis request error:', analysisError);
+        throw analysisError;
+      }
 
-      const reader = new Response(analysisData.body).body?.getReader();
-      if (!reader) throw new Error('Failed to create reader');
+      console.log('Analysis response received:', typeof analysisResponse, analysisResponse?.body ? 'Has body stream' : 'No body stream');
+      
+      // Create a reader from the response body stream
+      const reader = new Response(analysisResponse.body).body?.getReader();
+      if (!reader) {
+        console.error('Failed to create reader from response body');
+        throw new Error('Failed to create reader');
+      }
 
       const analysis = await processStream(reader, nodeId);
-      console.log('Completed analysis for node', nodeId, ':', analysis);
+      console.log('Completed analysis for node', nodeId, ':', analysis.substring(0, 100) + '...');
 
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
@@ -425,12 +450,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         id: nodeId,
         question,
         analysis,
-        children: [] // Add the required children property
+        children: []
       };
       await evaluateQAPair(currentNode);
 
       if (!parentId) {
-        // Updated to specify Gemini model for follow-up questions
+        console.log('Requesting follow-up questions for:', question);
+        
+        // Request follow-up questions
         const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
           body: JSON.stringify({ 
             marketId, 
@@ -438,8 +465,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             parentContent: analysis,
             isFollowUp: true,
             marketQuestion,
-            model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
-            useOpenRouter: true,  // Flag to use OpenRouter
+            model: "google/gemini-2.0-flash-lite-001",
+            useOpenRouter: true,
             researchContext: selectedResearchData ? {
               analysis: selectedResearchData.analysis,
               probability: selectedResearchData.probability,
@@ -448,14 +475,20 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           }),
         });
         
-        if (followUpError) throw followUpError;
+        if (followUpError) {
+          console.error('Follow-up request error:', followUpError);
+          throw followUpError;
+        }
+        
+        console.log('Follow-up data received:', followUpData);
         
         // Fix: Ensure followUpData is an array before iterating
         const followUpQuestions = Array.isArray(followUpData) ? followUpData : [];
-        console.log('Follow-up questions:', followUpQuestions);
+        console.log('Processed follow-up questions:', followUpQuestions);
         
         for (const item of followUpQuestions) {
           if (item?.question) {
+            console.log('Processing follow-up question:', item.question);
             await analyzeQuestion(item.question, nodeId, depth + 1);
           }
         }
