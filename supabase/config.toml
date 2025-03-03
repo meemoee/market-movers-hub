@@ -72,16 +72,17 @@ verify_jwt = false
 port = 54328
 
 # Vector configuration
-[vector]
+[vector_extension]
 enabled = false
 
-# Auth hooks configuration - removed 'hooks' key that was causing error
-[auth.hooks]
+# Auth hooks configuration
+[auth_hooks]
 enabled = false
 
-# Simplified experimental section
-[experimental]
-enabled = false
-
+# Analytics configuration
 [analytics]
+enabled = false
+
+# Experimental features
+[experimental_features]
 enabled = false
