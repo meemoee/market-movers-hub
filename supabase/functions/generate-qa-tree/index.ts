@@ -1,180 +1,230 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { StreamProcessor } from "./streamProcessor.ts"
-import { corsHeaders } from "../_shared/cors.ts"
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { StreamProcessor } from "./streamProcessor.ts";
 
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
+// CORS headers for browser requests
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-if (!OPENROUTER_API_KEY) {
-  console.error("OPENROUTER_API_KEY is not set");
+// Stream transform using the StreamProcessor
+async function* transformStream(
+  readableStream: ReadableStream<Uint8Array>
+): AsyncGenerator<string> {
+  const reader = readableStream.getReader();
+  const processor = new StreamProcessor();
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        const finalContent = processor.finalize();
+        if (finalContent) {
+          yield finalContent;
+        }
+        break;
+      }
+      
+      const processedContent = processor.processChunk(value);
+      if (processedContent) {
+        yield processedContent;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
-const openRouterApiUrl = "https://openrouter.ai/api/v1/chat/completions";
-
-serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: corsHeaders
-    });
-  }
-
+async function analyzeAndGenerateFollowups(marketQuery: string): Promise<Response> {
   try {
-    // Parse the request body
-    const requestData = await req.json();
-    const { marketId, marketQuestion } = requestData;
-
-    if (!marketId || !marketQuestion) {
-      return new Response(
-        JSON.stringify({ error: "Market ID and market question are required" }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json"
-          }
-        }
-      );
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY environment variable not set");
     }
-
-    console.log(`Generating QA tree for market: ${marketId}`);
-    console.log(`Market question: ${marketQuestion}`);
-
-    // Create a ReadableStream for the response
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-
-    // Launch the analysis operation asynchronously
-    analyzeMarketQuestion(marketQuestion, marketId, writer).catch((error) => {
-      console.error("Error in QA tree generation:", error);
-      writer.write(
-        new TextEncoder().encode(
-          `data: ${JSON.stringify({
-            error: `Error in QA tree generation: ${error.message || error}`,
-          })}\n\n`
-        )
-      );
-      writer.close();
-    });
-
-    // Return the readable stream as the response
-    return new Response(readable, {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-      },
-    });
-  } catch (error) {
-    console.error("Error processing request:", error);
-    return new Response(
-      JSON.stringify({ error: error.message || "Unknown error" }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-  }
-});
-
-async function analyzeMarketQuestion(
-  marketQuestion: string,
-  marketId: string,
-  writer: WritableStreamDefaultWriter
-) {
-  console.log("Starting analysis for market question:", marketQuestion);
-
-  const systemPrompt = `You are a financial analysis expert specializing in prediction markets. Your task is to analyze a prediction market question, break it down into component parts, and identify key factors that could influence the outcome.
-
-First, you will analyze the question in depth. Consider:
-- What's the exact condition for the market to resolve to YES?
-- What timeframe is involved?
-- What are potential ambiguities or edge cases?
-- What key entities are involved?
-- What factors or events might influence the outcome?
-
-After this analysis, generate 5-10 follow-up questions that would help someone make a more informed prediction. These should be specific, focused questions that address different aspects of the prediction.`;
-
-  const messages = [
-    {
-      role: "system",
-      content: systemPrompt,
-    },
-    {
-      role: "user",
-      content: `Analyze this prediction market question: "${marketQuestion}"
-      
-First provide a thorough analysis of what the question is asking, any key dates, conditions, and important factors.
-
-Then provide 5-10 numbered follow-up questions that would help someone make a more informed prediction.`,
-    },
-  ];
-
-  // Send the messages to OpenRouter and stream the response
-  const streamProcessor = new StreamProcessor();
-  const encoder = new TextEncoder();
-
-  try {
-    console.log("Sending analysis request to OpenRouter");
     
-    const response = await fetch(openRouterApiUrl, {
+    console.log(`Analyzing market query: ${marketQuery}`);
+    
+    // Prepare the analysis prompt
+    const analysisPrompt = `Analyze this prediction market question: "${marketQuery}"
+    1. What is this question asking?
+    2. What are the key components that would affect the outcome?
+    3. What data would be useful to evaluate this question?
+    4. What are the potential outcomes and their implications?`;
+    
+    // Prepare the OpenRouter API request
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://hunchex.app",
-        "X-Title": "HunchEx QA Tree Generator",
+        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost:3000",
+        "X-Title": "Market Research Assistant",
       },
       body: JSON.stringify({
-        model: "mistralai/mistral-7b-instruct",
-        messages: messages,
+        model: "anthropic/claude-3-opus:beta",
+        messages: [
+          { role: "system", content: "You're a research assistant helping users analyze prediction market questions. Provide thorough, insightful analysis." },
+          { role: "user", content: analysisPrompt }
+        ],
         stream: true,
-        temperature: 0.7,
-        max_tokens: 2048,
+        temperature: 0.2,
+        max_tokens: 4000,
       }),
     });
-
-    if (!response.ok || !response.body) {
-      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
-    }
-
-    const reader = response.body.getReader();
-
-    // Process the streaming response
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = new TextDecoder().decode(value);
-      const processedChunks = streamProcessor.processChunk(chunk);
-
-      // Send each processed chunk to the client
-      for (const content of processedChunks) {
-        // Only stream non-empty content
-        if (content.trim()) {
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
-          );
+    
+    // Create a ReadableStream that will process and transform the streaming response
+    const transformedStream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Send opening JSON to establish stream structure
+          controller.enqueue(new TextEncoder().encode('{"analysis":"'));
+          
+          // Process the stream of tokens
+          for await (const chunk of transformStream(response.body!)) {
+            controller.enqueue(new TextEncoder().encode(
+              chunk.replace(/\n/g, "\\n").replace(/"/g, '\\"')
+            ));
+          }
+          
+          // Generate follow-up questions after analysis completes
+          const followupQuestions = await generateFollowupQuestions(marketQuery);
+          
+          // Append follow-up questions to the stream and close
+          controller.enqueue(new TextEncoder().encode(`","followups":${JSON.stringify(followupQuestions)}}`));
+          controller.close();
+        } catch (error) {
+          console.error("Stream processing error:", error);
+          controller.error(error);
         }
       }
-    }
-
-    // Signal the end of the stream
-    await writer.write(encoder.encode(`data: [DONE]\n\n`));
-    console.log("Analysis completed and streamed successfully");
-
+    });
+    
+    return new Response(transformedStream, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "application/json",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   } catch (error) {
-    console.error("Error in OpenRouter API call:", error);
-    throw error;
-  } finally {
-    try {
-      await writer.close();
-    } catch (e) {
-      console.error("Error closing writer:", e);
-    }
+    console.error("Error in analyzeMarket:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 }
+
+async function generateFollowupQuestions(marketQuery: string): Promise<string[]> {
+  try {
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY environment variable not set");
+    }
+    
+    // Prepare the follow-up questions prompt
+    const followupPrompt = `For the prediction market question: "${marketQuery}"
+    
+    Generate 3-5 specific, focused follow-up questions that would help someone research this topic more deeply.
+    Each question should:
+    1. Target a specific aspect that affects the prediction
+    2. Be answerable through research
+    3. Help clarify the likelihood of different outcomes
+    
+    Format your response as a JSON array of strings containing only the questions.`;
+    
+    // Make API request for follow-up questions
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost:3000",
+        "X-Title": "Market Research Assistant",
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-3-haiku",  // Using a smaller, faster model for follow-ups
+        messages: [
+          { role: "system", content: "You're a research assistant helping users analyze prediction market questions. Generate specific follow-up questions to help with research." },
+          { role: "user", content: followupPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+        max_tokens: 1000,
+      }),
+    });
+    
+    const data = await response.json();
+    
+    // Parse the JSON response to extract questions
+    try {
+      const content = data.choices[0].message.content;
+      const parsedContent = JSON.parse(content);
+      
+      // Handle different possible formats in the returned JSON
+      if (Array.isArray(parsedContent)) {
+        return parsedContent;
+      } else if (parsedContent.questions && Array.isArray(parsedContent.questions)) {
+        return parsedContent.questions;
+      } else {
+        // Fallback to extracting any array property found
+        const arrayProps = Object.values(parsedContent).find(val => Array.isArray(val));
+        if (arrayProps) return arrayProps;
+      }
+      
+      // If we can't parse it properly, log and return default
+      console.log("Couldn't extract questions array from:", content);
+      return ["What historical precedents exist for this situation?", 
+              "What are the key factors that could change the outcome?", 
+              "What expert opinions exist on this topic?"];
+    } catch (error) {
+      console.error("Error parsing follow-up questions:", error);
+      return ["What historical precedents exist for this situation?", 
+              "What are the key factors that could change the outcome?", 
+              "What expert opinions exist on this topic?"];
+    }
+  } catch (error) {
+    console.error("Error generating follow-up questions:", error);
+    return ["What historical precedents exist for this situation?", 
+            "What are the key factors that could change the outcome?", 
+            "What expert opinions exist on this topic?"];
+  }
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+  
+  try {
+    // Only accept POST requests
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
+        status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    // Parse request body
+    const requestData = await req.json();
+    const marketQuery = requestData.marketQuery;
+    
+    if (!marketQuery) {
+      return new Response(JSON.stringify({ error: "Missing marketQuery parameter" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    
+    // Process the market query
+    return analyzeAndGenerateFollowups(marketQuery);
+  } catch (error) {
+    console.error("Error processing request:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
