@@ -65,22 +65,20 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-# Correct format for auth hooks
-[auth.hook]
+[auth.hooks]
 enabled = false
 
 [analytics]
 enabled = false
 
-# Correct format for vector
-[vector_enabled]
+[vector]
 enabled = false
 
-# Correct format for experimental
-[experimental_features]
+[experimental]
 enabled = false
 
-# Correct format for functions - each function needs its own section
-[functions.functions]
+[[functions]]
+name = "functions"
+enabled = true
 verify_jwt = false
 port = 54328

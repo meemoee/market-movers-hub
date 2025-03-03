@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -698,49 +697,31 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       });
 
-      if (error) {
-        console.error('Error in evaluate-qa-pair function:', error);
-        toast({
-          title: "Evaluation Error",
-          description: "Failed to evaluate Q&A pair. Using fallback evaluation.",
-          variant: "destructive"
-        });
-        
-        // Use fallback evaluation to prevent UI issues
-        const fallbackEvaluation = {
-          score: 65,
-          reason: "Evaluation service unavailable. This is a fallback score."
-        };
-        
-        // Update qaData with fallback evaluation
-        updateNodeWithEvaluation(node.id, fallbackEvaluation);
-        return;
-      }
+      if (error) throw error;
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
-      
-      // Validate evaluation data
-      const validEvaluation = validateEvaluation(data);
-      if (!validEvaluation) {
-        console.error('Invalid evaluation format:', data);
-        toast({
-          title: "Invalid Evaluation",
-          description: "Received malformed evaluation data. Using fallback.",
-          variant: "destructive"
-        });
-        
-        // Use fallback evaluation
-        const fallbackEvaluation = {
-          score: 65,
-          reason: "Received invalid evaluation format. This is a fallback score."
-        };
-        
-        updateNodeWithEvaluation(node.id, fallbackEvaluation);
-        return;
-      }
 
       // Update qaData with evaluation
-      updateNodeWithEvaluation(node.id, data);
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(n => {
+            if (n.id === node.id) {
+              return { ...n, evaluation: data };
+            }
+            if (n.children.length > 0) {
+              return { ...n, children: updateNode(n.children) };
+            }
+            return n;
+          });
+        return updateNode(prev);
+      });
+
+      // Update rootExtensions with evaluation
+      setRootExtensions(prev => 
+        prev.map(ext => 
+          ext.id === node.id ? { ...ext, evaluation: data } : ext
+        )
+      );
 
     } catch (error) {
       console.error('Error evaluating QA pair:', error);
@@ -749,52 +730,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         description: "Failed to evaluate Q&A pair",
         variant: "destructive"
       });
-      
-      // Use fallback evaluation to prevent UI issues
-      const fallbackEvaluation = {
-        score: 65,
-        reason: "An error occurred during evaluation. This is a fallback score."
-      };
-      
-      updateNodeWithEvaluation(node.id, fallbackEvaluation);
     }
-  };
-  
-  // Helper function to validate evaluation format
-  const validateEvaluation = (data: any): boolean => {
-    return (
-      data && 
-      typeof data === 'object' &&
-      'score' in data && 
-      'reason' in data &&
-      typeof data.score === 'number' &&
-      typeof data.reason === 'string'
-    );
-  };
-  
-  // Helper function to update nodes with evaluation
-  const updateNodeWithEvaluation = (nodeId: string, evaluation: { score: number, reason: string }) => {
-    // Update qaData with evaluation
-    setQaData(prev => {
-      const updateNode = (nodes: QANode[]): QANode[] =>
-        nodes.map(n => {
-          if (n.id === nodeId) {
-            return { ...n, evaluation };
-          }
-          if (n.children.length > 0) {
-            return { ...n, children: updateNode(n.children) };
-          }
-          return n;
-        });
-      return updateNode(prev);
-    });
-
-    // Update rootExtensions with evaluation
-    setRootExtensions(prev => 
-      prev.map(ext => 
-        ext.id === nodeId ? { ...ext, evaluation } : ext
-      )
-    );
   };
 
   function renderQANode(node: QANode, depth: number = 0) {
@@ -907,43 +843,44 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                         </div>
                         
                         {nodeExtensions.length > 0 && (
-                          <div className="mt-3 space-y-2">
+                          <div className="mt-4 space-y-2">
                             <div className="text-xs font-medium text-muted-foreground">
-                              Related expansions:
+                              Follow-up Analyses ({nodeExtensions.length}):
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              {nodeExtensions.map(ext => (
-                                <button
-                                  key={ext.id}
+                            <div className="space-y-4">
+                              {nodeExtensions.map((extension, index) => (
+                                <div 
+                                  key={extension.id}
+                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigateToExtension(ext);
+                                    navigateToExtension(extension);
                                   }}
-                                  className="px-2 py-1 bg-accent/50 hover:bg-accent rounded text-xs flex items-center gap-1"
                                 >
-                                  <span>Expansion {new Date(parseInt(ext.id.split('-')[1])).toLocaleDateString()}</span>
-                                  <ArrowRight className="h-3 w-3" />
-                                </button>
+                                  <div className="text-xs text-muted-foreground mb-2">
+                                    Continuation #{index + 1}
+                                  </div>
+                                  <div className="line-clamp-3">
+                                    {getPreviewText(extension.analysis)}
+                                  </div>
+                                </div>
                               ))}
                             </div>
                           </div>
                         )}
                       </>
                     ) : (
-                      <div className="pt-1 text-sm">
-                        {getPreviewText(analysisContent || '')}
-                      </div>
+                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
                     )}
                   </div>
                 </div>
               </div>
-              
-              {isExpanded && node.children.length > 0 && (
-                <div className="mt-4 space-y-4">
-                  {node.children.map(childNode => renderQANode(childNode, depth + 1))}
-                </div>
-              )}
             </div>
+            {node.children.length > 0 && isExpanded && (
+              <div className="mt-6">
+                {node.children.map(child => renderQANode(child, depth + 1))}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -951,106 +888,77 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   }
 
   return (
-    <Card className="overflow-hidden">
-      <div className="p-6 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="space-y-1 flex-grow">
-          <h3 className="font-medium">{marketQuestion}</h3>
-          {marketDescription && (
-            <p className="text-xs text-muted-foreground line-clamp-2">{marketDescription}</p>
-          )}
+    <Card className="p-4 mt-4 bg-card relative">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+        {navigationHistory.length > 0 && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={navigateBack}
+            className="mb-4 sm:mb-0"
+          >
+            ← Back to Previous Analysis
+          </Button>
+        )}
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedResearch}
+            onValueChange={setSelectedResearch}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved research" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved research</SelectItem>
+              {savedResearch?.map((research) => (
+                <SelectItem key={research.id} value={research.id}>
+                  {research.query.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-          {savedResearch && savedResearch.length > 0 && (
-            <Select value={selectedResearch} onValueChange={setSelectedResearch}>
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Use research context..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No research context</SelectItem>
-                {savedResearch.map(research => (
-                  <SelectItem key={research.id} value={research.id}>
-                    {new Date(research.created_at).toLocaleDateString()} ({Math.round(research.probability * 100)}%)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
-          {savedQATrees && savedQATrees.length > 0 && (
-            <Select 
-              value={selectedQATree} 
-              onValueChange={(value) => {
-                setSelectedQATree(value);
-                if (value !== 'none') {
-                  const selectedTree = savedQATrees.find(tree => tree.id === value);
-                  if (selectedTree) {
-                    loadSavedQATree(selectedTree.tree_data);
-                  }
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedQATree}
+            onValueChange={(value) => {
+              setSelectedQATree(value);
+              setNavigationHistory([]); // Reset navigation history when loading new tree
+              if (value !== 'none') {
+                const tree = savedQATrees?.find(t => t.id === value);
+                if (tree) {
+                  loadSavedQATree(tree.tree_data);
                 }
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-[180px]">
-                <SelectValue placeholder="Load saved analysis..." />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Create new analysis</SelectItem>
-                {savedQATrees.map(tree => (
-                  <SelectItem key={tree.id} value={tree.id}>
-                    {new Date(tree.created_at).toLocaleDateString()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
-          {qaData.length > 0 && !isAnalyzing && navigationHistory.length > 0 && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={navigateBack}
-            >
-              Back to previous
-            </Button>
-          )}
-          
-          {qaData.length > 0 && !isAnalyzing ? (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={saveQATree}
-            >
+              }
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved QA tree" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved QA tree</SelectItem>
+              {savedQATrees?.map((tree) => (
+                <SelectItem key={tree.id} value={tree.id}>
+                  {tree.title.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
+          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </Button>
+          {qaData.length > 0 && !isAnalyzing && (
+            <Button onClick={saveQATree} variant="outline">
               Save Analysis
-            </Button>
-          ) : (
-            <Button 
-              onClick={handleAnalyze}
-              disabled={isAnalyzing}
-              className="w-full sm:w-auto"
-            >
-              {isAnalyzing ? 'Analyzing...' : 'Analyze Question'}
             </Button>
           )}
         </div>
       </div>
-      
-      {isAnalyzing ? (
-        <div className="p-6 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <p className="text-sm text-muted-foreground">Analyzing question...</p>
-          </div>
-        </div>
-      ) : qaData.length > 0 ? (
-        <ScrollArea className="h-[500px]">
-          <div className="p-6">
-            {qaData.map(node => renderQANode(node))}
-          </div>
-        </ScrollArea>
-      ) : (
-        <div className="p-6 text-center text-muted-foreground">
-          <p>Click "Analyze Question" to generate a question and answer tree</p>
-        </div>
-      )}
+      <ScrollArea className="h-[500px] pr-4">
+        {qaData.map(node => renderQANode(node))}
+      </ScrollArea>
     </Card>
   );
 }
