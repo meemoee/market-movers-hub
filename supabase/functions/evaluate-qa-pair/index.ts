@@ -1,6 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.0";
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,183 +12,136 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-  
+
+  const API_KEY = Deno.env.get('OPENROUTER_API_KEY');
+  if (!API_KEY) {
+    console.error('OPENROUTER_API_KEY is not set');
+    return new Response(
+      JSON.stringify({ error: 'OpenRouter API key is not configured' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     const { question, analysis, model, useOpenRouter } = await req.json();
-    
+
+    console.log(`Evaluating Q&A pair: Question length: ${question.length}, Analysis length: ${analysis.length}`);
+    console.log(`Using model: ${model}, OpenRouter: ${useOpenRouter}`);
+
     if (!question || !analysis) {
-      throw new Error("Missing required fields: question and analysis");
+      return new Response(
+        JSON.stringify({ error: 'Question and analysis are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-    
-    console.log(`Evaluating Q&A pair with ${useOpenRouter ? 'OpenRouter' : 'OpenAI'} using model: ${model || 'default'}`);
-    
-    let response;
-    
-    // Use OpenRouter if specified
-    if (useOpenRouter) {
-      const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY");
-      if (!openRouterApiKey) {
-        throw new Error("OpenRouter API key not found");
-      }
-      
-      const openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
-      const openRouterModel = model || "anthropic/claude-3-haiku-20240307";
-      
-      console.log(`Using OpenRouter with model: ${openRouterModel}`);
-      
-      const systemPrompt = `You are an AI evaluator that assesses analysis responses to questions. 
-Your task is to evaluate the quality, accuracy, and thoroughness of an analysis based on how well it answers a given question.
 
-Evaluate the analysis based on these criteria:
-1. Relevance to the question
-2. Depth and thoroughness
-3. Logical structure and clarity
-4. Evidence and reasoning
-5. Balanced perspective
+    // Use OpenRouter for evaluation
+    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
 
-IMPORTANT: You MUST respond with a JSON object containing:
-1. A numeric score from 0-100 representing the overall quality
-2. A brief reason explaining the score
+    const systemPrompt = `
+You are an expert evaluator of question-answer pairs. Your task is to assess the quality of an analysis that answers a specific question. 
+Evaluate the analysis on how well it addresses the question, the depth and accuracy of the information provided, and the logical reasoning demonstrated.
 
-Your response MUST ONLY contain valid JSON in this format:
-{"score": <number>, "reason": "<explanation>"}
+Rate the analysis on a scale from 0 to 100, where:
+- 0-40: Poor (fails to address the question or contains significant errors)
+- 41-60: Fair (addresses the question partially but lacks depth or has some errors)
+- 61-80: Good (addresses the question well with adequate depth and few errors)
+- 81-100: Excellent (comprehensively addresses the question with great depth, accuracy, and strong reasoning)
 
-Do not include any other text, markdown formatting, or additional commentary.`;
-      
-      const evaluationPrompt = `
-Question: ${question}
+Provide ONLY a JSON response in the following format:
+{"score": <numeric_score>, "reason": "<brief_explanation_of_the_score>"}
 
-Analysis: ${analysis}
-
-Please evaluate this analysis response to the question above.
+DO NOT include any additional text, markdown formatting, or explanations outside of the JSON object.
 `;
-      
-      response = await fetch(openRouterUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openRouterApiKey}`,
-          "HTTP-Referer": "https://hunchex.app"
-        },
-        body: JSON.stringify({
-          model: openRouterModel,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: evaluationPrompt }
-          ],
-          response_format: { type: "json_object" }
-        })
-      });
-    } else {
-      // Default to OpenAI
-      const apiKey = Deno.env.get("OPENAI_API_KEY");
-      if (!apiKey) {
-        throw new Error("OpenAI API key not found");
-      }
-      
-      const openaiModel = model || "gpt-4-turbo-preview";
-      console.log(`Using OpenAI with model: ${openaiModel}`);
-      
-      response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: openaiModel,
-          messages: [
-            {
-              role: "system",
-              content: `You are an AI evaluator that assesses analysis responses to questions. 
-Your task is to evaluate the quality, accuracy, and thoroughness of an analysis based on how well it answers a given question.
 
-Evaluate the analysis based on these criteria:
-1. Relevance to the question
-2. Depth and thoroughness
-3. Logical structure and clarity
-4. Evidence and reasoning
-5. Balanced perspective
-
-IMPORTANT: You MUST respond with a JSON object containing:
-1. A numeric score from 0-100 representing the overall quality
-2. A brief reason explaining the score
-
-Your response MUST ONLY contain valid JSON in this format:
-{"score": <number>, "reason": "<explanation>"}
-
-Do not include any other text, markdown formatting, or additional commentary.`
-            },
-            {
-              role: "user",
-              content: `
+    const userPrompt = `
 Question: ${question}
 
-Analysis: ${analysis}
+Analysis to evaluate: ${analysis}
 
-Please evaluate this analysis response to the question above.
-`
-            }
-          ],
-          response_format: { type: "json_object" }
-        })
-      });
-    }
-    
+Remember, provide ONLY a JSON response with a score and reason. No additional text.
+`;
+
+    const response = await fetch(openRouterUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${API_KEY}`,
+        'HTTP-Referer': 'https://hunchex.xyz',
+        'X-Title': 'HunchEx QA Evaluation'
+      },
+      body: JSON.stringify({
+        model: model || "google/gemini-1.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },  // Explicitly request JSON format
+        temperature: 0.3,
+      }),
+    });
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("API request failed:", errorText);
-      throw new Error(`API request failed with status ${response.status}: ${errorText}`);
+      console.error('Error from OpenRouter:', errorText);
+      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
     }
-    
-    const data = await response.json();
-    console.log("Received raw API response:", JSON.stringify(data));
-    
-    // Extract the actual content from the API response
-    let evaluationResult;
-    
-    if (data.choices && data.choices.length > 0) {
-      const content = data.choices[0].message?.content;
-      console.log("Extracted content:", content);
+
+    const responseData = await response.json();
+    console.log('OpenRouter response:', JSON.stringify(responseData));
+
+    // Extract content from the OpenRouter response
+    const content = responseData.choices?.[0]?.message?.content || '';
+    console.log('Extracted content:', content);
+
+    try {
+      // Try to parse the content as JSON
+      const jsonResult = JSON.parse(content);
       
-      try {
-        // Try to parse the content as JSON
-        evaluationResult = JSON.parse(content);
-        console.log("Parsed JSON result:", evaluationResult);
-      } catch (e) {
-        console.error("Failed to parse content as JSON:", e);
-        // If parsing fails, return the raw content and let the client handle it
-        evaluationResult = { score: 70, reason: "Could not properly evaluate the response" };
+      // Validate the expected structure
+      if (typeof jsonResult.score !== 'number' || typeof jsonResult.reason !== 'string') {
+        console.error('Invalid evaluation format:', jsonResult);
+        throw new Error('Invalid evaluation format');
       }
-    } else {
-      console.error("Unexpected API response format:", data);
-      throw new Error("Unexpected API response format");
+
+      // Return the valid JSON evaluation
+      return new Response(
+        JSON.stringify(jsonResult),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (parseError) {
+      console.error('Failed to parse content as JSON:', parseError);
+      console.error('Content received:', content);
+      
+      // Attempt to extract JSON from possible text format
+      const jsonMatch = content.match(/\{.*\}/s);
+      if (jsonMatch) {
+        try {
+          const extractedJson = JSON.parse(jsonMatch[0]);
+          console.log('Extracted JSON from text:', extractedJson);
+          return new Response(
+            JSON.stringify(extractedJson),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } catch (e) {
+          console.error('Failed to extract JSON from match:', e);
+        }
+      }
+
+      // If all parsing attempts fail, return a fallback evaluation
+      return new Response(
+        JSON.stringify({ 
+          score: 50, 
+          reason: "Error parsing evaluation response. This is a fallback score." 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-    
-    // Return the evaluation result with CORS headers
-    return new Response(
-      JSON.stringify(evaluationResult),
-      { 
-        headers: { 
-          "Content-Type": "application/json",
-          ...corsHeaders 
-        } 
-      }
-    );
-    
   } catch (error) {
-    console.error("Error:", error.message);
-    
-    // Return error with CORS headers
+    console.error('Error in evaluate-qa-pair function:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
-      { 
-        status: 400, 
-        headers: { 
-          "Content-Type": "application/json",
-          ...corsHeaders 
-        } 
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

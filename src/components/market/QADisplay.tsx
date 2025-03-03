@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -735,8 +734,33 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Ensure data is properly parsed
-      const evaluation = typeof data === 'string' ? JSON.parse(data) : data;
+      // Parse the evaluation data - it should already be an object due to response_format: { type: "json_object" }
+      let evaluation;
+      if (typeof data === 'string') {
+        try {
+          evaluation = JSON.parse(data);
+        } catch (parseError) {
+          console.error('Failed to parse evaluation data as JSON:', parseError);
+          console.log('Raw evaluation data:', data);
+          // Try to extract JSON from potential markdown/text response
+          const jsonMatch = data.match(/\{.*\}/s);
+          if (jsonMatch) {
+            try {
+              evaluation = JSON.parse(jsonMatch[0]);
+            } catch (e) {
+              console.error('Failed to extract JSON from match:', e);
+              throw new Error('Failed to parse evaluation data');
+            }
+          } else {
+            throw new Error('Failed to parse evaluation data');
+          }
+        }
+      } else {
+        // Data is already parsed as an object
+        evaluation = data;
+      }
+
+      console.log('Parsed evaluation:', evaluation);
 
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
