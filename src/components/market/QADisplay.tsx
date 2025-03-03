@@ -735,14 +735,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Ensure data is properly parsed
-      const evaluation = typeof data === 'string' ? JSON.parse(data) : data;
-
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
             if (n.id === node.id) {
-              return { ...n, evaluation };
+              return { ...n, evaluation: data };
             }
             if (n.children.length > 0) {
               return { ...n, children: updateNode(n.children) };
@@ -754,7 +751,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       setRootExtensions(prev => 
         prev.map(ext => 
-          ext.id === node.id ? { ...ext, evaluation } : ext
+          ext.id === node.id ? { ...ext, evaluation: data } : ext
         )
       );
 

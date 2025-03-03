@@ -49,7 +49,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
         className="h-[200px] rounded-md border p-4 bg-accent/5 max-w-full"
         ref={scrollRef}
       >
-        <div className="max-w-full break-words overflow-hidden">
+        <div className="max-w-full break-words">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none overflow-hidden break-words">
             {content}
           </ReactMarkdown>
