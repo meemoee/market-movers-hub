@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -436,7 +435,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           body: JSON.stringify({ 
             marketId, 
             question, 
-            parentContent: analysis, 
+            parentContent: analysis,
             isFollowUp: true,
             marketQuestion,
             model: "google/gemini-2.0-flash-lite-001",  // Specify Gemini model
@@ -450,7 +449,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         });
         
         if (followUpError) throw followUpError;
-        const followUpQuestions = followUpData;
+        
+        // Fix: Ensure followUpData is an array before iterating
+        const followUpQuestions = Array.isArray(followUpData) ? followUpData : [];
+        console.log('Follow-up questions:', followUpQuestions);
+        
         for (const item of followUpQuestions) {
           if (item?.question) {
             await analyzeQuestion(item.question, nodeId, depth + 1);
