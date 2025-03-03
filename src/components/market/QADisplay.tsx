@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -968,3 +969,253 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
       code: ({ children, className }) => {
         const isInline = !className;
+        return isInline ? (
+          <code className="px-1 py-0.5 bg-muted rounded text-sm">{children}</code>
+        ) : (
+          <pre className="p-2 bg-muted rounded-md overflow-x-auto">
+            <code className="text-sm">{children}</code>
+          </pre>
+        );
+      },
+      ul: ({ children }) => <ul className="list-disc pl-6 mb-3 space-y-1">{children}</ul>,
+      ol: ({ children }) => <ol className="list-decimal pl-6 mb-3 space-y-1">{children}</ol>,
+      li: ({ children }) => <li className="mb-1">{children}</li>,
+      h1: ({ children }) => <h1 className="text-2xl font-bold mt-6 mb-3">{children}</h1>,
+      h2: ({ children }) => <h2 className="text-xl font-bold mt-5 mb-2">{children}</h2>,
+      h3: ({ children }) => <h3 className="text-lg font-semibold mt-4 mb-2">{children}</h3>,
+      h4: ({ children }) => <h4 className="text-base font-semibold mt-3 mb-1">{children}</h4>,
+      blockquote: ({ children }) => (
+        <blockquote className="pl-4 border-l-2 border-muted-foreground/30 italic my-3 text-muted-foreground">
+          {children}
+        </blockquote>
+      ),
+    };
+
+    return (
+      <div
+        key={node.id}
+        className={`rounded-lg bg-card ${depth > 0 ? 'pl-4 border-l border-border/50 mt-2' : 'mt-4'}`}
+      >
+        <div 
+          className="flex items-start gap-2 p-2 cursor-pointer group rounded-lg hover:bg-accent/50"
+          onClick={() => toggleNode(node.id)}
+        >
+          <div className="mt-1">
+            {isExpanded ? (
+              <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start gap-2">
+              <div className="shrink-0 mt-1">
+                <Avatar className="h-6 w-6 border border-border">
+                  <AvatarFallback className="text-xs">Q</AvatarFallback>
+                </Avatar>
+              </div>
+              <div className="flex-1 text-sm font-medium">
+                {node.question}
+                {getExtensionInfo(node)}
+                {node.evaluation && (
+                  <div className={`text-xs py-1 px-2 rounded-full inline-block ml-2 ${
+                    node.evaluation.score >= 8 ? 'bg-green-100 text-green-800' : 
+                    node.evaluation.score >= 5 ? 'bg-yellow-100 text-yellow-800' : 
+                    'bg-red-100 text-red-800'
+                  }`}>
+                    {node.evaluation.score}/10
+                  </div>
+                )}
+              </div>
+            </div>
+            {isExpanded && (
+              <div className="mt-3 ml-8">
+                <div className="flex items-start gap-2">
+                  <div className="shrink-0 mt-1">
+                    <Avatar className="h-6 w-6 border border-border">
+                      <AvatarFallback className="text-xs">A</AvatarFallback>
+                    </Avatar>
+                  </div>
+                  <div className="flex-1">
+                    {isStreaming && !isCompleteMarkdown(analysisContent) ? (
+                      <div className="text-sm text-muted-foreground animate-pulse">
+                        Generating analysis...
+                      </div>
+                    ) : (
+                      <div className="prose prose-sm max-w-none text-foreground">
+                        <ReactMarkdown components={markdownComponents}>
+                          {analysisContent || "No analysis available"}
+                        </ReactMarkdown>
+                        {renderCitations(citations)}
+                        
+                        {!node.isExtendedRoot && !(currentNodeId === node.id) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="mt-2 text-xs"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExpandQuestion(node);
+                            }}
+                          >
+                            <MessageSquare className="h-3 w-3 mr-1" />
+                            Expand this question
+                          </Button>
+                        )}
+                        
+                        {nodeExtensions.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            <h4 className="text-sm font-medium">Alternative explorations:</h4>
+                            <div className="space-y-1">
+                              {nodeExtensions.map((ext) => (
+                                <Button
+                                  key={ext.id}
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-xs w-full justify-between"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateToExtension(ext);
+                                  }}
+                                >
+                                  <span className="truncate">Exploration {ext.id.slice(-4)}</span>
+                                  <ArrowRight className="h-3 w-3 ml-1" />
+                                </Button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                
+                {node.children.length > 0 && (
+                  <div className="ml-0 mt-4">
+                    {node.children.map((childNode) => renderQANode(childNode, depth + 1))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {navigationHistory.length > 0 && (
+        <div className="p-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={navigateBack} 
+            className="mb-2"
+          >
+            ← Back to main analysis
+          </Button>
+        </div>
+      )}
+      
+      <div className="grid gap-4 p-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Select
+              value={selectedResearch}
+              onValueChange={setSelectedResearch}
+            >
+              <SelectTrigger className="w-[250px]">
+                <SelectValue placeholder="Select research to use" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No research</SelectItem>
+                {savedResearch?.map(research => (
+                  <SelectItem key={research.id} value={research.id}>
+                    {research.title || 'Untitled'} - {research.probability}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Select
+              value={selectedQATree}
+              onValueChange={(value) => {
+                setSelectedQATree(value);
+                if (value === 'none') return;
+                
+                const tree = savedQATrees?.find(t => t.id === value);
+                if (tree) {
+                  loadSavedQATree(tree.tree_data, tree.sequence_data);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[250px]">
+                <SelectValue placeholder="Load saved analysis" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">New analysis</SelectItem>
+                {savedQATrees?.map(tree => (
+                  <SelectItem key={tree.id} value={tree.id}>
+                    {new Date(tree.created_at).toLocaleString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button 
+              disabled={isAnalyzing || qaData.length === 0} 
+              variant="outline"
+              onClick={saveQATree}
+            >
+              Save
+            </Button>
+            <Button 
+              onClick={handleAnalyze} 
+              disabled={isAnalyzing}
+            >
+              {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+            </Button>
+          </div>
+        </div>
+          
+        <Card className="shadow-sm overflow-hidden">
+          <div className="flex flex-col h-full">
+            <div className="flex-1 min-h-0">
+              <ScrollArea className="h-[600px] p-4">
+                {qaData.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center p-4">
+                    <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium mb-2">AI Analysis</h3>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      Generate an AI-powered analysis of this market by clicking "Analyze". 
+                      The AI will break down the question into key components and provide insights.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {qaData.map(node => renderQANode(node))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+            
+            {finalEvaluation && (
+              <div className="border-t p-4">
+                <InsightsDisplay 
+                  title="Analysis Summary"
+                  probability={finalEvaluation.probability}
+                  analysis={finalEvaluation.analysis}
+                  areasForResearch={finalEvaluation.areasForResearch}
+                  isLoading={isFinalEvaluating}
+                />
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
