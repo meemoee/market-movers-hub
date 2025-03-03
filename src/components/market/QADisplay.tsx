@@ -697,31 +697,49 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error in evaluate-qa-pair function:', error);
+        toast({
+          title: "Evaluation Error",
+          description: "Failed to evaluate Q&A pair. Using fallback evaluation.",
+          variant: "destructive"
+        });
+        
+        // Use fallback evaluation to prevent UI issues
+        const fallbackEvaluation = {
+          score: 65,
+          reason: "Evaluation service unavailable. This is a fallback score."
+        };
+        
+        // Update qaData with fallback evaluation
+        updateNodeWithEvaluation(node.id, fallbackEvaluation);
+        return;
+      }
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
+      
+      // Validate evaluation data
+      const validEvaluation = validateEvaluation(data);
+      if (!validEvaluation) {
+        console.error('Invalid evaluation format:', data);
+        toast({
+          title: "Invalid Evaluation",
+          description: "Received malformed evaluation data. Using fallback.",
+          variant: "destructive"
+        });
+        
+        // Use fallback evaluation
+        const fallbackEvaluation = {
+          score: 65,
+          reason: "Received invalid evaluation format. This is a fallback score."
+        };
+        
+        updateNodeWithEvaluation(node.id, fallbackEvaluation);
+        return;
+      }
 
       // Update qaData with evaluation
-      setQaData(prev => {
-        const updateNode = (nodes: QANode[]): QANode[] =>
-          nodes.map(n => {
-            if (n.id === node.id) {
-              return { ...n, evaluation: data };
-            }
-            if (n.children.length > 0) {
-              return { ...n, children: updateNode(n.children) };
-            }
-            return n;
-          });
-        return updateNode(prev);
-      });
-
-      // Update rootExtensions with evaluation
-      setRootExtensions(prev => 
-        prev.map(ext => 
-          ext.id === node.id ? { ...ext, evaluation: data } : ext
-        )
-      );
+      updateNodeWithEvaluation(node.id, data);
 
     } catch (error) {
       console.error('Error evaluating QA pair:', error);
@@ -730,7 +748,52 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         description: "Failed to evaluate Q&A pair",
         variant: "destructive"
       });
+      
+      // Use fallback evaluation to prevent UI issues
+      const fallbackEvaluation = {
+        score: 65,
+        reason: "An error occurred during evaluation. This is a fallback score."
+      };
+      
+      updateNodeWithEvaluation(node.id, fallbackEvaluation);
     }
+  };
+  
+  // Helper function to validate evaluation format
+  const validateEvaluation = (data: any): boolean => {
+    return (
+      data && 
+      typeof data === 'object' &&
+      'score' in data && 
+      'reason' in data &&
+      typeof data.score === 'number' &&
+      typeof data.reason === 'string'
+    );
+  };
+  
+  // Helper function to update nodes with evaluation
+  const updateNodeWithEvaluation = (nodeId: string, evaluation: { score: number, reason: string }) => {
+    // Update qaData with evaluation
+    setQaData(prev => {
+      const updateNode = (nodes: QANode[]): QANode[] =>
+        nodes.map(n => {
+          if (n.id === nodeId) {
+            return { ...n, evaluation };
+          }
+          if (n.children.length > 0) {
+            return { ...n, children: updateNode(n.children) };
+          }
+          return n;
+        });
+      return updateNode(prev);
+    });
+
+    // Update rootExtensions with evaluation
+    setRootExtensions(prev => 
+      prev.map(ext => 
+        ext.id === nodeId ? { ...ext, evaluation } : ext
+      )
+    );
   };
 
   function renderQANode(node: QANode, depth: number = 0) {
@@ -842,123 +905,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           )}
                         </div>
                         
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        {navigationHistory.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
+                        {nodeExtensions.length >

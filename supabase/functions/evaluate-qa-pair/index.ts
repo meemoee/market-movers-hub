@@ -1,197 +1,189 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { corsHeaders } from '../_shared/cors';
+import OpenAI from 'openai';
 
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+type RequestPayload = {
+  question: string;
+  analysis: string;
+};
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+type EvaluationResponse = {
+  score: number;
+  reason: string;
+};
 
-// Retry function for API calls
-async function fetchWithRetry(url: string, options: RequestInit, retries = 3, backoff = 300) {
-  try {
-    const response = await fetch(url, options);
-    if (response.ok) return response;
-    
-    // If we got a 429 or 5xx, retry
-    if ((response.status === 429 || response.status >= 500) && retries > 0) {
-      console.log(`Retrying due to ${response.status} response, ${retries} retries left`);
-      await new Promise(resolve => setTimeout(resolve, backoff));
-      return fetchWithRetry(url, options, retries - 1, backoff * 2);
-    }
-    
-    return response;
-  } catch (error) {
-    if (retries > 0) {
-      console.log(`Retrying due to network error, ${retries} retries left: ${error.message}`);
-      await new Promise(resolve => setTimeout(resolve, backoff));
-      return fetchWithRetry(url, options, retries - 1, backoff * 2);
-    }
-    throw error;
+// Initialize OpenAI
+const openRouter = new OpenAI({
+  baseURL: 'https://openrouter.ai/api/v1',
+  apiKey: process.env.OPENROUTER_API_KEY,
+  defaultHeaders: {
+    'HTTP-Referer': 'https://hunchex.app',
   }
-}
+});
 
-// Safely parse JSON with multiple fallback methods
-function safeParseJSON(text: string) {
-  console.log('Attempting to parse JSON:', text);
-  
-  // Method 1: Direct JSON.parse
+// Better JSON parsing function with multiple fallbacks
+const safeParseJSON = (text: string): any => {
   try {
+    // First attempt: Regular JSON parse
     return JSON.parse(text);
-  } catch (parseError) {
-    console.log('Direct parsing failed, trying cleanup methods');
-  }
-
-  // Method 2: Clean up common syntax issues
-  try {
-    // Remove markdown code blocks
-    const cleanedText = text
-      .replace(/```json\s*/g, '')
-      .replace(/```\s*$/g, '')
-      .trim();
-      
-    // Fix unescaped characters
-    const fixedJson = cleanedText
-      .replace(/\n/g, "\\n")
-      .replace(/\r/g, "\\r")
-      .replace(/\t/g, "\\t")
-      .replace(/\b/g, "\\b")
-      .replace(/\f/g, "\\f");
-    
-    return JSON.parse(fixedJson);
-  } catch (cleaningError) {
-    console.log('Cleanup parsing failed, trying regex extraction');
-  }
-
-  // Method 3: Regex extraction
-  try {
-    const scoreMatch = text.match(/"score"\s*:\s*(\d+)/);
-    const reasonMatch = text.match(/"reason"\s*:\s*"([^"]*)"/);
-    
-    if (scoreMatch && reasonMatch) {
-      return {
-        score: parseInt(scoreMatch[1], 10),
-        reason: reasonMatch[1]
-      };
+  } catch (e) {
+    try {
+      // Second attempt: Try to extract JSON from markdown code blocks
+      const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
+      if (jsonMatch && jsonMatch[1]) {
+        return JSON.parse(jsonMatch[1]);
+      }
+    } catch (_) {
+      // Third attempt: Try to extract anything that looks like JSON
+      try {
+        const jsonRegex = /\{[\s\S]*"score"\s*:\s*(\d+)[\s\S]*"reason"\s*:\s*"([^"]*)"[\s\S]*\}/;
+        const match = text.match(jsonRegex);
+        if (match) {
+          return {
+            score: parseInt(match[1]),
+            reason: match[2]
+          };
+        }
+      } catch (_) {
+        // Fallback to a default response
+        console.error("Failed to parse evaluation response, using fallback");
+        return {
+          score: 70,
+          reason: "Evaluation could not be parsed properly. This is a default score."
+        };
+      }
     }
-  } catch (regexError) {
-    console.log('Regex extraction failed');
   }
   
-  // Method 4: Last resort - create a default response
-  console.log('All parsing methods failed, using default values');
+  // Final fallback
+  console.warn("Using default fallback evaluation");
   return {
-    score: 50,
-    reason: "Evaluation could not be parsed from model response. Please review the analysis manually."
+    score: 70,
+    reason: "Evaluation could not be generated properly. This is a default score."
   };
-}
+};
 
-serve(async (req) => {
+// Function to sanitize text for API calls
+const sanitizeText = (text: string): string => {
+  return text
+    .replace(/\r\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
+Deno.serve(async (req) => {
+  // Handle CORS
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    console.log('Received evaluation request');
-    const { question, analysis } = await req.json()
+    const { question, analysis } = await req.json() as RequestPayload;
     
     if (!question || !analysis) {
-      throw new Error('Missing required parameters: question or analysis');
+      return new Response(
+        JSON.stringify({ error: 'Question and analysis are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    console.log(`Processing evaluation for question: ${question.substring(0, 50)}...`);
-    
-    // Truncate analysis if too long to avoid context limits
-    const truncatedAnalysis = analysis.length > 8000 
-      ? analysis.substring(0, 8000) + "... (truncated)"
-      : analysis;
+    const sanitizedQuestion = sanitizeText(question);
+    const sanitizedAnalysis = sanitizeText(analysis);
 
-    const modelRequestBody = JSON.stringify({
-      model: "google/gemini-pro",
-      messages: [
-        {
-          role: "system",
-          content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown or code block syntax, just the raw JSON object."
-        },
-        {
-          role: "user",
-          content: `Please evaluate how well this analysis answers the question:\n\nQuestion: ${question}\n\nAnalysis: ${truncatedAnalysis}`
+    // Create retry mechanism with backoff
+    const maxRetries = 3;
+    let retryCount = 0;
+    let evaluation: EvaluationResponse | null = null;
+
+    while (retryCount < maxRetries && !evaluation) {
+      try {
+        const response = await openRouter.chat.completions.create({
+          model: 'openai/gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an expert evaluator of analyses related to prediction markets. Your job is to evaluate the quality and usefulness of an analysis based on:
+              
+1. Relevance to the original question
+2. Depth and comprehensiveness of the analysis
+3. Logical coherence and structure
+4. Use of evidence and examples to support points
+5. Clarity of expression
+
+Provide your evaluation as a valid JSON object with these properties:
+- score: a number between 0-100 representing the quality (0 = terrible, 100 = perfect)
+- reason: a concise explanation of your score, highlighting strengths and potential improvements
+
+IMPORTANT: Return ONLY valid JSON with these two fields, no other text.`
+            },
+            {
+              role: 'user',
+              content: `Question: ${sanitizedQuestion}\n\nAnalysis: ${sanitizedAnalysis}`
+            }
+          ],
+          response_format: { type: 'json_object' },
+          temperature: 0.3,
+          max_tokens: 500
+        });
+
+        console.log("Raw evaluation response:", response.choices[0]?.message?.content);
+        
+        // Parse response
+        if (response.choices[0]?.message?.content) {
+          evaluation = safeParseJSON(response.choices[0].message.content);
+          console.log("Parsed evaluation:", evaluation);
         }
-      ]
-    });
-
-    const openRouterResponse = await fetchWithRetry("https://openrouter.ai/api/v1/chat/completions", {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
-      },
-      body: modelRequestBody
-    }, 3, 1000);
-
-    if (!openRouterResponse.ok) {
-      const errorText = await openRouterResponse.text();
-      console.error(`OpenRouter API error ${openRouterResponse.status}: ${errorText}`);
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status}`);
-    }
-
-    const data = await openRouterResponse.json();
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      console.error('Invalid response format from OpenRouter:', data);
-      throw new Error('Invalid response format from OpenRouter');
-    }
-
-    let evaluationText = data.choices[0].message.content;
-    console.log('Raw evaluation text:', evaluationText);
-
-    try {
-      const evaluation = safeParseJSON(evaluationText);
-      
-      // Validate the evaluation object structure
-      if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
-        console.warn('Invalid evaluation format, using default values');
-        evaluation.score = evaluation.score || 50;
-        evaluation.reason = evaluation.reason || "Evaluation format was invalid. Please review manually.";
+      } catch (error) {
+        console.error(`Attempt ${retryCount + 1} failed:`, error);
+        retryCount++;
+        
+        if (retryCount < maxRetries) {
+          // Exponential backoff
+          const delay = Math.pow(2, retryCount) * 1000;
+          console.log(`Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
       }
-      
-      // Ensure score is between 0 and 100
-      evaluation.score = Math.max(0, Math.min(100, evaluation.score));
-      
-      console.log('Successfully processed evaluation:', evaluation);
-      
-      return new Response(JSON.stringify(evaluation), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
-    } catch (error) {
-      console.error('Error processing evaluation:', error);
-      console.error('Received content:', evaluationText);
-      
-      // Return a graceful fallback instead of throwing
-      return new Response(JSON.stringify({
-        score: 50,
-        reason: "Could not process evaluation. Please review the analysis manually."
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
     }
 
-  } catch (error) {
-    console.error('Error in evaluate-qa-pair function:', error);
-    
-    // Never fail completely - return a valid response with error information
+    // If all retries failed, provide a default evaluation
+    if (!evaluation) {
+      console.warn("All evaluation attempts failed, using default evaluation");
+      evaluation = {
+        score: 65,
+        reason: "Unable to evaluate the analysis due to technical issues. This is a fallback score."
+      };
+    }
+
+    // Ensure score is within valid range
+    if (typeof evaluation.score !== 'number' || isNaN(evaluation.score)) {
+      evaluation.score = 65;
+    } else {
+      evaluation.score = Math.max(0, Math.min(100, Math.round(evaluation.score)));
+    }
+
+    // Ensure reason is a non-empty string
+    if (typeof evaluation.reason !== 'string' || !evaluation.reason.trim()) {
+      evaluation.reason = "No reason provided for the evaluation score.";
+    }
+
     return new Response(
-      JSON.stringify({ 
-        score: 0,
-        reason: `Error during evaluation: ${error.message}. Please try again or review manually.`
+      JSON.stringify(evaluation),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  } catch (error) {
+    console.error('Evaluation error:', error);
+    
+    // Return a helpful error response that won't break the client
+    return new Response(
+      JSON.stringify({
+        score: 60,
+        reason: "An error occurred during evaluation. This is a default score provided to prevent client errors."
       }),
-      { 
-        status: 200, // Return 200 to prevent client-side failures
+      {
+        status: 200, // Return 200 to avoid client errors
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
   }
-})
+});
