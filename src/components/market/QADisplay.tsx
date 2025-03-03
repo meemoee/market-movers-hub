@@ -1,3 +1,4 @@
+<lov-code>
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -168,7 +169,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     if (text.match(/\([^)]*$/)) return false; // Unclosed parenthesis
     if (text.match(/\[[^\]]*$/)) return false; // Unclosed square bracket
     
-    for (let i = 0; i < text.length; i++) {
+    for (let i = 0; < text.length; i++) {
       const char = text[i];
       const nextChar = text[i + 1];
       const prevChar = text[i - 1];
@@ -775,6 +776,112 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
+  // Function to build the QA tree context for analysis
+  const buildQAContext = (): string => {
+    const formatNode = (node: QANode, depth: number = 0): string => {
+      const indent = '  '.repeat(depth);
+      let result = `${indent}Q: ${node.question}\n${indent}A: ${node.analysis}\n`;
+      
+      if (node.children && node.children.length > 0) {
+        result += node.children.map(child => formatNode(child, depth + 1)).join('\n');
+      }
+      
+      return result;
+    };
+    
+    // Format all main nodes and extensions
+    const allNodes = [...qaData, ...rootExtensions];
+    return allNodes.map(node => formatNode(node)).join('\n\n');
+  };
+
+  // Function to generate the final analysis and probability based on QA tree
+  const generateFinalAnalysis = async () => {
+    if (qaData.length === 0 && rootExtensions.length === 0) {
+      toast({
+        title: "No QA data",
+        description: "Please analyze the question first to generate data for probability analysis.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsGeneratingFinalAnalysis(true);
+    setStreamingFinalAnalysis(true);
+    setFinalAnalysis('');
+    setFinalProbability('');
+    setFinalAreasForResearch([]);
+
+    try {
+      // Get the selected research context if any
+      const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
+      const qaContext = buildQAContext();
+      
+      const { data, error } = await supabase.functions.invoke('extract-research-insights', {
+        body: JSON.stringify({ 
+          marketId,
+          marketQuestion,
+          researchType: 'qa-tree',
+          qaContext,
+          webResearchContext: selectedResearchData ? {
+            analysis: selectedResearchData.analysis,
+            sources: selectedResearchData.sources
+          } : null
+        }),
+      });
+      
+      if (error) throw error;
+      
+      const reader = new Response(data.body).body?.getReader();
+      if (!reader) throw new Error('Failed to create reader');
+      
+      let accumulatedContent = '';
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          const decoded = new TextDecoder().decode(value);
+          accumulatedContent += decoded;
+          
+          // Try to parse the current content to extract different components
+          try {
+            const parsedData = JSON.parse(accumulatedContent);
+            setFinalAnalysis(parsedData.analysis || '');
+            setFinalProbability(parsedData.probability || '');
+            setFinalAreasForResearch(parsedData.areasForResearch || []);
+          } catch (e) {
+            // Partial content, not valid JSON yet - this is normal during streaming
+            setFinalAnalysis(accumulatedContent);
+          }
+        }
+        
+        // Final parse attempt for complete data
+        try {
+          const parsedData = JSON.parse(accumulatedContent);
+          setFinalAnalysis(parsedData.analysis || accumulatedContent);
+          setFinalProbability(parsedData.probability || '');
+          setFinalAreasForResearch(parsedData.areasForResearch || []);
+        } catch (e) {
+          // If still not valid JSON, just use as text
+          setFinalAnalysis(accumulatedContent);
+        }
+      } finally {
+        setStreamingFinalAnalysis(false);
+      }
+    } catch (error) {
+      console.error('Error generating final analysis:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: error instanceof Error ? error.message : "Failed to generate the analysis",
+      });
+      setStreamingFinalAnalysis(false);
+    } finally {
+      setIsGeneratingFinalAnalysis(false);
+    }
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -812,80 +919,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
       h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
       h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-      hr: () => <hr className="my-4 border-muted" />,
-    };
-
-    return (
-      <div key={node.id} className="relative flex flex-col">
-        <div className="flex items-stretch">
-          {depth > 0 && (
-            <div className="relative w-6 sm:w-9 flex-shrink-0">
-              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
-            </div>
-          )}
-          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
-            {depth > 0 && (
-              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
-            )}
-            <div className="absolute left-[12px] sm:left-[24px] top-0">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
-                <AvatarFallback className="bg-primary/10">
-                  <MessageSquare className="h-3 w-3" />
-                </AvatarFallback>
-              </Avatar>
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-start gap-2">
-                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
-                  {node.question}
-                  {getExtensionInfo(node)}
-                </h3>
-                {!node.isExtendedRoot && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExpandQuestion(node);
-                    }}
-                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                    title="Expand this question into a follow-up analysis"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
-                <div className="flex items-start gap-2">
-                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
-                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </button>
-                  <div className="flex-1">
-                    {isExpanded ? (
-                      <>
-                        <ReactMarkdown
-                          components={markdownComponents}
-                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent}
-                        </ReactMarkdown>
-                        {renderCitations(citations)}
-                        
-                        <div className="mt-4 flex items-center gap-2">
-                          {node.evaluation && (
-                            <div className="flex items-center gap-2">
-                              <div className={`px-2 py-1 rounded text-xs font-medium ${
-                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
-                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
-                                'bg-red-500/20 text-red-500'
-                              }`}>
-                                Score: {node.evaluation.score}%
-                              </div>
-                              <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
+      hr: () => <hr className
