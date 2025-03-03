@@ -1,147 +1,180 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { streamProcessor } from "./streamProcessor.ts"
+import { StreamProcessor } from "./streamProcessor.ts"
+import { corsHeaders } from "../_shared/cors.ts"
 
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || ''
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || ''
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || '';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+if (!OPENROUTER_API_KEY) {
+  console.error("OPENROUTER_API_KEY is not set");
 }
 
+const openRouterApiUrl = "https://openrouter.ai/api/v1/chat/completions";
+
 serve(async (req) => {
-  // Handle CORS
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, {
+      headers: corsHeaders
+    });
   }
 
   try {
-    const { 
-      marketId, 
-      question, 
-      parentContent = '',
-      historyContext = '',
-      isFollowUp = false,
-      marketQuestion = '',
-      researchContext = null,
-      model = "gpt-4o-mini",
-      useOpenRouter = false
-    } = await req.json()
+    // Parse the request body
+    const requestData = await req.json();
+    const { marketId, marketQuestion } = requestData;
 
-    console.log(`Processing request for market: ${marketId}, Question: ${question.substring(0, 100)}...`)
-    console.log(`Using model: ${model} via ${useOpenRouter ? 'OpenRouter' : 'OpenAI'}`)
-    
-    let systemPrompt = ''
-    let userPrompt = ''
-    
-    if (isFollowUp) {
-      // Request to generate follow-up questions
-      console.log("Generating follow-up questions based on analysis")
-      
-      systemPrompt = `You are an expert financial market analyzer's assistant. You help by generating logical follow-up questions to dig deeper into market analysis. 
-Generate 2-3 specific follow-up questions based on the provided market question and analysis. Your questions should:
-1. Explore different angles not yet covered in the analysis
-2. Focus on the most important factors for understanding market probability
-3. Be clearly worded and specific, not vague
-4. Not repeat information already covered in the analysis
-5. Target information gaps or areas of uncertainty
-`
-
-      userPrompt = `Market Question: ${marketQuestion || question}
-
-${historyContext ? `Previous analysis context:\n${historyContext}\n\n` : ''}
-
-Analysis: ${parentContent}
-
-${researchContext ? `Additional market research:\n${researchContext.analysis || ''}\n\n` : ''}
-
-Generate 2-3 specific follow-up questions to investigate important aspects of this market question that need further analysis. Format your response as a JSON array with each question as an object with a "question" field.`
-
-    } else {
-      // Request to analyze a question
-      console.log("Analyzing market question")
-      
-      systemPrompt = `You are an expert financial market analyst specializing in probability assessment and forecasting. 
-Your task is to thoroughly analyze a question about a financial market and provide a comprehensive assessment.
-
-Your analysis should:
-1. Break down all key factors that affect the probability
-2. Consider evidence from multiple perspectives
-3. Evaluate the timeframe and specific conditions
-4. Analyze historical precedents if relevant
-5. Provide a measured, evidence-based assessment
-6. Clearly explain your reasoning process
-7. Consider both potential outcomes and explain what would lead to each
-
-Be thorough but concise. Present information in a clear, structured way. Avoid vague statements without supporting evidence.`
-
-      userPrompt = `Market Question: ${question}
-
-${historyContext ? `Previous analysis context:\n${historyContext}\n\n` : ''}
-
-${researchContext ? `Additional market research:\n${researchContext.analysis || ''}\n\n` : ''}
-
-${researchContext?.areasForResearch?.length > 0 ? `Areas needing further research:\n${researchContext.areasForResearch.join('\n')}\n\n` : ''}
-
-Probability estimate from research: ${researchContext?.probability || 'Not available'}
-
-Please provide a comprehensive analysis of this market question. Assess key factors, evaluate evidence, and explain your reasoning clearly.`
+    if (!marketId || !marketQuestion) {
+      return new Response(
+        JSON.stringify({ error: "Market ID and market question are required" }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json"
+          }
+        }
+      );
     }
 
-    // Choose API endpoint and format request based on whether we're using OpenRouter or OpenAI
-    let apiUrl = "https://api.openai.com/v1/chat/completions"
-    let headers = {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`
-    }
+    console.log(`Generating QA tree for market: ${marketId}`);
+    console.log(`Market question: ${marketQuestion}`);
+
+    // Create a ReadableStream for the response
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+
+    // Launch the analysis operation asynchronously
+    analyzeMarketQuestion(marketQuestion, marketId, writer).catch((error) => {
+      console.error("Error in QA tree generation:", error);
+      writer.write(
+        new TextEncoder().encode(
+          `data: ${JSON.stringify({
+            error: `Error in QA tree generation: ${error.message || error}`,
+          })}\n\n`
+        )
+      );
+      writer.close();
+    });
+
+    // Return the readable stream as the response
+    return new Response(readable, {
+      headers: {
+        ...corsHeaders,
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  } catch (error) {
+    console.error("Error processing request:", error);
+    return new Response(
+      JSON.stringify({ error: error.message || "Unknown error" }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+  }
+});
+
+async function analyzeMarketQuestion(
+  marketQuestion: string,
+  marketId: string,
+  writer: WritableStreamDefaultWriter
+) {
+  console.log("Starting analysis for market question:", marketQuestion);
+
+  const systemPrompt = `You are a financial analysis expert specializing in prediction markets. Your task is to analyze a prediction market question, break it down into component parts, and identify key factors that could influence the outcome.
+
+First, you will analyze the question in depth. Consider:
+- What's the exact condition for the market to resolve to YES?
+- What timeframe is involved?
+- What are potential ambiguities or edge cases?
+- What key entities are involved?
+- What factors or events might influence the outcome?
+
+After this analysis, generate 5-10 follow-up questions that would help someone make a more informed prediction. These should be specific, focused questions that address different aspects of the prediction.`;
+
+  const messages = [
+    {
+      role: "system",
+      content: systemPrompt,
+    },
+    {
+      role: "user",
+      content: `Analyze this prediction market question: "${marketQuestion}"
+      
+First provide a thorough analysis of what the question is asking, any key dates, conditions, and important factors.
+
+Then provide 5-10 numbered follow-up questions that would help someone make a more informed prediction.`,
+    },
+  ];
+
+  // Send the messages to OpenRouter and stream the response
+  const streamProcessor = new StreamProcessor();
+  const encoder = new TextEncoder();
+
+  try {
+    console.log("Sending analysis request to OpenRouter");
     
-    if (useOpenRouter) {
-      apiUrl = "https://openrouter.ai/api/v1/chat/completions"
-      headers = {
+    const response = await fetch(openRouterApiUrl, {
+      method: "POST",
+      headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://hunchex.com",
-        "X-Title": "Hunchex Market Analysis"
-      }
-    }
-
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers,
+        "HTTP-Referer": "https://hunchex.app",
+        "X-Title": "HunchEx QA Tree Generator",
+      },
       body: JSON.stringify({
-        model: model,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        stream: true
-      })
-    })
+        model: "mistralai/mistral-7b-instruct",
+        messages: messages,
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2048,
+      }),
+    });
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`API error (${response.status}): ${error}`)
-      throw new Error(`API request failed with status ${response.status}: ${error}`)
+    if (!response.ok || !response.body) {
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
     }
 
-    console.log("Stream response started, beginning stream processing")
-    
-    if (isFollowUp) {
-      // For follow-up questions, we need to accumulate the entire response to parse the JSON
-      return streamProcessor(response.body, marketId, true)
-    } else {
-      // For analysis, we stream directly to the client
-      return streamProcessor(response.body, marketId, false)
-    }
-  } catch (error) {
-    console.error("Function error:", error.message)
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+    const reader = response.body.getReader();
+
+    // Process the streaming response
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = new TextDecoder().decode(value);
+      const processedChunks = streamProcessor.processChunk(chunk);
+
+      // Send each processed chunk to the client
+      for (const content of processedChunks) {
+        // Only stream non-empty content
+        if (content.trim()) {
+          await writer.write(
+            encoder.encode(`data: ${JSON.stringify({ content })}\n\n`)
+          );
+        }
       }
-    )
+    }
+
+    // Signal the end of the stream
+    await writer.write(encoder.encode(`data: [DONE]\n\n`));
+    console.log("Analysis completed and streamed successfully");
+
+  } catch (error) {
+    console.error("Error in OpenRouter API call:", error);
+    throw error;
+  } finally {
+    try {
+      await writer.close();
+    } catch (e) {
+      console.error("Error closing writer:", e);
+    }
   }
-})
+}
