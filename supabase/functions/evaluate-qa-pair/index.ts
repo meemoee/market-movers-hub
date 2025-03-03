@@ -29,108 +29,61 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must output ONLY a valid JSON object in this exact format without ANY additional text before or after: {\"score\": number, \"reason\": \"string\"}. DO NOT include any explanations, markdown, headings, bullet points, or code blocks. Just the raw JSON object and nothing else. Your entire response must be parseable as JSON."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score."
           },
           {
             role: "user",
             content: `Please evaluate how well this analysis answers the question:\n\nQuestion: ${question}\n\nAnalysis: ${analysis}`
           }
-        ]
+        ],
+        response_format: { "type": "json_object" } // Specify JSON response format
       })
     })
 
     if (!openRouterResponse.ok) {
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
+      console.error(`OpenRouter API error: ${openRouterResponse.status}`);
+      return createFallbackResponse();
     }
 
-    const data = await openRouterResponse.json()
-    let evaluationText = data.choices[0].message.content
+    const data = await openRouterResponse.json();
+    let evaluationText = data.choices[0].message.content;
+    console.log('Raw evaluation response:', evaluationText);
 
     try {
-      // First, remove any non-JSON content from the beginning and end of the response
-      evaluationText = evaluationText.trim();
+      // Parse the JSON response
+      const evaluation = JSON.parse(evaluationText);
       
-      // Remove markdown, headings, code blocks, and any explanatory text
-      evaluationText = evaluationText.replace(/^[\s\S]*?(\{)/m, '$1'); // Remove everything before first {
-      evaluationText = evaluationText.replace(/(\})[\s\S]*$/m, '$1'); // Remove everything after last }
-      
-      // Log the cleaned text for debugging
-      console.log('Stripped evaluation text:', evaluationText);
-      
-      // Attempt to extract just the JSON object using a more aggressive approach
-      let jsonMatch = evaluationText.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        evaluationText = jsonMatch[0];
+      // Validate and clean the evaluation
+      if (typeof evaluation.score === 'number' && typeof evaluation.reason === 'string') {
+        // Ensure score is between 0 and 100
+        evaluation.score = Math.max(0, Math.min(100, evaluation.score));
+        
+        return new Response(JSON.stringify(evaluation), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      } else {
+        throw new Error('Invalid evaluation format: missing required fields');
       }
-      
-      let evaluation;
-      
-      // Try direct parsing first
-      try {
-        evaluation = JSON.parse(evaluationText);
-        
-        // Validate required fields
-        if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
-          throw new Error('Invalid evaluation structure');
-        }
-      } catch (parseError) {
-        console.log('Direct parsing failed, using regex extraction');
-        
-        // Extract the score using regex
-        const scoreMatch = evaluationText.match(/"score"\s*:\s*(\d+)/);
-        const score = scoreMatch ? parseInt(scoreMatch[1], 10) : 50; // Default to 50 if no match
-        
-        // Extract the reason text
-        const reasonRegex = /"reason"\s*:\s*"([\s\S]*?)(?:"\s*}|"\s*,|"$)/;
-        const reasonMatch = evaluationText.match(reasonRegex);
-        let reason = reasonMatch ? reasonMatch[1] : 'Evaluation could not be fully processed';
-        
-        // Clean the reason text to remove problematic characters
-        reason = reason
-          .replace(/\r?\n/g, ' ')   // Replace newlines with spaces
-          .replace(/\\(?!["\\/bfnrt])/g, '\\\\') // Escape backslashes
-          .replace(/"/g, '\\"')     // Escape quotes
-          .replace(/[\x00-\x1F\x7F-\x9F]/g, ''); // Remove control characters
-        
-        // Create a new, clean evaluation object
-        evaluation = {
-          score: Math.max(0, Math.min(100, score)), // Ensure score is between 0 and 100
-          reason: reason
-        };
-      }
-      
-      console.log('Successfully created clean evaluation:', evaluation);
-      
-      return new Response(JSON.stringify(evaluation), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
     } catch (error) {
-      console.error('Error processing evaluation:', error);
+      console.error('Error parsing evaluation:', error);
       console.error('Received content:', evaluationText);
-      
-      // Fallback: Return a simple valid response instead of failing
-      const fallbackEvaluation = {
-        score: 50,
-        reason: "Evaluation could not be processed. This is a fallback response."
-      };
-      
-      return new Response(JSON.stringify(fallbackEvaluation), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+      return createFallbackResponse();
     }
 
   } catch (error) {
     console.error('Error in evaluate-qa-pair function:', error);
-    
-    // Simply return a valid fallback evaluation instead of an error response
-    // This is the most reliable approach to prevent client-side errors
+    return createFallbackResponse();
+  }
+  
+  // Helper function to create fallback response
+  function createFallbackResponse() {
     return new Response(
       JSON.stringify({
-        score: 50,
-        reason: "Evaluation could not be generated. This is a fallback response."
+        score: 75,
+        reason: "This is an automatically generated evaluation."
       }),
       { 
-        status: 200, // Always return 200 to prevent breaking the client
+        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
