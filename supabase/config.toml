@@ -65,6 +65,6 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-# Define functions configurations properly
+# Define functions as a section with each function as a subsection
 [functions]
 verify_jwt = false
