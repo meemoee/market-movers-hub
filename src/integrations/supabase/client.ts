@@ -18,13 +18,13 @@ export const supabase = createClient<Database>(
       autoRefreshToken: true,
     },
     global: {
-      fetch: (...args) => {
+      fetch: (url, options) => {
         // Add debugging for function calls
-        const url = args[0].toString();
-        if (url.includes('functions')) {
-          console.log('Supabase function call:', url);
+        const urlString = url.toString();
+        if (urlString.includes('functions')) {
+          console.log('Supabase function call:', urlString);
         }
-        return fetch(...args);
+        return fetch(url, options);
       }
     }
   }
