@@ -126,12 +126,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     },
   });
 
-  // Function to extract all URLs from QA tree
   const extractUrlsFromTree = (nodes: QANode[]): Array<{url: string, title?: string}> => {
     let urls: Array<{url: string, title?: string}> = [];
     
     const processNode = (node: QANode) => {
-      // Extract URLs from citations
       if (node.citations && node.citations.length > 0) {
         node.citations.forEach(url => {
           if (!urls.some(u => u.url === url)) {
@@ -140,7 +138,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         });
       }
       
-      // Process children
       if (node.children && node.children.length > 0) {
         node.children.forEach(processNode);
       }
@@ -150,7 +147,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return urls;
   };
 
-  // Update URLs when QA data changes
   useEffect(() => {
     if (qaData.length > 0) {
       const extractedUrls = extractUrlsFromTree(qaData);
@@ -313,7 +309,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          // When stream is done, find the node and evaluate it
           const node = qaData.find(n => n.id === nodeId) || 
                       rootExtensions.find(n => n.id === nodeId);
           if (node && node.analysis) {
@@ -435,7 +430,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const analysis = await processStream(reader, nodeId);
       console.log('Completed analysis for node', nodeId, ':', analysis);
 
-      // Update the node with the complete analysis and trigger evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -450,7 +444,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Create a complete QANode object for evaluation
       const currentNode: QANode = {
         id: nodeId,
         question,
@@ -542,7 +535,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         ...prev,
         [node.id]: {
           content: node.analysis,
-          citations: node.citations || [], // Make sure to populate citations
+          citations: node.citations || [],
         },
       }));
       if (node.children.length > 0) {
@@ -561,10 +554,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setQaData(mainRoots);
     setStreamingContent({});
     
-    // Populate streaming content for both main roots and extensions
     populateStreamingContent([...mainRoots, ...extensions]);
     
-    // Evaluate all nodes that don't have evaluations
     const evaluateAllNodes = async (nodes: QANode[]) => {
       console.log('Evaluating nodes:', nodes.length);
       for (const node of nodes) {
@@ -698,7 +689,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       setRootExtensions(prev => {
         const currentTree = qaData[0];
-        return prev.map(ext => ext.id === nodeId ? currentTree : ext);\
+        return prev.map(ext => ext.id === nodeId ? currentTree : ext);
       });
 
     } catch (error) {
@@ -715,7 +706,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const isLineComplete = (line: string): boolean => {
-    // Check if the line ends with a proper sentence ending
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
@@ -743,7 +733,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Update qaData with evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -758,7 +747,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Update rootExtensions with evaluation
       setRootExtensions(prev => 
         prev.map(ext => 
           ext.id === node.id ? { ...ext, evaluation: data } : ext
@@ -775,7 +763,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
-  // Function to build the QA tree context for analysis
   const buildQAContext = (): string => {
     const formatNode = (node: QANode, depth: number = 0): string => {
       const indent = '  '.repeat(depth);
@@ -788,12 +775,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       return result;
     };
     
-    // Format all main nodes and extensions
     const allNodes = [...qaData, ...rootExtensions];
     return allNodes.map(node => formatNode(node)).join('\n\n');
   };
 
-  // Function to generate the final analysis and probability based on QA tree
   const generateFinalAnalysis = async () => {
     if (qaData.length === 0 && rootExtensions.length === 0) {
       toast({
@@ -811,7 +796,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setFinalAreasForResearch([]);
 
     try {
-      // Get the selected research context if any
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       const qaContext = buildQAContext();
       
@@ -843,26 +827,22 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           const decoded = new TextDecoder().decode(value);
           accumulatedContent += decoded;
           
-          // Try to parse the current content to extract different components
           try {
             const parsedData = JSON.parse(accumulatedContent);
             setFinalAnalysis(parsedData.analysis || '');
             setFinalProbability(parsedData.probability || '');
             setFinalAreasForResearch(parsedData.areasForResearch || []);
           } catch (e) {
-            // Partial content, not valid JSON yet - this is normal during streaming
             setFinalAnalysis(accumulatedContent);
           }
         }
         
-        // Final parse attempt for complete data
         try {
           const parsedData = JSON.parse(accumulatedContent);
           setFinalAnalysis(parsedData.analysis || accumulatedContent);
           setFinalProbability(parsedData.probability || '');
           setFinalAreasForResearch(parsedData.areasForResearch || []);
         } catch (e) {
-          // If still not valid JSON, just use as text
           setFinalAnalysis(accumulatedContent);
         }
       } finally {
@@ -918,4 +898,30 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
       h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
       h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-      hr: () => <hr className="my
+      hr: () => <hr className="my-4" />
+    };
+
+    return (
+      <div className="flex flex-col">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold">{node.question}</h2>
+            {getExtensionInfo(node)}
+          </div>
+          <div className="flex items-center gap-2">
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {isStreaming && <MessageSquare className="h-4 w-4" />}
+          </div>
+        </div>
+        {isExpanded && (
+          <div className="mt-2">
+            <ReactMarkdown components={markdownComponents}>
+              {analysisContent}
+            </ReactMarkdown>
+            {renderCitations(citations)}
+          </div>
+        )}
+      </div>
+    );
+  }
+}
