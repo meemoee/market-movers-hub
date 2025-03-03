@@ -51,33 +51,69 @@ serve(async (req) => {
       evaluationText = evaluationText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim()
       console.log('Cleaned evaluation text:', evaluationText)
       
-      const evaluation = JSON.parse(evaluationText)
+      // Fix: Instead of directly parsing potentially invalid JSON, attempt to extract the score and reason
+      // This handles cases where the AI returns formatted content with newlines and markdown
+      let evaluation;
+      
+      // First attempt - try to directly parse if it's valid JSON
+      try {
+        evaluation = JSON.parse(evaluationText);
+      } catch (parseError) {
+        // Second attempt - try to fix common JSON formatting issues
+        try {
+          // Fix unescaped control characters in JSON
+          const fixedJson = evaluationText
+            .replace(/\n/g, "\\n")
+            .replace(/\r/g, "\\r")
+            .replace(/\t/g, "\\t")
+            .replace(/\b/g, "\\b")
+            .replace(/\f/g, "\\f");
+          
+          evaluation = JSON.parse(fixedJson);
+        } catch (fixedParseError) {
+          // Third attempt - try regex extraction as a fallback
+          console.log('Attempting regex extraction as fallback');
+          const scoreMatch = evaluationText.match(/"score"\s*:\s*(\d+)/);
+          const reasonMatch = evaluationText.match(/"reason"\s*:\s*"([^"]*)"/);
+          
+          if (scoreMatch && reasonMatch) {
+            evaluation = {
+              score: parseInt(scoreMatch[1], 10),
+              reason: reasonMatch[1]
+            };
+          } else {
+            throw new Error('Could not extract valid evaluation data');
+          }
+        }
+      }
       
       // Validate the evaluation object structure
       if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
-        throw new Error('Invalid evaluation format: missing required fields')
+        throw new Error('Invalid evaluation format: missing required fields');
       }
       
       // Ensure score is between 0 and 100
-      evaluation.score = Math.max(0, Math.min(100, evaluation.score))
+      evaluation.score = Math.max(0, Math.min(100, evaluation.score));
+      
+      console.log('Successfully parsed evaluation:', evaluation);
       
       return new Response(JSON.stringify(evaluation), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      });
     } catch (error) {
-      console.error('Error parsing evaluation JSON:', error)
-      console.error('Received content:', evaluationText)
-      throw new Error('Invalid evaluation format received')
+      console.error('Error parsing evaluation JSON:', error);
+      console.error('Received content:', evaluationText);
+      throw new Error('Invalid evaluation format received');
     }
 
   } catch (error) {
-    console.error('Error in evaluate-qa-pair function:', error)
+    console.error('Error in evaluate-qa-pair function:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
-    )
+    );
   }
 })
