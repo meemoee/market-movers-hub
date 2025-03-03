@@ -17,6 +17,9 @@ import {
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
+import { SitePreviewList } from "./research/SitePreviewList";
+import { InsightsDisplay } from "./insights/InsightsDisplay";
+import { AnalysisDisplay } from "./research/AnalysisDisplay";
 
 interface QANode {
   id: string;
@@ -49,7 +52,7 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
-  marketDescription?: string;  // Added this prop definition
+  marketDescription?: string;
 }
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
@@ -65,11 +68,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
   
-  // Added state for final probability analysis
   const [finalAnalysis, setFinalAnalysis] = useState<string>('');
   const [isGeneratingFinalAnalysis, setIsGeneratingFinalAnalysis] = useState(false);
   const [finalProbability, setFinalProbability] = useState<string>('');
   const [finalAreasForResearch, setFinalAreasForResearch] = useState<string[]>([]);
+  const [streamingFinalAnalysis, setStreamingFinalAnalysis] = useState(false);
+  const [treeUrls, setTreeUrls] = useState<Array<{url: string, title?: string}>>([]);
 
   const navigateToExtension = (extension: QANode) => {
     setNavigationHistory(prev => [...prev, qaData]);
@@ -121,6 +125,38 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       })) || []) as SavedQATree[];
     },
   });
+
+  // Function to extract all URLs from QA tree
+  const extractUrlsFromTree = (nodes: QANode[]): Array<{url: string, title?: string}> => {
+    let urls: Array<{url: string, title?: string}> = [];
+    
+    const processNode = (node: QANode) => {
+      // Extract URLs from citations
+      if (node.citations && node.citations.length > 0) {
+        node.citations.forEach(url => {
+          if (!urls.some(u => u.url === url)) {
+            urls.push({ url });
+          }
+        });
+      }
+      
+      // Process children
+      if (node.children && node.children.length > 0) {
+        node.children.forEach(processNode);
+      }
+    };
+    
+    nodes.forEach(processNode);
+    return urls;
+  };
+
+  // Update URLs when QA data changes
+  useEffect(() => {
+    if (qaData.length > 0) {
+      const extractedUrls = extractUrlsFromTree(qaData);
+      setTreeUrls(extractedUrls);
+    }
+  }, [qaData]);
 
   const isCompleteMarkdown = (text: string): boolean => {
     const stack: string[] = [];
@@ -739,84 +775,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
-  // Function to generate the final probability analysis
-  const generateFinalAnalysis = async () => {
-    if (qaData.length === 0) {
-      toast({
-        title: "Analysis Required",
-        description: "Please generate a QA tree first",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    setIsGeneratingFinalAnalysis(true);
-    
-    try {
-      // Create context from the QA tree and selected web research
-      const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
-      
-      // Build context from QA tree
-      const qaContext = buildQAContext(qaData);
-      
-      // Combine QA tree context with web research context if available
-      const fullContext = selectedResearchData 
-        ? `QA Analysis: ${qaContext}\n\nWeb Research: ${selectedResearchData.analysis}`
-        : qaContext;
-      
-      const { data, error } = await supabase.functions.invoke('extract-research-insights', {
-        body: { 
-          marketId,
-          marketQuestion,
-          marketDescription,
-          context: fullContext,
-          sourceType: 'qa-tree'
-        }
-      });
-      
-      if (error) throw error;
-      
-      if (data) {
-        setFinalAnalysis(data.analysis || '');
-        setFinalProbability(data.probability || '');
-        setFinalAreasForResearch(data.areasForResearch || []);
-        
-        toast({
-          title: "Analysis Complete",
-          description: "Final probability analysis generated successfully",
-        });
-      }
-      
-    } catch (error) {
-      console.error('Error generating final analysis:', error);
-      toast({
-        variant: "destructive",
-        title: "Analysis Error",
-        description: error instanceof Error ? error.message : "Failed to generate final analysis",
-      });
-    } finally {
-      setIsGeneratingFinalAnalysis(false);
-    }
-  };
-  
-  // Helper function to build context from QA tree
-  const buildQAContext = (nodes: QANode[]): string => {
-    let context = '';
-    
-    const processNode = (node: QANode, depth = 0) => {
-      const indent = '  '.repeat(depth);
-      context += `${indent}Q: ${node.question}\n`;
-      context += `${indent}A: ${node.analysis}\n\n`;
-      
-      if (node.children.length > 0) {
-        node.children.forEach(child => processNode(child, depth + 1));
-      }
-    };
-    
-    nodes.forEach(node => processNode(node));
-    return context;
-  };
-
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -906,3 +864,28 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                         <ReactMarkdown
                           components={markdownComponents}
                           className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                        >
+                          {analysisContent}
+                        </ReactMarkdown>
+                        {renderCitations(citations)}
+                        
+                        <div className="mt-4 flex items-center gap-2">
+                          {node.evaluation && (
+                            <div className="flex items-center gap-2">
+                              <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
+                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
+                                'bg-red-500/20 text-red-500'
+                              }`}>
+                                Score: {node.evaluation.score}%
+                              </div>
+                              <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {nodeExtensions.length > 0 && (
+                          <div className="mt-4 space-y-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Follow-up Analyses ({nodeExtensions.length}):
+                            </div>
