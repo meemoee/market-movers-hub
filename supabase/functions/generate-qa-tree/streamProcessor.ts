@@ -1,41 +1,40 @@
 
-// Stream processor for handling streaming responses
-export function processStream(response: Response): ReadableStream<Uint8Array> {
-  const reader = response.body!.getReader();
-  const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
-  
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          
-          if (done) {
-            // Send a "done" message and close the stream
-            controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-            controller.close();
-            break;
-          }
-          
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
-          
-          for (const line of lines) {
-            if (line.trim() !== "") {
-              // Format the line as an SSE event
-              controller.enqueue(encoder.encode(`data: ${line}\n\n`));
-            }
-          }
+export async function streamProcessor(response, readable, writable) {
+  const reader = response.body?.getReader();
+  const writer = writable.getWriter();
+
+  if (!reader) {
+    await writer.close();
+    return;
+  }
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = new TextDecoder().decode(value);
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (line.trim() === '') continue;
+        
+        if (line.trim() === 'data: [DONE]') {
+          await writer.write(new TextEncoder().encode('data: [DONE]\n\n'));
+          continue;
         }
-      } catch (error) {
-        console.error("Error processing stream:", error);
-        controller.error(error);
+        
+        if (line.startsWith('data: ')) {
+          await writer.write(new TextEncoder().encode(line + '\n\n'));
+        }
       }
-    },
-    
-    async cancel() {
-      await reader.cancel();
+      
+      // Flush after each chunk
+      await writer.ready;
     }
-  });
+  } catch (e) {
+    console.error("Stream processing error:", e);
+  } finally {
+    await writer.close();
+  }
 }
