@@ -65,23 +65,15 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-# Auth hooks configuration
-[auth.hooks]
-enabled = false
-
 [analytics]
 enabled = false
 
-# Vector configuration
-[vector]
-enabled = false
-
-# Experimental features configuration
 [experimental]
-enabled = false
+# Using proper formatting for experimental features
+# Instead of having 'enabled' directly under experimental
+# experimental features should be configured individually
 
-# Functions configuration - each function needs its own section
 [functions]
-verify_jwt = false
-port = 54328
-
+# Fix the functions section to use proper TOML structure
+# Instead of having port and verify_jwt as direct properties
+# Each function should be configured separately
