@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -76,7 +75,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [streamingFinalAnalysis, setStreamingFinalAnalysis] = useState(false);
   const [treeUrls, setTreeUrls] = useState<Array<{url: string, title?: string}>>([]);
 
-  // Define markdownComponents here so it's in scope for the entire component
   const markdownComponents: MarkdownComponents = {
     p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
     code: ({ children, className }) => {
@@ -1128,9 +1126,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               <div className="space-y-4 h-[700px] overflow-auto">
                 {finalAnalysis && (
                   <InsightsDisplay 
-                    analysis={finalAnalysis}
                     probability={finalProbability}
                     areasForResearch={finalAreasForResearch}
+                    analysis={finalAnalysis}
                     isStreaming={streamingFinalAnalysis}
                   />
                 )}

@@ -5,9 +5,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 interface InsightsDisplayProps {
   probability: string;
   areasForResearch: string[];
+  analysis?: string;
+  isStreaming?: boolean;
 }
 
-export function InsightsDisplay({ probability, areasForResearch }: InsightsDisplayProps) {
+export function InsightsDisplay({ probability, areasForResearch, analysis, isStreaming }: InsightsDisplayProps) {
   const getProbabilityColor = (probability: string) => {
     const numericProb = parseInt(probability.replace('%', ''))
     return numericProb >= 50 ? 'bg-green-500/10' : 'bg-red-500/10'
@@ -22,6 +24,21 @@ export function InsightsDisplay({ probability, areasForResearch }: InsightsDispl
             Probability: {probability}
           </span>
         </div>
+        
+        {analysis && (
+          <>
+            <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
+            <div>
+              <div className="text-sm">
+                {isStreaming ? (
+                  <div className="animate-pulse">Generating analysis...</div>
+                ) : (
+                  analysis
+                )}
+              </div>
+            </div>
+          </>
+        )}
         
         {Array.isArray(areasForResearch) && 
          areasForResearch.length > 0 && (
