@@ -65,6 +65,36 @@ client_id = ""
 secret = ""
 redirect_uri = ""
 
-# Define functions correctly using the array of tables syntax
-[[functions]]
+# Correctly formatted function configuration
+[functions.analyze-web-content]
+verify_jwt = false
+
+[functions.execute-market-order]
+verify_jwt = false
+
+[functions.get-top-movers]
+verify_jwt = false
+
+[functions.price-history]
+verify_jwt = false
+
+[functions.brave-search]
+verify_jwt = false
+
+[functions.extract-research-insights]
+verify_jwt = false
+
+[functions.generate-qa-tree]
+verify_jwt = false
+
+[functions.evaluate-qa-pair]
+verify_jwt = false
+
+[functions.market-analysis]
+verify_jwt = false
+
+[functions.web-research]
+verify_jwt = false
+
+[functions.web-scrape]
 verify_jwt = false
