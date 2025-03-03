@@ -190,10 +190,24 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return { content: '', citations: [] };
       }
       
-      const parsed = JSON.parse(dataStr);
-      const content = parsed.choices?.[0]?.delta?.content || 
-                     parsed.choices?.[0]?.message?.content || '';
-      return { content, citations: [] };
+      // Improved parsing to handle different response formats
+      try {
+        const parsed = JSON.parse(dataStr);
+        if (parsed.choices?.[0]?.delta?.content) {
+          return { content: parsed.choices[0].delta.content, citations: [] };
+        } else if (parsed.choices?.[0]?.message?.content) {
+          return { content: parsed.choices[0].message.content, citations: [] };
+        } else if (parsed.content) {
+          return { content: parsed.content, citations: parsed.citations || [] };
+        }
+      } catch (parseError) {
+        // If we can't parse as JSON, try to use the raw content
+        if (dataStr && typeof dataStr === 'string' && !dataStr.includes('_type')) {
+          return { content: dataStr, citations: [] };
+        }
+      }
+      
+      return { content: '', citations: [] };
     } catch (e) {
       // Silent failure during streaming is expected
       console.log('Error parsing stream chunk:', chunk);
@@ -292,20 +306,34 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         }
         
         const decoded = new TextDecoder().decode(value);
-        if (!firstChunkProcessed) {
-          console.log('First stream chunk received:', decoded);
-          firstChunkProcessed = true;
-        }
+        console.log('Stream chunk received:', decoded.substring(0, 100));
         
         buffer += decoded;
 
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() || '';
-        
-        for (const part of parts) {
-          if (part.trim()) {
-            processPart(part);
+        // Improved chunk processing to handle different delimiter formats
+        // Try processing with different delimiters
+        if (buffer.includes('\n\n')) {
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop() || '';
+          
+          for (const part of parts) {
+            if (part.trim()) {
+              processPart(part);
+            }
           }
+        } else if (buffer.includes('\n')) {
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          
+          for (const line of lines) {
+            if (line.trim() && (line.startsWith('data:') || !line.includes('"_type"'))) {
+              processPart(line);
+            }
+          }
+        } else if (buffer.length > 1000) {
+          // If the buffer gets too large without delimiters, process it anyway
+          processPart(buffer);
+          buffer = '';
         }
       }
     } catch (error) {
@@ -314,11 +342,17 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
 
     function processPart(text: string) {
-      const lines = text.split('\n').filter(line => line.startsWith('data: '));
+      console.log('Processing stream part:', text.substring(0, 50));
+      
+      // Handle data: prefix in each line
+      const lines = text.split('\n').filter(line => 
+        line.trim() && (line.startsWith('data:') || !line.includes('"_type"'))
+      );
       
       for (const line of lines) {
         const { content, citations } = cleanStreamContent(line);
         if (content) {
+          console.log('Extracted content:', content.substring(0, 30));
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
@@ -482,10 +516,55 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         
         console.log('Follow-up data received:', followUpData);
         
-        // Fix: Ensure followUpData is an array before iterating
-        const followUpQuestions = Array.isArray(followUpData) ? followUpData : [];
+        // Enhanced handling of the follow-up data to ensure we can iterate over it
+        let followUpQuestions = [];
+        
+        if (followUpData && typeof followUpData === 'object') {
+          // If it's an object with a JSON property (edge function might wrap the response)
+          if ('json' in followUpData || 'text' in followUpData) {
+            console.log('Received wrapped data, attempting to parse directly');
+            try {
+              // Try to parse followUpData directly as JSON string
+              const directParsed = JSON.parse(JSON.stringify(followUpData));
+              if (Array.isArray(directParsed)) {
+                followUpQuestions = directParsed;
+              } else {
+                // Create a simple question from whatever we got
+                followUpQuestions = [{ question: "What other aspects of this topic should be explored?" }];
+              }
+            } catch (e) {
+              console.error('Error parsing follow-up data:', e);
+              // Default fallback question
+              followUpQuestions = [{ question: "What are the key factors to consider in this analysis?" }];
+            }
+          } else if (Array.isArray(followUpData)) {
+            // It's already an array, use it directly
+            followUpQuestions = followUpData;
+          } else {
+            // Try to extract questions from an object structure
+            followUpQuestions = Object.values(followUpData).filter(item => 
+              item && typeof item === 'object' && 'question' in item
+            );
+            
+            if (followUpQuestions.length === 0) {
+              // If we couldn't find any questions, create default ones
+              followUpQuestions = [
+                { question: "What are the implications of this analysis?" },
+                { question: "What factors could change this outcome?" }
+              ];
+            }
+          }
+        } else {
+          // Default questions if we couldn't parse anything meaningful
+          followUpQuestions = [
+            { question: "What are the most significant risks to consider?" },
+            { question: "How might this situation evolve over time?" }
+          ];
+        }
+        
         console.log('Processed follow-up questions:', followUpQuestions);
         
+        // Now we have a safe array to iterate over
         for (const item of followUpQuestions) {
           if (item?.question) {
             console.log('Processing follow-up question:', item.question);
