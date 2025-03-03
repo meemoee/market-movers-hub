@@ -49,7 +49,7 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
-  marketDescription?: string;  // Added this prop definition
+  marketDescription?: string;
 }
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
@@ -393,7 +393,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const analysis = await processStream(reader, nodeId);
       console.log('Completed analysis for node', nodeId, ':', analysis);
 
-      // Update the node with the complete analysis and trigger evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -408,7 +407,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Create a complete QANode object for evaluation
       const currentNode: QANode = {
         id: nodeId,
         question,
@@ -519,10 +517,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setQaData(mainRoots);
     setStreamingContent({});
     
-    // Populate streaming content for both main roots and extensions
     populateStreamingContent([...mainRoots, ...extensions]);
     
-    // Evaluate all nodes that don't have evaluations
     const evaluateAllNodes = async (nodes: QANode[]) => {
       console.log('Evaluating nodes:', nodes.length);
       for (const node of nodes) {
@@ -673,7 +669,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const isLineComplete = (line: string): boolean => {
-    // Check if the line ends with a proper sentence ending
     return /[.!?]$/.test(line.trim()) || isCompleteMarkdown(line);
   };
 
@@ -701,7 +696,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       console.log('Received evaluation:', { nodeId: node.id, evaluation: data });
 
-      // Update qaData with evaluation
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
           nodes.map(n => {
@@ -716,7 +710,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updateNode(prev);
       });
 
-      // Update rootExtensions with evaluation
       setRootExtensions(prev => 
         prev.map(ext => 
           ext.id === node.id ? { ...ext, evaluation: data } : ext
@@ -733,33 +726,22 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
-  // Enhanced function to preprocess markdown content before rendering
   const preprocessMarkdown = (content: string): string => {
     if (!content) return '';
     
-    // Fix common markdown issues
     return content
-      // Fix improperly escaped asterisks
       .replace(/\\\*/g, '*')
-      // Remove unnecessary escape characters
       .replace(/\\([^*_`~[\]()#+-])/g, '$1')
-      // Fix broken bold/italic formatting
       .replace(/\*\*\s*\*\*/g, '')
       .replace(/\*\s*\*/g, '')
-      // Fix broken code formatting
       .replace(/`\s*`/g, '')
-      // Fix broken links
       .replace(/\[\s*\]/g, '')
       .replace(/\(\s*\)/g, '')
-      // Fix multiple colons
       .replace(/:{2,}/g, ':')
-      // Normalize whitespace between paragraphs
       .replace(/\n{3,}/g, '\n\n')
-      // Ensure code blocks are properly formatted
       .replace(/```([^`]+)```/g, (_, code) => {
         return '```\n' + code.trim() + '\n```';
       })
-      // Fix lists that don't have proper spacing
       .replace(/^(\d+\.|\*|\-)\s*([^\n]+)/gm, '$1 $2')
       .trim();
   };
@@ -804,7 +786,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       hr: () => <hr className="my-4 border-muted" />,
     };
 
-    // Process markdown content to ensure proper formatting
     const processedContent = preprocessMarkdown(analysisContent || '');
 
     return (
@@ -950,7 +931,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                 <SelectItem value="none">No Research Context</SelectItem>
                 {savedResearch?.map(research => (
                   <SelectItem key={research.id} value={research.id}>
-                    {research.title}
+                    {research.query}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -986,6 +967,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           </Select>
         </div>
       </div>
+      
       <ScrollArea className="flex-1 p-4">
         {navigationHistory.length > 0 && (
           <Button 
