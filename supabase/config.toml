@@ -79,6 +79,5 @@ enabled = false
 
 [[functions]]
 name = "functions"
-enabled = true
 verify_jwt = false
 port = 54328
