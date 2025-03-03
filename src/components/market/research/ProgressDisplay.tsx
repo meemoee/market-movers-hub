@@ -1,6 +1,6 @@
 
 import { cn } from "@/lib/utils"
-import { useEffect, useState, useRef, useLayoutEffect } from "react"
+import { useEffect, useState, useRef } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ProgressDisplayProps {
@@ -10,7 +10,6 @@ interface ProgressDisplayProps {
 export function ProgressDisplay({ messages }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const scrollAreaRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
     if (messages.length > 0) {
@@ -18,23 +17,18 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
     }
   }, [messages])
   
-  // Use useLayoutEffect to ensure scroll happens before browser paint
-  useLayoutEffect(() => {
-    // Only scroll within the component itself
-    if (messagesEndRef.current && scrollAreaRef.current) {
-      // Using direct DOM manipulation for container-confined scrolling
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      }
+  useEffect(() => {
+    // Auto-scroll to the bottom when new messages arrive
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
   if (!messages.length) return null
   
   return (
-    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
-      <ScrollArea className="h-full">
+    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden">
+      <ScrollArea className="h-40">
         <div className="p-4 space-y-2">
           {messages.map((message, index) => (
             <div 
