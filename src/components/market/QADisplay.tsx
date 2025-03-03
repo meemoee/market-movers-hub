@@ -175,6 +175,71 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return stack.length === 0 && !inCode && !inList;
   };
 
+  // New sanitizeMarkdown function
+  const sanitizeMarkdown = (content: string): string => {
+    if (!content) return '';
+    
+    let sanitized = content;
+    
+    // Fix unbalanced markdown formatting
+    const countOccurrences = (str: string, char: string) => {
+      return (str.match(new RegExp(`\\${char}`, 'g')) || []).length;
+    };
+    
+    // Fix unclosed bold/italic formatting
+    ['*', '_', '**', '__'].forEach(marker => {
+      const count = marker.length === 1 
+        ? countOccurrences(sanitized, marker)
+        : (sanitized.match(new RegExp(`\\${marker[0]}{2}`, 'g')) || []).length;
+      
+      if (count % 2 !== 0) {
+        sanitized = sanitized + marker;
+      }
+    });
+    
+    // Fix unclosed code blocks
+    const codeBlockCount = (sanitized.match(/```/g) || []).length;
+    if (codeBlockCount % 2 !== 0) {
+      sanitized = sanitized + '\n```';
+    }
+    
+    // Fix unclosed inline code
+    const inlineCodeCount = (sanitized.match(/`(?!``)/g) || []).length;
+    if (inlineCodeCount % 2 !== 0) {
+      sanitized = sanitized + '`';
+    }
+    
+    // Clean up incomplete links
+    sanitized = sanitized
+      .replace(/\[([^\]]*)\](?!\()/g, '$1') // [text] without (url)
+      .replace(/\[([^\]]*)\]\(\s*\)/g, '$1') // [text]() with empty url
+      .replace(/\[\s*\]\(([^)]*)\)/g, '$1'); // []() with empty text
+    
+    // Fix common LLM markdown errors
+    sanitized = sanitized
+      .replace(/\*\*\s*\*\*/g, '') // Remove empty bold tags
+      .replace(/\*\s*\*/g, '') // Remove empty italic tags
+      .replace(/`\s*`/g, '') // Remove empty code tags
+      .replace(/\(\s*\)/g, '') // Remove empty parentheses
+      .replace(/:{2,}/g, ':') // Fix multiple colons
+      
+      // Special handling for asterisks that should be escaped
+      .replace(/(?<!\*)\*(?!\*)\s(?!\*)/g, '\\* ') // Standalone asterisks at start of list items
+      .replace(/(?<![\\`*_])\*\s*\*(?![\\`*_])/g, '\\* \\*') // Double asterisks not meant as formatting
+      
+      // Fix lists without proper formatting
+      .replace(/^(\d+)\.(?!\s)/gm, '$1. ') // Fix numbered lists without space
+      .replace(/^-(?!\s)/gm, '- ') // Fix bullet lists without space
+      
+      // Fix common equation markers sometimes used by LLMs
+      .replace(/\$\$(.*?)\$\$/g, '_$1_') // Convert equation markers to italics
+      
+      // Normalize whitespace while preserving code blocks
+      .replace(/(?!```[\s\S]*?)[ \t]+(?![\s\S]*?```)/g, ' ');
+    
+    return sanitized.trim();
+  };
+
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
     try {
       let dataStr = chunk;
@@ -197,24 +262,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
+  // Improved processStreamContent function
   const processStreamContent = (content: string, prevContent: string = ''): string => {
     let combinedContent = prevContent + content;
-    
-    combinedContent = combinedContent
-      .replace(/\*\*\s*\*\*/g, '') // Remove empty bold tags
-      .replace(/\*\s*\*/g, '') // Remove empty italic tags
-      .replace(/`\s*`/g, '') // Remove empty code tags
-      .replace(/\[\s*\]/g, '') // Remove empty links
-      .replace(/\(\s*\)/g, '') // Remove empty parentheses
-      .replace(/:{2,}/g, ':') // Fix multiple colons
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .trim();
-    
-    if (combinedContent.match(/[a-zA-Z]$/)) {
-      combinedContent += '.';
-    }
-    
-    return combinedContent;
+    return sanitizeMarkdown(combinedContent);
   };
 
   const getExtensionInfo = (node: QANode): string => {
@@ -733,6 +784,51 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
+  // Updated markdownComponents with improved formatting
+  const markdownComponents: MarkdownComponents = {
+    p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
+    code: ({ children, className }) => {
+      const isInline = !className;
+      return isInline ? (
+        <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
+      ) : (
+        <pre className="my-3 overflow-auto rounded-md">
+          <code className="block bg-muted/30 rounded p-3 text-sm font-mono whitespace-pre-wrap">
+            {children}
+          </code>
+        </pre>
+      );
+    },
+    ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
+    ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
+    li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+    blockquote: ({ children }) => (
+      <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
+    ),
+    a: ({ href, children }) => (
+      <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    ),
+    em: ({ children }) => <em className="italic">{children}</em>,
+    strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+    h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+    h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+    h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
+    hr: () => <hr className="my-4 border-muted" />,
+    // Add handling for tables which LLMs often generate
+    table: ({ children }) => (
+      <div className="overflow-x-auto my-4">
+        <table className="w-full border-collapse border border-border">{children}</table>
+      </div>
+    ),
+    thead: ({ children }) => <thead className="bg-muted/30">{children}</thead>,
+    tbody: ({ children }) => <tbody>{children}</tbody>,
+    tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
+    th: ({ children }) => <th className="p-2 text-left font-medium border-r border-border last:border-r-0">{children}</th>,
+    td: ({ children }) => <td className="p-2 border-r border-border last:border-r-0">{children}</td>,
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -742,37 +838,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     
     const nodeExtensions = getNodeExtensions(node.id);
     
-    const markdownComponents: MarkdownComponents = {
-      p: ({ children }) => <p className="mb-3 last:mb-0">{children}</p>,
-      code: ({ children, className }) => {
-        const isInline = !className;
-        return isInline ? (
-          <code className="bg-muted/30 rounded px-1 py-0.5 text-sm font-mono">{children}</code>
-        ) : (
-          <code className="block bg-muted/30 rounded p-3 my-3 text-sm font-mono whitespace-pre-wrap">
-            {children}
-          </code>
-        );
-      },
-      ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-      ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-      li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-      blockquote: ({ children }) => (
-        <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
-      ),
-      a: ({ href, children }) => (
-        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-          {children}
-        </a>
-      ),
-      em: ({ children }) => <em className="italic">{children}</em>,
-      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-      h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
-      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
-      h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
-      hr: () => <hr className="my-4 border-muted" />,
-    };
-
     return (
       <div key={node.id} className="relative flex flex-col">
         <div className="flex items-stretch">
