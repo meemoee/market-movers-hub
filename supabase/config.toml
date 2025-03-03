@@ -68,7 +68,6 @@ redirect_uri = ""
 [analytics]
 enabled = false
 
-# The correct format for the functions section
-[functions]
-enabled = true
-port = 54328
+# Functions configuration
+functions.enabled = true
+functions.port = 54328
