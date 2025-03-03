@@ -1,11 +1,4 @@
 
-project_id = "lfmkoismabbhujycnqpn"
-
-# Define functions as an array of tables (using double brackets)
-[[functions]]
-name = "market-analysis"
-verify_jwt = false
-
 [[functions]]
 name = "analyze-web-content"
 verify_jwt = false
@@ -15,11 +8,19 @@ name = "brave-search"
 verify_jwt = false
 
 [[functions]]
-name = "web-scrape"
+name = "deep-research"
 verify_jwt = false
 
 [[functions]]
-name = "web-research"
+name = "evaluate-qa-final"
+verify_jwt = false
+
+[[functions]]
+name = "evaluate-qa-pair"
+verify_jwt = false
+
+[[functions]]
+name = "execute-market-order"
 verify_jwt = false
 
 [[functions]]
@@ -31,9 +32,37 @@ name = "generate-qa-tree"
 verify_jwt = false
 
 [[functions]]
-name = "evaluate-qa-pair"
+name = "generate-queries"
 verify_jwt = false
 
 [[functions]]
-name = "evaluate-qa-final"
+name = "get-orderbook"
+verify_jwt = false
+
+[[functions]]
+name = "get-top-movers"
+verify_jwt = false
+
+[[functions]]
+name = "market-analysis"
+verify_jwt = false
+
+[[functions]]
+name = "polymarket-ws"
+verify_jwt = false
+
+[[functions]]
+name = "price-history"
+verify_jwt = false
+
+[[functions]]
+name = "search-markets"
+verify_jwt = false
+
+[[functions]]
+name = "web-research"
+verify_jwt = false
+
+[[functions]]
+name = "web-scrape"
 verify_jwt = false

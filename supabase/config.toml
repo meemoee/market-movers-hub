@@ -70,5 +70,3 @@ enabled = false
 
 # Functions configuration
 [functions]
-# Rather than having enabled = true and port = 54328 directly under [functions],
-# we need to define functions as an array of tables in supabase/functions/config.toml
