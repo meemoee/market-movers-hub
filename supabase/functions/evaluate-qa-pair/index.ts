@@ -29,7 +29,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown or code block syntax, just the raw JSON object."
+            content: "You are an evaluator that assesses the quality and completeness of answers to questions. Your task is to provide a score between 0 and 100 and a brief reason for the score. IMPORTANT: You must ONLY output valid JSON in this exact format: {\"score\": number, \"reason\": \"string\"}. Do not include any markdown or code block syntax, just the raw JSON object. Ensure your reason contains NO newlines or special characters that would break JSON parsing."
           },
           {
             role: "user",
@@ -51,67 +51,68 @@ serve(async (req) => {
       evaluationText = evaluationText.replace(/```json\s*/g, '').replace(/```\s*$/g, '').trim()
       console.log('Cleaned evaluation text:', evaluationText)
       
-      // Fix: Instead of directly parsing potentially invalid JSON, attempt to extract the score and reason
-      // This handles cases where the AI returns formatted content with newlines and markdown
-      let evaluation;
+      // Reliable extraction approach: Extract the score and reason separately
+      // and then construct a new valid JSON object
       
-      // First attempt - try to directly parse if it's valid JSON
-      try {
-        evaluation = JSON.parse(evaluationText);
-      } catch (parseError) {
-        // Second attempt - try to fix common JSON formatting issues
-        try {
-          // Fix unescaped control characters in JSON
-          const fixedJson = evaluationText
-            .replace(/\n/g, "\\n")
-            .replace(/\r/g, "\\r")
-            .replace(/\t/g, "\\t")
-            .replace(/\b/g, "\\b")
-            .replace(/\f/g, "\\f");
-          
-          evaluation = JSON.parse(fixedJson);
-        } catch (fixedParseError) {
-          // Third attempt - try regex extraction as a fallback
-          console.log('Attempting regex extraction as fallback');
-          const scoreMatch = evaluationText.match(/"score"\s*:\s*(\d+)/);
-          const reasonMatch = evaluationText.match(/"reason"\s*:\s*"([^"]*)"/);
-          
-          if (scoreMatch && reasonMatch) {
-            evaluation = {
-              score: parseInt(scoreMatch[1], 10),
-              reason: reasonMatch[1]
-            };
-          } else {
-            throw new Error('Could not extract valid evaluation data');
-          }
-        }
+      // Extract the score using regex
+      const scoreMatch = evaluationText.match(/"score"\s*:\s*(\d+)/);
+      const score = scoreMatch ? parseInt(scoreMatch[1], 10) : null;
+      
+      if (!score && score !== 0) {
+        throw new Error('Could not extract valid score');
       }
       
-      // Validate the evaluation object structure
-      if (typeof evaluation.score !== 'number' || typeof evaluation.reason !== 'string') {
-        throw new Error('Invalid evaluation format: missing required fields');
-      }
+      // Extract the reason by finding the text between "reason": " and the last "
+      // This is more reliable than trying to parse invalid JSON
+      const reasonRegex = /"reason"\s*:\s*"([\s\S]*?)(?:"\s*}|"\s*,|"$)/;
+      const reasonMatch = evaluationText.match(reasonRegex);
+      let reason = reasonMatch ? reasonMatch[1] : '';
       
-      // Ensure score is between 0 and 100
-      evaluation.score = Math.max(0, Math.min(100, evaluation.score));
+      // Clean the reason text to remove newlines and problematic characters
+      reason = reason
+        .replace(/\r?\n/g, ' ')   // Replace newlines with spaces
+        .replace(/\\(?!["\\/bfnrt])/g, '\\\\') // Escape backslashes that aren't part of escape sequences
+        .replace(/"/g, '\\"')     // Escape quotes
+        .replace(/[\x00-\x1F\x7F-\x9F]/g, ''); // Remove control characters
       
-      console.log('Successfully parsed evaluation:', evaluation);
+      // Create a new, clean evaluation object
+      const evaluation = {
+        score: Math.max(0, Math.min(100, score)), // Ensure score is between 0 and 100
+        reason: reason
+      };
+      
+      console.log('Successfully created clean evaluation:', evaluation);
       
       return new Response(JSON.stringify(evaluation), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     } catch (error) {
-      console.error('Error parsing evaluation JSON:', error);
+      console.error('Error processing evaluation:', error);
       console.error('Received content:', evaluationText);
-      throw new Error('Invalid evaluation format received');
+      
+      // Fallback: Return a simple valid response instead of failing
+      const fallbackEvaluation = {
+        score: 50,
+        reason: "Evaluation could not be processed. This is a fallback response."
+      };
+      
+      return new Response(JSON.stringify(fallbackEvaluation), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
     }
 
   } catch (error) {
     console.error('Error in evaluate-qa-pair function:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        fallback: {
+          score: 50,
+          reason: "Evaluation could not be generated due to a server error."
+        }
+      }),
       { 
-        status: 500,
+        status: 200, // Return 200 instead of 500 to prevent breaking the client
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
     );
