@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -882,7 +881,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
     
-    // Use streamed content or node analysis as appropriate
     const analysisContent = isStreaming && streamContent ? streamContent.content : node.analysis;
     const citations = isStreaming && streamContent ? streamContent.citations : node.citations;
     
@@ -1217,14 +1215,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       {qaData.length > 0 && finalAnalysis && (
         <Card className="p-4">
           <InsightsDisplay 
-            marketId={marketId} 
-            marketQuestion={marketQuestion} 
-            hasInsights={true}
-            insightsContent={{
-              analysis: finalAnalysis,
-              probability: finalProbability,
-              areas_for_research: finalAreasForResearch
-            }}
+            probability={finalProbability} 
+            areasForResearch={finalAreasForResearch}
           />
         </Card>
       )}
