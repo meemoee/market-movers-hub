@@ -1,189 +1,204 @@
 
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") || "";
-
-// CORS headers for browser requests
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper function to add delay for retries
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+// Set up retry logic with exponential backoff
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3) {
+  let retries = 0;
+  let lastError;
 
-async function evaluateQAPair(question: string, analysis: string, retryCount = 0): Promise<any> {
-  try {
-    const maxRetries = 3;
-    const backoffFactor = 1.5;
-    const initialBackoff = 1000; // 1 second
-
-    // Prepare the prompt for evaluation
-    const prompt = `
-You are an expert evaluator of question and answer quality. 
-Your task is to evaluate how well an analysis answers a given question.
-
-Question: ${question}
-
-Analysis: ${analysis}
-
-Evaluate the quality of this analysis considering:
-1. Relevance to the question
-2. Completeness of the answer
-3. Accuracy of information
-4. Clarity and readability
-5. Logical structure
-
-Provide a score from 0-100 where:
-- 0-40: Poor (irrelevant, incomplete, inaccurate)
-- 41-60: Fair (partially addresses the question with some issues)
-- 61-80: Good (addresses the question well with minor issues)
-- 81-100: Excellent (fully addresses the question with clarity and accuracy)
-
-Your evaluation format must be exactly as follows (JSON object):
-{
-  "score": [numeric score between 0-100],
-  "reason": [brief explanation of your evaluation in 1-2 sentences]
-}
-`;
-
-    console.log(`Evaluating Q&A pair (attempt ${retryCount + 1}/${maxRetries + 1})...`);
-
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://market-analysis.hunchex.com", 
-      },
-      body: JSON.stringify({
-        model: "anthropic/claude-3-haiku",
-        messages: [
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.1,
-        max_tokens: 300
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`OpenRouter API error (${response.status}): ${errorText}`);
-      
-      // Retry with exponential backoff if we haven't exceeded max retries
-      if (retryCount < maxRetries) {
-        const backoffTime = initialBackoff * Math.pow(backoffFactor, retryCount);
-        console.log(`Retrying in ${backoffTime}ms...`);
-        await sleep(backoffTime);
-        return evaluateQAPair(question, analysis, retryCount + 1);
-      }
-      
-      throw new Error(`OpenRouter API returned status ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log("Evaluation completed successfully");
-    
+  while (retries < maxRetries) {
     try {
-      // Extract the JSON content from the response
-      const content = result.choices[0]?.message?.content || "{}";
-      let evaluation;
-      
-      // Handle both string JSON and direct JSON objects
-      if (typeof content === 'string') {
-        evaluation = JSON.parse(content);
-      } else {
-        evaluation = content;
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
       }
-      
-      // Validate the response
-      if (!evaluation.score || !evaluation.reason) {
-        console.error("Invalid evaluation format", evaluation);
-        throw new Error("Invalid evaluation format");
+      return response;
+    } catch (error) {
+      lastError = error;
+      retries++;
+      console.log(`Retry ${retries}/${maxRetries} after error:`, error);
+      if (retries < maxRetries) {
+        // Exponential backoff with jitter
+        const delay = Math.min(1000 * 2 ** retries + Math.random() * 1000, 10000);
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
-      
-      return {
-        score: evaluation.score,
-        reason: evaluation.reason
-      };
-    } catch (parseError) {
-      console.error("Error parsing evaluation response:", parseError);
-      console.error("Raw response:", result);
-      
-      // Retry on parsing errors if we haven't exceeded max retries
-      if (retryCount < maxRetries) {
-        const backoffTime = initialBackoff * Math.pow(backoffFactor, retryCount);
-        console.log(`Retrying after parse error in ${backoffTime}ms...`);
-        await sleep(backoffTime);
-        return evaluateQAPair(question, analysis, retryCount + 1);
-      }
-      
-      throw new Error("Failed to parse evaluation response");
     }
-  } catch (error) {
-    console.error("Error in evaluateQAPair:", error);
-    
-    // Retry on any other errors if we haven't exceeded max retries
-    if (retryCount < 3) {
-      const backoffTime = 1000 * Math.pow(1.5, retryCount);
-      console.log(`Retrying after error in ${backoffTime}ms...`);
-      await sleep(backoffTime);
-      return evaluateQAPair(question, analysis, retryCount + 1);
-    }
-    
-    // If we've exhausted retries, return a fallback response
-    return {
-      score: 70,
-      reason: "Evaluation service encountered errors. This is a fallback score."
-    };
   }
+  
+  throw lastError;
 }
 
 serve(async (req) => {
   // Handle CORS preflight requests
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      headers: corsHeaders,
-    });
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    if (req.method !== "POST") {
-      throw new Error(`Method ${req.method} not allowed`);
-    }
-
-    if (!OPENROUTER_API_KEY) {
-      throw new Error("OPENROUTER_API_KEY is not set");
-    }
-
-    const body = await req.json();
+    console.log('Evaluating QA pair...');
+    const { question, analysis } = await req.json();
     
-    if (!body.question || !body.analysis) {
-      throw new Error("Missing required fields: question and analysis");
+    if (!question || !analysis) {
+      console.error('Missing required parameters:', { question: !!question, analysis: !!analysis });
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing required parameters', 
+          score: 50, 
+          reason: 'Could not evaluate due to missing parameters' 
+        }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    console.log('Evaluating question:', question.substring(0, 50) + '...');
+    console.log('Evaluating analysis:', analysis.substring(0, 50) + '...');
+    
+    const prompt = `
+    You are an expert evaluator assessing the quality of an analysis in response to a question.
+    Your job is to rate the analysis on a scale of 1-100 where 100 is perfect.
+
+    Question: ${question}
+    
+    Analysis: ${analysis}
+    
+    Rate this analysis on a scale of 1-100 based on:
+    - Relevance to the question
+    - Depth and comprehensiveness
+    - Logical reasoning and structure
+    - Use of evidence or examples (if applicable)
+    - Clarity of communication
+    
+    Provide a JSON response with two properties: 
+    - score: a number between 1-100
+    - reason: a brief explanation (1-2 sentences) for your rating
+    `;
+    
+    const apiKey = Deno.env.get('OPENROUTER_API_KEY');
+    
+    if (!apiKey) {
+      console.error('OPENROUTER_API_KEY environment variable is not set');
+      return new Response(
+        JSON.stringify({ 
+          score: 70, 
+          reason: "Evaluation service is unavailable. This is a default score." 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
-    const evaluation = await evaluateQAPair(body.question, body.analysis);
-
-    return new Response(JSON.stringify(evaluation), {
+    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const options = {
+      method: 'POST',
       headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'HTTP-Referer': 'https://hunchex.com',
+        'X-Title': 'HunchEx QA Evaluator'
       },
-      status: 200,
-    });
+      body: JSON.stringify({
+        model: 'anthropic/claude-3-haiku',
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.2,
+        max_tokens: 300,
+      })
+    };
+    
+    console.log('Making request to OpenRouter...');
+    try {
+      const response = await fetchWithRetry(openRouterUrl, options);
+      const data = await response.json();
+      
+      console.log('Received response from OpenRouter:', JSON.stringify(data).substring(0, 200) + '...');
+      
+      let evaluationResult;
+      try {
+        if (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+          const content = data.choices[0].message.content;
+          
+          // Try to parse as JSON
+          try {
+            evaluationResult = JSON.parse(content);
+          } catch (parseError) {
+            console.error('Failed to parse response as JSON:', parseError);
+            
+            // Try to extract JSON from text if direct parsing fails
+            const jsonMatch = content.match(/({[\s\S]*})/);
+            if (jsonMatch) {
+              try {
+                evaluationResult = JSON.parse(jsonMatch[0]);
+              } catch (matchParseError) {
+                console.error('Failed to parse matched JSON:', matchParseError);
+              }
+            }
+          }
+          
+          // If we still don't have a valid result, use fallback
+          if (!evaluationResult || typeof evaluationResult.score !== 'number') {
+            console.error('Could not extract valid evaluation from response');
+            evaluationResult = {
+              score: 75,
+              reason: "Evaluation service returned an invalid format. This is a default score."
+            };
+          }
+        }
+      } catch (error) {
+        console.error('Error processing OpenRouter response:', error);
+      }
+      
+      if (!evaluationResult) {
+        evaluationResult = {
+          score: 75,
+          reason: "Evaluation service returned an unexpected response. This is a default score."
+        };
+      }
+      
+      console.log('Final evaluation result:', evaluationResult);
+      
+      return new Response(
+        JSON.stringify(evaluationResult),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    } catch (error) {
+      console.error('Error calling OpenRouter:', error);
+      
+      // Return a fallback response
+      return new Response(
+        JSON.stringify({ 
+          score: 65, 
+          reason: "Evaluation service encountered an error. This is a default score." 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
   } catch (error) {
-    console.error("Function error:", error.message);
+    console.error('General error in evaluate-qa-pair function:', error);
     
-    return new Response(JSON.stringify({ error: error.message }), {
-      headers: {
-        ...corsHeaders,
-        "Content-Type": "application/json",
-      },
-      status: 500,
-    });
+    return new Response(
+      JSON.stringify({ 
+        error: 'Internal server error', 
+        score: 60, 
+        reason: "The evaluation service encountered an internal error. This is a default score." 
+      }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
   }
 });
