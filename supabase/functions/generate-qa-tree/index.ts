@@ -1,147 +1,326 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { processStream } from "./streamProcessor.ts";
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { streamProcessor } from "./streamProcessor.ts"
-
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || ''
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || ''
-
+// Define CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
 
-serve(async (req) => {
-  // Handle CORS
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+// Create a Supabase client
+const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+serve(async (req: Request) => {
+  console.log("Function generate-qa-tree called with method:", req.method);
+  
+  // Handle CORS preflight requests (OPTIONS)
+  if (req.method === "OPTIONS") {
+    console.log("Handling OPTIONS preflight request");
+    return new Response(null, {
+      status: 204, // No content
+      headers: corsHeaders,
+    });
   }
 
+  // Check for POST method
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ error: "Method not allowed" }), {
+      status: 405,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  
   try {
-    const { 
-      marketId, 
-      question, 
-      parentContent = '',
-      historyContext = '',
+    // Parse request body
+    const reqBody = await req.json();
+    const {
+      marketId,
+      question,
+      parentContent,
       isFollowUp = false,
-      marketQuestion = '',
+      historyContext = "",
+      marketQuestion = "",
+      model = "gpt-4-turbo",
+      useOpenRouter = false,
       researchContext = null,
-      model = "gpt-4o-mini",
-      useOpenRouter = false
-    } = await req.json()
+    } = reqBody;
 
-    console.log(`Processing request for market: ${marketId}, Question: ${question.substring(0, 100)}...`)
-    console.log(`Using model: ${model} via ${useOpenRouter ? 'OpenRouter' : 'OpenAI'}`)
-    
-    let systemPrompt = ''
-    let userPrompt = ''
-    
-    if (isFollowUp) {
-      // Request to generate follow-up questions
-      console.log("Generating follow-up questions based on analysis")
-      
-      systemPrompt = `You are an expert financial market analyzer's assistant. You help by generating logical follow-up questions to dig deeper into market analysis. 
-Generate 2-3 specific follow-up questions based on the provided market question and analysis. Your questions should:
-1. Explore different angles not yet covered in the analysis
-2. Focus on the most important factors for understanding market probability
-3. Be clearly worded and specific, not vague
-4. Not repeat information already covered in the analysis
-5. Target information gaps or areas of uncertainty
-`
+    console.log("Processing request with params:", {
+      marketId,
+      question: question?.substring(0, 50) + "...",
+      isFollowUp,
+      model,
+      useOpenRouter,
+      hasResearchContext: !!researchContext,
+    });
 
-      userPrompt = `Market Question: ${marketQuestion || question}
+    // Create appropriate prompt based on whether it's a follow-up or not
+    let prompt;
+    let endpoint;
+    let requestBody;
 
-${historyContext ? `Previous analysis context:\n${historyContext}\n\n` : ''}
-
-Analysis: ${parentContent}
-
-${researchContext ? `Additional market research:\n${researchContext.analysis || ''}\n\n` : ''}
-
-Generate 2-3 specific follow-up questions to investigate important aspects of this market question that need further analysis. Format your response as a JSON array with each question as an object with a "question" field.`
-
-    } else {
-      // Request to analyze a question
-      console.log("Analyzing market question")
-      
-      systemPrompt = `You are an expert financial market analyst specializing in probability assessment and forecasting. 
-Your task is to thoroughly analyze a question about a financial market and provide a comprehensive assessment.
-
-Your analysis should:
-1. Break down all key factors that affect the probability
-2. Consider evidence from multiple perspectives
-3. Evaluate the timeframe and specific conditions
-4. Analyze historical precedents if relevant
-5. Provide a measured, evidence-based assessment
-6. Clearly explain your reasoning process
-7. Consider both potential outcomes and explain what would lead to each
-
-Be thorough but concise. Present information in a clear, structured way. Avoid vague statements without supporting evidence.`
-
-      userPrompt = `Market Question: ${question}
-
-${historyContext ? `Previous analysis context:\n${historyContext}\n\n` : ''}
-
-${researchContext ? `Additional market research:\n${researchContext.analysis || ''}\n\n` : ''}
-
-${researchContext?.areasForResearch?.length > 0 ? `Areas needing further research:\n${researchContext.areasForResearch.join('\n')}\n\n` : ''}
-
-Probability estimate from research: ${researchContext?.probability || 'Not available'}
-
-Please provide a comprehensive analysis of this market question. Assess key factors, evaluate evidence, and explain your reasoning clearly.`
-    }
-
-    // Choose API endpoint and format request based on whether we're using OpenRouter or OpenAI
-    let apiUrl = "https://api.openai.com/v1/chat/completions"
-    let headers = {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${OPENAI_API_KEY}`
-    }
-    
+    // If using OpenRouter (for Gemini or other models)
     if (useOpenRouter) {
-      apiUrl = "https://openrouter.ai/api/v1/chat/completions"
-      headers = {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-        "HTTP-Referer": "https://hunchex.com",
-        "X-Title": "Hunchex Market Analysis"
-      }
-    }
+      console.log("Using OpenRouter with model:", model);
+      const openRouterKey = Deno.env.get("OPENROUTER_API_KEY") || "";
+      endpoint = "https://openrouter.ai/api/v1/chat/completions";
 
-    const response = await fetch(apiUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: model,
-        messages: [
+      if (isFollowUp) {
+        // Construct follow-up prompt
+        prompt = [
+          {
+            role: "system",
+            content: `You are a helpful AI research assistant helping analyze a prediction market question. 
+            Your task is to generate 3 insightful follow-up questions based on the analysis provided.
+            Each follow-up question should explore a different important aspect not fully covered in the analysis.
+            Format your response as a JSON array of objects with 'question' field only.
+            Example: [{"question":"What is the impact of X on Y?"},{"question":"How does Z affect the outcome?"},{"question":"What historical precedents exist for this situation?"}]`,
+          },
+          {
+            role: "user",
+            content: `Market Question: ${marketQuestion}\n\nAnalysis: ${parentContent}\n${historyContext ? `\nPrevious History: ${historyContext}\n` : ""}`,
+          },
+        ];
+
+        requestBody = {
+          model: model,
+          messages: prompt,
+        };
+      } else {
+        // Construct initial analysis prompt
+        let systemPrompt = `You are a helpful AI research assistant analyzing a prediction market question.
+        Your task is to provide a comprehensive analysis of the question, considering various perspectives and evidence.
+        Be thorough but concise, and stick to factual information.`;
+
+        if (researchContext) {
+          systemPrompt += `\n\nHere is some research context to consider:
+          Analysis: ${researchContext.analysis}
+          Probability estimate: ${researchContext.probability}
+          Key areas needing research: ${researchContext.areasForResearch.join(", ")}`;
+        }
+
+        prompt = [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        stream: true
-      })
-    })
+          {
+            role: "user",
+            content: `Analyze this prediction market question: "${question}"\n${historyContext ? `\nPrevious History: ${historyContext}\n` : ""}${marketQuestion ? `\nRelated to market question: "${marketQuestion}"` : ""}`,
+          },
+        ];
 
-    if (!response.ok) {
-      const error = await response.text()
-      console.error(`API error (${response.status}): ${error}`)
-      throw new Error(`API request failed with status ${response.status}: ${error}`)
-    }
+        requestBody = {
+          model: model,
+          messages: prompt,
+          stream: true,
+        };
+      }
 
-    console.log("Stream response started, beginning stream processing")
-    
-    if (isFollowUp) {
-      // For follow-up questions, we need to accumulate the entire response to parse the JSON
-      return streamProcessor(response.body, marketId, true)
-    } else {
-      // For analysis, we stream directly to the client
-      return streamProcessor(response.body, marketId, false)
+      // Setup fetch options for OpenRouter
+      const fetchOptions = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openRouterKey}`,
+          "HTTP-Referer": supabaseUrl,
+        },
+        body: JSON.stringify(requestBody),
+      };
+
+      // For follow-up questions, handle directly (no streaming)
+      if (isFollowUp) {
+        console.log("Fetching follow-up questions (non-streaming)");
+        const response = await fetch(endpoint, fetchOptions);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("OpenRouter API error:", errorText);
+          throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+        }
+        
+        const data = await response.json();
+        let followUpQuestions = [];
+        
+        try {
+          // Get the response content from the API
+          const content = data.choices[0].message.content;
+          console.log("Received follow-up content:", content);
+          
+          // Parse the JSON response
+          followUpQuestions = JSON.parse(content);
+          console.log("Parsed follow-up questions:", followUpQuestions);
+          
+          // Fallback if parsing fails
+          if (!Array.isArray(followUpQuestions)) {
+            console.warn("Follow-up content was not a valid array, creating fallback");
+            followUpQuestions = [
+              { question: "What are the key factors that could change this prediction?" },
+              { question: "What historical precedents exist for this situation?" },
+              { question: "What contrarian viewpoints exist that might change the outcome?" }
+            ];
+          }
+        } catch (error) {
+          console.error("Error parsing follow-up questions:", error);
+          // Fallback questions if parsing fails
+          followUpQuestions = [
+            { question: "What are the key factors that could change this prediction?" },
+            { question: "What historical precedents exist for this situation?" },
+            { question: "What contrarian viewpoints exist that might change the outcome?" }
+          ];
+        }
+        
+        return new Response(JSON.stringify(followUpQuestions), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // For initial analysis, stream the response
+      console.log("Streaming analysis from OpenRouter");
+      const response = await fetch(endpoint, fetchOptions);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("OpenRouter API error:", errorText);
+        throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+      }
+      
+      // Process streaming response
+      const processedStream = processStream(response);
+      
+      return new Response(processedStream, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      });
+    } 
+    // Default to using OpenAI (legacy path)
+    else {
+      console.log("Using default OpenAI path");
+      const openaiKey = Deno.env.get("OPENAI_API_KEY") || "";
+      endpoint = "https://api.openai.com/v1/chat/completions";
+
+      if (isFollowUp) {
+        prompt = [
+          {
+            role: "system",
+            content: `You are a helpful AI research assistant helping analyze a prediction market question. Your task is to generate 3 insightful follow-up questions based on the analysis provided. Each follow-up question should explore a different important aspect not fully covered in the analysis. Format your response as a JSON array of objects with 'question' field only. Example: [{"question":"What is the impact of X on Y?"},{"question":"How does Z affect the outcome?"},{"question":"What historical precedents exist for this situation?"}]`,
+          },
+          {
+            role: "user",
+            content: `Market Question: ${marketQuestion}\n\nAnalysis: ${parentContent}\n${historyContext ? `\nPrevious History: ${historyContext}\n` : ""}`,
+          },
+        ];
+
+        requestBody = {
+          model: model,
+          messages: prompt,
+        };
+      } else {
+        let systemPrompt = `You are a helpful AI research assistant analyzing a prediction market question. Your task is to provide a comprehensive analysis of the question, considering various perspectives and evidence. Be thorough but concise, and stick to factual information.`;
+
+        if (researchContext) {
+          systemPrompt += `\n\nHere is some research context to consider:
+          Analysis: ${researchContext.analysis}
+          Probability estimate: ${researchContext.probability}
+          Key areas needing research: ${researchContext.areasForResearch.join(", ")}`;
+        }
+
+        prompt = [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `Analyze this prediction market question: "${question}"\n${historyContext ? `\nPrevious History: ${historyContext}\n` : ""}${marketQuestion ? `\nRelated to market question: "${marketQuestion}"` : ""}`,
+          },
+        ];
+
+        requestBody = {
+          model: model,
+          messages: prompt,
+          stream: true,
+        };
+      }
+
+      const fetchOptions = {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+      };
+
+      if (isFollowUp) {
+        console.log("Fetching follow-up questions (non-streaming)");
+        const response = await fetch(endpoint, fetchOptions);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("OpenAI API error:", errorText);
+          throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
+        }
+
+        const data = await response.json();
+        let followUpQuestions = [];
+
+        try {
+          const content = data.choices[0].message.content;
+          console.log("Received follow-up content:", content);
+
+          followUpQuestions = JSON.parse(content);
+          console.log("Parsed follow-up questions:", followUpQuestions);
+
+          if (!Array.isArray(followUpQuestions)) {
+            console.warn("Follow-up content was not a valid array, creating fallback");
+            followUpQuestions = [
+              { question: "What are the key factors that could change this prediction?" },
+              { question: "What historical precedents exist for this situation?" },
+              { question: "What contrarian viewpoints exist that might change the outcome?" },
+            ];
+          }
+        } catch (error) {
+          console.error("Error parsing follow-up questions:", error);
+          followUpQuestions = [
+            { question: "What are the key factors that could change this prediction?" },
+            { question: "What historical precedents exist for this situation?" },
+            { question: "What contrarian viewpoints exist that might change the outcome?" },
+          ];
+        }
+
+        return new Response(JSON.stringify(followUpQuestions), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      console.log("Streaming analysis from OpenAI");
+      const response = await fetch(endpoint, fetchOptions);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("OpenAI API error:", errorText);
+        throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
+      }
+
+      const processedStream = processStream(response);
+
+      return new Response(processedStream, {
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive",
+        },
+      });
     }
   } catch (error) {
-    console.error("Function error:", error.message)
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, "Content-Type": "application/json" } 
-      }
-    )
+    console.error("Error processing request:", error);
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
-})
+});
