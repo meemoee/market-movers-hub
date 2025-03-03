@@ -1,6 +1,6 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { StreamProcessor } from "./streamProcessor.ts"
+import { streamProcessor } from "./streamProcessor.ts"
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') || ''
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY') || ''
@@ -127,100 +127,12 @@ Please provide a comprehensive analysis of this market question. Assess key fact
 
     console.log("Stream response started, beginning stream processing")
     
-    // Create a function to process the stream
-    const processStream = async (readableStream: ReadableStream, marketId: string, isFollowUp: boolean) => {
-      const streamProcessor = new StreamProcessor();
-      const encoder = new TextEncoder();
-      const decoder = new TextDecoder();
-      
-      // Create a response stream
-      const stream = new TransformStream();
-      const writer = stream.writable.getWriter();
-      
-      // Process the stream
-      try {
-        const reader = readableStream.getReader();
-        let completeResponse = '';
-        
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n').filter(line => line.trim() !== '');
-          
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') continue;
-              
-              try {
-                const json = JSON.parse(data);
-                const content = json.choices?.[0]?.delta?.content || '';
-                if (content) {
-                  completeResponse += content;
-                  
-                  if (!isFollowUp) {
-                    // For analysis, stream directly to client
-                    await writer.write(encoder.encode(content));
-                  }
-                }
-              } catch (e) {
-                console.error('Error parsing JSON:', e);
-              }
-            }
-          }
-        }
-        
-        if (isFollowUp) {
-          // For follow-up questions, we need to parse the JSON
-          try {
-            // Add brackets if they're missing (handling partial JSON)
-            if (!completeResponse.trim().startsWith('[')) {
-              completeResponse = '[' + completeResponse;
-            }
-            if (!completeResponse.trim().endsWith(']')) {
-              completeResponse = completeResponse + ']';
-            }
-            
-            // Parse and validate the JSON
-            const questions = JSON.parse(completeResponse);
-            const validQuestions = Array.isArray(questions) ? 
-              questions.filter(q => q && typeof q.question === 'string') : [];
-            
-            // Write the full response at once
-            await writer.write(encoder.encode(JSON.stringify(validQuestions)));
-          } catch (e) {
-            console.error('Error processing follow-up questions:', e);
-            await writer.write(encoder.encode(JSON.stringify([
-              { question: "What additional factors might influence this market?" },
-              { question: "How might recent developments affect the outcome?" }
-            ])));
-          }
-        }
-      } catch (error) {
-        console.error('Stream processing error:', error);
-        await writer.write(encoder.encode(`Error: ${error.message}`));
-      } finally {
-        await writer.close();
-      }
-      
-      return new Response(stream.readable, {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive'
-        }
-      });
-    };
-    
     if (isFollowUp) {
       // For follow-up questions, we need to accumulate the entire response to parse the JSON
-      return processStream(response.body, marketId, true);
+      return streamProcessor(response.body, marketId, true)
     } else {
       // For analysis, we stream directly to the client
-      return processStream(response.body, marketId, false);
+      return streamProcessor(response.body, marketId, false)
     }
   } catch (error) {
     console.error("Function error:", error.message)
