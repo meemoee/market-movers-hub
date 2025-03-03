@@ -68,12 +68,5 @@ redirect_uri = ""
 [analytics]
 enabled = false
 
-[experimental]
-# Using proper formatting for experimental features
-# Instead of having 'enabled' directly under experimental
-# experimental features should be configured individually
-
 [functions]
-# Fix the functions section to use proper TOML structure
-# Instead of having port and verify_jwt as direct properties
-# Each function should be configured separately
+port = 54328

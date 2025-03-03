@@ -108,6 +108,11 @@ export function MarketDetails({
   };
 
   const shouldShowQADisplay = marketId && question;
+  
+  // Combine question with description to provide more context for web research
+  const fullResearchContext = question ? 
+    (description ? `${question} - ${description}` : question) : 
+    (description || 'No description available');
 
   return (
     <div className="space-y-4">
@@ -149,7 +154,7 @@ export function MarketDetails({
       {description && (
         <div>
           <WebResearchCard 
-            description={description} 
+            description={fullResearchContext} 
             marketId={marketId}
           />
         </div>
