@@ -1001,7 +1001,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                 <SelectItem value="none">No research context</SelectItem>
                 {savedResearch.map((research) => (
                   <SelectItem key={research.id} value={research.id}>
-                    {research.title || new Date(research.created_at).toLocaleString()}
+                    {new Date(research.created_at).toLocaleString()}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1152,7 +1152,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           {treeUrls.length > 0 && (
             <div className="mt-4">
               <h4 className="text-sm font-medium text-muted-foreground mb-2">Sources Used</h4>
-              <SitePreviewList sites={treeUrls} />
+              <SitePreviewList results={treeUrls} />
             </div>
           )}
         </Card>
