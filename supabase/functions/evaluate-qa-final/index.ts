@@ -48,6 +48,8 @@ Format your response as JSON with these fields:
   "analysis": "your analysis here"
 }`
 
+    console.log("Calling OpenAI with market question:", marketQuestion.substring(0, 100) + "...");
+    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -65,12 +67,20 @@ Format your response as JSON with these fields:
     })
 
     const result = await response.json()
+    console.log("Received OpenAI response");
+    
+    if (!result.choices || !result.choices[0]) {
+      console.error("Invalid response format:", result);
+      throw new Error('Invalid response from OpenAI');
+    }
+    
     const content = result.choices[0].message.content
 
     // Parse the response as JSON
     let parsedContent
     try {
       parsedContent = JSON.parse(content)
+      console.log("Successfully parsed response as JSON");
     } catch (e) {
       console.error('Failed to parse GPT response as JSON:', content)
       throw new Error('Failed to parse evaluation response')
