@@ -1,6 +1,7 @@
 
 project_id = "lfmkoismabbhujycnqpn"
 
+# Define functions as an array of tables (using double brackets)
 [[functions]]
 name = "market-analysis"
 verify_jwt = false

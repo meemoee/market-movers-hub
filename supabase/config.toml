@@ -68,6 +68,7 @@ redirect_uri = ""
 [analytics]
 enabled = false
 
+# The correct format for the functions section
 [functions]
 enabled = true
 port = 54328
