@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
 import type { Components as MarkdownComponents } from 'react-markdown';
-import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight, Calculator } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
@@ -64,6 +64,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [rootExtensions, setRootExtensions] = useState<QANode[]>([]);
   const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const queryClient = useQueryClient();
+  
+  // Added state for final probability analysis
+  const [finalAnalysis, setFinalAnalysis] = useState<string>('');
+  const [isGeneratingFinalAnalysis, setIsGeneratingFinalAnalysis] = useState(false);
+  const [finalProbability, setFinalProbability] = useState<string>('');
+  const [finalAreasForResearch, setFinalAreasForResearch] = useState<string[]>([]);
 
   const navigateToExtension = (extension: QANode) => {
     setNavigationHistory(prev => [...prev, qaData]);
@@ -733,6 +739,84 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     }
   };
 
+  // Function to generate the final probability analysis
+  const generateFinalAnalysis = async () => {
+    if (qaData.length === 0) {
+      toast({
+        title: "Analysis Required",
+        description: "Please generate a QA tree first",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setIsGeneratingFinalAnalysis(true);
+    
+    try {
+      // Create context from the QA tree and selected web research
+      const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
+      
+      // Build context from QA tree
+      const qaContext = buildQAContext(qaData);
+      
+      // Combine QA tree context with web research context if available
+      const fullContext = selectedResearchData 
+        ? `QA Analysis: ${qaContext}\n\nWeb Research: ${selectedResearchData.analysis}`
+        : qaContext;
+      
+      const { data, error } = await supabase.functions.invoke('extract-research-insights', {
+        body: { 
+          marketId,
+          marketQuestion,
+          marketDescription,
+          context: fullContext,
+          sourceType: 'qa-tree'
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data) {
+        setFinalAnalysis(data.analysis || '');
+        setFinalProbability(data.probability || '');
+        setFinalAreasForResearch(data.areasForResearch || []);
+        
+        toast({
+          title: "Analysis Complete",
+          description: "Final probability analysis generated successfully",
+        });
+      }
+      
+    } catch (error) {
+      console.error('Error generating final analysis:', error);
+      toast({
+        variant: "destructive",
+        title: "Analysis Error",
+        description: error instanceof Error ? error.message : "Failed to generate final analysis",
+      });
+    } finally {
+      setIsGeneratingFinalAnalysis(false);
+    }
+  };
+  
+  // Helper function to build context from QA tree
+  const buildQAContext = (nodes: QANode[]): string => {
+    let context = '';
+    
+    const processNode = (node: QANode, depth = 0) => {
+      const indent = '  '.repeat(depth);
+      context += `${indent}Q: ${node.question}\n`;
+      context += `${indent}A: ${node.analysis}\n\n`;
+      
+      if (node.children.length > 0) {
+        node.children.forEach(child => processNode(child, depth + 1));
+      }
+    };
+    
+    nodes.forEach(node => processNode(node));
+    return context;
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -822,143 +906,3 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                         <ReactMarkdown
                           components={markdownComponents}
                           className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-                        >
-                          {analysisContent}
-                        </ReactMarkdown>
-                        {renderCitations(citations)}
-                        
-                        <div className="mt-4 flex items-center gap-2">
-                          {node.evaluation && (
-                            <div className="flex items-center gap-2">
-                              <div className={`px-2 py-1 rounded text-xs font-medium ${
-                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
-                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
-                                'bg-red-500/20 text-red-500'
-                              }`}>
-                                Score: {node.evaluation.score}%
-                              </div>
-                              <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-            {node.children.length > 0 && isExpanded && (
-              <div className="mt-6">
-                {node.children.map(child => renderQANode(child, depth + 1))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
-        {navigationHistory.length > 0 && (
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={navigateBack}
-            className="mb-4 sm:mb-0"
-          >
-            ← Back to Previous Analysis
-          </Button>
-        )}
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedResearch}
-            onValueChange={setSelectedResearch}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved research" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved research</SelectItem>
-              {savedResearch?.map((research) => (
-                <SelectItem key={research.id} value={research.id}>
-                  {research.query.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex-1 min-w-[200px] max-w-[300px]">
-          <Select
-            value={selectedQATree}
-            onValueChange={(value) => {
-              setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              if (value !== 'none') {
-                const tree = savedQATrees?.find(t => t.id === value);
-                if (tree) {
-                  loadSavedQATree(tree.tree_data);
-                }
-              }
-            }}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select saved QA tree" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No saved QA tree</SelectItem>
-              {savedQATrees?.map((tree) => (
-                <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-          </Button>
-          {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline">
-              Save Analysis
-            </Button>
-          )}
-        </div>
-      </div>
-      <ScrollArea className="h-[500px] pr-4">
-        {qaData.map(node => renderQANode(node))}
-      </ScrollArea>
-    </Card>
-  );
-}
