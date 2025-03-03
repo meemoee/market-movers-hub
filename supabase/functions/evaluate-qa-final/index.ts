@@ -16,9 +16,9 @@ serve(async (req) => {
   try {
     const { marketQuestion, qaContext, researchContext } = await req.json()
 
-    const openAIKey = Deno.env.get('OPENAI_API_KEY')
-    if (!openAIKey) {
-      throw new Error('Missing OpenAI API key')
+    const openRouterKey = Deno.env.get('OPENROUTER_API_KEY')
+    if (!openRouterKey) {
+      throw new Error('Missing OpenRouter API key')
     }
 
     const systemPrompt = `You are a precise analyst evaluating market predictions. Review the question-answer analysis and determine:
@@ -48,16 +48,17 @@ Format your response as JSON with these fields:
   "analysis": "your analysis here"
 }`
 
-    console.log("Calling OpenAI with market question:", marketQuestion.substring(0, 100) + "...");
+    console.log("Calling OpenRouter with market question:", marketQuestion.substring(0, 100) + "...");
     
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${openAIKey}`,
-        'Content-Type': 'application/json'
+        'Authorization': `Bearer ${openRouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hunchex.app'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'anthropic/claude-3-haiku',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -67,11 +68,11 @@ Format your response as JSON with these fields:
     })
 
     const result = await response.json()
-    console.log("Received OpenAI response");
+    console.log("Received OpenRouter response");
     
     if (!result.choices || !result.choices[0]) {
       console.error("Invalid response format:", result);
-      throw new Error('Invalid response from OpenAI');
+      throw new Error('Invalid response from OpenRouter');
     }
     
     const content = result.choices[0].message.content
@@ -82,7 +83,7 @@ Format your response as JSON with these fields:
       parsedContent = JSON.parse(content)
       console.log("Successfully parsed response as JSON");
     } catch (e) {
-      console.error('Failed to parse GPT response as JSON:', content)
+      console.error('Failed to parse LLM response as JSON:', content)
       throw new Error('Failed to parse evaluation response')
     }
 
