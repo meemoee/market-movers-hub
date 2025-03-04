@@ -1,5 +1,5 @@
 
-import { useRef, useEffect, useState } from "react"
+import { useLayoutEffect, useRef, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
@@ -10,53 +10,38 @@ interface AnalysisDisplayProps {
 
 export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const [displayedContent, setDisplayedContent] = useState(content || '')
+  const prevContentLength = useRef(content?.length || 0)
   
-  // Update content with minimal debounce for streaming
-  useEffect(() => {
-    if (content !== displayedContent) {
-      // Use requestAnimationFrame for smooth updates
-      const frame = requestAnimationFrame(() => {
-        setDisplayedContent(content);
-      });
-      
-      return () => cancelAnimationFrame(frame);
-    }
-  }, [content, displayedContent]);
-  
-  // Auto-scroll to bottom during streaming
-  useEffect(() => {
-    if (!isStreaming || !scrollRef.current) return;
+  // This effect handles scrolling when new content arrives
+  useLayoutEffect(() => {
+    if (!scrollRef.current) return
     
-    // Scroll when content changes
-    const scrollToBottom = () => {
+    const scrollContainer = scrollRef.current
+    const currentContentLength = content?.length || 0
+    
+    // Only auto-scroll if content is growing (new chunks arriving)
+    // or if we're explicitly in streaming mode
+    if (currentContentLength > prevContentLength.current || isStreaming) {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight
+    }
+    
+    prevContentLength.current = currentContentLength
+  }, [content, isStreaming]) // Track both content changes and streaming state
+  
+  // Continuously scroll during streaming
+  useEffect(() => {
+    if (!isStreaming || !scrollRef.current) return
+    
+    const interval = setInterval(() => {
       if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
-    };
+    }, 100)
     
-    scrollToBottom();
-    
-    // Also create a continuous scroll loop during streaming
-    let frameId: number | null = null;
-    
-    if (isStreaming) {
-      const scrollLoop = () => {
-        scrollToBottom();
-        frameId = requestAnimationFrame(scrollLoop);
-      };
-      
-      frameId = requestAnimationFrame(scrollLoop);
-    }
-    
-    return () => {
-      if (frameId !== null) {
-        cancelAnimationFrame(frameId);
-      }
-    };
-  }, [isStreaming, displayedContent]);
+    return () => clearInterval(interval)
+  }, [isStreaming])
 
-  if (!displayedContent && !isStreaming) return null;
+  if (!content) return null
 
   return (
     <div className="relative">
@@ -64,11 +49,9 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
         className="h-[200px] rounded-md border p-4 bg-accent/5"
         ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full prose-pre:whitespace-pre-wrap">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
-            {displayedContent || (isStreaming ? 'Loading analysis...' : '')}
-          </ReactMarkdown>
-        </div>
+        <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
+          {content}
+        </ReactMarkdown>
       </ScrollArea>
       
       {isStreaming && (
@@ -81,5 +64,5 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
         </div>
       )}
     </div>
-  );
+  )
 }

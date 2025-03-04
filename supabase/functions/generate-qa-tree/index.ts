@@ -1,7 +1,5 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { streamContent } from "./streamProcessor.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
 
@@ -16,10 +14,10 @@ serve(async (req) => {
   }
 
   try {
-    const { question, marketId, parentContent, isFollowUp, researchContext, historyContext } = await req.json();
+    const { question, marketId, parentContent, isFollowUp, researchContext } = await req.json();
     if (!question) throw new Error('Question is required');
 
-    // Handle follow-up questions
+    // If this is a follow-up question, process it and return JSON.
     if (isFollowUp && parentContent) {
       const researchPrompt = researchContext ? `
 Consider this previous research:
@@ -30,10 +28,6 @@ Areas Needing Research: ${researchContext.areasForResearch.join(', ')}
 Based on this research and the following analysis, generate follow-up questions:
 ${parentContent}
 ` : parentContent;
-
-      const promptContent = historyContext ? 
-        `${historyContext}\n\nBased on the above context, generate follow-up questions for: ${question}` : 
-        `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${researchPrompt}`;
 
       const followUpResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: 'POST',
@@ -53,36 +47,29 @@ ${parentContent}
             },
             {
               role: "user",
-              content: promptContent
+              content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${researchPrompt}`
             }
           ]
         })
       });
-      
       if (!followUpResponse.ok) {
         throw new Error(`Follow-up generation failed: ${followUpResponse.status}`);
       }
-      
       const data = await followUpResponse.json();
       let rawContent = data.choices[0].message.content;
       rawContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      
       let parsed;
       try {
         parsed = JSON.parse(rawContent);
       } catch (err) {
-        console.error("Failed to parse JSON:", rawContent);
         throw new Error('Failed to parse follow-up questions');
       }
-      
       if (!Array.isArray(parsed)) throw new Error('Response is not an array');
-      
       return new Response(JSON.stringify(parsed), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    // Handle main analysis with streaming
     const systemPrompt = researchContext 
       ? `You are a helpful assistant providing detailed analysis. Consider this previous research when forming your response:
 
@@ -93,84 +80,78 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}
 Start your response with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.`
       : "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.";
 
-    const userContent = historyContext ? 
-      `${historyContext}\n\nAnalyze the following question based on the above context: ${question}` : 
-      question;
-
-    console.log(`Starting OpenRouter streaming request for question: ${question}`);
-    
-    // Create response transformation stream
-    const { readable, writable } = new TransformStream();
-    const encoder = new TextEncoder();
-    const writer = writable.getWriter();
-    
-    // Make the streaming request to OpenRouter
-    fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // For analysis, stream the response from OpenRouter.
+    const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'http://localhost:5173',
         'X-Title': 'Market Analysis App',
-        'Accept': 'text/event-stream',
       },
       body: JSON.stringify({
         model: "perplexity/llama-3.1-sonar-small-128k-online",
         messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userContent }
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
+            content: question
+          }
         ],
         stream: true
       })
-    }).then(async (response) => {
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`OpenRouter error: ${response.status} - ${errorText}`);
-        writer.write(encoder.encode(`error: ${response.status}\n\n`));
-        writer.close();
-        return;
-      }
-      
-      console.log("OpenRouter stream started, processing chunks");
-      
-      if (!response.body) {
-        console.error("No response body from OpenRouter");
-        writer.write(encoder.encode("error: No response body\n\n"));
-        writer.close();
-        return;
-      }
-      
-      const reader = response.body.getReader();
-      
-      try {
-        // Use our streamContent generator to process the stream
-        for await (const content of streamContent(reader)) {
-          if (content) {
-            writer.write(encoder.encode(`data: ${content}\n\n`));
+    });
+    if (!analysisResponse.ok) {
+      throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
+    }
+
+    // A simple TransformStream that buffers incoming text until full SSE events are available.
+    let buffer = "";
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk);
+        buffer += text;
+        const parts = buffer.split("\n\n");
+        // Keep the last (possibly incomplete) part in the buffer.
+        buffer = parts.pop() || "";
+        for (const part of parts) {
+          if (part.startsWith("data: ")) {
+            const dataStr = part.slice(6).trim();
+            if (dataStr === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(dataStr);
+              // Re-emit the SSE event unmodified.
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+            } catch (err) {
+              console.error("Error parsing SSE chunk:", err);
+            }
           }
         }
-      } catch (err) {
-        console.error("Stream processing error:", err);
-        writer.write(encoder.encode(`error: ${err.message}\n\n`));
-      } finally {
-        console.log("OpenRouter stream completed");
-        writer.close();
+      },
+      flush(controller) {
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer.trim());
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+          } catch (err) {
+            console.error("Error parsing final SSE chunk:", err);
+          }
+        }
+        buffer = "";
       }
-    }).catch(err => {
-      console.error("OpenRouter request failed:", err);
-      writer.write(encoder.encode(`error: ${err.message}\n\n`));
-      writer.close();
     });
-    
-    return new Response(readable, {
+
+    return new Response(analysisResponse.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        'Connection': 'keep-alive'
       }
     });
-    
   } catch (error) {
     console.error("Function error:", error);
     return new Response(

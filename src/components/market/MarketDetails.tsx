@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -7,7 +6,6 @@ import { QADisplay } from './QADisplay';
 import { WebResearchCard } from './WebResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
-import { toast } from 'sonner';
 
 interface MarketDetailsProps {
   description?: string;
@@ -30,67 +28,49 @@ export function MarketDetails({
     queryKey: ['priceHistory', marketId, selectedChartInterval],
     queryFn: async () => {
       console.log('Fetching price history for market:', marketId);
-      try {
-        const response = await supabase.functions.invoke<{ t: string; y: number; lastUpdated?: number }[]>('price-history', {
-          body: JSON.stringify({ marketId, interval: selectedChartInterval })
-        });
+      const response = await supabase.functions.invoke<{ t: string; y: number; lastUpdated?: number }[]>('price-history', {
+        body: JSON.stringify({ marketId, interval: selectedChartInterval })
+      });
 
-        if (response.error) {
-          console.error('Price history error:', response.error);
-          toast.error(`Failed to load price history: ${response.error.message}`);
-          throw response.error;
-        }
-        
-        console.log('Price history response:', response.data);
-        return {
-          points: Array.isArray(response.data) ? response.data.map(point => ({
-            time: new Date(point.t).getTime(),
-            price: point.y * 100
-          })) : [],
-          lastUpdated: Array.isArray(response.data) && response.data[0]?.lastUpdated
-        };
-      } catch (error) {
-        console.error('Error fetching price history:', error);
-        toast.error('Could not load price history. Please try again later.');
-        throw error;
+      if (response.error) {
+        console.error('Price history error:', response.error);
+        throw response.error;
       }
+      
+      console.log('Price history response:', response.data);
+      return {
+        points: response.data.map(point => ({
+          time: new Date(point.t).getTime(),
+          price: point.y * 100
+        })),
+        lastUpdated: response.data[0]?.lastUpdated
+      };
     },
-    enabled: !!marketId,
-    retry: 3,
-    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
+    enabled: !!marketId
   });
 
   const { data: marketEvents, isLoading: isEventsLoading } = useQuery({
     queryKey: ['marketEvents', marketId],
     queryFn: async () => {
       console.log('Fetching market events for:', marketId);
-      try {
-        const { data, error } = await supabase
-          .from('market_events')
-          .select('*')
-          .eq('market_id', marketId)
-          .order('timestamp', { ascending: true });
+      const { data, error } = await supabase
+        .from('market_events')
+        .select('*')
+        .eq('market_id', marketId)
+        .order('timestamp', { ascending: true });
 
-        if (error) {
-          console.error('Market events error:', error);
-          toast.error(`Failed to load market events: ${error.message}`);
-          throw error;
-        }
-
-        console.log('Market events response:', data);
-        return data.map(event => ({
-          ...event,
-          timestamp: new Date(event.timestamp).getTime()
-        }));
-      } catch (error) {
-        console.error('Error fetching market events:', error);
-        toast.error('Could not load market events. Please try again later.');
+      if (error) {
+        console.error('Market events error:', error);
         throw error;
       }
+
+      console.log('Market events response:', data);
+      return data.map(event => ({
+        ...event,
+        timestamp: new Date(event.timestamp).getTime()
+      }));
     },
-    enabled: !!marketId,
-    retry: 3,
-    retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
+    enabled: !!marketId
   });
 
   const isLoading = isPriceLoading || isEventsLoading;
@@ -108,11 +88,6 @@ export function MarketDetails({
   };
 
   const shouldShowQADisplay = marketId && question;
-  
-  // Combine question with description to provide more context for web research
-  const fullResearchContext = question ? 
-    (description ? `${question} - ${description}` : question) : 
-    (description || 'No description available');
 
   return (
     <div className="space-y-4">
@@ -154,7 +129,7 @@ export function MarketDetails({
       {description && (
         <div>
           <WebResearchCard 
-            description={fullResearchContext} 
+            description={description} 
             marketId={marketId}
           />
         </div>
