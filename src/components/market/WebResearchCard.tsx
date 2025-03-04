@@ -368,7 +368,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     if (jsonStr === '[DONE]') continue;
                     
                     const parsed = JSON.parse(jsonStr);
-                    const content = parsed.choices?.[0]?.delta?.content || '';
+                    const content = parsed.choices?.[0]?.delta?.content || 
+                                   parsed.choices?.[0]?.message?.content || '';
                     if (content) {
                       accumulatedContent += content;
                       iterationAnalysis += content;
