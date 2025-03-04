@@ -97,14 +97,15 @@ Start your response with complete sentences, avoid markdown headers or numbered 
 
     console.log("Sending streaming request to OpenRouter");
     
-    // Send the streaming request to OpenRouter
-    const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    // Create streaming request to OpenRouter with proper headers
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'http://localhost:5173',
         'X-Title': 'Market Analysis App',
+        'Accept': 'text/event-stream',
       },
       body: JSON.stringify({
         model: "perplexity/llama-3.1-sonar-small-128k-online",
@@ -122,23 +123,54 @@ Start your response with complete sentences, avoid markdown headers or numbered 
       })
     });
 
-    if (!analysisResponse.ok) {
-      console.error("OpenRouter API error:", await analysisResponse.text());
-      throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
+    if (!openRouterResponse.ok) {
+      console.error("OpenRouter API error status:", openRouterResponse.status);
+      const errorText = await openRouterResponse.text();
+      console.error("OpenRouter API error text:", errorText);
+      throw new Error(`Analysis generation failed: ${openRouterResponse.status}`);
     }
 
-    console.log("Returning raw OpenRouter stream");
+    console.log("Received OpenRouter stream, sending to client");
     
-    // Pass through the raw stream with the correct headers
-    const headers = new Headers(analysisResponse.headers);
-    headers.set('Access-Control-Allow-Origin', '*');
-    headers.set('Access-Control-Allow-Headers', 'authorization, x-client-info, apikey, content-type');
-    headers.set('Content-Type', 'text/event-stream');
-    headers.set('Cache-Control', 'no-cache');
-    headers.set('Connection', 'keep-alive');
+    // Create a TransformStream to relay events to the client
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    const encoder = new TextEncoder();
     
-    return new Response(analysisResponse.body, {
-      headers: headers
+    // Process the OpenRouter response stream
+    const reader = openRouterResponse.body?.getReader();
+    if (!reader) throw new Error("Failed to get reader from OpenRouter response");
+    
+    // Pipe the response directly to the client
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            console.log("OpenRouter stream complete");
+            await writer.close();
+            break;
+          }
+          
+          // Forward chunks immediately without any processing
+          await writer.write(value);
+        }
+      } catch (error) {
+        console.error("Error processing OpenRouter stream:", error);
+        const errorMsg = encoder.encode(`data: {"error": "${error.message}"}\n\n`);
+        await writer.write(errorMsg);
+        await writer.close();
+      }
+    })();
+    
+    // Return the readable end of the TransformStream to the client
+    return new Response(readable, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      }
     });
     
   } catch (error) {

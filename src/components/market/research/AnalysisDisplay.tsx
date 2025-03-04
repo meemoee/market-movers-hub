@@ -12,20 +12,22 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [lastUpdateTime, setLastUpdateTime] = useState(Date.now())
+  const [displayedContent, setDisplayedContent] = useState(content || '')
   
   // Force re-render on content changes to ensure smooth streaming
   useEffect(() => {
-    if (content) {
+    if (content !== displayedContent) {
+      setDisplayedContent(content);
       setLastUpdateTime(Date.now());
     }
-  }, [content]);
+  }, [content, displayedContent]);
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
     if (!scrollRef.current) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = content?.length || 0
+    const currentContentLength = displayedContent?.length || 0
     
     // Always scroll to bottom during streaming
     if (isStreaming || currentContentLength > prevContentLength.current) {
@@ -33,7 +35,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, lastUpdateTime])
+  }, [displayedContent, isStreaming, lastUpdateTime])
   
   // Continuously scroll during streaming to ensure new content is visible
   useEffect(() => {
@@ -48,10 +50,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     return () => clearInterval(interval)
   }, [isStreaming])
 
-  if (!content) return null
-
-  // Split content by characters to force re-rendering on each update
-  const contentChars = content.split('');
+  if (!displayedContent && !isStreaming) return null
 
   return (
     <div className="relative">
@@ -61,7 +60,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
       >
         <div className="overflow-x-hidden w-full prose-pre:whitespace-pre-wrap">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
-            {content}
+            {displayedContent}
           </ReactMarkdown>
         </div>
       </ScrollArea>
