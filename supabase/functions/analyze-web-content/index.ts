@@ -30,9 +30,6 @@ serve(async (req) => {
       question: question?.substring(0, 100) || 'Not provided'
     });
 
-    // Performance log
-    const startTime = Date.now();
-
     // Determine which API to use
     const openAIKey = Deno.env.get('OPENAI_API_KEY');
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -82,15 +79,12 @@ Based solely on the information in this content:
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
-    console.log(`LLM request prepared, making API call to ${apiEndpoint.split('/').slice(0, 3).join('/')}`);
-
     // Make the streaming request
     const response = await fetch(apiEndpoint, {
       method: 'POST',
       headers: {
         ...authHeader,
         'Content-Type': 'application/json',
-        'Accept': 'text/event-stream',
       },
       body: JSON.stringify({
         model: openAIKey ? 'gpt-4o-mini' : 'openai/gpt-4o-mini',
@@ -105,11 +99,8 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`API error response: ${response.status} ${errorText}`);
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
-
-    console.log(`LLM API call successful, time taken: ${Date.now() - startTime}ms. Streaming response...`);
 
     // Return the streaming response directly without transformation
     return new Response(response.body, {

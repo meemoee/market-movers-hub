@@ -303,8 +303,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, `Focusing analysis on: ${focusText.trim()}`]);
       }
       
-      const startTime = Date.now();
-      
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: JSON.stringify(analyzePayload)
       })
@@ -314,10 +312,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         throw analysisResponse.error
       }
 
-      console.log("Received response from analyze-web-content, time taken:", Date.now() - startTime, "ms");
+      console.log("Received response from analyze-web-content")
 
       let accumulatedContent = '';
-      let iterationAnalysis = ''; 
+      let iterationAnalysis = ''; // For storing in the iterations array
       
       setIterations(prev => {
         const updatedIterations = [...prev];
@@ -348,118 +346,79 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       });
       
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-        const textDecoder = new TextDecoder();
+        const textDecoder = new TextDecoder()
         let buffer = '';
-        let lastUpdateTime = Date.now();
-        let chunkCount = 0;
         
-        while (true) {
-          const { done, value } = await reader.read();
+        const processChunk = async (chunk: string) => {
+          console.log("Processing chunk:", chunk.substring(0, 50) + "...")
           
-          if (done) {
-            console.log(`Analysis stream complete: processed ${chunkCount} chunks in ${Date.now() - startTime}ms`);
-            if (buffer.trim()) {
-              console.log("Processing final buffer content");
-              const lines = buffer.split('\n');
-              for (const line of lines) {
-                if (line.trim() && line.startsWith('data: ')) {
-                  try {
-                    const jsonStr = line.slice(6).trim();
-                    if (jsonStr === '[DONE]') continue;
-                    
-                    const parsed = JSON.parse(jsonStr);
-                    const content = parsed.choices?.[0]?.delta?.content || 
-                                   parsed.choices?.[0]?.message?.content || '';
-                    if (content) {
-                      accumulatedContent += content;
-                      iterationAnalysis += content;
-                      setAnalysis(accumulatedContent);
-                    }
-                  } catch (e) {
-                    // Expected for partial JSON chunks
-                  }
-                }
-              }
-            }
-            break;
-          }
-          
-          const chunk = textDecoder.decode(value, { stream: true });
-          buffer += chunk;
-          chunkCount++;
-          
-          const lines = buffer.split('\n\n');
-          buffer = lines.pop() || '';
-          
-          const shouldUpdateUI = chunkCount % 3 === 0 || Date.now() - lastUpdateTime > 300;
-          
-          let contentUpdated = false;
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
           
           for (const line of lines) {
             if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim();
-              if (jsonStr === '[DONE]') continue;
+              const jsonStr = line.slice(6).trim()
+              if (jsonStr === '[DONE]') continue
               
               try {
-                const parsed = JSON.parse(jsonStr);
-                const content = parsed.choices?.[0]?.delta?.content || '';
-                
+                const { content } = cleanStreamContent(jsonStr)
                 if (content) {
+                  console.log("Received content chunk:", content.substring(0, 50) + "...")
+                  setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
+                  
                   accumulatedContent += content;
-                  iterationAnalysis += content;
-                  contentUpdated = true;
+                  iterationAnalysis += content; // Save for iterations array too
+                  
+                  setAnalysis(accumulatedContent);
+                  
+                  setIterations(prev => {
+                    const updatedIterations = [...prev];
+                    const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+                    
+                    if (currentIterIndex >= 0) {
+                      updatedIterations[currentIterIndex] = {
+                        ...updatedIterations[currentIterIndex],
+                        analysis: iterationAnalysis
+                      };
+                    }
+                    
+                    return updatedIterations;
+                  });
+                  
+                  await new Promise(resolve => setTimeout(resolve, 0));
                 }
               } catch (e) {
-                // Expected during streaming for partial chunks
+                console.error('Error parsing analysis SSE data:', e)
               }
             }
           }
-          
-          if (contentUpdated && shouldUpdateUI) {
-            setAnalysis(accumulatedContent);
-            setIterations(prev => {
-              const updatedIterations = [...prev];
-              const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
-              
-              if (currentIterIndex >= 0) {
-                updatedIterations[currentIterIndex] = {
-                  ...updatedIterations[currentIterIndex],
-                  analysis: iterationAnalysis
-                };
-              }
-              
-              return updatedIterations;
-            });
-            
-            lastUpdateTime = Date.now();
-          }
-        }
+        };
         
-        setAnalysis(accumulatedContent);
-        setIterations(prev => {
-          const updatedIterations = [...prev];
-          const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+        while (true) {
+          const { done, value } = await reader.read()
           
-          if (currentIterIndex >= 0) {
-            updatedIterations[currentIterIndex] = {
-              ...updatedIterations[currentIterIndex],
-              analysis: iterationAnalysis
-            };
+          if (done) {
+            console.log("Analysis stream complete")
+            break
           }
           
-          return updatedIterations;
-        });
+          const chunk = textDecoder.decode(value)
+          console.log("Received analysis chunk of size:", chunk.length)
+          
+          await processChunk(chunk);
+        }
 
         return accumulatedContent;
-      };
+      }
 
-      const analysisReader = new Response(analysisResponse.data.body).body?.getReader();
+      const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
       
       if (!analysisReader) {
-        throw new Error('Failed to get reader from analysis response');
+        throw new Error('Failed to get reader from analysis response')
       }
       
-      const currentAnalysis = await processAnalysisStream(analysisReader);
+      const currentAnalysis = await processAnalysisStream(analysisReader)
       
       setIterations(prev => {
         const updatedIterations = [...prev];
@@ -484,7 +443,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       if (iteration === maxIterations) {
         setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
-        await extractInsights(allContent, currentAnalysis);
+        await extractInsights(allContent, currentAnalysis)
       } else {
         setProgress(prev => [...prev, "Generating new queries based on analysis..."])
         
@@ -1255,5 +1214,3 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
-
-export { WebResearchCard };

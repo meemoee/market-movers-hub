@@ -20,14 +20,15 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
-  // This effect handles scrolling when new content arrives - simplified and optimized
+  // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
     const currentContentLength = content?.length || 0
     
-    // Only auto-scroll if content is growing or if we're explicitly in streaming mode
+    // Only auto-scroll if content is growing (new chunks arriving)
+    // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
       setLastUpdateTime(Date.now())
@@ -60,14 +61,14 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
-  // Check for inactive streaming periods - optimized with reduced check frequency
+  // Check for inactive streaming periods
   useEffect(() => {
     if (!isStreaming) {
       setStreamStatus('idle')
       return
     }
     
-    // Monitor for inactive streaming with reduced frequency
+    // Monitor for inactive streaming
     const interval = setInterval(() => {
       const timeSinceUpdate = Date.now() - lastUpdateTime
       if (timeSinceUpdate > 3000) { // If no updates for 3+ seconds
@@ -75,13 +76,12 @@ export function AnalysisDisplay({
       } else {
         setStreamStatus('streaming')
       }
-    }, 2000) // Reduced polling frequency
+    }, 1000)
     
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime])
   
   // Continuously scroll during streaming when auto-scroll is enabled
-  // Optimized with reduced frequency and only when needed
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
@@ -89,7 +89,7 @@ export function AnalysisDisplay({
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
-    }, 250) // Reduced frequency
+    }, 100)
     
     return () => clearInterval(interval)
   }, [isStreaming, shouldAutoScroll])
