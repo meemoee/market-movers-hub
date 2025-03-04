@@ -875,6 +875,29 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
+  const handleResearchArea = (area: string) => {
+    setFocusText(area);
+    toast({
+      title: "Research focus set",
+      description: `Starting new research focused on: ${area}`
+    });
+    
+    setIsLoading(true);
+    setProgress([]);
+    setResults([]);
+    setError(null);
+    setAnalysis('');
+    setIsAnalyzing(false);
+    setStreamingState({ rawText: '', parsedData: null });
+    setCurrentIteration(0);
+    setIterations([]);
+    setExpandedIterations(['iteration-1']);
+    setCurrentQueries([]);
+    setCurrentQueryIndex(-1);
+    
+    handleResearch();
+  };
+
   const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
 
   useEffect(() => {
@@ -1142,7 +1165,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
       
-      <InsightsDisplay streamingState={streamingState} />
+      <InsightsDisplay 
+        streamingState={streamingState} 
+        onResearchArea={handleResearchArea}
+      />
 
       {results.length > 0 && !iterations.length && (
         <>
