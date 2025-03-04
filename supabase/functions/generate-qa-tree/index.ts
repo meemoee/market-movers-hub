@@ -95,6 +95,8 @@ Start your response with complete sentences, avoid markdown headers or numbered 
       `${historyContext}\n\nAnalyze the following question based on the above context: ${question}` : 
       question;
 
+    console.log("Sending streaming request to OpenRouter");
+    
     // Send the streaming request to OpenRouter
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
@@ -125,14 +127,18 @@ Start your response with complete sentences, avoid markdown headers or numbered 
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
     }
 
+    console.log("Returning raw OpenRouter stream");
+    
     // Pass through the raw stream with the correct headers
+    const headers = new Headers(analysisResponse.headers);
+    headers.set('Access-Control-Allow-Origin', '*');
+    headers.set('Access-Control-Allow-Headers', 'authorization, x-client-info, apikey, content-type');
+    headers.set('Content-Type', 'text/event-stream');
+    headers.set('Cache-Control', 'no-cache');
+    headers.set('Connection', 'keep-alive');
+    
     return new Response(analysisResponse.body, {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
+      headers: headers
     });
     
   } catch (error) {

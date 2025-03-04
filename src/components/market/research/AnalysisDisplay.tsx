@@ -15,10 +15,10 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
   
   // Force re-render on content changes to ensure smooth streaming
   useEffect(() => {
-    if (isStreaming && content) {
+    if (content) {
       setLastUpdateTime(Date.now());
     }
-  }, [content, isStreaming]);
+  }, [content]);
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
@@ -27,14 +27,13 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     const scrollContainer = scrollRef.current
     const currentContentLength = content?.length || 0
     
-    // Only auto-scroll if content is growing (new chunks arriving)
-    // or if we're explicitly in streaming mode
-    if (currentContentLength > prevContentLength.current || isStreaming) {
+    // Always scroll to bottom during streaming
+    if (isStreaming || currentContentLength > prevContentLength.current) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, lastUpdateTime]) // Track updates to ensure we scroll on new content
+  }, [content, isStreaming, lastUpdateTime])
   
   // Continuously scroll during streaming to ensure new content is visible
   useEffect(() => {
@@ -44,12 +43,15 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
-    }, 50) // More frequent updates for smoother scrolling
+    }, 33) // More frequent updates for smoother scrolling (approx 30fps)
     
     return () => clearInterval(interval)
   }, [isStreaming])
 
   if (!content) return null
+
+  // Split content by characters to force re-rendering on each update
+  const contentChars = content.split('');
 
   return (
     <div className="relative">
