@@ -303,6 +303,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, `Focusing analysis on: ${focusText.trim()}`]);
       }
       
+      const startTime = Date.now();
+      
       const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
         body: JSON.stringify(analyzePayload)
       })
@@ -312,10 +314,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         throw analysisResponse.error
       }
 
-      console.log("Received response from analyze-web-content")
+      console.log("Received response from analyze-web-content, time taken:", Date.now() - startTime, "ms");
 
       let accumulatedContent = '';
-      let iterationAnalysis = ''; // For storing in the iterations array
+      let iterationAnalysis = ''; 
       
       setIterations(prev => {
         const updatedIterations = [...prev];
@@ -346,79 +348,117 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       });
       
       const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-        const textDecoder = new TextDecoder()
+        const textDecoder = new TextDecoder();
         let buffer = '';
+        let lastUpdateTime = Date.now();
+        let chunkCount = 0;
         
-        const processChunk = async (chunk: string) => {
-          console.log("Processing chunk:", chunk.substring(0, 50) + "...")
+        while (true) {
+          const { done, value } = await reader.read();
           
-          buffer += chunk
-          const lines = buffer.split('\n\n')
-          buffer = lines.pop() || ''
+          if (done) {
+            console.log(`Analysis stream complete: processed ${chunkCount} chunks in ${Date.now() - startTime}ms`);
+            if (buffer.trim()) {
+              console.log("Processing final buffer content");
+              const lines = buffer.split('\n');
+              for (const line of lines) {
+                if (line.trim() && line.startsWith('data: ')) {
+                  try {
+                    const jsonStr = line.slice(6).trim();
+                    if (jsonStr === '[DONE]') continue;
+                    
+                    const parsed = JSON.parse(jsonStr);
+                    const content = parsed.choices?.[0]?.delta?.content || '';
+                    if (content) {
+                      accumulatedContent += content;
+                      iterationAnalysis += content;
+                      setAnalysis(accumulatedContent);
+                    }
+                  } catch (e) {
+                    // Expected for partial JSON chunks
+                  }
+                }
+              }
+            }
+            break;
+          }
+          
+          const chunk = textDecoder.decode(value, { stream: true });
+          buffer += chunk;
+          chunkCount++;
+          
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
+          
+          const shouldUpdateUI = chunkCount % 3 === 0 || Date.now() - lastUpdateTime > 300;
+          
+          let contentUpdated = false;
           
           for (const line of lines) {
             if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              if (jsonStr === '[DONE]') continue
+              const jsonStr = line.slice(6).trim();
+              if (jsonStr === '[DONE]') continue;
               
               try {
-                const { content } = cleanStreamContent(jsonStr)
+                const parsed = JSON.parse(jsonStr);
+                const content = parsed.choices?.[0]?.delta?.content || '';
+                
                 if (content) {
-                  console.log("Received content chunk:", content.substring(0, 50) + "...")
-                  setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
-                  
                   accumulatedContent += content;
-                  iterationAnalysis += content; // Save for iterations array too
-                  
-                  setAnalysis(accumulatedContent);
-                  
-                  setIterations(prev => {
-                    const updatedIterations = [...prev];
-                    const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
-                    
-                    if (currentIterIndex >= 0) {
-                      updatedIterations[currentIterIndex] = {
-                        ...updatedIterations[currentIterIndex],
-                        analysis: iterationAnalysis
-                      };
-                    }
-                    
-                    return updatedIterations;
-                  });
-                  
-                  await new Promise(resolve => setTimeout(resolve, 0));
+                  iterationAnalysis += content;
+                  contentUpdated = true;
                 }
               } catch (e) {
-                console.error('Error parsing analysis SSE data:', e)
+                // Expected during streaming for partial chunks
               }
             }
           }
-        };
-        
-        while (true) {
-          const { done, value } = await reader.read()
           
-          if (done) {
-            console.log("Analysis stream complete")
-            break
+          if (contentUpdated && shouldUpdateUI) {
+            setAnalysis(accumulatedContent);
+            setIterations(prev => {
+              const updatedIterations = [...prev];
+              const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+              
+              if (currentIterIndex >= 0) {
+                updatedIterations[currentIterIndex] = {
+                  ...updatedIterations[currentIterIndex],
+                  analysis: iterationAnalysis
+                };
+              }
+              
+              return updatedIterations;
+            });
+            
+            lastUpdateTime = Date.now();
+          }
+        }
+        
+        setAnalysis(accumulatedContent);
+        setIterations(prev => {
+          const updatedIterations = [...prev];
+          const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+          
+          if (currentIterIndex >= 0) {
+            updatedIterations[currentIterIndex] = {
+              ...updatedIterations[currentIterIndex],
+              analysis: iterationAnalysis
+            };
           }
           
-          const chunk = textDecoder.decode(value)
-          console.log("Received analysis chunk of size:", chunk.length)
-          
-          await processChunk(chunk);
-        }
+          return updatedIterations;
+        });
 
         return accumulatedContent;
-      }
+      };
 
-      const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
+      const analysisReader = new Response(analysisResponse.data.body).body?.getReader();
       
       if (!analysisReader) {
-        throw new Error('Failed to get reader from analysis response')
+        throw new Error('Failed to get reader from analysis response');
       }
       
-      const currentAnalysis = await processAnalysisStream(analysisReader)
+      const currentAnalysis = await processAnalysisStream(analysisReader);
       
       setIterations(prev => {
         const updatedIterations = [...prev];
@@ -443,7 +483,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       if (iteration === maxIterations) {
         setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
-        await extractInsights(allContent, currentAnalysis)
+        await extractInsights(allContent, currentAnalysis);
       } else {
         setProgress(prev => [...prev, "Generating new queries based on analysis..."])
         
@@ -1214,3 +1254,5 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
+
+export { WebResearchCard };
