@@ -1,4 +1,3 @@
-
 /**
  * Helper functions for processing OpenRouter streams in edge functions
  */
@@ -14,12 +13,13 @@ export function processStreamLine(line: string): string {
   }
   
   try {
-    // Handle data: prefix if present
-    if (!line.startsWith('data:')) {
+    // Handle data: prefix
+    const dataPrefix = 'data: ';
+    if (!line.startsWith(dataPrefix)) {
       return '';
     }
     
-    const jsonStr = line.slice(5).trim();
+    const jsonStr = line.slice(dataPrefix.length).trim();
     
     // Handle the '[DONE]' message
     if (jsonStr === '[DONE]') {
@@ -53,22 +53,57 @@ export async function* transformStream(stream: ReadableStream): AsyncGenerator<s
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  let lastChunkTime = Date.now();
   
   try {
     while (true) {
       const { done, value } = await reader.read();
       
-      if (done) break;
+      if (done) {
+        break;
+      }
       
-      // Decode and append to buffer
+      // Decode chunk and add to buffer
       buffer += decoder.decode(value, { stream: true });
       
-      // Process complete lines
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
+      // Split on double newlines which separate SSE events
+      const events = buffer.split('\n\n');
       
+      // Keep the last potentially incomplete event in the buffer
+      buffer = events.pop() || '';
+      
+      for (const event of events) {
+        // Process each line in the event
+        const lines = event.split('\n');
+        for (const line of lines) {
+          const content = processStreamLine(line);
+          if (content) {
+            yield content;
+            lastChunkTime = Date.now();
+          }
+        }
+      }
+      
+      // If we've been holding data in the buffer for too long (500ms), 
+      // try to process it even if it doesn't end with a newline
+      if (buffer && Date.now() - lastChunkTime > 500) {
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          const content = processStreamLine(line);
+          if (content) {
+            yield content;
+            lastChunkTime = Date.now();
+          }
+        }
+      }
+    }
+    
+    // Process any remaining data in the buffer
+    if (buffer) {
+      const lines = buffer.split('\n');
       for (const line of lines) {
-        // Process each complete line
         const content = processStreamLine(line);
         if (content) {
           yield content;
@@ -76,13 +111,6 @@ export async function* transformStream(stream: ReadableStream): AsyncGenerator<s
       }
     }
     
-    // Process any remaining data
-    if (buffer) {
-      const content = processStreamLine(buffer);
-      if (content) {
-        yield content;
-      }
-    }
   } finally {
     reader.releaseLock();
   }

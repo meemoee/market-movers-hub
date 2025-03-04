@@ -1,5 +1,4 @@
-
-import { useLayoutEffect, useRef, useEffect, useState } from "react"
+import { useLayoutEffect, useRef, useEffect, useState, useCallback } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
@@ -11,52 +10,86 @@ interface AnalysisDisplayProps {
 export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
-  const [lastUpdateTime, setLastUpdateTime] = useState(Date.now())
   const [displayedContent, setDisplayedContent] = useState(content || '')
+  const lastUpdateRef = useRef(Date.now())
+  const animationFrameRef = useRef<number | null>(null)
   
-  // Update displayed content immediately when new content arrives
+  // Update displayed content with minimal debounce to ensure smooth UI updates
   useEffect(() => {
-    // Only update if the content has actually changed
     if (content !== displayedContent) {
-      setDisplayedContent(content);
-      setLastUpdateTime(Date.now());
+      // If content has changed and it's been at least 16ms since last update (≈60fps)
+      if (Date.now() - lastUpdateRef.current >= 16) {
+        setDisplayedContent(content);
+        lastUpdateRef.current = Date.now();
+      } else {
+        // Otherwise schedule an update in the next animation frame
+        if (animationFrameRef.current === null) {
+          animationFrameRef.current = requestAnimationFrame(() => {
+            setDisplayedContent(content);
+            lastUpdateRef.current = Date.now();
+            animationFrameRef.current = null;
+          });
+        }
+      }
     }
   }, [content, displayedContent]);
   
-  // Scroll to bottom when new content arrives during streaming
-  useLayoutEffect(() => {
-    if (!scrollRef.current) return
+  // Force periodic re-renders during streaming to ensure content updates
+  useEffect(() => {
+    if (!isStreaming) return;
     
-    const scrollContainer = scrollRef.current
-    const currentContentLength = displayedContent?.length || 0
+    const interval = setInterval(() => {
+      if (content !== displayedContent) {
+        setDisplayedContent(content);
+        lastUpdateRef.current = Date.now();
+      }
+    }, 100); // Check more frequently to catch any updates
+    
+    return () => clearInterval(interval);
+  }, [isStreaming, content, displayedContent]);
+  
+  // Auto-scroll logic with useLayoutEffect to ensure it happens before paint
+  const scrollToBottom = useCallback(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, []);
+  
+  useLayoutEffect(() => {
+    if (!scrollRef.current) return;
+    
+    const currentContentLength = displayedContent?.length || 0;
     
     // Always scroll to bottom during streaming or when content grows
     if (isStreaming || currentContentLength > prevContentLength.current) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight
+      scrollToBottom();
     }
     
-    prevContentLength.current = currentContentLength
-  }, [displayedContent, isStreaming, lastUpdateTime])
+    prevContentLength.current = currentContentLength;
+  }, [displayedContent, isStreaming, scrollToBottom]);
   
   // Ensure continuous scrolling during streaming with requestAnimationFrame
   useEffect(() => {
-    if (!isStreaming || !scrollRef.current) return
+    if (!isStreaming || !scrollRef.current) return;
     
-    let animationId: number;
+    let frameId: number;
+    const scrollLoop = () => {
+      scrollToBottom();
+      frameId = requestAnimationFrame(scrollLoop);
+    };
     
-    const scrollToBottom = () => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    frameId = requestAnimationFrame(scrollLoop);
+    
+    return () => {
+      cancelAnimationFrame(frameId);
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
       }
-      animationId = requestAnimationFrame(scrollToBottom);
-    }
-    
-    animationId = requestAnimationFrame(scrollToBottom);
-    
-    return () => cancelAnimationFrame(animationId);
-  }, [isStreaming])
+    };
+  }, [isStreaming, scrollToBottom]);
 
-  if (!displayedContent && !isStreaming) return null
+  if (!displayedContent && !isStreaming) return null;
 
   return (
     <div className="relative">
@@ -81,5 +114,5 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
         </div>
       )}
     </div>
-  )
+  );
 }
