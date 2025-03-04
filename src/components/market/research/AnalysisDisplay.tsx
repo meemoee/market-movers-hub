@@ -11,7 +11,7 @@ interface AnalysisDisplayProps {
 export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   
-  // Simple effect to scroll to bottom when content changes or during streaming
+  // Scroll to bottom when content changes or during streaming
   useEffect(() => {
     if (!scrollRef.current || !content) return
     
@@ -21,12 +21,12 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
       }
     }
     
-    // Use requestAnimationFrame for smoother scrolling
+    scrollToBottom()
+    
+    // For continuous scrolling during streaming
     if (isStreaming) {
-      const scrollFrame = requestAnimationFrame(scrollToBottom)
-      return () => cancelAnimationFrame(scrollFrame)
-    } else {
-      scrollToBottom()
+      const intervalId = setInterval(scrollToBottom, 100)
+      return () => clearInterval(intervalId)
     }
   }, [content, isStreaming])
   

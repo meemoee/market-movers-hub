@@ -1,12 +1,9 @@
 
 export class StreamProcessor {
-  private buffer: string = '';
-
   processChunk(text: string): string {
-    // Just extract content from SSE and return it directly
     const lines = text.split('\n');
-    
     let content = '';
+    
     for (const line of lines) {
       if (line.startsWith('data: ')) {
         const jsonStr = line.slice(6).trim();
@@ -29,12 +26,10 @@ export class StreamProcessor {
   }
 
   flush(): string {
-    const result = this.buffer;
-    this.clear();
-    return result;
+    return '';
   }
 
   clear(): void {
-    this.buffer = '';
+    // No buffer to clear in this simplified implementation
   }
 }

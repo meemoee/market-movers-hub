@@ -105,15 +105,21 @@ Start your response with complete sentences, avoid markdown headers or numbered 
         stream: true
       })
     });
+
     if (!analysisResponse.ok) {
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
     }
 
-    // Create a simple passthrough stream to directly forward the SSE events
+    // Create a transform stream to directly pass through the SSE events
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
-    const reader = analysisResponse.body!.getReader();
+    const reader = analysisResponse.body?.getReader();
     
+    if (!reader) {
+      throw new Error("Failed to get reader from response");
+    }
+    
+    // Process the stream in the background
     (async () => {
       try {
         while (true) {
@@ -122,15 +128,16 @@ Start your response with complete sentences, avoid markdown headers or numbered 
             await writer.close();
             break;
           }
-          // Just forward the raw chunk directly
+          // Pass through the raw chunks directly
           await writer.write(value);
         }
-      } catch (e) {
-        console.error("Stream error:", e);
-        writer.abort(e);
+      } catch (error) {
+        console.error("Stream processing error:", error);
+        writer.abort(error);
       }
     })();
 
+    // Return the transformed stream
     return new Response(readable, {
       headers: {
         ...corsHeaders,
