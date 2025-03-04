@@ -1,3 +1,4 @@
+
 import { useLayoutEffect, useRef, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -27,7 +28,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     prevContentLength.current = currentContentLength
   }, [content, isStreaming]) // Track both content changes and streaming state
   
-  // Continuously scroll during streaming
+  // Continuously scroll during streaming to ensure new content is visible
   useEffect(() => {
     if (!isStreaming || !scrollRef.current) return
     
@@ -35,7 +36,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
-    }, 100)
+    }, 50) // More frequent updates for smoother scrolling
     
     return () => clearInterval(interval)
   }, [isStreaming])
@@ -48,7 +49,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
         className="h-[200px] rounded-md border p-4 bg-accent/5"
         ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full">
+        <div className="overflow-x-hidden w-full prose-pre:whitespace-pre-wrap">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
             {content}
           </ReactMarkdown>

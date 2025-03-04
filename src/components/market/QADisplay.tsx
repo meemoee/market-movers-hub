@@ -230,6 +230,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   const cleanStreamContent = (chunk: string): { content: string; citations: string[] } => {
+    if (!chunk.trim() || chunk.includes('OPENROUTER PROCESSING')) {
+      return { content: '', citations: [] };
+    }
+    
     try {
       let dataStr = chunk;
       if (dataStr.startsWith('data: ')) {
@@ -242,10 +246,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
       
       const parsed = JSON.parse(dataStr);
+      
       const content = parsed.choices?.[0]?.delta?.content || 
                      parsed.choices?.[0]?.message?.content || '';
-      return { content, citations: [] };
+                     
+      const citations = parsed.citations || [];
+      
+      return { content, citations };
     } catch (e) {
+      console.error('Error processing stream chunk:', e, 'Chunk:', chunk);
       return { content: '', citations: [] };
     }
   };
@@ -254,17 +263,19 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     let fullContent = '';
     let fullCitations: string[] = [];
     let buffer = '';
+    let lastUpdateTime = Date.now();
+    const updateInterval = 50; // Update UI every 50ms to ensure smooth streaming
 
     try {
       while (true) {
         const { done, value } = await reader.read();
+        
         if (done) {
           if (buffer.trim()) {
             processPart(buffer);
           }
           
-          const node = qaData.find(n => n.id === nodeId) || 
-                     rootExtensions.find(n => n.id === nodeId);
+          const node = findNodeById(nodeId);
           if (node && node.analysis) {
             console.log('Evaluating node after stream completion:', nodeId);
             await evaluateQAPair(node);
@@ -274,7 +285,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         
         const decoded = new TextDecoder().decode(value);
         buffer += decoded;
-
+        
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
         
@@ -283,36 +294,66 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             processPart(part);
           }
         }
+        
+        const now = Date.now();
+        if (now - lastUpdateTime >= updateInterval) {
+          updateUI();
+          lastUpdateTime = now;
+        }
       }
+      
+      updateUI();
+      return fullContent;
+      
     } catch (error) {
       console.error('Error processing stream:', error);
       throw error;
     }
+    
+    function findNodeById(id: string): QANode | undefined {
+      const findInNodes = (nodes: QANode[]): QANode | undefined => {
+        for (const node of nodes) {
+          if (node.id === id) {
+            return node;
+          }
+          if (node.children.length > 0) {
+            const found = findInNodes(node.children);
+            if (found) return found;
+          }
+        }
+        return undefined;
+      };
+      
+      const mainNode = findInNodes(qaData);
+      if (mainNode) return mainNode;
+      
+      return rootExtensions.find(ext => ext.id === id);
+    }
 
     function processPart(text: string) {
-      const lines = text.split('\n').filter(line => line.startsWith('data: '));
+      const lines = text.split('\n').filter(line => line.trim() && (line.startsWith('data: ') || line.includes('{')));
       
       for (const line of lines) {
-        const jsonStr = line.slice(6).trim();
-        if (jsonStr === '[DONE]') continue;
-        
-        const { content, citations } = cleanStreamContent(jsonStr);
+        const { content, citations } = cleanStreamContent(line);
         
         if (content) {
           fullContent += content;
-          fullCitations = [...new Set([...fullCitations, ...citations])];
-
-          setStreamingContent(prev => {
-            return {
-              ...prev,
-              [nodeId]: {
-                content: fullContent,
-                citations: fullCitations,
-              },
-            };
-          });
+          
+          if (citations && citations.length > 0) {
+            fullCitations = [...new Set([...fullCitations, ...citations])];
+          }
         }
       }
+    }
+    
+    function updateUI() {
+      setStreamingContent(prev => ({
+        ...prev,
+        [nodeId]: {
+          content: fullContent,
+          citations: fullCitations,
+        },
+      }));
       
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
@@ -331,9 +372,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           });
         return updateNode(prev);
       });
+      
+      setRootExtensions(prev => 
+        prev.map(ext => 
+          ext.id === nodeId 
+            ? { ...ext, analysis: fullContent, citations: fullCitations } 
+            : ext
+        )
+      );
     }
-
-    return fullContent;
   };
 
   const flattenQATree = (nodes: QANode[]): string => {
