@@ -1,6 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { streamContent } from "./streamProcessor.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
 
@@ -18,7 +19,7 @@ serve(async (req) => {
     const { question, marketId, parentContent, isFollowUp, researchContext, historyContext } = await req.json();
     if (!question) throw new Error('Question is required');
 
-    // If this is a follow-up question, process it and return JSON.
+    // Handle follow-up questions
     if (isFollowUp && parentContent) {
       const researchPrompt = researchContext ? `
 Consider this previous research:
@@ -81,6 +82,7 @@ ${parentContent}
       });
     }
 
+    // Handle main analysis with streaming
     const systemPrompt = researchContext 
       ? `You are a helpful assistant providing detailed analysis. Consider this previous research when forming your response:
 
@@ -95,14 +97,14 @@ Start your response with complete sentences, avoid markdown headers or numbered 
       `${historyContext}\n\nAnalyze the following question based on the above context: ${question}` : 
       question;
 
-    console.log("Sending streaming request to OpenRouter");
+    console.log(`Starting OpenRouter streaming request for question: ${question}`);
     
-    // Create a TransformStream to handle streaming back to the client
+    // Create response transformation stream
     const { readable, writable } = new TransformStream();
     const encoder = new TextEncoder();
     const writer = writable.getWriter();
     
-    // Start a fetch to the OpenRouter API but don't await it
+    // Make the streaming request to OpenRouter
     fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -115,63 +117,51 @@ Start your response with complete sentences, avoid markdown headers or numbered 
       body: JSON.stringify({
         model: "perplexity/llama-3.1-sonar-small-128k-online",
         messages: [
-          {
-            role: "system",
-            content: systemPrompt
-          },
-          {
-            role: "user",
-            content: userContent
-          }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent }
         ],
         stream: true
       })
-    }).then(async (openRouterResponse) => {
-      if (!openRouterResponse.ok) {
-        const errorText = await openRouterResponse.text();
-        console.error("OpenRouter API error:", openRouterResponse.status, errorText);
-        writer.write(encoder.encode(`data: {"error":"OpenRouter API error: ${openRouterResponse.status}"}\n\n`));
+    }).then(async (response) => {
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`OpenRouter error: ${response.status} - ${errorText}`);
+        writer.write(encoder.encode(`error: ${response.status}\n\n`));
         writer.close();
         return;
       }
       
-      console.log("Received OpenRouter stream, piping to client");
+      console.log("OpenRouter stream started, processing chunks");
       
-      // Get the reader from the OpenRouter response
-      const reader = openRouterResponse.body?.getReader();
-      if (!reader) {
-        console.error("Failed to get reader from OpenRouter response");
-        writer.write(encoder.encode(`data: {"error":"Failed to get reader from OpenRouter response"}\n\n`));
+      if (!response.body) {
+        console.error("No response body from OpenRouter");
+        writer.write(encoder.encode("error: No response body\n\n"));
         writer.close();
         return;
       }
       
-      // Pipe the OpenRouter response to the client
+      const reader = response.body.getReader();
+      
       try {
-        const decoder = new TextDecoder();
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          
-          // Forward the raw SSE data directly to the client
-          const chunk = decoder.decode(value, { stream: true });
-          console.log("Streaming chunk to client:", chunk.length, "bytes");
-          writer.write(encoder.encode(chunk));
+        // Use our streamContent generator to process the stream
+        for await (const content of streamContent(reader)) {
+          if (content) {
+            writer.write(encoder.encode(`data: ${content}\n\n`));
+          }
         }
-      } catch (error) {
-        console.error("Error processing OpenRouter stream:", error);
-        writer.write(encoder.encode(`data: {"error":"Error processing stream: ${error.message}"}\n\n`));
+      } catch (err) {
+        console.error("Stream processing error:", err);
+        writer.write(encoder.encode(`error: ${err.message}\n\n`));
       } finally {
+        console.log("OpenRouter stream completed");
         writer.close();
-        reader.releaseLock();
       }
-    }).catch((error) => {
-      console.error("Fetch to OpenRouter failed:", error);
-      writer.write(encoder.encode(`data: {"error":"Fetch to OpenRouter failed: ${error.message}"}\n\n`));
+    }).catch(err => {
+      console.error("OpenRouter request failed:", err);
+      writer.write(encoder.encode(`error: ${err.message}\n\n`));
       writer.close();
     });
     
-    // Return the readable side of the transform stream to the client immediately
     return new Response(readable, {
       headers: {
         ...corsHeaders,

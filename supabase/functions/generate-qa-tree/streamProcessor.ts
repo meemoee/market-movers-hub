@@ -1,116 +1,73 @@
+
 /**
- * Helper functions for processing OpenRouter streams in edge functions
+ * Ultra-simplified stream processor that directly forwards SSE events
  */
 
 /**
- * Processes a raw stream line from OpenRouter to extract content
- * @param line The raw line from the stream response
- * @returns The extracted content or empty string
+ * Parses a single SSE line to extract content
  */
 export function processStreamLine(line: string): string {
-  if (!line || !line.trim()) {
+  if (!line || !line.startsWith('data: ')) {
+    return '';
+  }
+  
+  const data = line.slice(6).trim();
+  
+  // Skip [DONE] marker
+  if (data === '[DONE]') {
     return '';
   }
   
   try {
-    // Handle data: prefix
-    const dataPrefix = 'data: ';
-    if (!line.startsWith(dataPrefix)) {
-      return '';
-    }
-    
-    const jsonStr = line.slice(dataPrefix.length).trim();
-    
-    // Handle the '[DONE]' message
-    if (jsonStr === '[DONE]') {
-      return '';
-    }
-    
-    // Parse JSON data
-    const parsed = JSON.parse(jsonStr);
-    
-    // Extract content from delta structure (streaming format)
-    if (parsed.choices?.[0]?.delta?.content) {
-      return parsed.choices[0].delta.content;
-    }
-    
-    // Also handle non-streaming format as fallback
-    if (parsed.choices?.[0]?.message?.content) {
-      return parsed.choices[0].message.content;
-    }
-    
-    return '';
+    const parsed = JSON.parse(data);
+    return parsed.choices?.[0]?.delta?.content || 
+           parsed.choices?.[0]?.message?.content || '';
   } catch (e) {
-    console.error('Error processing stream line:', e, 'Line:', line);
-    return ''; // Return empty string on error
+    console.error('Error parsing SSE line:', e);
+    return '';
   }
 }
 
 /**
- * Transform a raw SSE stream into processed chunks for the client
+ * Transforms a ReadableStream of SSE events into a stream of content chunks
  */
-export async function* transformStream(stream: ReadableStream): AsyncGenerator<string> {
-  const reader = stream.getReader();
+export async function* streamContent(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   let buffer = '';
-  let lastChunkTime = Date.now();
   
   try {
     while (true) {
       const { done, value } = await reader.read();
       
       if (done) {
+        // Process any remaining data in buffer
+        if (buffer.includes('data:')) {
+          const lines = buffer.split('\n');
+          for (const line of lines) {
+            const content = processStreamLine(line);
+            if (content) yield content;
+          }
+        }
         break;
       }
       
-      // Decode chunk and add to buffer
+      // Add new chunk to buffer
       buffer += decoder.decode(value, { stream: true });
       
-      // Split on double newlines which separate SSE events
-      const events = buffer.split('\n\n');
+      // Process complete SSE events (split by double newlines)
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
       
-      // Keep the last potentially incomplete event in the buffer
-      buffer = events.pop() || '';
-      
-      for (const event of events) {
-        // Process each line in the event
-        const lines = event.split('\n');
-        for (const line of lines) {
-          const content = processStreamLine(line);
-          if (content) {
-            yield content;
-            lastChunkTime = Date.now();
-          }
-        }
-      }
-      
-      // If we've been holding data in the buffer for too long (500ms), 
-      // try to process it even if it doesn't end with a newline
-      if (buffer && Date.now() - lastChunkTime > 500) {
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      for (const part of parts) {
+        if (!part.trim()) continue;
         
+        const lines = part.split('\n');
         for (const line of lines) {
           const content = processStreamLine(line);
-          if (content) {
-            yield content;
-            lastChunkTime = Date.now();
-          }
+          if (content) yield content;
         }
       }
     }
-    
-    // Process any remaining data in the buffer
-    if (buffer) {
-      const lines = buffer.split('\n');
-      for (const line of lines) {
-        const content = processStreamLine(line);
-        if (content) {
-          yield content;
-        }
-      }
-    }
-    
   } finally {
     reader.releaseLock();
   }

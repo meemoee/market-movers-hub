@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useEffect, useState, useCallback } from "react"
+
+import { useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
@@ -9,85 +10,51 @@ interface AnalysisDisplayProps {
 
 export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const prevContentLength = useRef(content?.length || 0)
   const [displayedContent, setDisplayedContent] = useState(content || '')
-  const lastUpdateRef = useRef(Date.now())
-  const animationFrameRef = useRef<number | null>(null)
   
-  // Update displayed content with minimal debounce to ensure smooth UI updates
+  // Update content with minimal debounce for streaming
   useEffect(() => {
     if (content !== displayedContent) {
-      // If content has changed and it's been at least 16ms since last update (≈60fps)
-      if (Date.now() - lastUpdateRef.current >= 16) {
+      // Use requestAnimationFrame for smooth updates
+      const frame = requestAnimationFrame(() => {
         setDisplayedContent(content);
-        lastUpdateRef.current = Date.now();
-      } else {
-        // Otherwise schedule an update in the next animation frame
-        if (animationFrameRef.current === null) {
-          animationFrameRef.current = requestAnimationFrame(() => {
-            setDisplayedContent(content);
-            lastUpdateRef.current = Date.now();
-            animationFrameRef.current = null;
-          });
-        }
-      }
+      });
+      
+      return () => cancelAnimationFrame(frame);
     }
   }, [content, displayedContent]);
   
-  // Force periodic re-renders during streaming to ensure content updates
-  useEffect(() => {
-    if (!isStreaming) return;
-    
-    const interval = setInterval(() => {
-      if (content !== displayedContent) {
-        setDisplayedContent(content);
-        lastUpdateRef.current = Date.now();
-      }
-    }, 100); // Check more frequently to catch any updates
-    
-    return () => clearInterval(interval);
-  }, [isStreaming, content, displayedContent]);
-  
-  // Auto-scroll logic with useLayoutEffect to ensure it happens before paint
-  const scrollToBottom = useCallback(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, []);
-  
-  useLayoutEffect(() => {
-    if (!scrollRef.current) return;
-    
-    const currentContentLength = displayedContent?.length || 0;
-    
-    // Always scroll to bottom during streaming or when content grows
-    if (isStreaming || currentContentLength > prevContentLength.current) {
-      scrollToBottom();
-    }
-    
-    prevContentLength.current = currentContentLength;
-  }, [displayedContent, isStreaming, scrollToBottom]);
-  
-  // Ensure continuous scrolling during streaming with requestAnimationFrame
+  // Auto-scroll to bottom during streaming
   useEffect(() => {
     if (!isStreaming || !scrollRef.current) return;
     
-    let frameId: number;
-    const scrollLoop = () => {
-      scrollToBottom();
-      frameId = requestAnimationFrame(scrollLoop);
-    };
-    
-    frameId = requestAnimationFrame(scrollLoop);
-    
-    return () => {
-      cancelAnimationFrame(frameId);
-      if (animationFrameRef.current !== null) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+    // Scroll when content changes
+    const scrollToBottom = () => {
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
       }
     };
-  }, [isStreaming, scrollToBottom]);
+    
+    scrollToBottom();
+    
+    // Also create a continuous scroll loop during streaming
+    let frameId: number | null = null;
+    
+    if (isStreaming) {
+      const scrollLoop = () => {
+        scrollToBottom();
+        frameId = requestAnimationFrame(scrollLoop);
+      };
+      
+      frameId = requestAnimationFrame(scrollLoop);
+    }
+    
+    return () => {
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, [isStreaming, displayedContent]);
 
   if (!displayedContent && !isStreaming) return null;
 
