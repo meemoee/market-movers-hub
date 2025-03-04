@@ -18,6 +18,7 @@ export function AnalysisDisplay({
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
+  const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
@@ -31,10 +32,14 @@ export function AnalysisDisplay({
     if (currentContentLength > prevContentLength.current || isStreaming) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
       setLastUpdateTime(Date.now())
+      
+      if (isStreaming) {
+        setStreamStatus('streaming')
+      }
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll]) 
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -56,6 +61,26 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
+  // Check for inactive streaming periods
+  useEffect(() => {
+    if (!isStreaming) {
+      setStreamStatus('idle')
+      return
+    }
+    
+    // Monitor for inactive streaming
+    const interval = setInterval(() => {
+      const timeSinceUpdate = Date.now() - lastUpdateTime
+      if (timeSinceUpdate > 3000) { // If no updates for 3+ seconds
+        setStreamStatus('waiting')
+      } else {
+        setStreamStatus('streaming')
+      }
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [isStreaming, lastUpdateTime])
+  
   // Continuously scroll during streaming when auto-scroll is enabled
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
@@ -70,10 +95,6 @@ export function AnalysisDisplay({
   }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
-
-  // Calculate how long since the last update
-  const timeSinceUpdate = Date.now() - lastUpdateTime
-  const isWaiting = isStreaming && timeSinceUpdate > 3000 // If no updates for 3+ seconds
 
   return (
     <div className="relative">
@@ -93,12 +114,12 @@ export function AnalysisDisplay({
         <div className="absolute bottom-2 right-2">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
-              {isWaiting ? "Waiting for data..." : "Streaming..."}
+              {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
             </span>
             <div className="flex space-x-1">
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
-              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-300" />
+              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-150' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-300' : 'bg-muted-foreground'}`} />
             </div>
           </div>
         </div>
