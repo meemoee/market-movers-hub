@@ -1142,10 +1142,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
       
-      <InsightsDisplay 
-        probability={streamingState.parsedData?.probability || ""} 
-        areasForResearch={streamingState.parsedData?.areasForResearch || []} 
-      />
+      <InsightsDisplay streamingState={streamingState} />
 
       {results.length > 0 && !iterations.length && (
         <>
