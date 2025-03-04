@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -108,43 +109,8 @@ Start your response with complete sentences, avoid markdown headers or numbered 
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
     }
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available.
-    let buffer = "";
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk);
-        buffer += text;
-        const parts = buffer.split("\n\n");
-        // Keep the last (possibly incomplete) part in the buffer.
-        buffer = parts.pop() || "";
-        for (const part of parts) {
-          if (part.startsWith("data: ")) {
-            const dataStr = part.slice(6).trim();
-            if (dataStr === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(dataStr);
-              // Re-emit the SSE event unmodified.
-              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
-            } catch (err) {
-              console.error("Error parsing SSE chunk:", err);
-            }
-          }
-        }
-      },
-      flush(controller) {
-        if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer.trim());
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
-          } catch (err) {
-            console.error("Error parsing final SSE chunk:", err);
-          }
-        }
-        buffer = "";
-      }
-    });
-
-    return new Response(analysisResponse.body?.pipeThrough(transformStream), {
+    // Return the raw stream response without additional transformation
+    return new Response(analysisResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

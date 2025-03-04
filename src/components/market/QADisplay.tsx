@@ -246,28 +246,32 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                      parsed.choices?.[0]?.message?.content || '';
       return { content, citations: [] };
     } catch (e) {
-      console.debug('Chunk parse error (expected during streaming):', e);
       return { content: '', citations: [] };
     }
   };
 
   const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>, nodeId: string): Promise<string> => {
-    let accumulatedContent = '';
-    let accumulatedCitations: string[] = [];
+    let fullContent = '';
+    let fullCitations: string[] = [];
     let buffer = '';
 
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
+          if (buffer.trim()) {
+            processPart(buffer);
+          }
+          
           const node = qaData.find(n => n.id === nodeId) || 
-                      rootExtensions.find(n => n.id === nodeId);
+                     rootExtensions.find(n => n.id === nodeId);
           if (node && node.analysis) {
             console.log('Evaluating node after stream completion:', nodeId);
             await evaluateQAPair(node);
           }
           break;
         }
+        
         const decoded = new TextDecoder().decode(value);
         buffer += decoded;
 
@@ -287,50 +291,49 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
     function processPart(text: string) {
       const lines = text.split('\n').filter(line => line.startsWith('data: '));
+      
       for (const line of lines) {
         const jsonStr = line.slice(6).trim();
         if (jsonStr === '[DONE]') continue;
+        
         const { content, citations } = cleanStreamContent(jsonStr);
         
         if (content) {
-          accumulatedContent += content;
-          accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+          fullContent += content;
+          fullCitations = [...new Set([...fullCitations, ...citations])];
 
           setStreamingContent(prev => {
-            const prevNodeContent = prev[nodeId]?.content || '';
-            const newContent = prevNodeContent + content;
-            
             return {
               ...prev,
               [nodeId]: {
-                content: newContent,
-                citations: accumulatedCitations,
+                content: fullContent,
+                citations: fullCitations,
               },
             };
           });
-          
-          setQaData(prev => {
-            const updateNode = (nodes: QANode[]): QANode[] =>
-              nodes.map(node => {
-                if (node.id === nodeId) {
-                  return {
-                    ...node,
-                    analysis: accumulatedContent,
-                    citations: accumulatedCitations,
-                  };
-                }
-                if (node.children.length > 0) {
-                  return { ...node, children: updateNode(node.children) };
-                }
-                return node;
-              });
-            return updateNode(prev);
-          });
         }
       }
+      
+      setQaData(prev => {
+        const updateNode = (nodes: QANode[]): QANode[] =>
+          nodes.map(node => {
+            if (node.id === nodeId) {
+              return {
+                ...node,
+                analysis: fullContent,
+                citations: fullCitations,
+              };
+            }
+            if (node.children.length > 0) {
+              return { ...node, children: updateNode(node.children) };
+            }
+            return node;
+          });
+        return updateNode(prev);
+      });
     }
 
-    return accumulatedContent;
+    return fullContent;
   };
 
   const flattenQATree = (nodes: QANode[]): string => {
@@ -929,8 +932,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
     const isExpanded = expandedNodes.has(node.id);
-    const analysisContent = isStreaming ? (streamContent?.content || '') : node.analysis;
-    const citations = isStreaming ? streamContent?.citations : node.citations;
+    const analysisContent = isStreaming && streamContent 
+      ? streamContent.content || '' 
+      : node.analysis || '';
+    const citations = isStreaming && streamContent 
+      ? streamContent.citations 
+      : node.citations;
     
     const nodeExtensions = getNodeExtensions(node.id);
     
