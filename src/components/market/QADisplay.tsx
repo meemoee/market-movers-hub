@@ -328,7 +328,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           setStreamingContent(prev => ({
             ...prev,
             [nodeId]: {
-              content: prev[nodeId]?.content ? prev[nodeId].content + content : content,
+              content: accumulatedContent,
               citations: accumulatedCitations,
             },
           }));
@@ -339,7 +339,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                 if (node.id === nodeId) {
                   return {
                     ...node,
-                    analysis: node.analysis ? node.analysis + content : content,
+                    analysis: accumulatedContent,
                     citations: accumulatedCitations,
                   };
                 }
