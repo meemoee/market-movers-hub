@@ -373,6 +373,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const isContinuation = qaData[0]?.isExtendedRoot === true;
       const originalNodeId = qaData[0]?.originalNodeId;
       let originalQuestion = marketQuestion;
+      let historyContext = '';
       
       if (isContinuation && originalNodeId) {
         // Find the original node's question by looking through all extensions
@@ -380,6 +381,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         if (originalNode) {
           console.log("Found original node:", originalNode.id, "with question:", originalNode.question);
           originalQuestion = originalNode.question;
+          
+          // Find parent nodes to build the context history
+          const parentNodes = findParentNodes(originalNodeId, qaData);
+          if (parentNodes) {
+            historyContext = buildHistoryContext(originalNode, parentNodes);
+            console.log("Built history context for evaluation:", historyContext.substring(0, 100) + "...");
+          }
         }
       }
       
@@ -388,7 +396,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         qaContextLength: qaContext.length,
         hasResearchContext: !!researchContext,
         isContinuation,
-        originalQuestion: isContinuation ? originalQuestion : undefined
+        originalQuestion: isContinuation ? originalQuestion : undefined,
+        hasHistoryContext: !!historyContext
       });
       
       const { data, error } = await supabase.functions.invoke('evaluate-qa-final', {
@@ -397,7 +406,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           qaContext,
           researchContext,
           isContinuation,
-          originalQuestion: isContinuation ? originalQuestion : undefined
+          originalQuestion: isContinuation ? originalQuestion : undefined,
+          historyContext: historyContext || undefined
         },
       });
       
