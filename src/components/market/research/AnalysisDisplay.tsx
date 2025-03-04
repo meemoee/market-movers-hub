@@ -1,3 +1,4 @@
+
 import { useLayoutEffect, useRef, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -5,9 +6,14 @@ import ReactMarkdown from 'react-markdown'
 interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
+  maxHeight?: string | number
 }
 
-export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDisplayProps) {
+export function AnalysisDisplay({ 
+  content, 
+  isStreaming = false, 
+  maxHeight = "200px" 
+}: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   
@@ -45,7 +51,8 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
   return (
     <div className="relative">
       <ScrollArea 
-        className="h-[200px] rounded-md border p-4 bg-accent/5"
+        className={`rounded-md border p-4 bg-accent/5`}
+        style={{ height: maxHeight }}
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full">

@@ -72,18 +72,51 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const [navigationHistory, setNavigationHistory] = useState<QANode[][]>([]);
   const [finalEvaluation, setFinalEvaluation] = useState<FinalEvaluation | null>(null);
   const [isFinalEvaluating, setIsFinalEvaluating] = useState(false);
+  const [navigatedFinalEvaluations, setNavigatedFinalEvaluations] = useState<{[id: string]: FinalEvaluation}>({});
+  const [activeFinalEvaluation, setActiveFinalEvaluation] = useState<FinalEvaluation | null>(null);
+  const [saveInProgress, setSaveInProgress] = useState(false);
   const queryClient = useQueryClient();
 
   const navigateToExtension = (extension: QANode) => {
+    if (finalEvaluation) {
+      setNavigatedFinalEvaluations(prev => ({ 
+        ...prev, 
+        [qaData[0]?.id || 'root']: finalEvaluation 
+      }));
+    }
+    
+    const extensionEval = navigatedFinalEvaluations[extension.id];
+    if (extensionEval) {
+      setActiveFinalEvaluation(extensionEval);
+    } else {
+      setActiveFinalEvaluation(null);
+    }
+    
     setNavigationHistory(prev => [...prev, qaData]);
     setQaData([extension]);
+    setFinalEvaluation(null);
   };
 
   const navigateBack = () => {
     const previousTree = navigationHistory[navigationHistory.length - 1];
     if (previousTree) {
+      if (finalEvaluation) {
+        setNavigatedFinalEvaluations(prev => ({ 
+          ...prev, 
+          [qaData[0]?.id || 'root']: finalEvaluation 
+        }));
+      }
+      
+      const prevTreeId = previousTree[0]?.id;
+      if (prevTreeId && navigatedFinalEvaluations[prevTreeId]) {
+        setActiveFinalEvaluation(navigatedFinalEvaluations[prevTreeId]);
+      } else {
+        setActiveFinalEvaluation(null);
+      }
+      
       setQaData(previousTree);
       setNavigationHistory(prev => prev.slice(0, -1));
+      setFinalEvaluation(null);
     }
   };
 
@@ -243,7 +276,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          // When stream is done, find the node and evaluate it
           const node = qaData.find(n => n.id === nodeId) || 
                       rootExtensions.find(n => n.id === nodeId);
           if (node && node.analysis) {
@@ -340,7 +372,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       console.log("Calling evaluate-qa-final with:", { 
         marketQuestion, 
         qaContextLength: qaContext.length,
-        hasResearchContext: !!researchContext
+        hasResearchContext: !!researchContext,
+        isExtension: qaData[0]?.isExtendedRoot === true
       });
       
       const { data, error } = await supabase.functions.invoke('evaluate-qa-final', {
@@ -359,6 +392,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       console.log("Final evaluation result:", data);
       
       setFinalEvaluation(data);
+      
+      if (qaData[0]?.id) {
+        setNavigatedFinalEvaluations(prev => ({
+          ...prev,
+          [qaData[0].id]: data
+        }));
+      }
+      
       toast({
         title: "Final Evaluation Complete",
         description: "The QA tree has been evaluated.",
@@ -376,11 +417,28 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   async function saveQATree() {
+    setSaveInProgress(true);
     try {
       const { data: user } = await supabase.auth.getUser();
       if (!user.user) throw new Error('Not authenticated');
 
       const completeTreeData = [...qaData, ...rootExtensions];
+      
+      const allEvaluations = {
+        ...navigatedFinalEvaluations,
+        ...(finalEvaluation ? { [qaData[0]?.id || 'root']: finalEvaluation } : {})
+      };
+      
+      const treeWithEvaluations = completeTreeData.map(node => {
+        const nodeEvaluation = allEvaluations[node.id];
+        if (nodeEvaluation) {
+          return {
+            ...node,
+            finalEvaluation: nodeEvaluation
+          };
+        }
+        return node;
+      });
 
       const { data, error } = await supabase
         .from('qa_trees')
@@ -388,7 +446,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           user_id: user.user.id,
           market_id: marketId,
           title: marketQuestion,
-          tree_data: completeTreeData as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
+          tree_data: treeWithEvaluations as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
+          final_evaluation: finalEvaluation || activeFinalEvaluation || null
         })
         .select()
         .single();
@@ -397,7 +456,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${rootExtensions.length} question expansions`,
+        description: `Saved QA tree with ${rootExtensions.length} question expansions and final evaluations`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
@@ -409,6 +468,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         title: "Save Error",
         description: error instanceof Error ? error.message : "Failed to save the QA tree",
       });
+    } finally {
+      setSaveInProgress(false);
     }
   }
 
@@ -584,7 +645,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   };
 
   useEffect(() => {
-    if (qaData.length > 0 && !isAnalyzing && currentNodeId === null && !finalEvaluation && !isFinalEvaluating) {
+    if (qaData.length > 0 && !isAnalyzing && currentNodeId === null && !finalEvaluation && !isFinalEvaluating && !activeFinalEvaluation) {
       generateFinalEvaluation();
     }
   }, [qaData, isAnalyzing, currentNodeId]);
@@ -1018,26 +1079,26 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           </Select>
         </div>
         <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing || isFinalEvaluating}>
+          <Button onClick={handleAnalyze} disabled={isAnalyzing || isFinalEvaluating || saveInProgress}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze'}
           </Button>
           {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline" disabled={isFinalEvaluating}>
-              Save Analysis
+            <Button onClick={saveQATree} variant="outline" disabled={isFinalEvaluating || saveInProgress}>
+              {saveInProgress ? 'Saving...' : 'Save Analysis'}
             </Button>
           )}
         </div>
       </div>
       
-      {finalEvaluation && (
+      {(finalEvaluation || activeFinalEvaluation) && (
         <div className="mb-4">
           <InsightsDisplay 
-            probability={finalEvaluation.probability} 
-            areasForResearch={finalEvaluation.areasForResearch} 
+            probability={(finalEvaluation || activeFinalEvaluation)?.probability || ''} 
+            areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch || []} 
           />
           <div className="mt-4 bg-accent/5 rounded-md p-4">
             <h3 className="text-sm font-medium mb-2">Final Analysis</h3>
-            <p className="text-sm text-muted-foreground">{finalEvaluation.analysis}</p>
+            <p className="text-sm text-muted-foreground">{(finalEvaluation || activeFinalEvaluation)?.analysis || ''}</p>
           </div>
         </div>
       )}

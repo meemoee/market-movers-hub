@@ -16,6 +16,9 @@ serve(async (req) => {
   try {
     const { marketQuestion, qaContext, researchContext } = await req.json()
 
+    console.log(`Evaluating QA for market question: ${marketQuestion?.substring(0, 50)}...`);
+    console.log(`QA context length: ${qaContext?.length || 0}, has research context: ${!!researchContext}`);
+
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY')
     if (!openRouterKey) {
       throw new Error('Missing OpenRouter API key')
@@ -48,7 +51,7 @@ Format your response as JSON with these fields:
   "analysis": "your analysis here"
 }`
 
-    console.log("Calling OpenRouter with market question:", marketQuestion.substring(0, 100) + "...");
+    console.log("Calling OpenRouter with market question:", marketQuestion?.substring(0, 100) + "...");
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -81,10 +84,51 @@ Format your response as JSON with these fields:
     let parsedContent
     try {
       parsedContent = JSON.parse(content)
-      console.log("Successfully parsed response as JSON");
+      console.log("Successfully parsed response as JSON:", 
+        JSON.stringify({
+          probability: parsedContent.probability,
+          areasCount: parsedContent.areasForResearch?.length,
+          analysisLength: parsedContent.analysis?.length
+        })
+      );
     } catch (e) {
       console.error('Failed to parse LLM response as JSON:', content)
-      throw new Error('Failed to parse evaluation response')
+      
+      // Attempt a fallback parsing approach
+      try {
+        // Extract probability using regex
+        const probMatch = content.match(/["']?probability["']?\s*:\s*["']?([^"',}]+)["']?/);
+        const probability = probMatch ? probMatch[1].trim() : "50%";
+        
+        // Extract areas for research
+        const areasMatch = content.match(/["']?areasForResearch["']?\s*:\s*\[(.*?)\]/s);
+        const areasText = areasMatch ? areasMatch[1] : "";
+        const areas = areasText.split(',')
+          .map(area => area.trim().replace(/^["']|["']$/g, ''))
+          .filter(area => area.length > 0);
+        
+        // Extract analysis
+        const analysisMatch = content.match(/["']?analysis["']?\s*:\s*["']?(.*?)["']?$/s);
+        const analysis = analysisMatch 
+          ? analysisMatch[1].trim().replace(/^["']|["']$/g, '') 
+          : "Unable to provide a detailed analysis from the given information.";
+        
+        parsedContent = {
+          probability,
+          areasForResearch: areas.length > 0 ? areas : ["Additional market data", "Expert opinions"],
+          analysis
+        };
+        
+        console.log("Used fallback parsing for malformed JSON");
+      } catch (fallbackError) {
+        console.error('Fallback parsing also failed:', fallbackError);
+        // Return a default response
+        parsedContent = {
+          probability: "50%",
+          areasForResearch: ["Additional market data", "Expert opinions"],
+          analysis: "Insufficient information to provide a detailed analysis."
+        };
+      }
     }
 
     return new Response(
@@ -94,7 +138,12 @@ Format your response as JSON with these fields:
   } catch (error) {
     console.error('Error in evaluate-qa-final:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        probability: "50%",
+        areasForResearch: ["Error analysis", "Technical issues"],
+        analysis: "An error occurred during analysis. Please try again."
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }
