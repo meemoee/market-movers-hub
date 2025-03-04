@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -65,90 +64,164 @@ Format your response as JSON with these fields:
         'HTTP-Referer': 'https://hunchex.app'
       },
       body: JSON.stringify({
-        model: 'anthropic/claude-3-haiku',
+        model: 'google/gemini-2.0-flash-lite-001',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
         temperature: 0.7,
+        stream: true
       })
-    })
+    });
 
-    const result = await response.json()
-    console.log("Received OpenRouter response");
-    
-    if (!result.choices || !result.choices[0]) {
-      console.error("Invalid response format:", result);
-      throw new Error('Invalid response from OpenRouter');
+    if (!response.ok) {
+      console.error(`OpenRouter API error: ${response.status}`);
+      throw new Error(`OpenRouter API error: ${response.status}`);
     }
-    
-    const content = result.choices[0].message.content
 
-    // Parse the response as JSON
-    let parsedContent
-    try {
-      parsedContent = JSON.parse(content)
-      console.log("Successfully parsed response as JSON:", 
-        JSON.stringify({
-          probability: parsedContent.probability,
-          areasCount: parsedContent.areasForResearch?.length,
-          analysisLength: parsedContent.analysis?.length
-        })
-      );
-    } catch (e) {
-      console.error('Failed to parse LLM response as JSON:', content)
-      
-      // Attempt a fallback parsing approach
-      try {
-        // Extract probability using regex
-        const probMatch = content.match(/["']?probability["']?\s*:\s*["']?([^"',}]+)["']?/);
-        const probability = probMatch ? probMatch[1].trim() : "50%";
+    // A simple TransformStream that buffers incoming text until full SSE events are available.
+    let buffer = "";
+    let collectingData = false;
+    let jsonData = "";
+    
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk);
+        buffer += text;
+        const parts = buffer.split("\n\n");
+        // Keep the last (possibly incomplete) part in the buffer.
+        buffer = parts.pop() || "";
         
-        // Extract areas for research
-        const areasMatch = content.match(/["']?areasForResearch["']?\s*:\s*\[(.*?)\]/s);
-        const areasText = areasMatch ? areasMatch[1] : "";
-        const areas = areasText.split(',')
-          .map(area => area.trim().replace(/^["']|["']$/g, ''))
-          .filter(area => area.length > 0);
+        for (const part of parts) {
+          if (part.startsWith("data: ")) {
+            const dataStr = part.slice(6).trim();
+            if (dataStr === "[DONE]") {
+              // End of stream
+              if (collectingData) {
+                try {
+                  const parsed = JSON.parse(jsonData);
+                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+                } catch (err) {
+                  console.error("Error parsing final collected JSON:", err);
+                  controller.enqueue(new TextEncoder().encode(`data: {"error": "Failed to parse JSON"}\n\n`));
+                }
+              }
+              continue;
+            }
+            
+            try {
+              const parsed = JSON.parse(dataStr);
+              const content = parsed.choices?.[0]?.delta?.content || 
+                             parsed.choices?.[0]?.message?.content || '';
+              
+              if (content) {
+                // Check if the content looks like the start of JSON
+                if (content.trim().startsWith('{') && !collectingData) {
+                  collectingData = true;
+                  jsonData = content;
+                } else if (collectingData) {
+                  jsonData += content;
+                } else {
+                  // If we're not collecting JSON yet, emit the content directly
+                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({content})}\n\n`));
+                }
+                
+                // Check if we have complete JSON
+                if (collectingData && jsonData.trim().endsWith('}')) {
+                  try {
+                    const parsedJson = JSON.parse(jsonData);
+                    console.log("Collected complete JSON:", JSON.stringify(parsedJson).substring(0, 100) + "...");
+                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsedJson)}\n\n`));
+                    collectingData = false;
+                    jsonData = "";
+                  } catch (err) {
+                    // Not complete JSON yet, continue collecting
+                    console.debug("Still collecting JSON, not complete yet");
+                  }
+                }
+              }
+            } catch (err) {
+              console.debug("Error parsing SSE chunk:", err);
+            }
+          }
+        }
+      },
+      flush(controller) {
+        if (buffer.trim() || jsonData.trim()) {
+          try {
+            let finalData = buffer.trim() || jsonData.trim();
+            if (finalData.startsWith('data: ')) {
+              finalData = finalData.slice(6).trim();
+            }
+            
+            if (finalData === "[DONE]") {
+              return;
+            }
+            
+            let parsedData;
+            try {
+              parsedData = JSON.parse(finalData);
+            } catch (err) {
+              // If it's not valid JSON but we've been collecting JSON data
+              if (collectingData && jsonData) {
+                try {
+                  parsedData = JSON.parse(jsonData);
+                } catch (innerErr) {
+                  console.error("Error parsing final JSON data:", innerErr);
+                  // Create a default response if parsing fails
+                  parsedData = {
+                    probability: "50%",
+                    areasForResearch: ["Additional market data", "Expert opinions"],
+                    analysis: "Insufficient information to provide a detailed analysis."
+                  };
+                }
+              } else {
+                // Create a default response
+                parsedData = {
+                  probability: "50%",
+                  areasForResearch: ["Additional market data", "Expert opinions"],
+                  analysis: "Insufficient information to provide a detailed analysis."
+                };
+              }
+            }
+            
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsedData)}\n\n`));
+          } catch (err) {
+            console.error("Error in flush:", err);
+            const defaultData = {
+              probability: "50%",
+              areasForResearch: ["Additional market data", "Expert opinions"],
+              analysis: "An error occurred during analysis. Please try again."
+            };
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(defaultData)}\n\n`));
+          }
+        }
         
-        // Extract analysis
-        const analysisMatch = content.match(/["']?analysis["']?\s*:\s*["']?(.*?)["']?$/s);
-        const analysis = analysisMatch 
-          ? analysisMatch[1].trim().replace(/^["']|["']$/g, '') 
-          : "Unable to provide a detailed analysis from the given information.";
-        
-        parsedContent = {
-          probability,
-          areasForResearch: areas.length > 0 ? areas : ["Additional market data", "Expert opinions"],
-          analysis
-        };
-        
-        console.log("Used fallback parsing for malformed JSON");
-      } catch (fallbackError) {
-        console.error('Fallback parsing also failed:', fallbackError);
-        // Return a default response
-        parsedContent = {
-          probability: "50%",
-          areasForResearch: ["Additional market data", "Expert opinions"],
-          analysis: "Insufficient information to provide a detailed analysis."
-        };
+        buffer = "";
+        jsonData = "";
       }
-    }
+    });
 
-    return new Response(
-      JSON.stringify(parsedContent),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return new Response(response.body?.pipeThrough(transformStream), {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    });
   } catch (error) {
-    console.error('Error in evaluate-qa-final:', error)
+    console.error('Error in evaluate-qa-final:', error);
+    const errorResponse = {
+      error: error.message,
+      probability: "50%",
+      areasForResearch: ["Error analysis", "Technical issues"],
+      analysis: "An error occurred during analysis. Please try again."
+    };
+    
     return new Response(
-      JSON.stringify({ 
-        error: error.message,
-        probability: "50%",
-        areasForResearch: ["Error analysis", "Technical issues"],
-        analysis: "An error occurred during analysis. Please try again."
-      }),
+      JSON.stringify(errorResponse),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    );
   }
 })

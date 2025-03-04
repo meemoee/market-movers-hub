@@ -1,5 +1,5 @@
 
-import { useLayoutEffect, useRef, useEffect } from "react"
+import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
@@ -16,10 +16,11 @@ export function AnalysisDisplay({
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
-    if (!scrollRef.current) return
+    if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
     const currentContentLength = content?.length || 0
@@ -31,11 +32,31 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming]) // Track both content changes and streaming state
+  }, [content, isStreaming, shouldAutoScroll]) // Track both content changes and streaming state
   
-  // Continuously scroll during streaming
+  // Handle user scroll to disable auto-scroll
   useEffect(() => {
-    if (!isStreaming || !scrollRef.current) return
+    if (!scrollRef.current) return
+    
+    const scrollContainer = scrollRef.current
+    const handleScroll = () => {
+      // If user has scrolled up, disable auto-scroll
+      // If they scroll to the bottom, re-enable it
+      const isAtBottom = Math.abs(
+        (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
+        scrollContainer.scrollTop
+      ) < 30 // Small threshold for "close enough" to bottom
+      
+      setShouldAutoScroll(isAtBottom)
+    }
+    
+    scrollContainer.addEventListener('scroll', handleScroll)
+    return () => scrollContainer.removeEventListener('scroll', handleScroll)
+  }, [])
+  
+  // Continuously scroll during streaming when auto-scroll is enabled
+  useEffect(() => {
+    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
     const interval = setInterval(() => {
       if (scrollRef.current) {
@@ -44,7 +65,7 @@ export function AnalysisDisplay({
     }, 100)
     
     return () => clearInterval(interval)
-  }, [isStreaming])
+  }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
 
@@ -70,6 +91,20 @@ export function AnalysisDisplay({
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-300" />
           </div>
         </div>
+      )}
+      
+      {!shouldAutoScroll && isStreaming && (
+        <button 
+          onClick={() => {
+            setShouldAutoScroll(true);
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }
+          }}
+          className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
+        >
+          Resume auto-scroll
+        </button>
       )}
     </div>
   )
