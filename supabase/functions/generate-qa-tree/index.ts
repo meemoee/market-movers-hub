@@ -19,7 +19,7 @@ serve(async (req) => {
     if (!question) throw new Error('Question is required');
 
     console.log(`Processing ${isFollowUp ? 'follow-up' : 'primary'} question:`, question.substring(0, 50));
-    console.log(`Context: marketId=${marketId}, hasParentContent=${!!parentContent}, hasResearchContext=${!!researchContext}, hasHistoryContext=${!!historyContext}, isContinuation=${!!isContinuation}`);
+    console.log(`Context: marketId=${marketId}, hasParentContent=${!!parentContent}, hasResearchContext=${!!researchContext}, hasHistoryContext=${!!historyContext}, isContinuation=${!!isContinuation}, hasOriginalQuestion=${!!originalQuestion}`);
 
     // If this is a follow-up question, process it and return JSON array of follow-up questions
     if (isFollowUp && parentContent) {

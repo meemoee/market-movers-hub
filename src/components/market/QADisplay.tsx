@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -375,10 +374,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const originalNodeId = qaData[0]?.originalNodeId;
       let originalQuestion = marketQuestion;
       
-      if (isContinuation) {
+      if (isContinuation && originalNodeId) {
         // Find the original node's question by looking through all extensions
         const originalNode = rootExtensions.find(ext => ext.id === originalNodeId);
         if (originalNode) {
+          console.log("Found original node:", originalNode.id, "with question:", originalNode.question);
           originalQuestion = originalNode.question;
         }
       }
@@ -797,6 +797,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(nodeId);
       setExpandedNodes(prev => new Set([...prev, nodeId]));
 
+      // Store the current final evaluation for the current node
+      if (finalEvaluation) {
+        setNavigatedFinalEvaluations(prev => ({
+          ...prev,
+          [qaData[0]?.id || 'root']: finalEvaluation
+        }));
+      }
+
       const newRootNode: QANode = {
         id: nodeId,
         question: node.question,
@@ -807,8 +815,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       };
 
       setRootExtensions(prev => [...prev, newRootNode]);
-
       setQaData([newRootNode]);
+      setFinalEvaluation(null);
+      setActiveFinalEvaluation(null);
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
@@ -834,6 +843,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       if (!reader) throw new Error('Failed to create reader');
 
       const analysis = await processStream(reader, nodeId);
+      console.log("Completed continuation analysis for node:", nodeId);
+
+      // Update the data with the completed analysis
+      setQaData(prev => 
+        prev.map(n => n.id === nodeId ? { ...n, analysis } : n)
+      );
 
       const { data: followUpData, error: followUpError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
@@ -861,8 +876,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       }
 
       setRootExtensions(prev => {
-        const currentTree = qaData[0];
-        return prev.map(ext => ext.id === nodeId ? currentTree : ext);
+        const updatedExtensions = prev.map(ext => {
+          if (ext.id === nodeId) {
+            const currentTree = qaData[0];
+            return { ...currentTree, analysis };
+          }
+          return ext;
+        });
+        return updatedExtensions;
       });
       
       // Generate evaluation for this continuation immediately
