@@ -586,6 +586,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       const selectedResearchData = savedResearch?.find(r => r.id === selectedResearch);
       
+      console.log('Requesting analysis for question:', question);
+      
       const { data: analysisData, error: analysisError } = await supabase.functions.invoke('generate-qa-tree', {
         body: JSON.stringify({ 
           marketId, 
@@ -600,12 +602,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       });
       
       if (analysisError) throw analysisError;
+      console.log('Received analysis data, creating stream reader');
 
       const reader = new Response(analysisData.body).body?.getReader();
       if (!reader) throw new Error('Failed to create reader');
 
       const analysis = await processStream(reader, nodeId);
-      console.log('Completed analysis for node', nodeId, ':', analysis);
+      console.log('Completed analysis for node', nodeId, ':', analysis.substring(0, 50) + '...');
 
       setQaData(prev => {
         const updateNode = (nodes: QANode[]): QANode[] =>
@@ -625,7 +628,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         id: nodeId,
         question,
         analysis,
-        children: [] // Add the required children property
+        children: []
       };
       await evaluateQAPair(currentNode);
 
