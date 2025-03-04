@@ -15,11 +15,11 @@ serve(async (req) => {
   }
 
   try {
-    const { question, marketId, parentContent, isFollowUp, researchContext, historyContext } = await req.json();
+    const { question, marketId, parentContent, isFollowUp, researchContext, historyContext, originalQuestion, isContinuation } = await req.json();
     if (!question) throw new Error('Question is required');
 
     console.log(`Processing ${isFollowUp ? 'follow-up' : 'primary'} question:`, question.substring(0, 50));
-    console.log(`Context: marketId=${marketId}, hasParentContent=${!!parentContent}, hasResearchContext=${!!researchContext}, hasHistoryContext=${!!historyContext}`);
+    console.log(`Context: marketId=${marketId}, hasParentContent=${!!parentContent}, hasResearchContext=${!!researchContext}, hasHistoryContext=${!!historyContext}, isContinuation=${!!isContinuation}`);
 
     // If this is a follow-up question, process it and return JSON array of follow-up questions
     if (isFollowUp && parentContent) {
@@ -56,7 +56,7 @@ serve(async (req) => {
               },
               {
                 role: "user",
-                content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${question}\n\nAnalysis: ${contextualPrompt}`
+                content: `Generate three focused analytical follow-up questions based on this context:\n\nOriginal Question: ${isContinuation && originalQuestion ? originalQuestion : question}\n\nAnalysis: ${contextualPrompt}`
               }
             ]
           })
@@ -113,6 +113,10 @@ serve(async (req) => {
     // Construct system prompt based on available context
     let systemPrompt = "You are a helpful assistant providing detailed analysis.";
     
+    if (isContinuation) {
+      systemPrompt += "\n\nThis is a continuation or in-depth exploration of a previous analysis.";
+    }
+    
     if (historyContext) {
       systemPrompt += `\n\nConsider this previous analysis context when forming your response:\n${historyContext}`;
     }
@@ -127,6 +131,9 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
     systemPrompt += "\n\nStart your response with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.";
 
     console.log("Generating primary analysis with system prompt length:", systemPrompt.length);
+
+    const questionToUse = isContinuation && originalQuestion ? originalQuestion : question;
+    console.log("Using question for analysis:", questionToUse.substring(0, 50));
 
     // For analysis, stream the response from OpenRouter.
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -146,7 +153,9 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
           },
           {
             role: "user",
-            content: question
+            content: isContinuation ? 
+              `Continuing our analysis of "${questionToUse}", let's explore: ${question}` : 
+              question
           }
         ],
         stream: true

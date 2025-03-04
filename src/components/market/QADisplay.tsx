@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -369,18 +370,34 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         areasForResearch: selectedResearchData.areas_for_research
       } : null;
       
+      // Determine if this is a continuation and get the original question
+      const isContinuation = qaData[0]?.isExtendedRoot === true;
+      const originalNodeId = qaData[0]?.originalNodeId;
+      let originalQuestion = marketQuestion;
+      
+      if (isContinuation) {
+        // Find the original node's question by looking through all extensions
+        const originalNode = rootExtensions.find(ext => ext.id === originalNodeId);
+        if (originalNode) {
+          originalQuestion = originalNode.question;
+        }
+      }
+      
       console.log("Calling evaluate-qa-final with:", { 
         marketQuestion, 
         qaContextLength: qaContext.length,
         hasResearchContext: !!researchContext,
-        isExtension: qaData[0]?.isExtendedRoot === true
+        isContinuation,
+        originalQuestion: isContinuation ? originalQuestion : undefined
       });
       
       const { data, error } = await supabase.functions.invoke('evaluate-qa-final', {
         body: { 
           marketQuestion, 
           qaContext,
-          researchContext
+          researchContext,
+          isContinuation,
+          originalQuestion: isContinuation ? originalQuestion : undefined
         },
       });
       
@@ -801,6 +818,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           question: node.question,
           isFollowUp: false,
           historyContext,
+          originalQuestion: marketQuestion, // Pass original market question
+          isContinuation: true, // Flag this as a continuation
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -823,6 +842,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           parentContent: analysis,
           historyContext,
           isFollowUp: true,
+          originalQuestion: marketQuestion, // Pass original market question
+          isContinuation: true, // Flag this as a continuation
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -843,6 +864,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         const currentTree = qaData[0];
         return prev.map(ext => ext.id === nodeId ? currentTree : ext);
       });
+      
+      // Generate evaluation for this continuation immediately
+      await generateFinalEvaluation();
 
     } catch (error) {
       console.error('Analysis error:', error);
