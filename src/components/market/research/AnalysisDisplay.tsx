@@ -18,6 +18,7 @@ export function AnalysisDisplay({
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const [lastChunkTime, setLastChunkTime] = useState<number | null>(null)
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
@@ -30,6 +31,7 @@ export function AnalysisDisplay({
     // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
+      setLastChunkTime(Date.now())
     }
     
     prevContentLength.current = currentContentLength
@@ -67,8 +69,19 @@ export function AnalysisDisplay({
     
     return () => clearInterval(interval)
   }, [isStreaming, shouldAutoScroll])
+  
+  // Log content changes to verify streaming is happening
+  useEffect(() => {
+    if (isStreaming && content && content.length > prevContentLength.current) {
+      console.log(`Streaming content changed: +${content.length - prevContentLength.current} chars`);
+      setLastChunkTime(Date.now());
+    }
+  }, [content, isStreaming]);
 
   if (!content) return null
+
+  // Check if we're seeing stream activity
+  const isStreamActive = isStreaming && lastChunkTime && (Date.now() - lastChunkTime < 3000);
 
   return (
     <div className="relative">
@@ -86,9 +99,11 @@ export function AnalysisDisplay({
       
       {isStreaming && (
         <div className="absolute bottom-2 right-2 z-10">
-          <div className="flex items-center space-x-1 bg-primary/10 px-2 py-1 rounded-full">
-            <Loader2 className="w-3 h-3 animate-spin text-primary" />
-            <span className="text-xs text-primary font-medium">Processing</span>
+          <div className={`flex items-center space-x-1 ${isStreamActive ? 'bg-primary/10' : 'bg-amber-500/10'} px-2 py-1 rounded-full transition-colors`}>
+            <Loader2 className={`w-3 h-3 animate-spin ${isStreamActive ? 'text-primary' : 'text-amber-500'}`} />
+            <span className={`text-xs ${isStreamActive ? 'text-primary' : 'text-amber-500'} font-medium`}>
+              {isStreamActive ? 'Streaming...' : 'Waiting for data...'}
+            </span>
           </div>
         </div>
       )}
