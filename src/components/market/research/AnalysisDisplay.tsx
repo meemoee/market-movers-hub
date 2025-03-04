@@ -14,22 +14,23 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
   const [lastUpdateTime, setLastUpdateTime] = useState(Date.now())
   const [displayedContent, setDisplayedContent] = useState(content || '')
   
-  // Force re-render on content changes to ensure smooth streaming
+  // Update displayed content immediately when new content arrives
   useEffect(() => {
+    // Only update if the content has actually changed
     if (content !== displayedContent) {
       setDisplayedContent(content);
       setLastUpdateTime(Date.now());
     }
   }, [content, displayedContent]);
   
-  // This effect handles scrolling when new content arrives
+  // Scroll to bottom when new content arrives during streaming
   useLayoutEffect(() => {
     if (!scrollRef.current) return
     
     const scrollContainer = scrollRef.current
     const currentContentLength = displayedContent?.length || 0
     
-    // Always scroll to bottom during streaming
+    // Always scroll to bottom during streaming or when content grows
     if (isStreaming || currentContentLength > prevContentLength.current) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
     }
@@ -37,17 +38,22 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     prevContentLength.current = currentContentLength
   }, [displayedContent, isStreaming, lastUpdateTime])
   
-  // Continuously scroll during streaming to ensure new content is visible
+  // Ensure continuous scrolling during streaming with requestAnimationFrame
   useEffect(() => {
     if (!isStreaming || !scrollRef.current) return
     
-    const interval = setInterval(() => {
+    let animationId: number;
+    
+    const scrollToBottom = () => {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
-    }, 33) // More frequent updates for smoother scrolling (approx 30fps)
+      animationId = requestAnimationFrame(scrollToBottom);
+    }
     
-    return () => clearInterval(interval)
+    animationId = requestAnimationFrame(scrollToBottom);
+    
+    return () => cancelAnimationFrame(animationId);
   }, [isStreaming])
 
   if (!displayedContent && !isStreaming) return null
@@ -60,7 +66,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
       >
         <div className="overflow-x-hidden w-full prose-pre:whitespace-pre-wrap">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
-            {displayedContent}
+            {displayedContent || (isStreaming ? 'Loading analysis...' : '')}
           </ReactMarkdown>
         </div>
       </ScrollArea>

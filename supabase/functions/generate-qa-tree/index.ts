@@ -1,6 +1,6 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { transformStream } from "./streamProcessor.ts";
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY');
 
@@ -130,41 +130,10 @@ Start your response with complete sentences, avoid markdown headers or numbered 
       throw new Error(`Analysis generation failed: ${openRouterResponse.status}`);
     }
 
-    console.log("Received OpenRouter stream, sending to client");
+    console.log("Received OpenRouter stream, directly forwarding to client");
     
-    // Create a TransformStream to relay events to the client
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-    const encoder = new TextEncoder();
-    
-    // Process the OpenRouter response stream
-    const reader = openRouterResponse.body?.getReader();
-    if (!reader) throw new Error("Failed to get reader from OpenRouter response");
-    
-    // Pipe the response directly to the client
-    (async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            console.log("OpenRouter stream complete");
-            await writer.close();
-            break;
-          }
-          
-          // Forward chunks immediately without any processing
-          await writer.write(value);
-        }
-      } catch (error) {
-        console.error("Error processing OpenRouter stream:", error);
-        const errorMsg = encoder.encode(`data: {"error": "${error.message}"}\n\n`);
-        await writer.write(errorMsg);
-        await writer.close();
-      }
-    })();
-    
-    // Return the readable end of the TransformStream to the client
-    return new Response(readable, {
+    // Return the OpenRouter stream directly to client with SSE headers
+    return new Response(openRouterResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

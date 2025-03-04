@@ -43,11 +43,11 @@ export function MarketDetails({
         
         console.log('Price history response:', response.data);
         return {
-          points: response.data.map(point => ({
+          points: Array.isArray(response.data) ? response.data.map(point => ({
             time: new Date(point.t).getTime(),
             price: point.y * 100
-          })),
-          lastUpdated: response.data[0]?.lastUpdated
+          })) : [],
+          lastUpdated: Array.isArray(response.data) && response.data[0]?.lastUpdated
         };
       } catch (error) {
         console.error('Error fetching price history:', error);

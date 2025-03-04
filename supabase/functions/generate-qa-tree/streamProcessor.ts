@@ -15,7 +15,11 @@ export function processStreamLine(line: string): string {
   
   try {
     // Handle data: prefix if present
-    const jsonStr = line.startsWith('data: ') ? line.slice(6).trim() : line.trim();
+    if (!line.startsWith('data:')) {
+      return '';
+    }
+    
+    const jsonStr = line.slice(5).trim();
     
     // Handle the '[DONE]' message
     if (jsonStr === '[DONE]') {
@@ -25,27 +29,30 @@ export function processStreamLine(line: string): string {
     // Parse JSON data
     const parsed = JSON.parse(jsonStr);
     
-    // Extract content from delta/message structure
+    // Extract content from delta structure (streaming format)
     if (parsed.choices?.[0]?.delta?.content) {
       return parsed.choices[0].delta.content;
-    } else if (parsed.choices?.[0]?.message?.content) {
+    }
+    
+    // Also handle non-streaming format as fallback
+    if (parsed.choices?.[0]?.message?.content) {
       return parsed.choices[0].message.content;
     }
     
     return '';
   } catch (e) {
-    console.error('Error processing stream line:', e);
+    console.error('Error processing stream line:', e, 'Line:', line);
     return ''; // Return empty string on error
   }
 }
 
 /**
- * Transform a raw stream into processed chunks for the client
- * This implementation is intentionally simplified to maximize streaming performance
+ * Transform a raw SSE stream into processed chunks for the client
  */
 export async function* transformStream(stream: ReadableStream): AsyncGenerator<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
+  let buffer = '';
   
   try {
     while (true) {
@@ -53,19 +60,27 @@ export async function* transformStream(stream: ReadableStream): AsyncGenerator<s
       
       if (done) break;
       
-      // Decode the current chunk
-      const chunk = decoder.decode(value, { stream: true });
+      // Decode and append to buffer
+      buffer += decoder.decode(value, { stream: true });
       
-      // Split by event delimiters
-      const lines = chunk.split('\n');
+      // Process complete lines
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep the last incomplete line in buffer
       
       for (const line of lines) {
-        if (line.trim() && line.includes('data:')) {
-          const content = processStreamLine(line);
-          if (content) {
-            yield content;
-          }
+        // Process each complete line
+        const content = processStreamLine(line);
+        if (content) {
+          yield content;
         }
+      }
+    }
+    
+    // Process any remaining data
+    if (buffer) {
+      const content = processStreamLine(buffer);
+      if (content) {
+        yield content;
       }
     }
   } finally {

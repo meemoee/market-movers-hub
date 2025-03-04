@@ -1,9 +1,10 @@
+
 import { useMemo } from 'react';
 import { PriceData, FillSegment } from './types';
 
 export const useChartData = (data: PriceData[]) => {
   return useMemo(() => {
-    if (!data.length) return { segments: [], domain: { min: 0, max: 100 } };
+    if (!data || !data.length) return { segments: [], domain: { min: 0, max: 100 } };
 
     const segments: FillSegment[] = [];
     let currentSegment: PriceData[] = [];
@@ -25,7 +26,9 @@ export const useChartData = (data: PriceData[]) => {
       // Handle gaps in data (more than 1 hour)
       if (prevPoint && point.time - prevPoint.time > 3600000) {
         // Close current segment
-        addSegment(currentType!);
+        if (currentType) {
+          addSegment(currentType);
+        }
         
         // Add a connecting segment at the previous price
         segments.push({
@@ -49,7 +52,9 @@ export const useChartData = (data: PriceData[]) => {
         const intersectionPoint = { time: intersectionTime, price: 50 };
 
         // Close current segment
-        addSegment(currentType!);
+        if (currentType) {
+          addSegment(currentType);
+        }
 
         // Add segments for both sides of the intersection
         segments.push({
@@ -75,7 +80,9 @@ export const useChartData = (data: PriceData[]) => {
       if (isAbove && currentType === 'above' || !isAbove && currentType === 'below') {
         currentSegment.push(point);
       } else {
-        addSegment(currentType);
+        if (currentType) {
+          addSegment(currentType);
+        }
         currentType = isAbove ? 'above' : 'below';
         currentSegment = [point];
       }
