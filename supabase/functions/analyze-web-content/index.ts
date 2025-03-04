@@ -85,6 +85,8 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       headers: {
         ...authHeader,
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no',
       },
       body: JSON.stringify({
         model: openAIKey ? 'gpt-4o-mini' : 'openai/gpt-4o-mini',
@@ -107,8 +109,9 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+        'Cache-Control': 'no-cache, no-transform',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no'
       }
     });
   } catch (error) {

@@ -18,7 +18,7 @@ import { ResearchHeader } from "./research/ResearchHeader"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
-import { InsightsDisplay } from "./insights/InsightsDisplay"
+import { InsightsDisplay } from "./research/InsightsDisplay"
 import { ChevronDown, Settings, Search } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -303,20 +303,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, `Focusing analysis on: ${focusText.trim()}`]);
       }
       
-      const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
-        body: JSON.stringify(analyzePayload)
-      })
-
-      if (analysisResponse.error) {
-        console.error("Error from analyze-web-content:", analysisResponse.error)
-        throw analysisResponse.error
-      }
-
-      console.log("Received response from analyze-web-content")
-
-      let accumulatedContent = '';
-      let iterationAnalysis = ''; // For storing in the iterations array
-      
       setIterations(prev => {
         const updatedIterations = [...prev];
         const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
@@ -345,80 +331,95 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return prev;
       });
       
-      const processAnalysisStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-        const textDecoder = new TextDecoder()
-        let buffer = '';
+      setAnalysis('');
+      
+      const analysisResponse = await supabase.functions.invoke('analyze-web-content', {
+        body: JSON.stringify(analyzePayload)
+      });
+
+      if (analysisResponse.error) {
+        console.error("Error from analyze-web-content:", analysisResponse.error);
+        throw new Error(analysisResponse.error.message || "Error analyzing content");
+      }
+
+      const textDecoder = new TextDecoder();
+      const reader = new Response(analysisResponse.data.body).body?.getReader();
+      
+      if (!reader) {
+        throw new Error('Failed to get reader from analysis response');
+      }
+      
+      let analysisContent = '';
+      let iterationAnalysis = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
         
-        const processChunk = async (chunk: string) => {
-          console.log("Processing chunk:", chunk.substring(0, 50) + "...")
+        if (done) {
+          console.log("Analysis stream complete");
           
-          buffer += chunk
-          const lines = buffer.split('\n\n')
-          buffer = lines.pop() || ''
-          
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              if (jsonStr === '[DONE]') continue
+          if (analysisContent) {
+            setAnalysis(analysisContent);
+            
+            setIterations(prev => {
+              const updatedIterations = [...prev];
+              const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
               
-              try {
-                const { content } = cleanStreamContent(jsonStr)
-                if (content) {
-                  console.log("Received content chunk:", content.substring(0, 50) + "...")
-                  setProgress(prev => [...prev, `Analysis chunk: ${content.substring(0, 30)}...`]);
-                  
-                  accumulatedContent += content;
-                  iterationAnalysis += content; // Save for iterations array too
-                  
-                  setAnalysis(accumulatedContent);
-                  
-                  setIterations(prev => {
-                    const updatedIterations = [...prev];
-                    const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
-                    
-                    if (currentIterIndex >= 0) {
-                      updatedIterations[currentIterIndex] = {
-                        ...updatedIterations[currentIterIndex],
-                        analysis: iterationAnalysis
-                      };
-                    }
-                    
-                    return updatedIterations;
-                  });
-                  
-                  await new Promise(resolve => setTimeout(resolve, 0));
-                }
-              } catch (e) {
-                console.error('Error parsing analysis SSE data:', e)
+              if (currentIterIndex >= 0) {
+                updatedIterations[currentIterIndex] = {
+                  ...updatedIterations[currentIterIndex],
+                  analysis: iterationAnalysis
+                };
               }
+              
+              return updatedIterations;
+            });
+          }
+          
+          break;
+        }
+        
+        const chunk = textDecoder.decode(value);
+        console.log("Received analysis chunk of size:", chunk.length);
+        
+        const lines = chunk.split('\n\n');
+        
+        for (const line of lines) {
+          if (line.trim() && line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
+            
+            try {
+              const { content } = cleanStreamContent(jsonStr);
+              
+              if (content) {
+                analysisContent += content;
+                iterationAnalysis += content;
+                
+                setAnalysis(analysisContent);
+                
+                setIterations(prev => {
+                  const updatedIterations = [...prev];
+                  const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+                  
+                  if (currentIterIndex >= 0) {
+                    updatedIterations[currentIterIndex] = {
+                      ...updatedIterations[currentIterIndex],
+                      analysis: iterationAnalysis
+                    };
+                  }
+                  
+                  return updatedIterations;
+                });
+                
+                await new Promise(resolve => setTimeout(resolve, 0));
+              }
+            } catch (e) {
+              console.debug('Error parsing analysis SSE data:', e);
             }
           }
-        };
-        
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log("Analysis stream complete")
-            break
-          }
-          
-          const chunk = textDecoder.decode(value)
-          console.log("Received analysis chunk of size:", chunk.length)
-          
-          await processChunk(chunk);
         }
-
-        return accumulatedContent;
       }
-
-      const analysisReader = new Response(analysisResponse.data.body).body?.getReader()
-      
-      if (!analysisReader) {
-        throw new Error('Failed to get reader from analysis response')
-      }
-      
-      const currentAnalysis = await processAnalysisStream(analysisReader)
       
       setIterations(prev => {
         const updatedIterations = [...prev];
@@ -442,16 +443,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       });
       
       if (iteration === maxIterations) {
-        setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."])
-        await extractInsights(allContent, currentAnalysis)
+        setProgress(prev => [...prev, "Final analysis complete, extracting key insights..."]);
+        await extractInsights(allContent, analysisContent);
       } else {
-        setProgress(prev => [...prev, "Generating new queries based on analysis..."])
+        setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
             body: JSON.stringify({ 
               query: description,
-              previousResults: currentAnalysis,
+              previousResults: analysisContent,
               iteration: iteration,
               marketId: marketId,
               marketDescription: description,
@@ -461,12 +462,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           })
 
           if (refinedQueriesError) {
-            console.error("Error from generate-queries:", refinedQueriesError)
+            console.error("Error from generate-queries:", refinedQueriesError);
             throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
           }
 
           if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
-            console.error("Invalid refined queries response:", refinedQueriesData)
+            console.error("Invalid refined queries response:", refinedQueriesData);
             throw new Error('Invalid refined queries response')
           }
 
@@ -482,7 +483,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
           await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
         } catch (error) {
-          console.error("Error generating refined queries:", error)
+          console.error("Error generating refined queries:", error);
           
           const fallbackQueries = [
             `${description} latest information`,
@@ -496,7 +497,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       }
 
-      return currentAnalysis
+      return analysisContent;
     } catch (error) {
       console.error("Error in processQueryResults:", error);
       setError(`Error analyzing content: ${error.message}`);
@@ -522,150 +523,100 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress(prev => [...prev, `Focusing insights extraction on: ${focusText.trim()}`]);
     }
     
-    const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
-      body: insightsPayload
-    })
+    try {
+      const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
+        body: insightsPayload
+      });
 
-    if (insightsResponse.error) {
-      console.error("Error from extract-research-insights:", insightsResponse.error)
-      throw insightsResponse.error
-    }
+      if (insightsResponse.error) {
+        console.error("Error from extract-research-insights:", insightsResponse.error);
+        throw new Error(insightsResponse.error.message || "Error extracting insights");
+      }
 
-    console.log("Received response from extract-research-insights")
+      console.log("Received response from extract-research-insights");
 
-    let accumulatedJson = ''
-    
-    const processInsightsStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-      const textDecoder = new TextDecoder()
-      let buffer = '';
+      const textDecoder = new TextDecoder();
+      const reader = new Response(insightsResponse.data.body).body?.getReader();
+      
+      if (!reader) {
+        throw new Error('Failed to get reader from insights response');
+      }
+      
+      let jsonContent = '';
       
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await reader.read();
         
         if (done) {
-          console.log("Insights stream complete")
+          console.log("Insights stream complete");
           
           try {
-            let cleanJson = accumulatedJson;
-            if (cleanJson.startsWith('```json')) {
-              cleanJson = cleanJson.replace(/^```json\n/, '').replace(/```$/, '');
-            } else if (cleanJson.startsWith('```')) {
-              cleanJson = cleanJson.replace(/^```\n/, '').replace(/```$/, '');
+            let finalJson = jsonContent;
+            if (finalJson.startsWith('```json')) {
+              finalJson = finalJson.replace(/^```json\n/, '').replace(/```$/, '');
+            } else if (finalJson.startsWith('```')) {
+              finalJson = finalJson.replace(/^```\n/, '').replace(/```$/, '');
             }
             
-            console.log("Attempting to parse cleaned JSON:", cleanJson.substring(0, 100) + "...");
+            const parsedJson = JSON.parse(finalJson);
             
-            const finalData = JSON.parse(cleanJson);
             setStreamingState({
-              rawText: cleanJson,
+              rawText: finalJson,
               parsedData: {
-                probability: finalData.probability || "Unknown",
-                areasForResearch: Array.isArray(finalData.areasForResearch) ? finalData.areasForResearch : []
+                probability: parsedJson.probability || "Unknown",
+                areasForResearch: Array.isArray(parsedJson.areasForResearch) ? parsedJson.areasForResearch : []
               }
             });
             
-            setProgress(prev => [...prev, `Extracted probability: ${finalData.probability || "Unknown"}`]);
-            if (Array.isArray(finalData.areasForResearch) && finalData.areasForResearch.length > 0) {
-              setProgress(prev => [
-                ...prev, 
-                `Identified ${finalData.areasForResearch.length} areas needing further research`
-              ]);
-            }
+            setProgress(prev => [...prev, `Extracted probability: ${parsedJson.probability || "Unknown"}`]);
           } catch (e) {
             console.error('Final JSON parsing error:', e);
             
-            try {
-              const jsonMatch = accumulatedJson.match(/\{[\s\S]*?\}/);
-              if (jsonMatch && jsonMatch[0]) {
-                const extractedJson = jsonMatch[0];
-                console.log("Attempting regex extraction:", extractedJson.substring(0, 100) + "...");
-                
-                const fallbackData = JSON.parse(extractedJson);
-                setStreamingState({
-                  rawText: extractedJson,
-                  parsedData: {
-                    probability: fallbackData.probability || "Unknown",
-                    areasForResearch: Array.isArray(fallbackData.areasForResearch) ? fallbackData.areasForResearch : []
-                  }
-                });
-                
-                setProgress(prev => [...prev, `Extracted probability using fallback: ${fallbackData.probability || "Unknown"}`]);
-              } else {
-                throw new Error("Could not extract valid JSON with regex");
+            setStreamingState({
+              rawText: jsonContent,
+              parsedData: {
+                probability: "Unknown (parsing error)",
+                areasForResearch: ["Could not parse research areas due to format error."]
               }
-            } catch (regexError) {
-              console.error("Regex extraction failed:", regexError);
-              setStreamingState({
-                rawText: accumulatedJson,
-                parsedData: {
-                  probability: "Unknown (parsing error)",
-                  areasForResearch: ["Could not parse research areas due to format error."]
-                }
-              });
-            }
+            });
           }
           
           break;
         }
         
-        const chunk = textDecoder.decode(value)
-        console.log("Received insights chunk of size:", chunk.length)
+        const chunk = textDecoder.decode(value);
         
-        buffer += chunk
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
+        const lines = chunk.split('\n\n');
         
         for (const line of lines) {
           if (line.trim() && line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim()
-            if (jsonStr === '[DONE]') continue
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
             
             try {
-              const { content } = cleanStreamContent(jsonStr)
-              
+              const { content } = cleanStreamContent(jsonStr);
               if (content) {
-                console.log("Received insights content chunk:", content.substring(0, 50) + "...")
-                accumulatedJson += content
-                
-                try {
-                  let tempJson = accumulatedJson;
-                  if (tempJson.startsWith('```json')) {
-                    tempJson = tempJson.replace(/^```json\n/, '');
-                  } else if (tempJson.startsWith('```')) {
-                    tempJson = tempJson.replace(/^```\n/, '');
-                  }
-                  if (tempJson.endsWith('```')) {
-                    tempJson = tempJson.replace(/```$/, '');
-                  }
-                  
-                  const parsedJson = JSON.parse(tempJson);
-                  
-                  if (parsedJson.probability && Array.isArray(parsedJson.areasForResearch)) {
-                    setStreamingState({
-                      rawText: tempJson,
-                      parsedData: parsedJson
-                    });
-                  }
-                } catch (e) {
-                  console.debug('JSON not complete yet, continuing to accumulate');
-                }
+                jsonContent += content;
               }
             } catch (e) {
-              console.debug('Chunk parse error (expected during streaming):', e)
+              console.debug('Error parsing insights SSE data (expected during streaming):', e);
             }
           }
         }
       }
+    } catch (error) {
+      console.error("Error in extractInsights:", error);
+      setError(`Error extracting insights: ${error.message}`);
+      
+      setStreamingState({
+        rawText: '',
+        parsedData: {
+          probability: "Unknown (error occurred)",
+          areasForResearch: ["Error occurred during analysis"]
+        }
+      });
     }
-
-    const insightsReader = new Response(insightsResponse.data.body).body?.getReader()
-    
-    if (!insightsReader) {
-      throw new Error('Failed to get reader from insights response')
-    }
-    
-    await processInsightsStream(insightsReader)
-  }
+  };
 
   const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
     try {
