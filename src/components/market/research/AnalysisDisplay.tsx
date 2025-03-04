@@ -17,7 +17,6 @@ export function AnalysisDisplay({
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
-  const [lastChunkTime, setLastChunkTime] = useState<Date | null>(null)
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
@@ -30,13 +29,6 @@ export function AnalysisDisplay({
     // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
-      
-      // Update last chunk time if content has changed
-      if (currentContentLength > prevContentLength.current) {
-        setLastChunkTime(new Date())
-        console.log("Streaming chunk received:", 
-          content.substring(prevContentLength.current, currentContentLength).slice(0, 50) + "...");
-      }
     }
     
     prevContentLength.current = currentContentLength
@@ -75,10 +67,6 @@ export function AnalysisDisplay({
     return () => clearInterval(interval)
   }, [isStreaming, shouldAutoScroll])
 
-  // Calculate if we're waiting for data
-  const isWaitingForData = isStreaming && lastChunkTime && 
-    (new Date().getTime() - lastChunkTime.getTime() > 2000);
-
   if (!content) return null
 
   return (
@@ -97,15 +85,10 @@ export function AnalysisDisplay({
       
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-muted-foreground">
-              {isWaitingForData ? "Waiting for data..." : "Streaming..."}
-            </span>
-            <div className="flex space-x-1">
-              <div className={`w-2 h-2 rounded-full bg-primary animate-pulse ${isWaitingForData ? 'opacity-50' : ''}`} />
-              <div className={`w-2 h-2 rounded-full bg-primary animate-pulse delay-150 ${isWaitingForData ? 'opacity-50' : ''}`} />
-              <div className={`w-2 h-2 rounded-full bg-primary animate-pulse delay-300 ${isWaitingForData ? 'opacity-50' : ''}`} />
-            </div>
+          <div className="flex space-x-1">
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
+            <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-300" />
           </div>
         </div>
       )}
