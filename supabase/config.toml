@@ -69,6 +69,7 @@ redirect_uri = ""
 enabled = false
 
 [functions]
+# Ensure this is properly formatted as a section, not individual properties
+[[functions.function]]
 enabled = true
 port = 54328
-
