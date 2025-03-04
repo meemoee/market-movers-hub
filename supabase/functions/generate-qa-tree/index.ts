@@ -62,10 +62,16 @@ ${parentContent}
       let parsed;
       try {
         parsed = JSON.parse(rawContent);
+        if (!Array.isArray(parsed)) {
+          // If not an array, wrap it in an array to make it iterable
+          parsed = [parsed];
+        }
       } catch (err) {
-        throw new Error('Failed to parse follow-up questions');
+        console.error("JSON parse error:", err, "Raw content:", rawContent);
+        // Return a default array with an empty question to avoid iteration errors
+        parsed = [{ question: "" }];
       }
-      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
+      
       return new Response(JSON.stringify(parsed), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });

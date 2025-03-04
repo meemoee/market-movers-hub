@@ -468,7 +468,10 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         });
         
         if (followUpError) throw followUpError;
-        const followUpQuestions = followUpData;
+        
+        const followUpQuestions = Array.isArray(followUpData) ? followUpData : [];
+        console.log('Follow-up questions:', followUpQuestions);
+        
         for (const item of followUpQuestions) {
           if (item?.question) {
             await analyzeQuestion(item.question, nodeId, depth + 1);

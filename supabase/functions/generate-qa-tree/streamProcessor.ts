@@ -1,5 +1,7 @@
 
 export class StreamProcessor {
+  private buffer: string = '';
+
   processChunk(text: string): string {
     const lines = text.split('\n');
     let content = '';
@@ -26,10 +28,12 @@ export class StreamProcessor {
   }
 
   flush(): string {
-    return '';
+    const result = this.buffer;
+    this.buffer = '';
+    return result;
   }
 
   clear(): void {
-    // No buffer to clear in this simplified implementation
+    this.buffer = '';
   }
 }
