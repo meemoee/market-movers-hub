@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
 import type { Components as MarkdownComponents } from 'react-markdown';
-import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
+import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight, Percent, Target, AlertCircle, ArrowDown } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
@@ -18,6 +18,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
 import { InsightsDisplay } from "@/components/market/insights/InsightsDisplay";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface QANode {
   id: string;
@@ -31,12 +32,19 @@ interface QANode {
     score: number;
     reason: string;
   };
+  finalEvaluation?: {
+    probability: string;
+    areasForResearch: string[];
+    analysis: string;
+  };
 }
 
-interface StreamingContent {
-  content: string;
-  citations: string[];
-}
+type StreamingContent = {
+  [key: string]: {
+    content: string;
+    citations: string[];
+  };
+};
 
 type SavedResearch = Database['public']['Tables']['web_research']['Row'] & {
   areas_for_research: string[];
@@ -63,7 +71,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
-  const [streamingContent, setStreamingContent] = useState<{ [key: string]: StreamingContent }>({});
+  const [streamingContent, setStreamingContent] = useState<StreamingContent>({});
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
   const [selectedResearch, setSelectedResearch] = useState<string>('none');
@@ -446,6 +454,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         ...(finalEvaluation ? { [qaData[0]?.id || 'root']: finalEvaluation } : {})
       };
       
+      console.log('Saving tree with evaluations:', Object.keys(allEvaluations).length);
+      
       const treeWithEvaluations = completeTreeData.map(node => {
         const nodeEvaluation = allEvaluations[node.id];
         if (nodeEvaluation) {
@@ -473,7 +483,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
       toast({
         title: "Analysis saved",
-        description: `Saved QA tree with ${rootExtensions.length} question expansions and final evaluations`,
+        description: `Saved QA tree with ${rootExtensions.length} question expansions and ${Object.keys(allEvaluations).length} evaluations`,
       });
 
       await queryClient.invalidateQueries({ queryKey: ['saved-qa-trees', marketId] });
@@ -716,6 +726,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   const loadSavedQATree = async (treeData: QANode[]) => {
     console.log('Loading saved QA tree:', treeData);
     
+    const nodeEvaluations: {[id: string]: FinalEvaluation} = {};
+    treeData.forEach(node => {
+      if (node.finalEvaluation) {
+        nodeEvaluations[node.id] = node.finalEvaluation;
+      }
+    });
+    
+    console.log('Found node evaluations:', Object.keys(nodeEvaluations).length);
+    setNavigatedFinalEvaluations(nodeEvaluations);
+    
     const mainRoots = treeData.filter(node => !node.isExtendedRoot);
     const extensions = treeData.filter(node => node.isExtendedRoot);
     
@@ -756,7 +776,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     console.log('Finished loading tree structure:', {
       mainRoots,
       extensions,
-      totalNodes: [...mainRoots, ...extensions].length
+      totalNodes: [...mainRoots, ...extensions].length,
+      evaluations: Object.keys(nodeEvaluations).length
     });
   };
 
@@ -976,16 +997,24 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                   {getExtensionInfo(node)}
                 </h3>
                 {!node.isExtendedRoot && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExpandQuestion(node);
-                    }}
-                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                    title="Expand this question into a follow-up analysis"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExpandQuestion(node);
+                          }}
+                          className="p-1 hover:bg-accent/50 rounded-full transition-colors"
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Expand this question into a detailed analysis</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 )}
               </div>
               <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
@@ -1003,6 +1032,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           {analysisContent}
                         </ReactMarkdown>
                         {renderCitations(citations)}
+                        
+                        {/* Show node evaluation data */}
+                        {renderNodeEvaluation(node)}
                         
                         <div className="mt-4 flex items-center gap-2">
                           {node.evaluation && (
@@ -1040,6 +1072,12 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                                   <div className="line-clamp-3">
                                     {getPreviewText(extension.analysis)}
                                   </div>
+                                  {extension.finalEvaluation && (
+                                    <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                                      <Percent className="h-3 w-3" />
+                                      {extension.finalEvaluation.probability}
+                                    </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -1047,7 +1085,15 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                         )}
                       </>
                     ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
+                      <>
+                        <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
+                        {node.finalEvaluation && (
+                          <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                            <Percent className="h-3 w-3" />
+                            <span>Probability: {node.finalEvaluation.probability}</span>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1063,6 +1109,54 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       </div>
     );
   }
+
+  const renderNodeEvaluation = (node: QANode) => {
+    if (!node.finalEvaluation) return null;
+    
+    const { probability, areasForResearch } = node.finalEvaluation;
+    
+    if (!probability && (!areasForResearch || areasForResearch.length === 0)) return null;
+    
+    const getProbabilityColor = (probability: string) => {
+      const numericProb = parseInt(probability.replace('%', ''));
+      return numericProb >= 50 ? 'bg-green-500/10' : 'bg-red-500/10';
+    };
+    
+    return (
+      <div className="mt-4 space-y-2">
+        <div className={`p-3 rounded-lg ${probability ? getProbabilityColor(probability) : 'bg-accent/5'}`}>
+          {probability && (
+            <div className="flex items-center gap-2 mb-2">
+              <Target className="h-4 w-4 text-primary" />
+              <span className="text-xs font-medium">
+                Probability: {probability}
+              </span>
+            </div>
+          )}
+          
+          {areasForResearch && areasForResearch.length > 0 && (
+            <>
+              {probability && <div className="h-px bg-black/10 dark:bg-white/10 my-2" />}
+              <div>
+                <div className="flex items-center gap-2 text-xs font-medium mb-1">
+                  <AlertCircle className="h-4 w-4 text-amber-500" />
+                  Areas Needing Research:
+                </div>
+                <ul className="space-y-1">
+                  {areasForResearch.map((area, index) => (
+                    <li key={index} className="text-xs text-muted-foreground flex items-start gap-1">
+                      <ArrowDown className="h-3 w-3 text-amber-500 mt-0.5 flex-shrink-0" />
+                      <span>{area}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
