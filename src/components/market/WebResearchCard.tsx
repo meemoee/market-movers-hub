@@ -261,6 +261,162 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
+  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
+    try {
+      setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
+      setCurrentIteration(iteration)
+      setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
+      
+      console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
+      console.log(`Market ID for web-scrape: ${marketId}`)
+      console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
+      
+      setCurrentQueries(queries);
+      setCurrentQueryIndex(-1);
+      
+      const shortenedQueries = queries.map(query => {
+        const cleanedQuery = query.replace(new RegExp(` ${marketId}$`), '');
+        if (cleanedQuery.length > 200) {
+          return cleanedQuery.substring(0, 200);
+        }
+        return cleanedQuery;
+      });
+      
+      const scrapePayload = { 
+        queries: shortenedQueries,
+        marketId: marketId,
+        marketDescription: description
+      };
+
+      if (focusText.trim()) {
+        Object.assign(scrapePayload, { 
+          focusText: focusText.trim(),
+          researchFocus: focusText.trim() 
+        });
+        setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
+      }
+      
+      const response = await supabase.functions.invoke('web-scrape', {
+        body: JSON.stringify(scrapePayload)
+      })
+
+      if (response.error) {
+        console.error("Error from web-scrape:", response.error)
+        throw response.error
+      }
+
+      console.log("Received response from web-scrape function:", response)
+      
+      const allContent: string[] = [...previousContent]
+      const iterationResults: ResearchResult[] = []
+      let messageCount = 0;
+      let hasResults = false;
+
+      const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
+        const textDecoder = new TextDecoder()
+        let buffer = '';
+        
+        while (true) {
+          const { done, value } = await reader.read()
+          
+          if (done) {
+            console.log("Stream reading complete")
+            setProgress(prev => [...prev, `Search Completed for iteration ${iteration}`])
+            break
+          }
+          
+          const chunk = textDecoder.decode(value)
+          console.log("Received chunk:", chunk)
+          
+          buffer += chunk
+          const lines = buffer.split('\n\n')
+          buffer = lines.pop() || ''
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim()
+              
+              if (jsonStr === '[DONE]') {
+                console.log("Received [DONE] marker")
+                continue
+              }
+              
+              try {
+                console.log("Parsing JSON from line:", jsonStr)
+                const parsed = JSON.parse(jsonStr)
+                
+                if (parsed.type === 'results' && Array.isArray(parsed.data)) {
+                  console.log("Received results:", parsed.data)
+                  iterationResults.push(...parsed.data)
+                  setResults(prev => {
+                    const combined = [...prev, ...parsed.data]
+                    const uniqueResults = Array.from(
+                      new Map(combined.map(item => [item.url, item])).values()
+                    )
+                    return uniqueResults
+                  })
+                  
+                  parsed.data.forEach((result: ResearchResult) => {
+                    if (result?.content) {
+                      allContent.push(result.content)
+                    }
+                  })
+                  
+                  hasResults = true;
+                } else if (parsed.type === 'message' && parsed.message) {
+                  console.log("Received message:", parsed.message)
+                  messageCount++;
+                  
+                  const queryMatch = parsed.message.match(/processing query (\d+)\/\d+: (.*)/i);
+                  if (queryMatch && queryMatch[1] && queryMatch[2]) {
+                    const queryIndex = parseInt(queryMatch[1], 10) - 1;
+                    setCurrentQueryIndex(queryIndex);
+                    
+                    const cleanQueryText = queryMatch[2].replace(new RegExp(` ${marketId}$`), '');
+                    setProgress(prev => [...prev, `Iteration ${iteration}: Searching "${cleanQueryText}"`]);
+                  } else {
+                    setProgress(prev => [...prev, parsed.message]);
+                  }
+                } else if (parsed.type === 'error' && parsed.message) {
+                  console.error("Received error from stream:", parsed.message)
+                  setProgress(prev => [...prev, `Error: ${parsed.message}`])
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e, "Raw data:", jsonStr)
+              }
+            }
+          }
+        }
+      }
+
+      const reader = new Response(response.data.body).body?.getReader()
+      
+      if (!reader) {
+        throw new Error('Failed to get reader from response')
+      }
+      
+      await processStream(reader)
+
+      console.log(`Results after stream processing for iteration ${iteration}:`, iterationResults.length)
+      console.log("Content collected:", allContent.length, "items")
+
+      if (allContent.length === 0) {
+        setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
+        setError('No content collected from web scraping. Try a more specific query or different keywords.')
+        setIsLoading(false)
+        setIsAnalyzing(false)
+        return
+      }
+
+      await processQueryResults(allContent, iteration, queries, iterationResults)
+    } catch (error) {
+      console.error(`Error in web research iteration ${iteration}:`, error)
+      setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      setIsLoading(false)
+      setIsAnalyzing(false)
+    }
+  }
+
   const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[]) => {
     try {
       setIsAnalyzing(true)
@@ -457,7 +613,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               marketId: marketId,
               marketDescription: description,
               areasForResearch: streamingState.parsedData?.areasForResearch || [],
-              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n')
+              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+              focusText: focusText.trim()
             })
           })
 
@@ -618,162 +775,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
-    try {
-      setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
-      setCurrentIteration(iteration)
-      setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
-      
-      console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
-      console.log(`Market ID for web-scrape: ${marketId}`)
-      console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
-      
-      setCurrentQueries(queries);
-      setCurrentQueryIndex(-1);
-      
-      const shortenedQueries = queries.map(query => {
-        const cleanedQuery = query.replace(new RegExp(` ${marketId}$`), '');
-        if (cleanedQuery.length > 200) {
-          return cleanedQuery.substring(0, 200);
-        }
-        return cleanedQuery;
-      });
-      
-      const scrapePayload = { 
-        queries: shortenedQueries,
-        marketId: marketId,
-        marketDescription: description
-      };
-
-      if (focusText.trim()) {
-        Object.assign(scrapePayload, { 
-          focusText: focusText.trim(),
-          researchFocus: focusText.trim() 
-        });
-        setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
-      }
-      
-      const response = await supabase.functions.invoke('web-scrape', {
-        body: JSON.stringify(scrapePayload)
-      })
-
-      if (response.error) {
-        console.error("Error from web-scrape:", response.error)
-        throw response.error
-      }
-
-      console.log("Received response from web-scrape function:", response)
-      
-      const allContent: string[] = [...previousContent]
-      const iterationResults: ResearchResult[] = []
-      let messageCount = 0;
-      let hasResults = false;
-
-      const processStream = async (reader: ReadableStreamDefaultReader<Uint8Array>) => {
-        const textDecoder = new TextDecoder()
-        let buffer = '';
-        
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log("Stream reading complete")
-            setProgress(prev => [...prev, `Search Completed for iteration ${iteration}`])
-            break
-          }
-          
-          const chunk = textDecoder.decode(value)
-          console.log("Received chunk:", chunk)
-          
-          buffer += chunk
-          const lines = buffer.split('\n\n')
-          buffer = lines.pop() || ''
-          
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              
-              if (jsonStr === '[DONE]') {
-                console.log("Received [DONE] marker")
-                continue
-              }
-              
-              try {
-                console.log("Parsing JSON from line:", jsonStr)
-                const parsed = JSON.parse(jsonStr)
-                
-                if (parsed.type === 'results' && Array.isArray(parsed.data)) {
-                  console.log("Received results:", parsed.data)
-                  iterationResults.push(...parsed.data)
-                  setResults(prev => {
-                    const combined = [...prev, ...parsed.data]
-                    const uniqueResults = Array.from(
-                      new Map(combined.map(item => [item.url, item])).values()
-                    )
-                    return uniqueResults
-                  })
-                  
-                  parsed.data.forEach((result: ResearchResult) => {
-                    if (result?.content) {
-                      allContent.push(result.content)
-                    }
-                  })
-                  
-                  hasResults = true;
-                } else if (parsed.type === 'message' && parsed.message) {
-                  console.log("Received message:", parsed.message)
-                  messageCount++;
-                  
-                  const queryMatch = parsed.message.match(/processing query (\d+)\/\d+: (.*)/i);
-                  if (queryMatch && queryMatch[1] && queryMatch[2]) {
-                    const queryIndex = parseInt(queryMatch[1], 10) - 1;
-                    setCurrentQueryIndex(queryIndex);
-                    
-                    const cleanQueryText = queryMatch[2].replace(new RegExp(` ${marketId}$`), '');
-                    setProgress(prev => [...prev, `Iteration ${iteration}: Searching "${cleanQueryText}"`]);
-                  } else {
-                    setProgress(prev => [...prev, parsed.message]);
-                  }
-                } else if (parsed.type === 'error' && parsed.message) {
-                  console.error("Received error from stream:", parsed.message)
-                  setProgress(prev => [...prev, `Error: ${parsed.message}`])
-                }
-              } catch (e) {
-                console.error('Error parsing SSE data:', e, "Raw data:", jsonStr)
-              }
-            }
-          }
-        }
-      }
-
-      const reader = new Response(response.data.body).body?.getReader()
-      
-      if (!reader) {
-        throw new Error('Failed to get reader from response')
-      }
-      
-      await processStream(reader)
-
-      console.log(`Results after stream processing for iteration ${iteration}:`, iterationResults.length)
-      console.log("Content collected:", allContent.length, "items")
-
-      if (allContent.length === 0) {
-        setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
-        setError('No content collected from web scraping. Try a more specific query or different keywords.')
-        setIsLoading(false)
-        setIsAnalyzing(false)
-        return
-      }
-
-      await processQueryResults(allContent, iteration, queries, iterationResults)
-    } catch (error) {
-      console.error(`Error in web research iteration ${iteration}:`, error)
-      setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      setIsLoading(false)
-      setIsAnalyzing(false)
-    }
-  }
-
   const handleResearch = async () => {
     setIsLoading(true)
     setProgress([])
@@ -803,7 +804,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         console.log("Calling generate-queries with:", { 
           description, 
           marketId,
-          descriptionLength: description ? description.length : 0 
+          descriptionLength: description ? description.length : 0,
+          focusText: focusText.trim() || null
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
@@ -812,7 +814,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketId: marketId,
             marketDescription: description,
             question: description,
-            iteration: 1 // Explicitly mark this as iteration 1
+            iteration: 1,
+            focusText: focusText.trim()
           })
         });
 

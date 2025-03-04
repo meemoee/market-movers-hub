@@ -7,6 +7,7 @@ interface AnalysisRequest {
   query: string;
   question: string;
   marketId?: string; // Add market ID to the request
+  focusText?: string; // Add research focus to the request
 }
 
 const corsHeaders = {
@@ -21,13 +22,14 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query, question, marketId } = await req.json() as AnalysisRequest;
+    const { content, query, question, marketId, focusText } = await req.json() as AnalysisRequest;
     
     // Log request info for debugging
     console.log(`Analyze web content request for market ID ${marketId || 'unknown'}:`, {
       contentLength: content?.length || 0,
       query: query?.substring(0, 100) || 'Not provided',
-      question: question?.substring(0, 100) || 'Not provided'
+      question: question?.substring(0, 100) || 'Not provided',
+      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified'
     });
 
     // Determine which API to use
@@ -60,7 +62,11 @@ serve(async (req) => {
       ? `\nImportant context: You are analyzing content for prediction market ID: ${marketId}\n`
       : '';
 
-    const systemPrompt = `You are an expert market research analyst.${marketContext}
+    const focusContext = focusText
+      ? `\nIMPORTANT: Focus your analysis specifically on: "${focusText}"\n`
+      : '';
+
+    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}
 Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
 Provide a comprehensive, balanced analysis of the key information, focusing on facts that help assess probability.
 Be factual and evidence-based, not speculative.`;
@@ -73,6 +79,7 @@ ${truncatedContent}
 
 Based solely on the information in this content:
 1. What are the key facts and insights relevant to the market question "${question}"?
+${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
 2. What evidence supports or contradicts the proposition?
 3. How does this information affect the probability assessment?
 4. What conclusions can we draw about the likely outcome?
