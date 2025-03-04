@@ -17,6 +17,7 @@ export function AnalysisDisplay({
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
@@ -29,10 +30,11 @@ export function AnalysisDisplay({
     // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight
+      setLastUpdateTime(Date.now())
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll]) // Track both content changes and streaming state
+  }, [content, isStreaming, shouldAutoScroll]) 
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -69,6 +71,10 @@ export function AnalysisDisplay({
 
   if (!content) return null
 
+  // Calculate how long since the last update
+  const timeSinceUpdate = Date.now() - lastUpdateTime
+  const isWaiting = isStreaming && timeSinceUpdate > 3000 // If no updates for 3+ seconds
+
   return (
     <div className="relative">
       <ScrollArea 
@@ -85,10 +91,15 @@ export function AnalysisDisplay({
       
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
-          <div className="flex space-x-1">
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-300" />
+          <div className="flex items-center space-x-2">
+            <span className="text-xs text-muted-foreground">
+              {isWaiting ? "Waiting for data..." : "Streaming..."}
+            </span>
+            <div className="flex space-x-1">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-150" />
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse delay-300" />
+            </div>
           </div>
         </div>
       )}
