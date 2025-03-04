@@ -374,12 +374,23 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const originalNodeId = qaData[0]?.originalNodeId;
       let originalQuestion = marketQuestion;
       
+      // Prepare history context
+      let historyContext = '';
+      
       if (isContinuation && originalNodeId) {
         // Find the original node's question by looking through all extensions
         const originalNode = rootExtensions.find(ext => ext.id === originalNodeId);
         if (originalNode) {
           console.log("Found original node:", originalNode.id, "with question:", originalNode.question);
           originalQuestion = originalNode.question;
+          
+          // Find parent nodes path if any
+          for (const extension of rootExtensions) {
+            if (extension.id === originalNodeId) {
+              historyContext = `Original Question: ${extension.question}\nAnalysis: ${extension.analysis}`;
+              break;
+            }
+          }
         }
       }
       
@@ -388,7 +399,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         qaContextLength: qaContext.length,
         hasResearchContext: !!researchContext,
         isContinuation,
-        originalQuestion: isContinuation ? originalQuestion : undefined
+        originalQuestion: isContinuation ? originalQuestion : undefined,
+        hasHistoryContext: historyContext.length > 0
       });
       
       const { data, error } = await supabase.functions.invoke('evaluate-qa-final', {
@@ -397,7 +409,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           qaContext,
           researchContext,
           isContinuation,
-          originalQuestion: isContinuation ? originalQuestion : undefined
+          originalQuestion: isContinuation ? originalQuestion : undefined,
+          historyContext: historyContext.length > 0 ? historyContext : undefined
         },
       });
       

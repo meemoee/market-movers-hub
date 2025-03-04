@@ -14,12 +14,12 @@ serve(async (req) => {
   }
 
   try {
-    const { marketQuestion, qaContext, researchContext, isContinuation, originalQuestion } = await req.json()
+    const { marketQuestion, qaContext, researchContext, isContinuation, originalQuestion, historyContext } = await req.json()
 
     const questionToUse = isContinuation && originalQuestion ? originalQuestion : marketQuestion;
     
     console.log(`Evaluating QA for market question: ${questionToUse?.substring(0, 50)}...`);
-    console.log(`QA context length: ${qaContext?.length || 0}, has research context: ${!!researchContext}, is continuation: ${!!isContinuation}`);
+    console.log(`QA context length: ${qaContext?.length || 0}, has research context: ${!!researchContext}, is continuation: ${!!isContinuation}, has history context: ${!!historyContext?.length}`);
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY')
     if (!openRouterKey) {
@@ -32,11 +32,15 @@ serve(async (req) => {
 3. A concise final analysis
 
 ${isContinuation ? 'This is a continuation or in-depth exploration of a previous analysis.' : ''}
+${historyContext ? 'Consider the provided historical context from previous analysis steps.' : ''}
 Be specific and data-driven in your evaluation.`
 
     const userPrompt = `Market Question: ${questionToUse}
 
-Q&A Analysis:
+${historyContext ? `Previous Analysis Context:
+${historyContext}
+
+` : ''}Q&A Analysis:
 ${qaContext}
 
 ${researchContext ? `Additional Research Context:
