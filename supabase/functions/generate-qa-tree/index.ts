@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -62,16 +61,10 @@ ${parentContent}
       let parsed;
       try {
         parsed = JSON.parse(rawContent);
-        if (!Array.isArray(parsed)) {
-          // If not an array, wrap it in an array to make it iterable
-          parsed = [parsed];
-        }
       } catch (err) {
-        console.error("JSON parse error:", err, "Raw content:", rawContent);
-        // Return a default array with an empty question to avoid iteration errors
-        parsed = [{ question: "" }];
+        throw new Error('Failed to parse follow-up questions');
       }
-      
+      if (!Array.isArray(parsed)) throw new Error('Response is not an array');
       return new Response(JSON.stringify(parsed), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -111,40 +104,47 @@ Start your response with complete sentences, avoid markdown headers or numbered 
         stream: true
       })
     });
-
     if (!analysisResponse.ok) {
       throw new Error(`Analysis generation failed: ${analysisResponse.status}`);
     }
 
-    // Create a transform stream to directly pass through the SSE events
-    const { readable, writable } = new TransformStream();
-    const writer = writable.getWriter();
-    const reader = analysisResponse.body?.getReader();
-    
-    if (!reader) {
-      throw new Error("Failed to get reader from response");
-    }
-    
-    // Process the stream in the background
-    (async () => {
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            await writer.close();
-            break;
+    // A simple TransformStream that buffers incoming text until full SSE events are available.
+    let buffer = "";
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk);
+        buffer += text;
+        const parts = buffer.split("\n\n");
+        // Keep the last (possibly incomplete) part in the buffer.
+        buffer = parts.pop() || "";
+        for (const part of parts) {
+          if (part.startsWith("data: ")) {
+            const dataStr = part.slice(6).trim();
+            if (dataStr === "[DONE]") continue;
+            try {
+              const parsed = JSON.parse(dataStr);
+              // Re-emit the SSE event unmodified.
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+            } catch (err) {
+              console.error("Error parsing SSE chunk:", err);
+            }
           }
-          // Pass through the raw chunks directly
-          await writer.write(value);
         }
-      } catch (error) {
-        console.error("Stream processing error:", error);
-        writer.abort(error);
+      },
+      flush(controller) {
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer.trim());
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+          } catch (err) {
+            console.error("Error parsing final SSE chunk:", err);
+          }
+        }
+        buffer = "";
       }
-    })();
+    });
 
-    // Return the transformed stream
-    return new Response(readable, {
+    return new Response(analysisResponse.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

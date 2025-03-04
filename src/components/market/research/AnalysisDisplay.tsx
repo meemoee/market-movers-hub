@@ -1,5 +1,4 @@
-
-import { useEffect, useRef } from "react"
+import { useLayoutEffect, useRef, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
@@ -10,26 +9,37 @@ interface AnalysisDisplayProps {
 
 export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const prevContentLength = useRef(content?.length || 0)
   
-  // Scroll to bottom when content changes or during streaming
-  useEffect(() => {
-    if (!scrollRef.current || !content) return
+  // This effect handles scrolling when new content arrives
+  useLayoutEffect(() => {
+    if (!scrollRef.current) return
     
-    const scrollToBottom = () => {
+    const scrollContainer = scrollRef.current
+    const currentContentLength = content?.length || 0
+    
+    // Only auto-scroll if content is growing (new chunks arriving)
+    // or if we're explicitly in streaming mode
+    if (currentContentLength > prevContentLength.current || isStreaming) {
+      scrollContainer.scrollTop = scrollContainer.scrollHeight
+    }
+    
+    prevContentLength.current = currentContentLength
+  }, [content, isStreaming]) // Track both content changes and streaming state
+  
+  // Continuously scroll during streaming
+  useEffect(() => {
+    if (!isStreaming || !scrollRef.current) return
+    
+    const interval = setInterval(() => {
       if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
       }
-    }
+    }, 100)
     
-    scrollToBottom()
-    
-    // For continuous scrolling during streaming
-    if (isStreaming) {
-      const intervalId = setInterval(scrollToBottom, 100)
-      return () => clearInterval(intervalId)
-    }
-  }, [content, isStreaming])
-  
+    return () => clearInterval(interval)
+  }, [isStreaming])
+
   if (!content) return null
 
   return (
