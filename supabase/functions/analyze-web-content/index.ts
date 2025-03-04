@@ -102,7 +102,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // Return the streaming response
+    // Return the streaming response directly without transformation
     return new Response(response.body, {
       headers: {
         ...corsHeaders,
