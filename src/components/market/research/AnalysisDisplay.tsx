@@ -1,4 +1,3 @@
-
 import { useLayoutEffect, useRef, useEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -49,9 +48,11 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
         className="h-[200px] rounded-md border p-4 bg-accent/5"
         ref={scrollRef}
       >
-        <ReactMarkdown className="text-sm prose prose-invert prose-sm max-w-none">
-          {content}
-        </ReactMarkdown>
+        <div className="overflow-x-hidden w-full">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
+            {content}
+          </ReactMarkdown>
+        </div>
       </ScrollArea>
       
       {isStreaming && (
