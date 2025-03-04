@@ -6,7 +6,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import ReactMarkdown from 'react-markdown';
 import type { Components as MarkdownComponents } from 'react-markdown';
-import { ChevronDown, ChevronUp, MessageSquare, Link as LinkIcon, ArrowRight } from "lucide-react";
+import { 
+  ChevronDown, 
+  ChevronUp, 
+  MessageSquare, 
+  Link as LinkIcon, 
+  ArrowRight, 
+  Save,
+  RefreshCw,
+  Sparkles,
+  ArrowLeft,
+  BookOpen
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
@@ -15,9 +26,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger 
+} from "@/components/ui/tooltip";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
 import { InsightsDisplay } from "@/components/market/insights/InsightsDisplay";
+import { AnalysisDisplay } from "@/components/market/research/AnalysisDisplay";
 
 interface QANode {
   id: string;
@@ -910,6 +928,18 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     return rootExtensions.filter(ext => ext.originalNodeId === nodeId);
   };
 
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'bg-green-500/20 text-green-500';
+    if (score >= 60) return 'bg-yellow-500/20 text-yellow-500';
+    return 'bg-red-500/20 text-red-500';
+  };
+
+  const getEvaluationEmoji = (score: number) => {
+    if (score >= 80) return '✓';
+    if (score >= 60) return '⚠️';
+    return '✗';
+  };
+
   function renderQANode(node: QANode, depth: number = 0) {
     const isStreaming = currentNodeId === node.id;
     const streamContent = streamingContent[node.id];
@@ -958,13 +988,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
             </div>
           )}
-          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
+          <div className={`flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative ${!isExpanded ? 'hover:bg-accent/5 rounded-lg transition-colors' : ''}`}>
             {depth > 0 && (
               <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
             )}
             <div className="absolute left-[12px] sm:left-[24px] top-0">
-              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
-                <AvatarFallback className="bg-primary/10">
+              <Avatar className={`h-8 w-8 sm:h-9 sm:w-9 border-2 border-background ${isStreaming ? 'ring-2 ring-primary/30 animate-pulse' : ''}`}>
+                <AvatarFallback className={`${isStreaming ? 'bg-primary/20' : 'bg-primary/10'}`}>
                   <MessageSquare className="h-3 w-3" />
                 </AvatarFallback>
               </Avatar>
@@ -974,27 +1004,48 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                 <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
                   {node.question}
                   {getExtensionInfo(node)}
+                  {node.evaluation && (
+                    <span className={`ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full text-xs font-medium ${getScoreColor(node.evaluation.score)}`}>
+                      {getEvaluationEmoji(node.evaluation.score)} {node.evaluation.score}%
+                    </span>
+                  )}
                 </h3>
-                {!node.isExtendedRoot && (
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExpandQuestion(node);
-                    }}
+                <div className="flex gap-1">
+                  {!node.isExtendedRoot && (
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleExpandQuestion(node);
+                            }}
+                            className="p-1 hover:bg-accent/50 rounded-full transition-colors"
+                          >
+                            <ArrowRight className="h-4 w-4" />
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs">Expand into follow-up analysis</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+                  <button
+                    onClick={() => toggleNode(node.id)}
                     className="p-1 hover:bg-accent/50 rounded-full transition-colors"
-                    title="Expand this question into a follow-up analysis"
                   >
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
-                <div className="flex items-start gap-2">
-                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
                     {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                   </button>
-                  <div className="flex-1">
-                    {isExpanded ? (
+                </div>
+              </div>
+              
+              <div className="text-sm text-muted-foreground cursor-pointer">
+                {isExpanded ? (
+                  <div className="bg-accent/5 rounded-lg p-4 border border-border/50 transition-all">
+                    {isStreaming ? (
+                      <AnalysisDisplay content={analysisContent} isStreaming={true} maxHeight="300px" />
+                    ) : (
                       <>
                         <ReactMarkdown
                           components={markdownComponents}
@@ -1008,9 +1059,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                           {node.evaluation && (
                             <div className="flex items-center gap-2">
                               <div className={`px-2 py-1 rounded text-xs font-medium ${
-                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
-                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
-                                'bg-red-500/20 text-red-500'
+                                getScoreColor(node.evaluation.score)
                               }`}>
                                 Score: {node.evaluation.score}%
                               </div>
@@ -1018,39 +1067,47 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                             </div>
                           )}
                         </div>
-                        
-                        {nodeExtensions.length > 0 && (
-                          <div className="mt-4 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground">
-                              Follow-up Analyses ({nodeExtensions.length}):
-                            </div>
-                            <div className="space-y-4">
-                              {nodeExtensions.map((extension, index) => (
-                                <div 
-                                  key={extension.id}
-                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigateToExtension(extension);
-                                  }}
-                                >
-                                  <div className="text-xs text-muted-foreground mb-2">
-                                    Continuation #{index + 1}
-                                  </div>
-                                  <div className="line-clamp-3">
-                                    {getPreviewText(extension.analysis)}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                       </>
-                    ) : (
-                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
+                    )}
+                    
+                    {nodeExtensions.length > 0 && (
+                      <div className="mt-6 pt-4 border-t border-border/50">
+                        <div className="flex items-center gap-2 mb-3">
+                          <BookOpen className="h-4 w-4 text-muted-foreground" />
+                          <div className="text-xs font-medium text-muted-foreground">
+                            Follow-up Analyses ({nodeExtensions.length})
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {nodeExtensions.map((extension, index) => (
+                            <div 
+                              key={extension.id}
+                              className="border border-border/80 rounded-lg p-3 hover:bg-accent/50 cursor-pointer transition-colors hover:border-primary/30 group"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigateToExtension(extension);
+                              }}
+                            >
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                                  Continuation #{index + 1}
+                                </div>
+                                <ArrowRight className="h-3 w-3 text-muted-foreground group-hover:text-primary transition-colors" />
+                              </div>
+                              <div className="line-clamp-3 text-sm">
+                                {getPreviewText(extension.analysis)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                </div>
+                ) : (
+                  <div onClick={() => toggleNode(node.id)} className="pl-10">
+                    <p className="line-clamp-2 text-sm">{getPreviewText(analysisContent)}</p>
+                  </div>
+                )}
               </div>
             </div>
             {node.children.length > 0 && isExpanded && (
@@ -1066,18 +1123,21 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
 
   return (
     <Card className="p-4 mt-4 bg-card relative">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6">
         {navigationHistory.length > 0 && (
           <Button 
             variant="outline" 
             size="sm"
             onClick={navigateBack}
-            className="mb-4 sm:mb-0"
+            className="mb-4 sm:mb-0 flex items-center gap-1"
           >
-            ← Back to Previous Analysis
+            <ArrowLeft className="h-4 w-4" />
+            Back to Previous Analysis
           </Button>
         )}
+        
         <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <label className="text-xs text-muted-foreground mb-1 block">Web Research Context</label>
           <Select
             value={selectedResearch}
             onValueChange={setSelectedResearch}
@@ -1095,7 +1155,9 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             </SelectContent>
           </Select>
         </div>
+        
         <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <label className="text-xs text-muted-foreground mb-1 block">Saved Analysis Trees</label>
           <Select
             value={selectedQATree}
             onValueChange={(value) => {
@@ -1123,39 +1185,88 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             </SelectContent>
           </Select>
         </div>
+        
         <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
-          <Button onClick={handleAnalyze} disabled={isAnalyzing || isFinalEvaluating || saveInProgress}>
-            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          <Button 
+            onClick={handleAnalyze} 
+            disabled={isAnalyzing || isFinalEvaluating || saveInProgress}
+            className="flex items-center gap-1"
+          >
+            {isAnalyzing ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="h-4 w-4" />
+                Analyze
+              </>
+            )}
           </Button>
+          
           {qaData.length > 0 && !isAnalyzing && (
-            <Button onClick={saveQATree} variant="outline" disabled={isFinalEvaluating || saveInProgress}>
-              {saveInProgress ? 'Saving...' : 'Save Analysis'}
+            <Button 
+              onClick={saveQATree} 
+              variant="outline" 
+              disabled={isFinalEvaluating || saveInProgress}
+              className="flex items-center gap-1"
+            >
+              {saveInProgress ? (
+                <>
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4" />
+                  Save Analysis
+                </>
+              )}
             </Button>
           )}
         </div>
       </div>
       
       {(finalEvaluation || activeFinalEvaluation) && (
-        <div className="mb-4">
-          <InsightsDisplay 
-            probability={(finalEvaluation || activeFinalEvaluation)?.probability || ''} 
-            areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch || []} 
-          />
-          <div className="mt-4 bg-accent/5 rounded-md p-4">
-            <h3 className="text-sm font-medium mb-2">Final Analysis</h3>
+        <div className="mb-6 bg-accent/5 border border-border/50 rounded-lg p-4 transition-all">
+          <div className="mb-4">
+            <InsightsDisplay 
+              probability={(finalEvaluation || activeFinalEvaluation)?.probability || ''} 
+              areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch || []} 
+            />
+          </div>
+          <div className="bg-card rounded-md p-4 border border-border/50">
+            <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Final Analysis
+            </h3>
             <p className="text-sm text-muted-foreground">{(finalEvaluation || activeFinalEvaluation)?.analysis || ''}</p>
           </div>
         </div>
       )}
       
       {isFinalEvaluating && (
-        <div className="mb-4 p-4 bg-accent/5 rounded-md">
-          <p className="text-sm animate-pulse">Generating final evaluation...</p>
+        <div className="mb-6 p-4 bg-accent/5 border border-border/50 rounded-md">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+            <p className="text-sm animate-pulse">Generating final evaluation...</p>
+          </div>
         </div>
       )}
       
-      <ScrollArea className="h-[500px] pr-4">
+      <ScrollArea className="h-[600px] pr-4 rounded-lg">
         {qaData.map(node => renderQANode(node))}
+        
+        {qaData.length === 0 && !isAnalyzing && (
+          <div className="flex flex-col items-center justify-center h-64 text-center p-8 bg-accent/5 rounded-lg border border-dashed border-border/80">
+            <Sparkles className="h-6 w-6 text-muted-foreground mb-2" />
+            <h3 className="text-lg font-medium mb-2">No Analysis Yet</h3>
+            <p className="text-sm text-muted-foreground max-w-md">
+              Click the "Analyze" button to begin analyzing the market question or select a saved analysis tree.
+            </p>
+          </div>
+        )}
       </ScrollArea>
     </Card>
   );
