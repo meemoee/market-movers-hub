@@ -296,21 +296,18 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           }
           break;
         }
-        
         const decoded = new TextDecoder().decode(value);
         buffer += decoded;
 
         const parts = buffer.split('\n\n');
         buffer = parts.pop() || '';
-        
         for (const part of parts) {
-          if (part.trim()) {
+          if (part.trim() && isLineComplete(part.trim())) {
+            processPart(part);
+            buffer = '';
+          } else {
             processPart(part);
           }
-        }
-        
-        if (buffer.trim()) {
-          processPart(buffer, true);
         }
       }
     } catch (error) {
@@ -318,47 +315,41 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       throw error;
     }
 
-    function processPart(text: string, isIncomplete = false) {
+    function processPart(text: string) {
       const lines = text.split('\n').filter(line => line.startsWith('data: '));
-      
       for (const line of lines) {
         const jsonStr = line.slice(6).trim();
         if (jsonStr === '[DONE]') continue;
-        
         const { content, citations } = cleanStreamContent(jsonStr);
         if (content) {
-          const processedContent = processStreamContent(content, accumulatedContent);
+          accumulatedContent += content;
+          accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
+
+          setStreamingContent(prev => ({
+            ...prev,
+            [nodeId]: {
+              content: accumulatedContent,
+              citations: accumulatedCitations,
+            },
+          }));
           
-          if (processedContent !== accumulatedContent) {
-            accumulatedContent = processedContent;
-            accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
-            
-            setStreamingContent(prev => ({
-              ...prev,
-              [nodeId]: {
-                content: accumulatedContent,
-                citations: accumulatedCitations,
-              },
-            }));
-            
-            setQaData(prev => {
-              const updateNode = (nodes: QANode[]): QANode[] =>
-                nodes.map(node => {
-                  if (node.id === nodeId) {
-                    return {
-                      ...node,
-                      analysis: accumulatedContent,
-                      citations: accumulatedCitations,
-                    };
-                  }
-                  if (node.children.length > 0) {
-                    return { ...node, children: updateNode(node.children) };
-                  }
-                  return node;
-                });
-              return updateNode(prev);
-            });
-          }
+          setQaData(prev => {
+            const updateNode = (nodes: QANode[]): QANode[] =>
+              nodes.map(node => {
+                if (node.id === nodeId) {
+                  return {
+                    ...node,
+                    analysis: accumulatedContent,
+                    citations: accumulatedCitations,
+                  };
+                }
+                if (node.children.length > 0) {
+                  return { ...node, children: updateNode(node.children) };
+                }
+                return node;
+              });
+            return updateNode(prev);
+          });
         }
       }
     }
