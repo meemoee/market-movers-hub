@@ -325,16 +325,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           accumulatedContent += content;
           accumulatedCitations = [...new Set([...accumulatedCitations, ...citations])];
 
-          setStreamingContent(prev => {
-            const prevContent = prev[nodeId]?.content || '';
-            return {
-              ...prev,
-              [nodeId]: {
-                content: prevContent + newContent,
-                citations: accumulatedCitations,
-              },
-            };
-          });
+          setStreamingContent(prev => ({
+            ...prev,
+            [nodeId]: {
+              content: accumulatedContent,
+              citations: accumulatedCitations,
+            },
+          }));
           
           setQaData(prev => {
             const updateNode = (nodes: QANode[]): QANode[] =>
