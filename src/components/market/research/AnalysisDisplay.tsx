@@ -1,5 +1,5 @@
 
-import { useLayoutEffect, useRef, useEffect } from "react"
+import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
@@ -11,6 +11,14 @@ interface AnalysisDisplayProps {
 export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
+  const [lastUpdateTime, setLastUpdateTime] = useState(Date.now())
+  
+  // Force re-render on content changes to ensure smooth streaming
+  useEffect(() => {
+    if (isStreaming && content) {
+      setLastUpdateTime(Date.now());
+    }
+  }, [content, isStreaming]);
   
   // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
@@ -26,7 +34,7 @@ export function AnalysisDisplay({ content, isStreaming = false }: AnalysisDispla
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming]) // Track both content changes and streaming state
+  }, [content, isStreaming, lastUpdateTime]) // Track updates to ensure we scroll on new content
   
   // Continuously scroll during streaming to ensure new content is visible
   useEffect(() => {

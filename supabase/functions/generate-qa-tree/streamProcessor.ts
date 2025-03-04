@@ -34,7 +34,15 @@ export function processStreamLine(line: string): string {
       return '';
     }
   } catch (e) {
+    // Don't swallow the original line on parse errors - it might be partial data that should be returned
     console.error('Error processing stream line:', e, 'Line:', line);
+    
+    // If we can't parse as JSON, but it contains content, return the raw line
+    // This ensures partial chunks still get through
+    if (line.includes('content')) {
+      return line;
+    }
+    
     return '';
   }
 }
@@ -61,19 +69,27 @@ export async function* transformStream(stream: ReadableStream): AsyncGenerator<s
       
       // Decode the chunk and add to buffer
       const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
       
-      // Process complete lines in the buffer
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
-      
-      for (const line of lines) {
-        if (line.trim()) {
-          const content = processStreamLine(line);
-          if (content) yield content;
+      // Process each character to ensure we yield content as soon as possible
+      for (const char of chunk) {
+        buffer += char;
+        
+        // When we encounter a newline, process the buffer
+        if (char === '\n') {
+          if (buffer.trim()) {
+            const content = processStreamLine(buffer);
+            if (content) yield content;
+          }
+          buffer = '';
         }
       }
+      
+      // If there's anything left in the buffer after processing
+      // (which could be an incomplete line), don't process it yet
     }
+  } catch (error) {
+    console.error('Error in stream processing:', error);
+    yield `Error: ${error.message}`;
   } finally {
     reader.releaseLock();
   }
