@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
@@ -41,9 +40,21 @@ async function generateSubQueries(query: string, focusText?: string): Promise<st
       ? `You are a helpful assistant that generates search queries focused specifically on: ${focusText}`
       : 'You are a helpful assistant that generates search queries.';
       
-    const userPrompt = focusText 
-      ? `Generate 5 diverse search queries to gather comprehensive information about the following topic, with specific focus on "${focusText}". Focus on different aspects that would be relevant for market research:`
-      : `Generate 5 diverse search queries to gather comprehensive information about the following topic. Focus on different aspects that would be relevant for market research:`;
+    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
+${query}
+${focusText ? `With specific focus on: "${focusText}"` : ''}
+
+CRITICAL GUIDELINES FOR QUERIES:
+1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
+2. Include specific entities, dates, events, or proper nouns from the original question
+3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
+4. Make each query a complete, standalone question or statement that contains ALL relevant context
+5. If the original question asks about a future event, include timeframes or dates
+6. Use precise terminology and specific entities mentioned in the original question
+
+Focus on different aspects that would be relevant for market research. Make each query different from the others to gather a wide range of information.
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -62,11 +73,7 @@ async function generateSubQueries(query: string, focusText?: string): Promise<st
           },
           {
             role: "user",
-            content: `${userPrompt}
-
-Topic: ${query}
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`
+            content: userPrompt
           }
         ],
         response_format: { type: "json_object" }
@@ -80,14 +87,58 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     const result = await response.json()
     const content = result.choices[0].message.content.trim()
     const queriesData = JSON.parse(content)
-    const queries = queriesData.queries || []
+    let queries = queriesData.queries || []
+    
+    // Process queries to ensure each has full context
+    queries = queries.map((q: string) => {
+      // Check for common issues in queries
+      if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
+        // Add original query context
+        return `${q} regarding ${query}`
+      }
+      
+      // Check if query likely has enough context
+      const hasNames = /[A-Z][a-z]+/.test(q) // Has proper nouns
+      const isLongEnough = q.length > 40     // Is reasonably detailed
+      
+      if (!hasNames || !isLongEnough) {
+        // Add more context
+        if (focusText) {
+          return `${q} about ${query} focused on ${focusText}`
+        } else {
+          return `${q} about ${query}`
+        }
+      }
+      
+      return q
+    })
     
     console.log('Generated queries:', queries)
     return queries
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    return [query] // Fallback to original query if generation fails
+    // Generate fallback queries with full context
+    const fallbackQueries = [
+      `${query} latest developments and facts`,
+      `${query} comprehensive analysis and expert opinions`,
+      `${query} historical precedents and similar cases`,
+      `${query} statistical data and probability estimates`,
+      `${query} future outlook and critical factors`
+    ]
+    
+    if (focusText) {
+      // Add focused variants
+      return [
+        `${focusText} in relation to ${query} analysis`,
+        `${query} specifically regarding ${focusText}`,
+        `${focusText} impact on ${query} outcome`,
+        `${query} factual information related to ${focusText}`,
+        `${focusText} historical precedents for ${query}`
+      ]
+    }
+    
+    return fallbackQueries
   }
 }
 

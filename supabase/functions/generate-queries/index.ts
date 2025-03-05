@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -77,29 +78,46 @@ serve(async (req) => {
       systemPrompt = `You are a research query generator for a prediction market platform. 
       Given a prediction market question and description, generate 3 search queries that would help research this topic.
       ${focusText ? `IMPORTANT: Focus specifically on researching: "${focusText}"` : ''}
+      
+      CRITICAL GUIDELINES FOR QUERIES:
+      1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
+      2. Include specific entities, dates, events, or proper nouns from the original question
+      3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
+      4. Make each query a complete, standalone question or statement that contains ALL relevant context
+      5. If the original question asks about a future event, include timeframes or dates
+      6. Use precise terminology and specific entities mentioned in the original question
+      
       Focus on factual information that would help determine the likelihood of the event.
-      Queries should be concise, specific, and varied to get a broad understanding of the topic.
       Output ONLY valid JSON in the following format:
       {
         "queries": [
-          "first search query",
-          "second search query", 
-          "third search query"
+          "first search query with full context",
+          "second search query with full context", 
+          "third search query with full context"
         ]
       }`;
     } else {
       systemPrompt = `You are a research query generator for a prediction market platform.
       Based on previous analysis and identified areas needing further research, generate 3 NEW search queries that address knowledge gaps.
       ${focusText ? `IMPORTANT: Focus specifically on researching: "${focusText}"` : ''}
+      
+      CRITICAL GUIDELINES FOR QUERIES:
+      1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
+      2. Include specific entities, dates, events, or proper nouns from the original question
+      3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
+      4. Make each query a complete, standalone question or statement that contains ALL relevant context
+      5. If researching a future event, include timeframes or dates
+      6. Use precise terminology and specific entities mentioned in the original question
+      
       Focus specifically on areas that need additional investigation based on previous research.
       Queries should be more targeted than previous iterations, diving deeper into unclear aspects.
       DO NOT repeat previous queries, but build upon what has been learned.
       Output ONLY valid JSON in the following format:
       {
         "queries": [
-          "first refined search query",
-          "second refined search query", 
-          "third refined search query"
+          "first refined search query with full context",
+          "second refined search query with full context", 
+          "third refined search query with full context"
         ]
       }`;
     }
@@ -172,13 +190,20 @@ serve(async (req) => {
       queries = generateFallbackQueries(researchQuery, iteration, previousResults);
     }
     
-    // Clean up queries - remove excessive whitespace, truncate long queries
+    // Clean up queries and ensure they contain sufficient context
     queries = queries.map(q => {
       let cleanQuery = q.trim();
+      
+      // Ensure the query has enough context by checking for common issues
+      if (!containsSufficientContext(cleanQuery, researchQuery)) {
+        cleanQuery = addContextToQuery(cleanQuery, researchQuery);
+      }
+      
       // Limit query length to 150 chars for efficiency
       if (cleanQuery.length > 150) {
         cleanQuery = cleanQuery.substring(0, 150);
       }
+      
       return cleanQuery;
     });
     
@@ -210,11 +235,7 @@ serve(async (req) => {
     } catch (parseError) {
       // If we can't parse the request, use very basic fallback
       console.error("Error parsing request in fallback:", parseError);
-      const basicFallbackQueries = [
-        `${query} latest news`,
-        `${query} analysis`,
-        `${query} forecast`,
-      ];
+      const basicFallbackQueries = generateBasicFallbackQueries(query);
       
       return new Response(JSON.stringify({ queries: basicFallbackQueries }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -222,6 +243,75 @@ serve(async (req) => {
     }
   }
 });
+
+// Check if a query contains sufficient context
+function containsSufficientContext(query: string, originalQuestion: string): boolean {
+  // Extract key entities from original question
+  const keyEntities = extractKeyEntities(originalQuestion);
+  
+  // Check if the query contains vague terms
+  const vagueTerms = ["this", "it", "that", "these", "those", "the event", "the topic", "the question"];
+  const hasVagueTerms = vagueTerms.some(term => 
+    new RegExp(`\\b${term}\\b`, 'i').test(query)
+  );
+  
+  // Check if the query contains at least one key entity
+  const hasKeyEntity = keyEntities.some(entity => 
+    query.toLowerCase().includes(entity.toLowerCase())
+  );
+  
+  return hasKeyEntity && !hasVagueTerms;
+}
+
+// Add context to a query
+function addContextToQuery(query: string, originalQuestion: string): string {
+  // Extract key entities and phrases from original question
+  const keyEntities = extractKeyEntities(originalQuestion);
+  
+  // If query already has sufficient length and seems detailed, just return it
+  if (query.length > 50 && keyEntities.some(entity => query.toLowerCase().includes(entity.toLowerCase()))) {
+    return query;
+  }
+  
+  // Simplify original question to its core
+  const simplifiedQuestion = originalQuestion.split(/[.?!]/).filter(s => s.trim().length > 0)[0].trim();
+  
+  // Combine the query with context from the original question
+  return `${query} regarding ${simplifiedQuestion}`;
+}
+
+// Extract key entities and phrases from text
+function extractKeyEntities(text: string): string[] {
+  // Basic extraction of proper nouns and important terms
+  const entities: string[] = [];
+  
+  // Find potential proper nouns (words starting with capital letters)
+  const properNouns = text.match(/\b[A-Z][a-z]+\b/g) || [];
+  entities.push(...properNouns);
+  
+  // Extract date references
+  const datePatterns = [
+    /\b\d{4}\b/g, // years
+    /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}/gi, // full dates
+    /\b(?:20\d{2}|19\d{2})\b/g // 4-digit years
+  ];
+  
+  datePatterns.forEach(pattern => {
+    const matches = text.match(pattern) || [];
+    entities.push(...matches);
+  });
+  
+  // Get key terms (longer words are often more significant)
+  const words = text.split(/\s+/)
+    .filter(word => word.length > 5)
+    .map(word => word.replace(/[.,?!;:"'()]/g, ''))
+    .filter(word => word.length > 0);
+  
+  entities.push(...words);
+  
+  // Remove duplicates and return
+  return [...new Set(entities)];
+}
 
 // Helper function to generate intelligent fallback queries based on iteration
 function generateFallbackQueries(query: string, iteration: number, previousResults: string = ""): string[] {
@@ -234,14 +324,15 @@ function generateFallbackQueries(query: string, iteration: number, previousResul
     !['this', 'that', 'will', 'with', 'from', 'have', 'been', 'were', 'when', 'what', 'where'].includes(word.toLowerCase())
   );
   
-  const keyTerms = words.slice(0, 5).join(' ');
+  const keyEntities = extractKeyEntities(cleanQuery);
+  const keyTerms = keyEntities.length > 0 ? keyEntities.slice(0, 3).join(' ') : words.slice(0, 5).join(' ');
   
   if (iteration === 1) {
-    // First iteration - general exploration
+    // First iteration - general exploration with full context
     return [
-      `${keyTerms} recent developments`,
-      `${keyTerms} analysis prediction`,
-      `${keyTerms} expert opinion`,
+      `${cleanQuery} recent developments and current status`,
+      `${cleanQuery} expert analysis and predictions`,
+      `${cleanQuery} historical precedents and similar cases`
     ];
   } else if (iteration === 2) {
     // Second iteration - more targeted based on topic
@@ -250,10 +341,12 @@ function generateFallbackQueries(query: string, iteration: number, previousResul
       word.length > 2 && word[0] === word[0].toUpperCase()
     ).slice(0, 2).join(' ');
     
+    const entityPhrase = potentialEntities || keyTerms;
+    
     return [
-      `${potentialEntities || keyTerms} latest data`,
-      `${keyTerms} future outlook`,
-      `${keyTerms} probability estimates`,
+      `${entityPhrase} latest data and statistics regarding ${cleanQuery}`,
+      `${cleanQuery} future outlook and probability assessments`,
+      `${cleanQuery} expert opinions and consensus view`
     ];
   } else {
     // Third+ iteration - focus on specifics and filling gaps
@@ -263,11 +356,22 @@ function generateFallbackQueries(query: string, iteration: number, previousResul
       : keyTerms;
     
     return [
-      `${prevTerms} statistical analysis`,
-      `${keyTerms} historical precedent`,
-      `${keyTerms} expert forecast`,
+      `${prevTerms} statistical analysis in context of ${cleanQuery}`,
+      `${cleanQuery} historical precedent and outcome patterns`,
+      `${cleanQuery} expert forecast methodology and confidence levels`
     ];
   }
+}
+
+// Helper to generate very basic fallback queries when everything else fails
+function generateBasicFallbackQueries(query: string): string[] {
+  const cleanQuery = query.trim();
+  
+  return [
+    `${cleanQuery} comprehensive analysis`,
+    `${cleanQuery} recent developments and current status`,
+    `${cleanQuery} expert predictions and probability estimates`
+  ];
 }
 
 // Helper to extract key terms from previous analysis text
