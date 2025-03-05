@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -94,10 +94,13 @@ export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisp
               <LightbulbIcon className="h-5 w-5 text-amber-500" />
             </div>
             <h3 className="text-base font-semibold">Areas for Further Research</h3>
+            {onResearchArea && (
+              <Badge variant="outline" className="ml-auto">Click any area to investigate</Badge>
+            )}
           </div>
           <div className="space-y-4">
             {areasForResearch.map((area, index) => (
-              <div key={index} className="flex gap-3 group p-2 rounded-lg transition-colors hover:bg-accent/10">
+              <div key={index} className={`flex gap-3 p-2 rounded-lg transition-colors ${onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}>
                 <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm leading-relaxed">{area}</p>
@@ -105,10 +108,11 @@ export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisp
                     <Button 
                       variant="ghost" 
                       size="sm" 
-                      className="mt-2 h-8 text-xs text-primary hover:bg-primary/10 transition-colors group-hover:bg-primary/5"
+                      className="mt-2 h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
                       onClick={() => onResearchArea(area)}
                     >
-                      Research this area
+                      <ArrowRightCircle className="h-3 w-3" />
+                      Create focused research
                     </Button>
                   )}
                 </div>

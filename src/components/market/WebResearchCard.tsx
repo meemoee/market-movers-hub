@@ -19,7 +19,7 @@ import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./research/InsightsDisplay"
-import { ChevronDown, Settings, Search } from 'lucide-react'
+import { ChevronDown, Settings, Search, ArrowLeftCircle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useToast } from "@/components/ui/use-toast"
@@ -156,6 +156,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Market ID ${marketId} has price: ${marketPrice}%`);
     }
   }, [marketPrice, marketId]);
+
+  const findParentResearch = useCallback((parentId: string | null) => {
+    if (!parentId || !savedResearch) return null;
+    return savedResearch.find(r => r.id === parentId);
+  }, [savedResearch]);
+  
+  const parentResearch = findParentResearch(parentResearchId);
 
   const loadSavedResearch = (research: SavedResearch) => {
     setIsLoadingSaved(true);
@@ -1121,6 +1128,26 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
   return (
     <Card className="p-4 space-y-4">
+      {parentResearch && (
+        <div className="flex items-center gap-2 text-sm p-2 bg-accent/20 rounded-md mb-2">
+          <ArrowLeftCircle className="h-4 w-4 text-muted-foreground" />
+          <span className="text-muted-foreground">Derived from previous research:</span>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-6 px-2 text-xs hover:bg-accent"
+            onClick={() => loadSavedResearch(parentResearch)}
+          >
+            {parentResearch.focus_text || 'View parent research'}
+          </Button>
+          {focusText && (
+            <Badge variant="outline" className="ml-auto">
+              Focus: {focusText.length > 15 ? focusText.substring(0, 15) + '...' : focusText}
+            </Badge>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <ResearchHeader 
           isLoading={isLoading}
@@ -1176,7 +1203,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     className="flex flex-col items-start"
                   >
                     <div className="font-medium truncate w-full">
-                      {research.query}
+                      {research.focus_text ? (
+                        <span className="flex items-center gap-1">
+                          {research.parent_research_id && <ArrowLeftCircle className="h-3 w-3 text-muted-foreground" />}
+                          <span>{research.focus_text}</span>
+                        </span>
+                      ) : (
+                        research.query.substring(0, 40) + (research.query.length > 40 ? '...' : '')
+                      )}
                     </div>
                     <div className="text-sm text-muted-foreground">
                       {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
