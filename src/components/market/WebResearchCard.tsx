@@ -177,9 +177,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
     })
 
-    if (research.focus_text) {
-      setFocusText(research.focus_text)
-    }
+    setFocusText(research.focus_text || '');
     
     setTimeout(() => {
       setIsLoadingSaved(false);
