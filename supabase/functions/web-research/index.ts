@@ -166,62 +166,62 @@ serve(async (req) => {
         const subQueries = await generateSubQueries(query, focusText)
         await writer.write(encoder.encode(`data: ${JSON.stringify({ message: `Generated ${subQueries.length} research queries` })}\n\n`))
         
+        // Track seen URLs to avoid duplicates
         const seenUrls = new Set()
         
-        // Process each sub-query
-        for (const subQuery of subQueries) {
+        // Process all sub-queries in parallel but send results as they come in
+        const queryPromises = subQueries.map(async (subQuery, queryIndex) => {
           await writer.write(encoder.encode(`data: ${JSON.stringify({ message: `Searching for: ${subQuery}` })}\n\n`))
           
           const searchResults = await searchBing(subQuery)
           if (searchResults.length === 0) {
-            continue
+            return
           }
           
-          await writer.write(encoder.encode(`data: ${JSON.stringify({ message: `Found ${searchResults.length} search results` })}\n\n`))
+          await writer.write(encoder.encode(`data: ${JSON.stringify({ message: `Found ${searchResults.length} search results for query ${queryIndex + 1}` })}\n\n`))
           
-          // Process search results in parallel batches
-          const batchSize = 10
-          for (let i = 0; i < searchResults.length; i += batchSize) {
-            const batch = searchResults.slice(i, i + batchSize)
+          // Filter search results to avoid duplicates and process all in parallel
+          const uniqueResults = searchResults.filter(result => !seenUrls.has(result.url))
+          
+          // Process content for all URLs in parallel
+          const contentPromises = uniqueResults.map(async (result) => {
+            const url = result.url
             
-            const contentPromises = batch.map(async (result) => {
-              const url = result.url
-              
-              // Skip if URL has been seen already
-              if (seenUrls.has(url)) {
-                return null
-              }
-              
-              // Skip certain domains
-              if (url.includes('reddit.com') || 
-                  url.includes('facebook.com') || 
-                  url.includes('twitter.com') || 
-                  url.includes('instagram.com')) {
-                return null
-              }
-              
-              seenUrls.add(url)
-              
-              const extracted = await fetchPageContent(url)
-              if (!extracted || !extracted.content) {
-                return null
-              }
-              
-              return {
-                url,
-                title: extracted.title,
-                content: extracted.content
-              }
-            })
-            
-            const batchResults = await Promise.all(contentPromises)
-            const validResults = batchResults.filter(Boolean)
-            
-            if (validResults.length > 0) {
-              await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'results', data: validResults })}\n\n`))
+            // Skip certain domains
+            if (url.includes('reddit.com') || 
+                url.includes('facebook.com') || 
+                url.includes('twitter.com') || 
+                url.includes('instagram.com')) {
+              return null
             }
+            
+            // Mark URL as seen
+            seenUrls.add(url)
+            
+            const extracted = await fetchPageContent(url)
+            if (!extracted || !extracted.content) {
+              return null
+            }
+            
+            return {
+              url,
+              title: extracted.title,
+              content: extracted.content
+            }
+          })
+          
+          // Wait for all content to be fetched
+          const results = await Promise.all(contentPromises)
+          const validResults = results.filter(Boolean)
+          
+          // Send results immediately if we have any
+          if (validResults.length > 0) {
+            await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'results', data: validResults })}\n\n`))
           }
-        }
+        })
+        
+        // Wait for all queries to complete
+        await Promise.all(queryPromises)
         
         // Close the writer when done
         await writer.close()
