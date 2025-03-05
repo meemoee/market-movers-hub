@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
   rawText: string;
@@ -23,12 +24,22 @@ export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisp
 
   const { probability, areasForResearch, reasoning } = streamingState.parsedData;
   
+  // Check if probability contains an error message
+  const hasErrorInProbability = probability.toLowerCase().includes('error') || 
+                              probability.toLowerCase().includes('unknown') ||
+                              probability.toLowerCase().includes('parsing');
+  
   // Check if market is resolved (100% or 0%)
   const isResolved = probability === "100%" || probability === "0%";
 
+  // Don't show the component if there's an error in probability and no valid research areas
+  if (hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) {
+    return null;
+  }
+
   return (
     <div className="space-y-5">
-      {probability && (
+      {probability && !hasErrorInProbability && (
         <Card className="p-5 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-accent/10 to-background border-accent/30 rounded-xl">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-primary/40 to-transparent"></div>
           <div className="flex items-center gap-3">
