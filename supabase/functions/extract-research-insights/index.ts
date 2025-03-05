@@ -193,11 +193,12 @@ Remember to respond with a valid JSON object with "probability", "areasForResear
   } catch (error) {
     console.error('Error in extract-research-insights:', error);
     
+    // Return a structured error format that won't cause parsing flashes
     return new Response(
       JSON.stringify({ 
         error: error.message || 'Unknown error',
-        probability: "50%",
-        areasForResearch: ["Error resolution", "Technical issues"],
+        probability: "Error: Could not analyze",
+        areasForResearch: [],
         reasoning: "Could not analyze due to technical error"
       }),
       {
