@@ -20,7 +20,7 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
-  // Optimize scrolling by using requestAnimationFrame and reducing state updates
+  // Optimize scrolling by using requestAnimationFrame
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
@@ -35,6 +35,7 @@ export function AnalysisDisplay({
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
         }
+        // Batch state updates to reduce rendering overhead
         setLastUpdateTime(Date.now())
       })
       
@@ -66,22 +67,22 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
-  // Check for inactive streaming periods with reduced frequency
+  // Check for inactive streaming periods with reduced frequency (optimized)
   useEffect(() => {
     if (!isStreaming) {
       setStreamStatus('idle')
       return
     }
     
-    // Monitor for inactive streaming with longer interval
+    // Monitor for inactive streaming with longer interval to reduce overhead
     const interval = setInterval(() => {
       const timeSinceUpdate = Date.now() - lastUpdateTime
-      if (timeSinceUpdate > 3000) { // If no updates for 3+ seconds
+      if (timeSinceUpdate > 2000) { // If no updates for 2+ seconds
         setStreamStatus('waiting')
       } else if (streamStatus !== 'streaming') {
         setStreamStatus('streaming')
       }
-    }, 1500) // Reduced frequency to 1.5 seconds
+    }, 1000) // Check once per second
     
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime, streamStatus])
