@@ -6,8 +6,8 @@ interface AnalysisRequest {
   content: string;
   query: string;
   question: string;
-  marketId?: string; // Add market ID to the request
-  focusText?: string; // Add research focus to the request
+  marketId?: string;
+  focusText?: string;
 }
 
 const corsHeaders = {
@@ -32,24 +32,12 @@ serve(async (req) => {
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified'
     });
 
-    // Determine which API to use
-    const openAIKey = Deno.env.get('OPENAI_API_KEY');
+    // Get OpenRouter API key
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
     
-    if (!openAIKey && !openRouterKey) {
-      throw new Error('No API keys configured for LLM services');
+    if (!openRouterKey) {
+      throw new Error('No API key configured for OpenRouter');
     }
-
-    // Choose OpenAI or OpenRouter based on available keys
-    const apiKey = openAIKey || openRouterKey;
-    const apiEndpoint = openAIKey 
-      ? 'https://api.openai.com/v1/chat/completions'
-      : 'https://openrouter.ai/api/v1/chat/completions';
-    
-    // Determine auth header based on which service we're using
-    const authHeader = openAIKey
-      ? { 'Authorization': `Bearer ${apiKey}` }
-      : { 'HTTP-Referer': 'https://hunchex.com', 'X-Title': 'Hunchex Analysis', 'Authorization': `Bearer ${apiKey}` };
 
     // Set up content limiter to prevent tokens from being exceeded
     const contentLimit = 80000; // Arbitrary limit to prevent token overages
@@ -86,15 +74,17 @@ ${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
-    // Make the streaming request
-    const response = await fetch(apiEndpoint, {
+    // Make the streaming request with Gemini model
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        ...authHeader,
+        'Authorization': `Bearer ${openRouterKey}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hunchex.com',
+        'X-Title': 'Hunchex Analysis'
       },
       body: JSON.stringify({
-        model: openAIKey ? 'gpt-4o-mini' : 'perplexity/llama-3.1-sonar-small-128k-online',
+        model: "google/gemini-2.0-flash-lite-001",
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
