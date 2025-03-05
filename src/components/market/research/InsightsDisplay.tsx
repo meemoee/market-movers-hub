@@ -15,29 +15,15 @@ interface StreamingState {
 }
 
 interface InsightsDisplayProps {
-  streamingState?: StreamingState;
-  probability?: string;
-  areasForResearch?: string[];
-  reasoning?: string;
+  streamingState: StreamingState;
   onResearchArea?: (area: string) => void;
 }
 
-export function InsightsDisplay({ 
-  streamingState, 
-  probability: directProbability,
-  areasForResearch: directAreasForResearch,
-  reasoning: directReasoning,
-  onResearchArea 
-}: InsightsDisplayProps) {
-  // Use either direct props or streaming state
-  const probability = directProbability || streamingState?.parsedData?.probability;
-  const areasForResearch = directAreasForResearch || streamingState?.parsedData?.areasForResearch;
-  const reasoning = directReasoning || streamingState?.parsedData?.reasoning;
-  
-  // Return loading state or null if no data yet
-  if (!probability && !areasForResearch?.length) {
-    return null;
-  }
+export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisplayProps) {
+  // Return loading state or null if no parsed data yet
+  if (!streamingState.parsedData) return null;
+
+  const { probability, areasForResearch, reasoning } = streamingState.parsedData;
   
   // More comprehensive check for error messages in probability
   const hasErrorInProbability = 
@@ -53,16 +39,14 @@ export function InsightsDisplay({
   // Check if market is resolved (100% or 0%)
   const isResolved = probability === "100%" || probability === "0%";
 
-  // Don't show the probability card if there's an error in probability
-  const showProbabilityCard = probability && !hasErrorInProbability;
-  
-  // Check if we have raw text content (for streaming state)
-  const hasMinimumContent = !streamingState || streamingState.rawText.length >= 10;
-  
-  // Don't show the component if we have barely any content and no valid data
-  if (!hasMinimumContent && hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) {
+  // Don't show the component if there's an error in probability and no valid research areas
+  if ((hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) || 
+      streamingState.rawText.length < 10) {  // Also don't show if we have barely any raw text (still streaming)
     return null;
   }
+
+  // If there's an error in the probability but we have research areas, only show those
+  const showProbabilityCard = probability && !hasErrorInProbability;
   
   return (
     <div className="space-y-5">
