@@ -10,6 +10,7 @@ interface AnalysisRequest {
   focusText?: string;
   previousAnalyses?: string;
   areasForResearch?: string[];
+  marketPrice?: number;
 }
 
 const corsHeaders = {
@@ -31,7 +32,8 @@ serve(async (req) => {
       marketId, 
       focusText,
       previousAnalyses,
-      areasForResearch 
+      areasForResearch,
+      marketPrice
     } = await req.json() as AnalysisRequest;
     
     // Log request info for debugging
@@ -41,7 +43,8 @@ serve(async (req) => {
       question: question?.substring(0, 100) || 'Not provided',
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       previousAnalysesLength: previousAnalyses?.length || 0,
-      areasForResearchCount: areasForResearch?.length || 0
+      areasForResearchCount: areasForResearch?.length || 0,
+      marketPrice: marketPrice || 'Not provided'
     });
 
     // Get OpenRouter API key
@@ -71,7 +74,12 @@ serve(async (req) => {
       ? `\nPreviously identified research areas to focus on: ${areasForResearch.join(', ')}\n`
       : '';
 
-    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}
+    // Include market price info if available
+    const marketPriceContext = marketPrice !== undefined
+      ? `\nThe current market price for this event is ${marketPrice}, which in prediction markets reflects the market's assessment of the probability the event will occur. Keep this in mind during your analysis.\n`
+      : '';
+
+    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}
 Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
 Provide a comprehensive, balanced analysis of the key information, focusing on facts that help assess probability.
 Be factual and evidence-based, not speculative.`;
@@ -96,6 +104,7 @@ ${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''
 2. What evidence supports or contradicts the proposition?
 3. How does this information affect the probability assessment?
 4. What conclusions can we draw about the likely outcome?
+${marketPrice !== undefined ? `5. Does the current market price of ${marketPrice} seem reasonable based on the evidence? Why or why not?` : ''}
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 

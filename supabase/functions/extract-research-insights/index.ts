@@ -12,6 +12,7 @@ interface InsightsRequest {
   queries?: string[];
   areasForResearch?: string[];
   focusText?: string;
+  marketPrice?: number;  // New parameter for market price
 }
 
 const corsHeaders = {
@@ -35,7 +36,8 @@ serve(async (req) => {
       iterations,
       queries,
       areasForResearch,
-      focusText
+      focusText,
+      marketPrice  // Extract the marketPrice from request
     } = await req.json() as InsightsRequest;
     
     // Log request info for debugging
@@ -47,7 +49,8 @@ serve(async (req) => {
       iterationsCount: iterations?.length || 0,
       queriesCount: queries?.length || 0,
       areasForResearchCount: areasForResearch?.length || 0,
-      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified'
+      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
+      marketPrice: marketPrice || 'Not provided'
     });
 
     // Get OpenRouter API key
@@ -83,6 +86,11 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       ? `Previously identified research areas: ${areasForResearch.join(', ')}`
       : '';
 
+    // Add market price context if available
+    const marketPriceContext = marketPrice !== undefined
+      ? `\nIMPORTANT: The current market price for this event is ${marketPrice}. In prediction markets, this price (${marketPrice}) reflects the market's current assessment of the probability that this event will occur. Consider how your evidence-based analysis compares to this market price.`
+      : '';
+
     // Create a system prompt that emphasizes the specific market context
     const marketContext = marketId && marketQuestion
       ? `\nYou are analyzing market ID: ${marketId} with the question: "${marketQuestion}"\n`
@@ -96,6 +104,7 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
 Your task is to analyze web research content and provide precise insights about prediction market outcomes.
 ${previousResearchAreas}
 ${queriesContext}
+${marketPriceContext}
 
 Based on your comprehensive analysis, provide:
 1. A specific probability estimate (a percentage) for the market outcome
@@ -126,6 +135,8 @@ Based on all this information:
 1. What is your best estimate of the probability this market event will occur? Give a specific percentage.
 2. What are the most important areas where more research is needed to improve prediction accuracy?
 3. Summarize the key evidence and reasoning behind your probability estimate in 2-3 sentences.
+
+${marketPrice !== undefined ? `Remember that the current market price is ${marketPrice}, which represents the market's assessment of probability. Consider how your evidence-based analysis compares to this assessment.` : ''}
 
 Remember to respond with a valid JSON object with "probability", "areasForResearch", and "reasoning" properties.`;
 
