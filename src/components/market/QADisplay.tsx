@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -1072,7 +1071,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
                 <SelectItem value="none">No research insights</SelectItem>
                 {savedResearch?.map(research => (
                   <SelectItem key={research.id} value={research.id}>
-                    {research.title || 'Untitled research'}
+                    {research.query || 'Untitled research'}
                   </SelectItem>
                 ))}
               </SelectContent>
