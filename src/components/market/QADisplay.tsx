@@ -1138,13 +1138,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       {(finalEvaluation || activeFinalEvaluation) && (
         <div className="mb-4">
           <InsightsDisplay 
-            probability={(finalEvaluation || activeFinalEvaluation)?.probability || ''} 
-            areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch || []} 
+            probability={(finalEvaluation || activeFinalEvaluation)?.probability} 
+            areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch} 
+            reasoning={(finalEvaluation || activeFinalEvaluation)?.analysis}
+            onResearchArea={(area) => {
+              console.log("Research area clicked:", area);
+            }}
           />
-          <div className="mt-4 bg-accent/5 rounded-md p-4">
-            <h3 className="text-sm font-medium mb-2">Final Analysis</h3>
-            <p className="text-sm text-muted-foreground">{(finalEvaluation || activeFinalEvaluation)?.analysis || ''}</p>
-          </div>
         </div>
       )}
       
