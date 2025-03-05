@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
-import { InsightsDisplay } from "@/components/market/insights/InsightsDisplay";
+import { InsightsDisplay } from "@/components/market/research/InsightsDisplay";
 
 interface QANode {
   id: string;
@@ -31,6 +31,7 @@ interface QANode {
     score: number;
     reason: string;
   };
+  finalEvaluation?: FinalEvaluation;
 }
 
 interface StreamingContent {
@@ -464,7 +465,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           market_id: marketId,
           title: marketQuestion,
           tree_data: treeWithEvaluations as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
-          final_evaluation: finalEvaluation || activeFinalEvaluation || null
+          tree_final_evaluation: finalEvaluation || activeFinalEvaluation || null
         })
         .select()
         .single();
@@ -713,7 +714,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     });
   };
 
-  const loadSavedQATree = async (treeData: QANode[]) => {
+  const loadSavedQATree = async (treeData: QANode[], finalEval?: FinalEvaluation | null) => {
     console.log('Loading saved QA tree:', treeData);
     
     const mainRoots = treeData.filter(node => !node.isExtendedRoot);
@@ -722,6 +723,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setRootExtensions(extensions);
     setQaData(mainRoots);
     setStreamingContent({});
+    
+    if (finalEval) {
+      setFinalEvaluation(finalEval);
+      setActiveFinalEvaluation(finalEval);
+    }
     
     populateStreamingContent([...mainRoots, ...extensions]);
     
@@ -797,7 +803,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(nodeId);
       setExpandedNodes(prev => new Set([...prev, nodeId]));
 
-      // Store the current final evaluation for the current node
       if (finalEvaluation) {
         setNavigatedFinalEvaluations(prev => ({
           ...prev,
@@ -827,8 +832,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           question: node.question,
           isFollowUp: false,
           historyContext,
-          originalQuestion: marketQuestion, // Pass original market question
-          isContinuation: true, // Flag this as a continuation
+          originalQuestion: marketQuestion,
+          isContinuation: true,
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -845,7 +850,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const analysis = await processStream(reader, nodeId);
       console.log("Completed continuation analysis for node:", nodeId);
 
-      // Update the data with the completed analysis
       setQaData(prev => 
         prev.map(n => n.id === nodeId ? { ...n, analysis } : n)
       );
@@ -857,8 +861,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           parentContent: analysis,
           historyContext,
           isFollowUp: true,
-          originalQuestion: marketQuestion, // Pass original market question
-          isContinuation: true, // Flag this as a continuation
+          originalQuestion: marketQuestion,
+          isContinuation: true,
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -886,7 +890,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updatedExtensions;
       });
       
-      // Generate evaluation for this continuation immediately
       await generateFinalEvaluation();
 
     } catch (error) {
@@ -1100,12 +1103,13 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             value={selectedQATree}
             onValueChange={(value) => {
               setSelectedQATree(value);
-              setNavigationHistory([]); // Reset navigation history when loading new tree
-              setFinalEvaluation(null); // Reset final evaluation
+              setNavigationHistory([]); 
+              setFinalEvaluation(null);
               if (value !== 'none') {
                 const tree = savedQATrees?.find(t => t.id === value);
                 if (tree) {
-                  loadSavedQATree(tree.tree_data);
+                  const finalEval = tree.tree_final_evaluation as unknown as FinalEvaluation;
+                  loadSavedQATree(tree.tree_data, finalEval);
                 }
               }
             }}
@@ -1117,7 +1121,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
               <SelectItem value="none">No saved QA tree</SelectItem>
               {savedQATrees?.map((tree) => (
                 <SelectItem key={tree.id} value={tree.id}>
-                  {tree.title.substring(0, 50)}...
+                  {tree.title?.substring(0, 50) || "Untitled"}...
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1138,8 +1142,14 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       {(finalEvaluation || activeFinalEvaluation) && (
         <div className="mb-4">
           <InsightsDisplay 
-            probability={(finalEvaluation || activeFinalEvaluation)?.probability || ''} 
-            areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch || []} 
+            streamingState={{
+              rawText: "",
+              parsedData: {
+                probability: (finalEvaluation || activeFinalEvaluation)?.probability || '',
+                areasForResearch: (finalEvaluation || activeFinalEvaluation)?.areasForResearch || [],
+                reasoning: (finalEvaluation || activeFinalEvaluation)?.analysis
+              }
+            }}
           />
           <div className="mt-4 bg-accent/5 rounded-md p-4">
             <h3 className="text-sm font-medium mb-2">Final Analysis</h3>
