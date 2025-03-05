@@ -12,7 +12,7 @@ interface InsightsRequest {
   queries?: string[];
   areasForResearch?: string[];
   focusText?: string;
-  marketPrice?: number;  // New parameter for market price
+  marketPrice?: number;
 }
 
 const corsHeaders = {
@@ -37,7 +37,7 @@ serve(async (req) => {
       queries,
       areasForResearch,
       focusText,
-      marketPrice  // Extract the marketPrice from request
+      marketPrice
     } = await req.json() as InsightsRequest;
     
     // Log request info for debugging
@@ -86,10 +86,18 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       ? `Previously identified research areas: ${areasForResearch.join(', ')}`
       : '';
 
-    // Add market price context if available
-    const marketPriceContext = marketPrice !== undefined
-      ? `\nIMPORTANT: The current market price for this event is ${marketPrice}. In prediction markets, this price (${marketPrice}) reflects the market's current assessment of the probability that this event will occur. Consider how your evidence-based analysis compares to this market price.`
-      : '';
+    // Check if market is already resolved (price is 0% or 100%)
+    const isMarketResolved = marketPrice === 0 || marketPrice === 100;
+    
+    // Add market price context with special handling for resolved markets
+    let marketPriceContext = '';
+    if (marketPrice !== undefined) {
+      if (isMarketResolved) {
+        marketPriceContext = `\nIMPORTANT: The current market price for this event is ${marketPrice}%. This indicates the market considers this event as ${marketPrice === 100 ? 'already happened/resolved YES' : 'definitely not happening/resolved NO'}. Focus your analysis on explaining why this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than predicting probability.`;
+      } else {
+        marketPriceContext = `\nIMPORTANT: The current market price for this event is ${marketPrice}%. In prediction markets, this price reflects the market's current assessment of the probability that this event will occur. Consider how your evidence-based analysis compares to this market price.`;
+      }
+    }
 
     // Create a system prompt that emphasizes the specific market context
     const marketContext = marketId && marketQuestion
@@ -106,16 +114,16 @@ ${previousResearchAreas}
 ${queriesContext}
 ${marketPriceContext}
 
-Based on your comprehensive analysis, provide:
-1. A specific probability estimate (a percentage) for the market outcome
-2. A list of key areas that require additional research to improve confidence
-3. A brief summary of key evidence and reasoning behind your estimate
+${isMarketResolved ? `Since the market price is ${marketPrice}%, this market has likely resolved. You should explain the evidence for WHY this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than providing a probability estimate.` : 'Based on your comprehensive analysis, provide a specific probability estimate (a percentage) for the market outcome.'}
 
 Format your answer as a JSON object with the following structure:
 {
-  "probability": "X%" (numerical percentage with % sign),
+  ${isMarketResolved ? 
+    `"probability": "${marketPrice}%",` : 
+    `"probability": "X%" (numerical percentage with % sign),`
+  }
   "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
-  "reasoning": "brief explanation of your reasoning behind the probability estimate"
+  "reasoning": "brief explanation of ${isMarketResolved ? 'why this event occurred or did not occur' : 'your reasoning behind the probability estimate'}"
 }`;
 
     // Create a longer version of the prompt for a more nuanced response
@@ -132,11 +140,18 @@ ${truncatedAnalysis}
 ${previousAnalysesContext}
 
 Based on all this information:
-1. What is your best estimate of the probability this market event will occur? Give a specific percentage.
+${isMarketResolved ?
+  `1. The market price is ${marketPrice}%, indicating this event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}. Explain the key evidence supporting this outcome.` :
+  `1. What is your best estimate of the probability this market event will occur? Give a specific percentage.`
+}
 2. What are the most important areas where more research is needed to improve prediction accuracy?
-3. Summarize the key evidence and reasoning behind your probability estimate in 2-3 sentences.
+3. Summarize the key evidence and reasoning behind your ${isMarketResolved ? 'explanation' : 'probability estimate'} in 2-3 sentences.
 
-${marketPrice !== undefined ? `Remember that the current market price is ${marketPrice}, which represents the market's assessment of probability. Consider how your evidence-based analysis compares to this assessment.` : ''}
+${marketPrice !== undefined ? 
+  isMarketResolved ?
+    `Remember that the current market price is ${marketPrice}%, which means the market considers this event as ${marketPrice === 100 ? 'resolved YES' : 'resolved NO'}. Your task is to explain WHY based on the evidence.` :
+    `Remember that the current market price is ${marketPrice}%, which represents the market's assessment of probability. Consider how your evidence-based analysis compares to this assessment.` 
+  : ''}
 
 Remember to respond with a valid JSON object with "probability", "areasForResearch", and "reasoning" properties.`;
 

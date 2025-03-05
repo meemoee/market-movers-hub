@@ -74,14 +74,22 @@ serve(async (req) => {
       ? `\nPreviously identified research areas to focus on: ${areasForResearch.join(', ')}\n`
       : '';
 
+    // Check if market is already resolved (price is 0% or 100%)
+    const isMarketResolved = marketPrice === 0 || marketPrice === 100;
+    
     // Include market price info if available
-    const marketPriceContext = marketPrice !== undefined
-      ? `\nThe current market price for this event is ${marketPrice}, which in prediction markets reflects the market's assessment of the probability the event will occur. Keep this in mind during your analysis.\n`
-      : '';
+    let marketPriceContext = '';
+    if (marketPrice !== undefined) {
+      if (isMarketResolved) {
+        marketPriceContext = `\nThe current market price for this event is ${marketPrice}%, which indicates the market considers this event as ${marketPrice === 100 ? 'already happened/resolved YES' : 'definitely not happening/resolved NO'}. Focus your analysis on explaining why this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than predicting probability.\n`;
+      } else {
+        marketPriceContext = `\nThe current market price for this event is ${marketPrice}%, which in prediction markets reflects the market's assessment of the probability the event will occur. Keep this in mind during your analysis.\n`;
+      }
+    }
 
     const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}
 Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
-Provide a comprehensive, balanced analysis of the key information, focusing on facts that help assess probability.
+Provide a comprehensive, balanced analysis of the key information, focusing on facts that help ${isMarketResolved ? 'understand why this event did or did not occur' : 'assess probability'}.
 Be factual and evidence-based, not speculative.`;
 
     // Create the prompt for the user message
@@ -102,9 +110,12 @@ ${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... 
 1. What are the key facts and insights relevant to the market question "${question}"?
 ${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
 2. What evidence supports or contradicts the proposition?
-3. How does this information affect the probability assessment?
-4. What conclusions can we draw about the likely outcome?
-${marketPrice !== undefined ? `5. Does the current market price of ${marketPrice} seem reasonable based on the evidence? Why or why not?` : ''}
+${isMarketResolved ? 
+  `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
+  `3. How does this information affect the probability assessment?`
+}
+4. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
+${marketPrice !== undefined && !isMarketResolved ? `5. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
