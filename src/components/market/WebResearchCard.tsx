@@ -1126,6 +1126,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     );
   };
 
+  const handleViewParentResearch = useCallback(() => {
+    if (parentResearch) {
+      loadSavedResearch(parentResearch);
+    }
+  }, [parentResearch]);
+
   return (
     <Card className="p-4 space-y-4">
       {parentResearch && (
@@ -1315,6 +1321,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <InsightsDisplay 
         streamingState={streamingState} 
         onResearchArea={handleResearchArea}
+        parentResearch={parentResearchId && parentResearch ? {
+          id: parentResearch.id,
+          focusText: focusText || undefined,
+          onView: handleViewParentResearch
+        } : undefined}
       />
 
       {results.length > 0 && !iterations.length && (

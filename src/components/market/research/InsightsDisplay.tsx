@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -17,9 +17,14 @@ interface StreamingState {
 interface InsightsDisplayProps {
   streamingState: StreamingState;
   onResearchArea?: (area: string) => void;
+  parentResearch?: {
+    id: string;
+    focusText?: string;
+    onView?: () => void;
+  };
 }
 
-export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisplayProps) {
+export function InsightsDisplay({ streamingState, onResearchArea, parentResearch }: InsightsDisplayProps) {
   // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
@@ -50,6 +55,40 @@ export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisp
   
   return (
     <div className="space-y-5">
+      {parentResearch && (
+        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-blue-500/10 to-background border-blue-500/30 rounded-xl">
+          <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent"></div>
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-500/10 p-2 rounded-full">
+              <ArrowLeftIcon className="h-5 w-5 text-blue-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold">Focused Research</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                This is a focused deep-dive from a parent research
+              </p>
+            </div>
+            {parentResearch.onView && (
+              <Button 
+                onClick={parentResearch.onView}
+                variant="outline" 
+                size="sm"
+                className="ml-auto"
+              >
+                <ArrowLeftIcon className="h-4 w-4 mr-2" />
+                View Parent Research
+              </Button>
+            )}
+          </div>
+          {parentResearch.focusText && (
+            <div className="mt-3 bg-accent/20 p-2 rounded-md border border-accent/20">
+              <div className="text-sm font-medium mb-1">Research Focus:</div>
+              <div className="text-sm">{parentResearch.focusText}</div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {showProbabilityCard && (
         <Card className="p-5 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-accent/10 to-background border-accent/30 rounded-xl">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-primary/40 to-transparent"></div>
