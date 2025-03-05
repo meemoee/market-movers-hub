@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
-import { InsightsDisplay } from "@/components/market/research/InsightsDisplay";
+import { InsightsDisplay } from "@/components/market/insights/InsightsDisplay";
 
 interface QANode {
   id: string;
@@ -31,7 +31,6 @@ interface QANode {
     score: number;
     reason: string;
   };
-  finalEvaluation?: FinalEvaluation;
 }
 
 interface StreamingContent {
@@ -46,7 +45,6 @@ type SavedResearch = Database['public']['Tables']['web_research']['Row'] & {
 
 type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
   tree_data: QANode[];
-  tree_final_evaluation?: FinalEvaluation;
 };
 
 interface FinalEvaluation {
@@ -466,7 +464,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           market_id: marketId,
           title: marketQuestion,
           tree_data: treeWithEvaluations as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
-          tree_final_evaluation: finalEvaluation || activeFinalEvaluation || null
+          final_evaluation: finalEvaluation || activeFinalEvaluation || null
         })
         .select()
         .single();
@@ -715,7 +713,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     });
   };
 
-  const loadSavedQATree = async (treeData: QANode[], finalEval?: FinalEvaluation | null) => {
+  const loadSavedQATree = async (treeData: QANode[]) => {
     console.log('Loading saved QA tree:', treeData);
     
     const mainRoots = treeData.filter(node => !node.isExtendedRoot);
@@ -724,11 +722,6 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     setRootExtensions(extensions);
     setQaData(mainRoots);
     setStreamingContent({});
-    
-    if (finalEval) {
-      setFinalEvaluation(finalEval);
-      setActiveFinalEvaluation(finalEval);
-    }
     
     populateStreamingContent([...mainRoots, ...extensions]);
     
@@ -804,6 +797,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       setCurrentNodeId(nodeId);
       setExpandedNodes(prev => new Set([...prev, nodeId]));
 
+      // Store the current final evaluation for the current node
       if (finalEvaluation) {
         setNavigatedFinalEvaluations(prev => ({
           ...prev,
@@ -833,8 +827,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           question: node.question,
           isFollowUp: false,
           historyContext,
-          originalQuestion: marketQuestion,
-          isContinuation: true,
+          originalQuestion: marketQuestion, // Pass original market question
+          isContinuation: true, // Flag this as a continuation
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -851,6 +845,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       const analysis = await processStream(reader, nodeId);
       console.log("Completed continuation analysis for node:", nodeId);
 
+      // Update the data with the completed analysis
       setQaData(prev => 
         prev.map(n => n.id === nodeId ? { ...n, analysis } : n)
       );
@@ -862,8 +857,8 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           parentContent: analysis,
           historyContext,
           isFollowUp: true,
-          originalQuestion: marketQuestion,
-          isContinuation: true,
+          originalQuestion: marketQuestion, // Pass original market question
+          isContinuation: true, // Flag this as a continuation
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
             probability: selectedResearchData.probability,
@@ -891,6 +886,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         return updatedExtensions;
       });
       
+      // Generate evaluation for this continuation immediately
       await generateFinalEvaluation();
 
     } catch (error) {
@@ -946,110 +942,120 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
           {children}
         </a>
       ),
+      em: ({ children }) => <em className="italic">{children}</em>,
+      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+      h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+      h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
+      hr: () => <hr className="my-4 border-muted" />,
     };
 
     return (
-      <div className={`rounded-md ${depth > 0 ? 'ml-4' : ''}`}>
-        <div className="flex items-start gap-2">
-          <button 
-            onClick={() => toggleNode(node.id)} 
-            className="mt-1 p-1 hover:bg-muted/50 rounded"
-            aria-label={isExpanded ? "Collapse" : "Expand"}
-          >
-            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
-          <div className="flex-1 space-y-1">
-            <div className="font-medium flex items-center gap-2">
-              <Avatar className="h-6 w-6 bg-primary/10">
-                <AvatarFallback className="text-xs text-primary">
+      <div key={node.id} className="relative flex flex-col">
+        <div className="flex items-stretch">
+          {depth > 0 && (
+            <div className="relative w-6 sm:w-9 flex-shrink-0">
+              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
+            </div>
+          )}
+          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
+            {depth > 0 && (
+              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
+            )}
+            <div className="absolute left-[12px] sm:left-[24px] top-0">
+              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
+                <AvatarFallback className="bg-primary/10">
                   <MessageSquare className="h-3 w-3" />
                 </AvatarFallback>
               </Avatar>
-              <span>{node.question}{getExtensionInfo(node)}</span>
             </div>
-            
-            {isExpanded && (
-              <div className="relative rounded-md mt-2">
-                <div className="text-sm text-muted-foreground">
-                  {isStreaming ? (
-                    <div className="min-h-[50px]">
-                      <ReactMarkdown components={markdownComponents}>
-                        {analysisContent || 'Analyzing...'}
-                      </ReactMarkdown>
-                      <div className="animate-pulse flex space-x-1 mt-1">
-                        <div className="rounded-full bg-muted h-1 w-1"></div>
-                        <div className="rounded-full bg-muted h-1 w-1"></div>
-                        <div className="rounded-full bg-muted h-1 w-1"></div>
-                      </div>
-                    </div>
-                  ) : (
-                    <ReactMarkdown components={markdownComponents}>
-                      {analysisContent || 'No analysis yet.'}
-                    </ReactMarkdown>
-                  )}
-                  
-                  {renderCitations(citations)}
-                  
-                  {/* Evaluation score */}
-                  {node.evaluation && (
-                    <div className="mt-3 text-xs rounded py-1">
-                      <div className="flex items-center gap-1">
-                        <div className="font-medium">Evaluation:</div>
-                        <div className={`${
-                          node.evaluation.score >= 8 ? 'text-green-600' : 
-                          node.evaluation.score >= 5 ? 'text-amber-600' : 'text-red-600'
-                        }`}>
-                          {node.evaluation.score}/10
-                        </div>
-                      </div>
-                      <div className="mt-1">{node.evaluation.reason}</div>
-                    </div>
-                  )}
-
-                  {/* If this node has any extensions, show buttons to navigate to them */}
-                  {nodeExtensions.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <div className="w-full text-xs font-medium">Question was expanded:</div>
-                      {nodeExtensions.map(ext => (
-                        <Button 
-                          key={ext.id} 
-                          variant="outline" 
-                          size="sm" 
-                          className="text-xs h-7 gap-1"
-                          onClick={() => navigateToExtension(ext)}
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
+                  {node.question}
+                  {getExtensionInfo(node)}
+                </h3>
+                {!node.isExtendedRoot && (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExpandQuestion(node);
+                    }}
+                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
+                    title="Expand this question into a follow-up analysis"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
+                <div className="flex items-start gap-2">
+                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  <div className="flex-1">
+                    {isExpanded ? (
+                      <>
+                        <ReactMarkdown
+                          components={markdownComponents}
+                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
                         >
-                          <ArrowRight className="h-3 w-3" />
-                          <span>Go to expansion {ext.id.split('-')[1]}</span>
-                        </Button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Button to further expand the current question */}
-                  {!isStreaming && depth < 3 && !node.isExtendedRoot && (
-                    <div className="mt-3">
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        className="text-xs h-7"
-                        onClick={() => handleExpandQuestion(node)}
-                        disabled={isAnalyzing}
-                      >
-                        Expand this question
-                      </Button>
-                    </div>
-                  )}
+                          {analysisContent}
+                        </ReactMarkdown>
+                        {renderCitations(citations)}
+                        
+                        <div className="mt-4 flex items-center gap-2">
+                          {node.evaluation && (
+                            <div className="flex items-center gap-2">
+                              <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
+                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
+                                'bg-red-500/20 text-red-500'
+                              }`}>
+                                Score: {node.evaluation.score}%
+                              </div>
+                              <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {nodeExtensions.length > 0 && (
+                          <div className="mt-4 space-y-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Follow-up Analyses ({nodeExtensions.length}):
+                            </div>
+                            <div className="space-y-4">
+                              {nodeExtensions.map((extension, index) => (
+                                <div 
+                                  key={extension.id}
+                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateToExtension(extension);
+                                  }}
+                                >
+                                  <div className="text-xs text-muted-foreground mb-2">
+                                    Continuation #{index + 1}
+                                  </div>
+                                  <div className="line-clamp-3">
+                                    {getPreviewText(extension.analysis)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
-            
-            {isExpanded && node.children.length > 0 && (
-              <div className="mt-4 space-y-3 pt-2 border-t border-muted/30">
-                {node.children.map(child => (
-                  <div key={child.id}>
-                    {renderQANode(child, depth + 1)}
-                  </div>
-                ))}
+            </div>
+            {node.children.length > 0 && isExpanded && (
+              <div className="mt-6">
+                {node.children.map(child => renderQANode(child, depth + 1))}
               </div>
             )}
           </div>
@@ -1059,122 +1065,98 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
   }
 
   return (
-    <Card className="p-4">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row gap-2 justify-between">
-          <div className="flex flex-col sm:flex-row gap-2">
-            <Select value={selectedResearch} onValueChange={setSelectedResearch}>
-              <SelectTrigger className="w-full sm:w-[250px]">
-                <SelectValue placeholder="Select research insights" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No research insights</SelectItem>
-                {savedResearch?.map(research => (
-                  <SelectItem key={research.id} value={research.id}>
-                    {research.query || 'Untitled research'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            
-            <Select value={selectedQATree} onValueChange={value => {
+    <Card className="p-4 mt-4 bg-card relative">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+        {navigationHistory.length > 0 && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={navigateBack}
+            className="mb-4 sm:mb-0"
+          >
+            ← Back to Previous Analysis
+          </Button>
+        )}
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedResearch}
+            onValueChange={setSelectedResearch}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved research" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved research</SelectItem>
+              {savedResearch?.map((research) => (
+                <SelectItem key={research.id} value={research.id}>
+                  {research.query.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedQATree}
+            onValueChange={(value) => {
               setSelectedQATree(value);
+              setNavigationHistory([]); // Reset navigation history when loading new tree
+              setFinalEvaluation(null); // Reset final evaluation
               if (value !== 'none') {
                 const tree = savedQATrees?.find(t => t.id === value);
                 if (tree) {
-                  loadSavedQATree(tree.tree_data, tree.tree_final_evaluation);
+                  loadSavedQATree(tree.tree_data);
                 }
               }
-            }}>
-              <SelectTrigger className="w-full sm:w-[250px]">
-                <SelectValue placeholder="Select saved QA tree" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Create new analysis</SelectItem>
-                {savedQATrees?.map(tree => (
-                  <SelectItem key={tree.id} value={tree.id}>
-                    {tree.title || 'Untitled tree'}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          <div className="flex gap-2 mt-2 sm:mt-0">
-            {navigationHistory.length > 0 && (
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={navigateBack}
-                disabled={isAnalyzing}
-              >
-                Back to parent tree
-              </Button>
-            )}
-            
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={saveQATree}
-              disabled={isAnalyzing || qaData.length === 0 || saveInProgress}
-            >
-              {saveInProgress ? 'Saving...' : 'Save tree'}
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved QA tree" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved QA tree</SelectItem>
+              {savedQATrees?.map((tree) => (
+                <SelectItem key={tree.id} value={tree.id}>
+                  {tree.title.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
+          <Button onClick={handleAnalyze} disabled={isAnalyzing || isFinalEvaluating || saveInProgress}>
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </Button>
+          {qaData.length > 0 && !isAnalyzing && (
+            <Button onClick={saveQATree} variant="outline" disabled={isFinalEvaluating || saveInProgress}>
+              {saveInProgress ? 'Saving...' : 'Save Analysis'}
             </Button>
-            
-            <Button 
-              onClick={handleAnalyze}
-              size="sm" 
-              disabled={isAnalyzing}
-            >
-              {isAnalyzing ? 'Analyzing...' : 'Analyze'}
-            </Button>
+          )}
+        </div>
+      </div>
+      
+      {(finalEvaluation || activeFinalEvaluation) && (
+        <div className="mb-4">
+          <InsightsDisplay 
+            probability={(finalEvaluation || activeFinalEvaluation)?.probability || ''} 
+            areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch || []} 
+          />
+          <div className="mt-4 bg-accent/5 rounded-md p-4">
+            <h3 className="text-sm font-medium mb-2">Final Analysis</h3>
+            <p className="text-sm text-muted-foreground">{(finalEvaluation || activeFinalEvaluation)?.analysis || ''}</p>
           </div>
         </div>
-        
-        {qaData.length > 0 ? (
-          <ScrollArea className="h-[500px]">
-            <div className="space-y-4">
-              {qaData.map(node => renderQANode(node))}
-            </div>
-          </ScrollArea>
-        ) : (
-          <div className="text-muted-foreground text-center py-10">
-            {isAnalyzing ? 'Analyzing...' : 'Click "Analyze" to start analysis of the question.'}
-          </div>
-        )}
-        
-        {(finalEvaluation || activeFinalEvaluation) && (
-          <div className="mt-4 border-t border-muted/30 pt-4">
-            <h3 className="text-sm font-medium mb-2">Final Evaluation</h3>
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="font-medium text-sm">Probability:</div>
-                <div className="text-sm">{finalEvaluation?.probability || activeFinalEvaluation?.probability}</div>
-              </div>
-              
-              <div>
-                <div className="font-medium text-sm mb-1">Analysis:</div>
-                <div className="text-sm text-muted-foreground">
-                  <ReactMarkdown>
-                    {finalEvaluation?.analysis || activeFinalEvaluation?.analysis || ''}
-                  </ReactMarkdown>
-                </div>
-              </div>
-              
-              {(finalEvaluation?.areasForResearch?.length || activeFinalEvaluation?.areasForResearch?.length) ? (
-                <div>
-                  <div className="font-medium text-sm mb-1">Areas for further research:</div>
-                  <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-1">
-                    {(finalEvaluation?.areasForResearch || activeFinalEvaluation?.areasForResearch || []).map((area, i) => (
-                      <li key={i}>{area}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        )}
-      </div>
+      )}
+      
+      {isFinalEvaluating && (
+        <div className="mb-4 p-4 bg-accent/5 rounded-md">
+          <p className="text-sm animate-pulse">Generating final evaluation...</p>
+        </div>
+      )}
+      
+      <ScrollArea className="h-[500px] pr-4">
+        {qaData.map(node => renderQANode(node))}
+      </ScrollArea>
     </Card>
   );
 }
