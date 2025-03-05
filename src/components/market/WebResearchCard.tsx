@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -94,6 +94,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [currentQueryIndex, setCurrentQueryIndex] = useState<number>(-1)
   const [focusText, setFocusText] = useState<string>('')
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
+  const [loadedResearchId, setLoadedResearchId] = useState<string | null>(null)
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -155,6 +156,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
   const loadSavedResearch = (research: SavedResearch) => {
     setIsLoadingSaved(true);
+    setLoadedResearchId(research.id);
+    
     setResults(research.sources)
     setAnalysis(research.analysis)
     
@@ -180,7 +183,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     setTimeout(() => {
       setIsLoadingSaved(false);
-    }, 100);
+    }, 500);
   }
 
   const isCompleteMarkdown = (text: string): boolean => {
@@ -270,6 +273,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         throw new Error('Not authenticated')
       }
 
+      if (isLoadingSaved) {
+        console.log("Skipping save because research is currently being loaded");
+        return;
+      }
+      
+      if (loadedResearchId && savedResearch?.some(r => r.id === loadedResearchId)) {
+        console.log(`Skipping save for already existing research with ID: ${loadedResearchId}`);
+        return;
+      }
+
       const sanitizeJson = (data: any): any => {
         if (data === null || data === undefined) return null;
         
@@ -322,6 +335,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         description: "Your research has been saved automatically.",
       })
 
+      setLoadedResearchId(null);
+      
       refetchSavedResearch()
     } catch (error) {
       console.error('Error saving research:', error)
@@ -859,6 +874,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   };
 
   const handleResearch = async () => {
+    setLoadedResearchId(null);
+    
     setIsLoading(true)
     setProgress([])
     setResults([])
@@ -962,6 +979,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const handleResearchArea = (area: string) => {
+    setLoadedResearchId(null);
+    
     setFocusText(area);
     toast({
       title: "Research focus set",
@@ -993,12 +1012,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                           results.length > 0 && 
                           analysis && 
                           streamingState.parsedData &&
-                          !error;
+                          !error &&
+                          !loadedResearchId;
 
     if (shouldAutoSave) {
       saveResearch();
     }
-  }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error, isLoadingSaved]);
+  }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error, isLoadingSaved, loadedResearchId]);
 
   const toggleIterationExpand = (iterationId: string) => {
     setExpandedIterations(prev => {
