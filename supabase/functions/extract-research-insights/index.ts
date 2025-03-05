@@ -99,11 +99,9 @@ Remember to respond with a valid JSON object with "probability" and "areasForRes
       headers: {
         ...authHeader,
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'X-Accel-Buffering': 'no',
       },
       body: JSON.stringify({
-        model: openAIKey ? 'gpt-4o-mini' : 'openai/gpt-4o-mini',
+        model: openAIKey ? 'gpt-4o-mini' : 'perplexity/llama-3.1-sonar-small-128k-online',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
@@ -119,14 +117,12 @@ Remember to respond with a valid JSON object with "probability" and "areasForRes
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // Return the streaming response directly without transformation
+    // Return the streaming response directly
     return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no'
       }
     });
   } catch (error) {
