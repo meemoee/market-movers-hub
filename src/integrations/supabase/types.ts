@@ -512,6 +512,7 @@ export type Database = {
           analysis: string
           areas_for_research: Json
           created_at: string
+          focus_text: string | null
           id: string
           iterations: Json | null
           market_id: string | null
@@ -525,6 +526,7 @@ export type Database = {
           analysis: string
           areas_for_research: Json
           created_at?: string
+          focus_text?: string | null
           id?: string
           iterations?: Json | null
           market_id?: string | null
@@ -538,6 +540,7 @@ export type Database = {
           analysis?: string
           areas_for_research?: Json
           created_at?: string
+          focus_text?: string | null
           id?: string
           iterations?: Json | null
           market_id?: string | null

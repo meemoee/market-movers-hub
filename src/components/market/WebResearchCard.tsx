@@ -264,7 +264,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         throw new Error('Not authenticated')
       }
 
-      const { error } = await supabase.from('web_research').insert({
+      const researchPayload = {
         user_id: user.user.id,
         query: description,
         sources: results as unknown as Json,
@@ -273,8 +273,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         areas_for_research: streamingState.parsedData?.areasForResearch as unknown as Json,
         market_id: marketId,
         iterations: iterations as unknown as Json,
-        focus_text: focusText
-      })
+        focus_text: focusText || null
+      };
+
+      const { error } = await supabase.from('web_research').insert(researchPayload)
 
       if (error) throw error
 
@@ -315,17 +317,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return cleanedQuery;
       });
       
-      const scrapePayload = { 
+      const scrapePayload: any = { 
         queries: shortenedQueries,
         marketId: marketId,
         marketDescription: description
       };
 
-      if (focusText.trim()) {
-        Object.assign(scrapePayload, { 
-          focusText: focusText.trim(),
-          researchFocus: focusText.trim() 
-        });
+      if (focusText?.trim()) {
+        scrapePayload.focusText = focusText.trim();
+        scrapePayload.researchFocus = focusText.trim();
         setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
       }
       
