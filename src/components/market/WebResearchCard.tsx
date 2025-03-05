@@ -126,24 +126,31 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       if (!marketId) return null;
       
       const { data, error } = await supabase
-        .from('market_data')
-        .select('last_price, best_bid, best_ask')
+        .from('market_prices')
+        .select('last_traded_price, best_bid, best_ask')
         .eq('market_id', marketId)
-        .single();
+        .order('timestamp', { ascending: false })
+        .limit(1);
         
       if (error) {
         console.error('Error fetching market price:', error);
         return null;
       }
       
-      return data;
+      return data && data.length > 0 ? data[0] : null;
     },
     enabled: !!marketId
   });
   
-  const marketPrice = marketData?.last_price !== undefined 
-    ? Math.round(marketData.last_price * 100) 
+  const marketPrice = marketData?.last_traded_price !== undefined 
+    ? Math.round(marketData.last_traded_price * 100) 
     : undefined;
+
+  useEffect(() => {
+    if (marketPrice !== undefined) {
+      console.log(`Market ID ${marketId} has price: ${marketPrice}%`);
+    }
+  }, [marketPrice, marketId]);
 
   const loadSavedResearch = (research: SavedResearch) => {
     setResults(research.sources)
@@ -478,14 +485,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketPrice: marketPrice
       };
 
-      if (focusText.trim()) {
-        Object.assign(analyzePayload, { 
-          focusText: focusText.trim(),
-          researchFocus: focusText.trim() 
-        });
-        setProgress(prev => [...prev, `Focusing analysis on: ${focusText.trim()}`]);
-      }
-      
+      console.log(`Analyze payload for market ${marketId} includes marketPrice: ${marketPrice}`);
+
       setIterations(prev => {
         const updatedIterations = [...prev];
         const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
@@ -598,7 +599,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 await new Promise(resolve => setTimeout(resolve, 0));
               }
             } catch (e) {
-              console.debug('Error parsing analysis SSE data:', e);
+              console.debug('Error parsing SSE data:', e);
             }
           }
         }
@@ -710,13 +711,18 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       marketPrice: marketPrice
     };
     
-    if (focusText.trim()) {
-      Object.assign(insightsPayload, { 
-        focusText: focusText.trim(),
-        researchFocus: focusText.trim() 
-      });
-      setProgress(prev => [...prev, `Focusing insights extraction on: ${focusText.trim()}`]);
-    }
+    console.log(`Insights payload for market ${marketId} includes marketPrice: ${marketPrice}`);
+    
+    setStreamingState({
+      rawText: '',
+      parsedData: {
+        probability: "Unknown (parsing error)",
+        areasForResearch: ["Could not parse research areas due to format error."],
+        reasoning: "Error parsing model output."
+      }
+    });
+
+    setProgress(prev => [...prev, `Extracting probability and reasoning from insights...`]);
     
     try {
       const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
