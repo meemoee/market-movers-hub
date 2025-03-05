@@ -139,7 +139,8 @@ export function InsightsDisplay({ streamingState, onResearchArea, parentResearch
           </div>
           <div className="space-y-4">
             {areasForResearch.map((area, index) => (
-              <div key={index} className={`flex gap-3 p-2 rounded-lg transition-colors ${onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}>
+              <div key={index} className={`flex gap-3 p-2 rounded-lg transition-colors ${onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
+                  onClick={onResearchArea ? () => onResearchArea(area) : undefined}>
                 <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                 <div className="flex-1">
                   <p className="text-sm leading-relaxed">{area}</p>
@@ -148,7 +149,10 @@ export function InsightsDisplay({ streamingState, onResearchArea, parentResearch
                       variant="ghost" 
                       size="sm" 
                       className="mt-2 h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
-                      onClick={() => onResearchArea(area)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent parent div click
+                        onResearchArea(area);
+                      }}
                     >
                       <ArrowRightCircle className="h-3 w-3" />
                       Create focused research

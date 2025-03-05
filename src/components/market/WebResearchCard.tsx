@@ -159,7 +159,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
   const findParentResearch = useCallback((parentId: string | null) => {
     if (!parentId || !savedResearch) return null;
-    return savedResearch.find(r => r.id === parentId);
+    
+    const parent = savedResearch.find(r => r.id === parentId);
+    if (parent) {
+      console.log(`Found parent research: ${parent.id} with focus: ${parent.focus_text || "none"}`);
+      return parent;
+    }
+    
+    console.log(`Parent research with ID ${parentId} not found in savedResearch:`, 
+                savedResearch?.length ? savedResearch.map(r => r.id).join(', ') : 'No saved research');
+    return null;
   }, [savedResearch]);
   
   const parentResearch = findParentResearch(parentResearchId);
@@ -188,7 +197,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     })
 
     setFocusText(research.focus_text || '');
-    setParentResearchId(research.parent_research_id || null);
+    
+    if (research.parent_research_id) {
+      console.log(`Loading research with parent ID: ${research.parent_research_id}`);
+      setParentResearchId(research.parent_research_id);
+    } else {
+      setParentResearchId(null);
+    }
     
     setTimeout(() => {
       setIsLoadingSaved(false);
@@ -336,18 +351,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       };
 
       console.log("Saving sanitized research data", parentResearchId ? `with parent research: ${parentResearchId}` : "without parent");
-      const { error } = await supabase.from('web_research').insert(researchPayload)
+      const { data, error } = await supabase.from('web_research').insert(researchPayload).select('id')
 
       if (error) throw error
+
+      if (data && data[0] && data[0].id) {
+        setLoadedResearchId(data[0].id);
+        console.log(`Set loadedResearchId to ${data[0].id} to prevent duplicate saves`);
+      }
 
       toast({
         title: "Research saved",
         description: "Your research has been saved automatically.",
       })
-
-      setLoadedResearchId(null);
       
-      refetchSavedResearch()
+      await refetchSavedResearch();
     } catch (error) {
       console.error('Error saving research:', error)
       toast({
@@ -989,7 +1007,19 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const handleResearchArea = (area: string) => {
-    const currentResearchId = loadedResearchId;
+    const currentResearchId = savedResearch?.find(r => r.id === loadedResearchId)?.id || loadedResearchId;
+    
+    console.log(`Starting focused research with parent ID: ${currentResearchId} on area: ${area}`);
+    
+    if (!currentResearchId) {
+      console.warn("Cannot create focused research: No parent research ID available");
+      toast({
+        title: "Cannot create focused research",
+        description: "Please save the current research first",
+        variant: "destructive"
+      });
+      return;
+    }
     
     setLoadedResearchId(null);
     setParentResearchId(currentResearchId);
@@ -1013,7 +1043,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
-    handleResearch();
+    setTimeout(() => {
+      handleResearch();
+    }, 100);
   };
 
   const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
@@ -1131,6 +1163,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       loadSavedResearch(parentResearch);
     }
   }, [parentResearch]);
+
+  useEffect(() => {
+    if (parentResearchId) {
+      console.log(`parentResearchId changed to: ${parentResearchId}`);
+      if (!parentResearch) {
+        console.log('Parent research not found yet in saved research');
+      }
+    }
+  }, [parentResearchId, parentResearch]);
 
   return (
     <Card className="p-4 space-y-4">
