@@ -20,7 +20,7 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
-  // This effect handles scrolling when new content arrives
+  // Optimize scrolling by using requestAnimationFrame and reducing state updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
@@ -30,8 +30,13 @@ export function AnalysisDisplay({
     // Only auto-scroll if content is growing (new chunks arriving)
     // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight
-      setLastUpdateTime(Date.now())
+      // Use requestAnimationFrame for smoother scrolling
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+        }
+        setLastUpdateTime(Date.now())
+      })
       
       if (isStreaming) {
         setStreamStatus('streaming')
@@ -61,37 +66,42 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
-  // Check for inactive streaming periods
+  // Check for inactive streaming periods with reduced frequency
   useEffect(() => {
     if (!isStreaming) {
       setStreamStatus('idle')
       return
     }
     
-    // Monitor for inactive streaming
+    // Monitor for inactive streaming with longer interval
     const interval = setInterval(() => {
       const timeSinceUpdate = Date.now() - lastUpdateTime
       if (timeSinceUpdate > 3000) { // If no updates for 3+ seconds
         setStreamStatus('waiting')
-      } else {
+      } else if (streamStatus !== 'streaming') {
         setStreamStatus('streaming')
       }
-    }, 1000)
+    }, 1500) // Reduced frequency to 1.5 seconds
     
     return () => clearInterval(interval)
-  }, [isStreaming, lastUpdateTime])
+  }, [isStreaming, lastUpdateTime, streamStatus])
   
-  // Continuously scroll during streaming when auto-scroll is enabled
+  // Optimize continuous scroll during streaming
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
-    const interval = setInterval(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-      }
-    }, 100)
+    let rafId: number
     
-    return () => clearInterval(interval)
+    const scrollToBottom = () => {
+      if (scrollRef.current && shouldAutoScroll) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        rafId = requestAnimationFrame(scrollToBottom)
+      }
+    }
+    
+    rafId = requestAnimationFrame(scrollToBottom)
+    
+    return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
