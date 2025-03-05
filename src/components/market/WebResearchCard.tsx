@@ -264,18 +264,49 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         throw new Error('Not authenticated')
       }
 
-      const researchPayload = {
-        user_id: user.user.id,
-        query: description,
-        sources: results as unknown as Json,
-        analysis,
-        probability: streamingState.parsedData?.probability || '',
-        areas_for_research: streamingState.parsedData?.areasForResearch as unknown as Json,
-        market_id: marketId,
-        iterations: iterations as unknown as Json,
-        focus_text: focusText || null
+      const sanitizeJson = (data: any): any => {
+        if (data === null || data === undefined) return null;
+        
+        if (typeof data === 'string') {
+          return data.replace(/\u0000/g, '').replace(/\\u0000/g, '');
+        }
+        
+        if (Array.isArray(data)) {
+          return data.map(item => sanitizeJson(item));
+        }
+        
+        if (typeof data === 'object') {
+          const result: Record<string, any> = {};
+          for (const key in data) {
+            if (Object.prototype.hasOwnProperty.call(data, key)) {
+              result[key] = sanitizeJson(data[key]);
+            }
+          }
+          return result;
+        }
+        
+        return data;
       };
 
+      const sanitizedResults = sanitizeJson(results);
+      const sanitizedAnalysis = analysis ? analysis.replace(/\u0000/g, '') : '';
+      const sanitizedAreasForResearch = sanitizeJson(streamingState.parsedData?.areasForResearch);
+      const sanitizedIterations = sanitizeJson(iterations);
+      const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
+      
+      const researchPayload = {
+        user_id: user.user.id,
+        query: description.replace(/\u0000/g, ''),
+        sources: sanitizedResults as unknown as Json,
+        analysis: sanitizedAnalysis,
+        probability: streamingState.parsedData?.probability?.replace(/\u0000/g, '') || '',
+        areas_for_research: sanitizedAreasForResearch as unknown as Json,
+        market_id: marketId,
+        iterations: sanitizedIterations as unknown as Json,
+        focus_text: sanitizedFocusText
+      };
+
+      console.log("Saving sanitized research data");
       const { error } = await supabase.from('web_research').insert(researchPayload)
 
       if (error) throw error
