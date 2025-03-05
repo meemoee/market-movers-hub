@@ -73,6 +73,7 @@ interface SavedResearch {
   market_id: string;
   iterations?: ResearchIteration[];
   focus_text?: string;
+  parent_research_id?: string;
 }
 
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
@@ -95,6 +96,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [focusText, setFocusText] = useState<string>('')
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const [loadedResearchId, setLoadedResearchId] = useState<string | null>(null)
+  const [parentResearchId, setParentResearchId] = useState<string | null>(null)
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -117,7 +119,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         sources: item.sources as ResearchResult[],
         areas_for_research: item.areas_for_research as string[],
         iterations: item.iterations as ResearchIteration[] || [],
-        focus_text: item.focus_text
+        focus_text: item.focus_text,
+        parent_research_id: item.parent_research_id
       })) as SavedResearch[]
     }
   })
@@ -178,6 +181,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     })
 
     setFocusText(research.focus_text || '');
+    setParentResearchId(research.parent_research_id || null);
     
     setTimeout(() => {
       setIsLoadingSaved(false);
@@ -320,10 +324,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         areas_for_research: sanitizedAreasForResearch as unknown as Json,
         market_id: marketId,
         iterations: sanitizedIterations as unknown as Json,
-        focus_text: sanitizedFocusText
+        focus_text: sanitizedFocusText,
+        parent_research_id: parentResearchId
       };
 
-      console.log("Saving sanitized research data");
+      console.log("Saving sanitized research data", parentResearchId ? `with parent research: ${parentResearchId}` : "without parent");
       const { error } = await supabase.from('web_research').insert(researchPayload)
 
       if (error) throw error
@@ -977,7 +982,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const handleResearchArea = (area: string) => {
+    const currentResearchId = loadedResearchId;
+    
     setLoadedResearchId(null);
+    setParentResearchId(currentResearchId);
     
     setFocusText(area);
     toast({
