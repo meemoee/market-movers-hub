@@ -49,6 +49,7 @@ interface StreamingState {
   parsedData: {
     probability: string;
     areasForResearch: string[];
+    reasoning?: string;
   } | null;
 }
 
@@ -665,11 +666,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const extractInsights = async (allContent: string[], finalAnalysis: string) => {
     setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
     
+    // Collect all previous analyses from iterations
+    const previousAnalyses = iterations.map(iter => iter.analysis);
+    
+    // Collect all search queries used across iterations
+    const allQueries = iterations.flatMap(iter => iter.queries);
+    
     const insightsPayload = {
       webContent: allContent.join('\n\n'),
       analysis: finalAnalysis,
       marketId: marketId,
-      marketQuestion: description
+      marketQuestion: description,
+      previousAnalyses: previousAnalyses,
+      iterations: iterations,
+      queries: allQueries,
+      areasForResearch: streamingState.parsedData?.areasForResearch || []
     };
     
     if (focusText.trim()) {
@@ -721,11 +732,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               rawText: finalJson,
               parsedData: {
                 probability: parsedJson.probability || "Unknown",
-                areasForResearch: Array.isArray(parsedJson.areasForResearch) ? parsedJson.areasForResearch : []
+                areasForResearch: Array.isArray(parsedJson.areasForResearch) ? parsedJson.areasForResearch : [],
+                reasoning: parsedJson.reasoning || ""
               }
             });
             
             setProgress(prev => [...prev, `Extracted probability: ${parsedJson.probability || "Unknown"}`]);
+            if (parsedJson.reasoning) {
+              setProgress(prev => [...prev, `Reasoning: ${parsedJson.reasoning}`]);
+            }
           } catch (e) {
             console.error('Final JSON parsing error:', e);
             
@@ -733,7 +748,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               rawText: jsonContent,
               parsedData: {
                 probability: "Unknown (parsing error)",
-                areasForResearch: ["Could not parse research areas due to format error."]
+                areasForResearch: ["Could not parse research areas due to format error."],
+                reasoning: "Error parsing model output."
               }
             });
           }
@@ -769,7 +785,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         rawText: '',
         parsedData: {
           probability: "Unknown (error occurred)",
-          areasForResearch: ["Error occurred during analysis"]
+          areasForResearch: ["Error occurred during analysis"],
+          reasoning: "An error occurred during analysis."
         }
       });
     }

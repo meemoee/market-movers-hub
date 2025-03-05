@@ -7,6 +7,11 @@ interface InsightsRequest {
   analysis: string;
   marketId?: string; 
   marketQuestion?: string;
+  previousAnalyses?: string[];
+  iterations?: any[];
+  queries?: string[];
+  areasForResearch?: string[];
+  focusText?: string;
 }
 
 const corsHeaders = {
@@ -21,13 +26,28 @@ serve(async (req) => {
   }
 
   try {
-    const { webContent, analysis, marketId, marketQuestion } = await req.json() as InsightsRequest;
+    const { 
+      webContent, 
+      analysis, 
+      marketId, 
+      marketQuestion,
+      previousAnalyses,
+      iterations,
+      queries,
+      areasForResearch,
+      focusText
+    } = await req.json() as InsightsRequest;
     
     // Log request info for debugging
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
       webContentLength: webContent?.length || 0,
       analysisLength: analysis?.length || 0,
-      marketQuestion: marketQuestion?.substring(0, 100) || 'Not provided'
+      marketQuestion: marketQuestion?.substring(0, 100) || 'Not provided',
+      previousAnalysesCount: previousAnalyses?.length || 0,
+      iterationsCount: iterations?.length || 0,
+      queriesCount: queries?.length || 0,
+      areasForResearchCount: areasForResearch?.length || 0,
+      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified'
     });
 
     // Get OpenRouter API key
@@ -47,21 +67,46 @@ serve(async (req) => {
       ? analysis.substring(0, 10000) + "... [analysis truncated]" 
       : analysis;
 
+    // Prepare previous analyses for context
+    const previousAnalysesContext = previousAnalyses && previousAnalyses.length > 0
+      ? `Previous iteration analyses:
+${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.length > 2000 ? '...[truncated]' : ''}`).join('\n\n')}`
+      : '';
+    
+    // Prepare queries context
+    const queriesContext = queries && queries.length > 0
+      ? `Search queries used: ${queries.join(', ')}`
+      : '';
+    
+    // Prepare previous research areas
+    const previousResearchAreas = areasForResearch && areasForResearch.length > 0
+      ? `Previously identified research areas: ${areasForResearch.join(', ')}`
+      : '';
+
     // Create a system prompt that emphasizes the specific market context
     const marketContext = marketId && marketQuestion
       ? `\nYou are analyzing market ID: ${marketId} with the question: "${marketQuestion}"\n`
       : '';
 
-    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}
+    const focusContext = focusText
+      ? `\nThe research particularly focused on: "${focusText}"\n`
+      : '';
+
+    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
 Your task is to analyze web research content and provide precise insights about prediction market outcomes.
-Based on your analysis, provide:
+${previousResearchAreas}
+${queriesContext}
+
+Based on your comprehensive analysis, provide:
 1. A specific probability estimate (a percentage) for the market outcome
 2. A list of key areas that require additional research to improve confidence
+3. A brief summary of key evidence and reasoning behind your estimate
 
 Format your answer as a JSON object with the following structure:
 {
   "probability": "X%" (numerical percentage with % sign),
-  "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings)
+  "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
+  "reasoning": "brief explanation of your reasoning behind the probability estimate"
 }`;
 
     // Create a longer version of the prompt for a more nuanced response
@@ -75,11 +120,14 @@ And here is my analysis of this content:
 ${truncatedAnalysis}
 ---
 
+${previousAnalysesContext}
+
 Based on all this information:
 1. What is your best estimate of the probability this market event will occur? Give a specific percentage.
 2. What are the most important areas where more research is needed to improve prediction accuracy?
+3. Summarize the key evidence and reasoning behind your probability estimate in 2-3 sentences.
 
-Remember to respond with a valid JSON object with "probability" and "areasForResearch" properties.`;
+Remember to respond with a valid JSON object with "probability", "areasForResearch", and "reasoning" properties.`;
 
     // Make the streaming request with Gemini model
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -123,7 +171,8 @@ Remember to respond with a valid JSON object with "probability" and "areasForRes
       JSON.stringify({ 
         error: error.message || 'Unknown error',
         probability: "50%",
-        areasForResearch: ["Error resolution", "Technical issues"]
+        areasForResearch: ["Error resolution", "Technical issues"],
+        reasoning: "Could not analyze due to technical error"
       }),
       {
         status: 500,

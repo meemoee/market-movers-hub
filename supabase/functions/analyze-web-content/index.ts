@@ -8,6 +8,8 @@ interface AnalysisRequest {
   question: string;
   marketId?: string;
   focusText?: string;
+  previousAnalyses?: string;
+  areasForResearch?: string[];
 }
 
 const corsHeaders = {
@@ -22,14 +24,24 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query, question, marketId, focusText } = await req.json() as AnalysisRequest;
+    const { 
+      content, 
+      query, 
+      question, 
+      marketId, 
+      focusText,
+      previousAnalyses,
+      areasForResearch 
+    } = await req.json() as AnalysisRequest;
     
     // Log request info for debugging
     console.log(`Analyze web content request for market ID ${marketId || 'unknown'}:`, {
       contentLength: content?.length || 0,
       query: query?.substring(0, 100) || 'Not provided',
       question: question?.substring(0, 100) || 'Not provided',
-      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified'
+      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
+      previousAnalysesLength: previousAnalyses?.length || 0,
+      areasForResearchCount: areasForResearch?.length || 0
     });
 
     // Get OpenRouter API key
@@ -54,18 +66,31 @@ serve(async (req) => {
       ? `\nIMPORTANT: Focus your analysis specifically on: "${focusText}"\n`
       : '';
 
-    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}
+    // Include previous areas for research if available
+    const researchAreasContext = areasForResearch && areasForResearch.length > 0
+      ? `\nPreviously identified research areas to focus on: ${areasForResearch.join(', ')}\n`
+      : '';
+
+    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}
 Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
 Provide a comprehensive, balanced analysis of the key information, focusing on facts that help assess probability.
 Be factual and evidence-based, not speculative.`;
 
     // Create the prompt for the user message
-    const prompt = `Here is the web content I've collected during research:
+    let prompt = `Here is the web content I've collected during research:
 ---
 ${truncatedContent}
----
+---`;
 
-Based solely on the information in this content:
+    // Include previous analyses if available
+    if (previousAnalyses && previousAnalyses.length > 0) {
+      prompt += `\n\nPrevious research has identified the following insights:
+---
+${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... [truncated]' : ''}
+---`;
+    }
+
+    prompt += `\nBased solely on the information in this content:
 1. What are the key facts and insights relevant to the market question "${question}"?
 ${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
 2. What evidence supports or contradicts the proposition?
