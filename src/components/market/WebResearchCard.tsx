@@ -93,6 +93,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [currentQueries, setCurrentQueries] = useState<string[]>([])
   const [currentQueryIndex, setCurrentQueryIndex] = useState<number>(-1)
   const [focusText, setFocusText] = useState<string>('')
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -153,6 +154,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }, [marketPrice, marketId]);
 
   const loadSavedResearch = (research: SavedResearch) => {
+    setIsLoadingSaved(true);
     setResults(research.sources)
     setAnalysis(research.analysis)
     
@@ -175,6 +177,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     if (research.focus_text) {
       setFocusText(research.focus_text)
     }
+    
+    setTimeout(() => {
+      setIsLoadingSaved(false);
+    }, 100);
   }
 
   const isCompleteMarkdown = (text: string): boolean => {
@@ -724,10 +730,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const extractInsights = async (allContent: string[], finalAnalysis: string) => {
     setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
     
-    // Collect all previous analyses from iterations
     const previousAnalyses = iterations.map(iter => iter.analysis);
     
-    // Collect all search queries used across iterations
     const allQueries = iterations.flatMap(iter => iter.queries);
     
     const insightsPayload = {
@@ -741,8 +745,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       areasForResearch: streamingState.parsedData?.areasForResearch || [],
       marketPrice: marketPrice
     };
-    
-    console.log(`Insights payload for market ${marketId} includes marketPrice: ${marketPrice}`);
     
     setStreamingState({
       rawText: '',
@@ -987,6 +989,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   useEffect(() => {
     const shouldAutoSave = !isLoading && 
                           !isAnalyzing && 
+                          !isLoadingSaved &&
                           results.length > 0 && 
                           analysis && 
                           streamingState.parsedData &&
@@ -995,7 +998,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     if (shouldAutoSave) {
       saveResearch();
     }
-  }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error]);
+  }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error, isLoadingSaved]);
 
   const toggleIterationExpand = (iterationId: string) => {
     setExpandedIterations(prev => {
