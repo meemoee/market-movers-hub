@@ -22,6 +22,9 @@ export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisp
   if (!streamingState.parsedData) return null;
 
   const { probability, areasForResearch, reasoning } = streamingState.parsedData;
+  
+  // Check if market is resolved (100% or 0%)
+  const isResolved = probability === "100%" || probability === "0%";
 
   return (
     <div className="space-y-4">
@@ -29,18 +32,24 @@ export function InsightsDisplay({ streamingState, onResearchArea }: InsightsDisp
         <Card className="p-4 bg-accent/20 border-accent">
           <div className="flex items-center gap-2">
             <TrendingUpIcon className="h-5 w-5 text-primary" />
-            <h3 className="text-base font-medium">Probability Estimate</h3>
+            <h3 className="text-base font-medium">
+              {isResolved ? 'Market Status' : 'Probability Estimate'}
+            </h3>
           </div>
           <div className="mt-2 flex items-center gap-2">
             <div className="text-2xl font-bold">{probability}</div>
-            <div className="text-sm text-muted-foreground">likelihood based on research</div>
+            <div className="text-sm text-muted-foreground">
+              {isResolved ? (probability === "100%" ? 'event occurred' : 'event did not occur') : 'likelihood based on research'}
+            </div>
           </div>
           
           {reasoning && (
             <div className="mt-3 border-t pt-3">
               <div className="flex items-center gap-2 mb-1">
                 <InfoIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">Reasoning</span>
+                <span className="text-sm font-medium">
+                  {isResolved ? 'Explanation' : 'Reasoning'}
+                </span>
               </div>
               <p className="text-sm text-muted-foreground">{reasoning}</p>
             </div>

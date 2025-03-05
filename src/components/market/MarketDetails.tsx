@@ -60,6 +60,11 @@ export function MarketDetails({
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
+  // Get the current market price from the price history
+  const currentMarketPrice = priceHistory?.points && priceHistory.points.length > 0 
+    ? priceHistory.points[priceHistory.points.length - 1].price 
+    : undefined;
+
   const { data: marketEvents, isLoading: isEventsLoading } = useQuery({
     queryKey: ['marketEvents', marketId],
     queryFn: async () => {

@@ -120,6 +120,31 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   })
 
+  const { data: marketData } = useQuery({
+    queryKey: ['market-price', marketId],
+    queryFn: async () => {
+      if (!marketId) return null;
+      
+      const { data, error } = await supabase
+        .from('market_data')
+        .select('last_price, best_bid, best_ask')
+        .eq('market_id', marketId)
+        .single();
+        
+      if (error) {
+        console.error('Error fetching market price:', error);
+        return null;
+      }
+      
+      return data;
+    },
+    enabled: !!marketId
+  });
+  
+  const marketPrice = marketData?.last_price !== undefined 
+    ? Math.round(marketData.last_price * 100) 
+    : undefined;
+
   const loadSavedResearch = (research: SavedResearch) => {
     setResults(research.sources)
     setAnalysis(research.analysis)
@@ -449,7 +474,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketId: marketId,
         marketDescription: description,
         previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-        areasForResearch: streamingState.parsedData?.areasForResearch || []
+        areasForResearch: streamingState.parsedData?.areasForResearch || [],
+        marketPrice: marketPrice
       };
 
       if (focusText.trim()) {
@@ -680,7 +706,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       previousAnalyses: previousAnalyses,
       iterations: iterations,
       queries: allQueries,
-      areasForResearch: streamingState.parsedData?.areasForResearch || []
+      areasForResearch: streamingState.parsedData?.areasForResearch || [],
+      marketPrice: marketPrice
     };
     
     if (focusText.trim()) {
