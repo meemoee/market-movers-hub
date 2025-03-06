@@ -84,3 +84,18 @@
 .prose a {
   word-break: break-all;
 }
+
+/* Add specific styles for accordion content */
+.accordion-content-wrapper {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Make sure all text elements have proper wrapping */
+.text-wrap-all {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  word-break: break-word;
+  hyphens: auto;
+}
