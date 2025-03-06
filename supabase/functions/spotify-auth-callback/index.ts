@@ -9,6 +9,10 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || ''
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/spotify-auth-callback`
 
+console.log('Function initialized with REDIRECT_URI:', REDIRECT_URI)
+console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
+console.log('SPOTIFY_CLIENT_SECRET length:', SPOTIFY_CLIENT_SECRET ? SPOTIFY_CLIENT_SECRET.length : 0)
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 serve(async (req) => {
@@ -48,7 +52,7 @@ serve(async (req) => {
         </body>
       </html>`,
       { 
-        headers: { 'Content-Type': 'text/html' },
+        headers: { ...corsHeaders, 'Content-Type': 'text/html' },
         status: 400 
       }
     )
@@ -72,58 +76,68 @@ serve(async (req) => {
         </body>
       </html>`,
       { 
-        headers: { 'Content-Type': 'text/html' },
+        headers: { ...corsHeaders, 'Content-Type': 'text/html' },
         status: 400 
       }
     )
   }
 
   try {
-    // Create Base64 encoded authorization string
-    const authString = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`)
-    console.log('Attempting token exchange with auth string:', authString.substring(0, 10) + '...')
+    // Create Base64 encoded authorization string - fixing how we encode
+    const credentials = `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`;
+    const authString = btoa(credentials);
+    
+    console.log('Client credentials length:', credentials.length);
+    console.log('Auth header length:', authString.length);
+    console.log('Full auth header:', `Basic ${authString}`);
 
     // Exchange the authorization code for an access token
+    const tokenParams = new URLSearchParams({
+      grant_type: 'authorization_code',
+      code: code,
+      redirect_uri: REDIRECT_URI
+    });
+    
+    console.log('Token params:', tokenParams.toString());
+    
     const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
+        'Content-Type': 'application/x-www-form-urlencoded'
       },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        code: code!,
-        redirect_uri: REDIRECT_URI
-      }).toString()
-    })
+      body: tokenParams.toString()
+    });
 
-    console.log('Token response status:', tokenResponse.status)
+    console.log('Token response status:', tokenResponse.status);
+    console.log('Token response headers:', JSON.stringify(Object.fromEntries([...tokenResponse.headers])));
+    
+    const responseText = await tokenResponse.text();
+    console.log('Token response body:', responseText);
     
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text()
-      console.error('Token exchange error:', errorText)
-      throw new Error(`Failed to exchange code for token: ${errorText}`)
+      throw new Error(`Failed to exchange code for token: ${responseText}`);
     }
 
-    const tokenData = await tokenResponse.json()
-    console.log('Successfully received token data')
+    // Parse the token data from the response text
+    const tokenData = JSON.parse(responseText);
+    console.log('Successfully received token data with access token length:', tokenData.access_token?.length || 0);
     
     // Get user profile from Spotify
     const profileResponse = await fetch('https://api.spotify.com/v1/me', {
       headers: {
         'Authorization': `Bearer ${tokenData.access_token}`
       }
-    })
+    });
 
     if (!profileResponse.ok) {
-      const errorText = await profileResponse.text()
-      console.error('Profile fetch error:', errorText)
-      throw new Error(`Failed to fetch Spotify profile: ${errorText}`)
+      const errorText = await profileResponse.text();
+      console.error('Profile fetch error:', errorText);
+      throw new Error(`Failed to fetch Spotify profile: ${errorText}`);
     }
 
-    const profileData = await profileResponse.json()
-    console.log('Successfully fetched profile data')
+    const profileData = await profileResponse.json();
+    console.log('Successfully fetched profile data for:', profileData.display_name);
     
     // Return success response with HTML that passes data to opener
     return new Response(
@@ -154,7 +168,7 @@ serve(async (req) => {
       }
     )
   } catch (error) {
-    console.error('Error during token exchange:', error)
+    console.error('Error during token exchange:', error.message);
     return new Response(
       `<html>
         <head>
