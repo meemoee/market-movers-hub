@@ -14,6 +14,12 @@ interface StreamingState {
   } | null;
 }
 
+interface ResearchChild {
+  id: string;
+  focusText: string;
+  onView: () => void;
+}
+
 interface InsightsDisplayProps {
   streamingState: StreamingState;
   onResearchArea?: (area: string) => void;
@@ -22,11 +28,7 @@ interface InsightsDisplayProps {
     focusText?: string;
     onView?: () => void;
   };
-  childResearches?: {
-    id: string;
-    focusText: string;
-    onView: () => void;
-  }[];
+  childResearches?: ResearchChild[];
 }
 
 export function InsightsDisplay({ 
@@ -63,6 +65,16 @@ export function InsightsDisplay({
   // If there's an error in the probability but we have research areas, only show those
   const showProbabilityCard = probability && !hasErrorInProbability;
   
+  // Helper function to find a child research that matches a specific research area
+  const findMatchingChildResearch = (area: string): ResearchChild | undefined => {
+    if (!childResearches) return undefined;
+    return childResearches.find(child => 
+      child.focusText.toLowerCase() === area.toLowerCase() ||
+      area.toLowerCase().includes(child.focusText.toLowerCase()) ||
+      child.focusText.toLowerCase().includes(area.toLowerCase())
+    );
+  };
+  
   return (
     <div className="space-y-5">
       {parentResearch && (
@@ -96,40 +108,6 @@ export function InsightsDisplay({
               <div className="text-sm">{parentResearch.focusText}</div>
             </div>
           )}
-        </Card>
-      )}
-
-      {childResearches && childResearches.length > 0 && (
-        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-indigo-500/10 to-background border-indigo-500/30 rounded-xl">
-          <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent"></div>
-          <div className="flex items-center gap-3">
-            <div className="bg-indigo-500/10 p-2 rounded-full">
-              <GitBranch className="h-5 w-5 text-indigo-500" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-base font-semibold">Derived Research</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                This research has spawned {childResearches.length} focused deep-dives
-              </p>
-            </div>
-          </div>
-          <div className="mt-3 space-y-2">
-            {childResearches.map((child) => (
-              <div key={child.id} className="bg-accent/20 p-2 rounded-md border border-accent/20 flex justify-between items-center">
-                <div>
-                  <div className="text-sm font-medium">Focus: {child.focusText}</div>
-                </div>
-                <Button 
-                  onClick={child.onView}
-                  variant="outline" 
-                  size="sm"
-                >
-                  <ArrowRightCircle className="h-4 w-4 mr-2" />
-                  View Research
-                </Button>
-              </div>
-            ))}
-          </div>
         </Card>
       )}
 
@@ -182,27 +160,84 @@ export function InsightsDisplay({
             )}
           </div>
           <div className="space-y-4">
-            {areasForResearch.map((area, index) => (
-              <div key={index} className={`flex gap-3 p-2 rounded-lg transition-colors ${onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
-                  onClick={onResearchArea ? () => onResearchArea(area) : undefined}>
-                <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm leading-relaxed">{area}</p>
-                  {onResearchArea && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="mt-2 h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent parent div click
-                        onResearchArea(area);
-                      }}
-                    >
-                      <ArrowRightCircle className="h-3 w-3" />
-                      Create focused research
-                    </Button>
-                  )}
+            {areasForResearch.map((area, index) => {
+              const matchingChild = findMatchingChildResearch(area);
+              
+              return (
+                <div 
+                  key={index} 
+                  className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
+                  onClick={!matchingChild && onResearchArea ? () => onResearchArea(area) : undefined}
+                >
+                  <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm leading-relaxed">{area}</p>
+                    
+                    <div className="flex gap-2 mt-2">
+                      {matchingChild ? (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 text-xs"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            matchingChild.onView();
+                          }}
+                        >
+                          <GitBranch className="h-3 w-3 mr-1" />
+                          View derived research
+                        </Button>
+                      ) : onResearchArea ? (
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onResearchArea(area);
+                          }}
+                        >
+                          <ArrowRightCircle className="h-3 w-3" />
+                          Create focused research
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
+      {childResearches && childResearches.length > 0 && (
+        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-indigo-500/10 to-background border-indigo-500/30 rounded-xl">
+          <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent"></div>
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-500/10 p-2 rounded-full">
+              <GitBranch className="h-5 w-5 text-indigo-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold">All Derived Research</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                This research has spawned {childResearches.length} focused deep-dives
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {childResearches.map((child) => (
+              <div key={child.id} className="bg-accent/20 p-2 rounded-md border border-accent/20 flex justify-between items-center">
+                <div>
+                  <div className="text-sm font-medium">Focus: {child.focusText}</div>
+                </div>
+                <Button 
+                  onClick={child.onView}
+                  variant="outline" 
+                  size="sm"
+                >
+                  <ArrowRightCircle className="h-4 w-4 mr-2" />
+                  View Research
+                </Button>
               </div>
             ))}
           </div>
