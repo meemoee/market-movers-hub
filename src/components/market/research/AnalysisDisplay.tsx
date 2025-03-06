@@ -119,12 +119,14 @@ export function AnalysisDisplay({
                   <pre {...props} />
                 </div>
               ),
-              code: ({ node, inline, ...props }) => 
-                inline ? 
+              code: ({ node, className, children, ...props }) => {
+                const isInlineCode = !className;
+                return isInlineCode ? 
                   <code {...props} className="bg-muted/30 px-1 py-0.5 rounded text-sm" /> : 
                   <div className="overflow-x-auto">
                     <code {...props} className="block bg-muted/30 p-3 rounded text-sm font-mono whitespace-pre-wrap" />
                   </div>
+              }
             }}
           >
             {content}
