@@ -1,7 +1,7 @@
 
-import { useLayoutEffect, useRef, useEffect, useState } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import ReactMarkdown from 'react-markdown'
+import { useLayoutEffect, useRef, useState } from "react"
+import { ContentContainer } from "./components/ContentContainer"
+import { MarkdownContent } from "./components/MarkdownContent"
 
 interface AnalysisDisplayProps {
   content: string
@@ -17,8 +17,6 @@ export function AnalysisDisplay({
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
-  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
-  const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
@@ -31,101 +29,19 @@ export function AnalysisDisplay({
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
         }
-        setLastUpdateTime(Date.now())
       })
-      
-      if (isStreaming) {
-        setStreamStatus('streaming')
-      }
     }
     
     prevContentLength.current = currentContentLength
   }, [content, isStreaming, shouldAutoScroll])
-  
-  useEffect(() => {
-    if (!scrollRef.current) return
-    
-    const scrollContainer = scrollRef.current
-    const handleScroll = () => {
-      const isAtBottom = Math.abs(
-        (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
-        scrollContainer.scrollTop
-      ) < 30 // Small threshold for "close enough" to bottom
-      
-      setShouldAutoScroll(isAtBottom)
-    }
-    
-    scrollContainer.addEventListener('scroll', handleScroll)
-    return () => scrollContainer.removeEventListener('scroll', handleScroll)
-  }, [])
-  
-  useEffect(() => {
-    if (!isStreaming) {
-      setStreamStatus('idle')
-      return
-    }
-    
-    const interval = setInterval(() => {
-      const timeSinceUpdate = Date.now() - lastUpdateTime
-      if (timeSinceUpdate > 1500) {
-        setStreamStatus('waiting')
-      } else if (streamStatus !== 'streaming') {
-        setStreamStatus('streaming')
-      }
-    }, 1000)
-    
-    return () => clearInterval(interval)
-  }, [isStreaming, lastUpdateTime, streamStatus])
-  
-  useEffect(() => {
-    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
-    
-    let rafId: number
-    
-    const scrollToBottom = () => {
-      if (scrollRef.current && shouldAutoScroll) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-        rafId = requestAnimationFrame(scrollToBottom)
-      }
-    }
-    
-    rafId = requestAnimationFrame(scrollToBottom)
-    
-    return () => cancelAnimationFrame(rafId)
-  }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
 
   return (
     <div className="relative w-full">
-      <ScrollArea 
-        className="rounded-md border p-4 bg-accent/5 w-full overflow-hidden"
-        style={{ height: maxHeight }}
-        ref={scrollRef}
-      >
-        <div className="overflow-x-auto max-w-full w-full">
-          <div className="break-words text-wrap-all">
-            <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full prose-pre:whitespace-pre-wrap prose-pre:break-words prose-li:break-words">
-              {content}
-            </ReactMarkdown>
-          </div>
-        </div>
-      </ScrollArea>
-      
-      {isStreaming && (
-        <div className="absolute bottom-2 right-2">
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-muted-foreground">
-              {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
-            </span>
-            <div className="flex space-x-1">
-              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
-              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-75' : 'bg-muted-foreground'}`} />
-              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-150' : 'bg-muted-foreground'}`} />
-            </div>
-          </div>
-        </div>
-      )}
+      <ContentContainer maxHeight={maxHeight} ref={scrollRef}>
+        <MarkdownContent content={content} />
+      </ContentContainer>
       
       {!shouldAutoScroll && isStreaming && (
         <button 
