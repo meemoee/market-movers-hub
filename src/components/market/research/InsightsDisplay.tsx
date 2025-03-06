@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ChevronRight } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -78,7 +78,7 @@ export function InsightsDisplay({
   return (
     <div className="space-y-5">
       {parentResearch && (
-        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-blue-500/10 to-background border-blue-500/30 rounded-xl">
+        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-blue-500/10 to-background border-blue-500/30 rounded-xl glow-effect">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent"></div>
           <div className="flex items-center gap-3">
             <div className="bg-blue-500/10 p-2 rounded-full">
@@ -95,7 +95,7 @@ export function InsightsDisplay({
                 onClick={parentResearch.onView}
                 variant="outline" 
                 size="sm"
-                className="ml-auto"
+                className="ml-auto hover-scale"
               >
                 <ArrowLeftIcon className="h-4 w-4 mr-2" />
                 View Parent Research
@@ -103,7 +103,7 @@ export function InsightsDisplay({
             )}
           </div>
           {parentResearch.focusText && (
-            <div className="mt-3 bg-accent/20 p-2 rounded-md border border-accent/20">
+            <div className="mt-3 bg-accent/20 p-3 rounded-lg border border-accent/20">
               <div className="text-sm font-medium mb-1">Research Focus:</div>
               <div className="text-sm">{parentResearch.focusText}</div>
             </div>
@@ -112,7 +112,7 @@ export function InsightsDisplay({
       )}
 
       {showProbabilityCard && (
-        <Card className="p-5 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-accent/10 to-background border-accent/30 rounded-xl">
+        <Card className="p-5 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-accent/10 to-background border-accent/30 rounded-xl glow-effect">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-primary/40 to-transparent"></div>
           <div className="flex items-center gap-3">
             <div className="bg-primary/10 p-2 rounded-full">
@@ -122,11 +122,11 @@ export function InsightsDisplay({
               {isResolved ? 'Market Status' : 'Probability Estimate'}
             </h3>
           </div>
-          <div className="mt-3 flex items-center gap-3">
-            <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/70 bg-clip-text text-transparent">
+          <div className="mt-4 flex items-center gap-4">
+            <div className="text-4xl font-bold bg-gradient-to-br from-primary to-brand bg-clip-text text-transparent">
               {probability}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground bg-accent/10 px-3 py-1.5 rounded-full border border-accent/20">
               {isResolved 
                 ? (probability === "100%" ? 'event occurred' : 'event did not occur') 
                 : 'likelihood based on research'}
@@ -134,21 +134,23 @@ export function InsightsDisplay({
           </div>
           
           {reasoning && (
-            <div className="mt-4 border-t pt-4 border-accent/20">
+            <div className="mt-5 border-t pt-4 border-accent/20">
               <div className="flex items-center gap-2 mb-2">
                 <InfoIcon className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
                   {isResolved ? 'Explanation' : 'Reasoning'}
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">{reasoning}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed bg-accent/5 p-3 rounded-lg border border-accent/10">
+                {reasoning}
+              </p>
             </div>
           )}
         </Card>
       )}
 
       {areasForResearch && areasForResearch.length > 0 && (
-        <Card className="p-5 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-accent/5 to-background border-accent/20 rounded-xl">
+        <Card className="p-5 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-accent/5 to-background border-accent/20 rounded-xl glow-effect">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-amber-500/40 to-transparent"></div>
           <div className="flex items-center gap-3 mb-4">
             <div className="bg-amber-500/10 p-2 rounded-full">
@@ -159,14 +161,20 @@ export function InsightsDisplay({
               <Badge variant="outline" className="ml-auto">Click any area to investigate</Badge>
             )}
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {areasForResearch.map((area, index) => {
               const matchingChild = findMatchingChildResearch(area);
               
               return (
                 <div 
                   key={index} 
-                  className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
+                  className={`flex gap-3 p-3 rounded-lg transition-colors border ${
+                    matchingChild 
+                      ? 'bg-accent/10 border-accent/30' 
+                      : onResearchArea 
+                        ? 'hover:bg-accent/10 border-accent/10 hover:border-accent/30 cursor-pointer' 
+                        : 'border-accent/10'
+                  }`}
                   onClick={!matchingChild && onResearchArea ? () => onResearchArea(area) : undefined}
                 >
                   <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
@@ -178,7 +186,7 @@ export function InsightsDisplay({
                         <Button
                           variant="secondary"
                           size="sm"
-                          className="h-8 text-xs"
+                          className="h-8 text-xs bg-brand/10 border border-brand/20 hover:bg-brand/20 hover-scale"
                           onClick={(e) => {
                             e.stopPropagation();
                             matchingChild.onView();
@@ -191,7 +199,7 @@ export function InsightsDisplay({
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
+                          className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1 hover-scale"
                           onClick={(e) => {
                             e.stopPropagation();
                             onResearchArea(area);
@@ -211,7 +219,7 @@ export function InsightsDisplay({
       )}
 
       {childResearches && childResearches.length > 0 && (
-        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-indigo-500/10 to-background border-indigo-500/30 rounded-xl">
+        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-indigo-500/10 to-background border-indigo-500/30 rounded-xl glow-effect">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent"></div>
           <div className="flex items-center gap-3">
             <div className="bg-indigo-500/10 p-2 rounded-full">
@@ -224,19 +232,20 @@ export function InsightsDisplay({
               </p>
             </div>
           </div>
-          <div className="mt-3 space-y-2">
+          <div className="mt-3 grid gap-2">
             {childResearches.map((child) => (
-              <div key={child.id} className="bg-accent/20 p-2 rounded-md border border-accent/20 flex justify-between items-center">
+              <div key={child.id} className="bg-accent/10 p-3 rounded-lg border border-accent/20 flex justify-between items-center hover:bg-accent/20 transition-colors">
                 <div>
-                  <div className="text-sm font-medium">Focus: {child.focusText}</div>
+                  <div className="text-sm font-medium">{child.focusText}</div>
                 </div>
                 <Button 
                   onClick={child.onView}
                   variant="outline" 
                   size="sm"
+                  className="gap-1 hover-scale"
                 >
-                  <ArrowRightCircle className="h-4 w-4 mr-2" />
                   View Research
+                  <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
             ))}

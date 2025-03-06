@@ -1,3 +1,4 @@
+
 .react-flow__node {
   border-radius: 8px;
   background: transparent;
@@ -36,4 +37,53 @@
 
 .react-flow__attribution {
   background: transparent !important;
+}
+
+/* Web Research Iterations Styles */
+.iteration-card {
+  @apply border border-border/30 bg-gradient-to-br from-accent/5 to-background rounded-xl overflow-hidden transition-all duration-300;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.iteration-card:hover {
+  @apply border-brand/30;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.iteration-active {
+  @apply border-brand/50 from-brand/10 to-background;
+}
+
+.query-badge {
+  @apply bg-accent/20 border border-accent/30 text-xs px-2 py-1 rounded-full transition-colors;
+}
+
+.query-badge:hover {
+  @apply bg-accent/30 border-accent/40;
+}
+
+.active-query {
+  @apply bg-primary/20 border-primary/30 text-primary-foreground;
+}
+
+.source-card {
+  @apply bg-gradient-to-br from-card/80 to-background border border-border/40 rounded-lg p-3 transition-all duration-200;
+}
+
+.source-card:hover {
+  @apply border-border/80 from-card to-background/90;
+  transform: translateY(-2px);
+}
+
+.analysis-container {
+  @apply bg-card/20 border border-border/30 rounded-xl p-4;
+}
+
+.progress-bar {
+  @apply h-2 bg-gradient-to-r from-brand/40 via-brand to-primary rounded-full overflow-hidden;
+  transition: width 0.5s ease-in-out;
+}
+
+.iteration-header {
+  @apply flex items-center gap-2 py-3 px-4 bg-gradient-to-r from-background to-accent/5 border-b border-border/20;
 }
