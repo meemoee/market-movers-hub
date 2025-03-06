@@ -20,7 +20,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
   if (!results.length) return null;
 
   return (
-    <ScrollArea className="h-[250px] rounded-xl border p-4">
+    <ScrollArea className="h-[250px] rounded-xl border p-4 content-wrapper">
       <div className="mb-2 text-sm text-muted-foreground flex items-center">
         <Badge variant="outline" className="mr-2">
           {results.length} {results.length === 1 ? 'source' : 'sources'}
@@ -37,7 +37,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
               <img 
                 src={getFaviconUrl(result.url)} 
                 alt=""
-                className="w-5 h-5 rounded-full bg-background p-0.5"
+                className="w-5 h-5 rounded-full bg-background p-0.5 flex-shrink-0"
                 onError={(e) => {
                   const IconComponent = result.title ? FileText : Globe;
                   const svgString = `data:image/svg+xml,${encodeURIComponent(
@@ -50,12 +50,12 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
                   e.currentTarget.src = svgString;
                 }}
               />
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 overflow-hidden">
                 <h4 className="text-sm font-medium truncate">
                   {result.title || new URL(result.url).hostname}
                 </h4>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+                  <span className="text-xs text-muted-foreground truncate-url">
                     {new URL(result.url).hostname}
                   </span>
                 </div>
@@ -63,7 +63,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="h-8 px-2"
+                className="h-8 px-2 flex-shrink-0"
                 onClick={() => setExpandedItem(expandedItem === index ? null : index)}
               >
                 <ExternalLink className="h-4 w-4 mr-1" />
@@ -73,7 +73,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
             
             {expandedItem === index && result.content && (
               <div className="mt-3 pt-3 border-t text-xs text-muted-foreground">
-                <div className="max-h-20 overflow-y-auto">
+                <div className="max-h-20 overflow-y-auto content-wrapper">
                   {result.content.substring(0, 300)}
                   {result.content.length > 300 && "..."}
                 </div>
@@ -94,7 +94,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
                 href={result.url} 
                 target="_blank" 
                 rel="noopener noreferrer"
-                className="text-xs text-primary/80 hover:text-primary hover:underline block mt-1 truncate"
+                className="text-xs text-primary/80 hover:text-primary hover:underline block mt-1 truncate-url"
               >
                 {result.url}
               </a>

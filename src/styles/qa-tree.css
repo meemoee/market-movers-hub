@@ -43,6 +43,7 @@
 .iteration-card {
   @apply border border-border/30 bg-gradient-to-br from-accent/5 to-background rounded-xl overflow-hidden transition-all duration-300;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  max-width: 100%; /* Ensure cards don't extend beyond container */
 }
 
 .iteration-card:hover {
@@ -68,6 +69,9 @@
 
 .source-card {
   @apply bg-gradient-to-br from-card/80 to-background border border-border/40 rounded-lg p-3 transition-all duration-200;
+  max-width: 100%; /* Constrain source cards */
+  overflow-wrap: break-word; /* Break long URLs */
+  word-wrap: break-word;
 }
 
 .source-card:hover {
@@ -77,6 +81,7 @@
 
 .analysis-container {
   @apply bg-card/20 border border-border/30 rounded-xl p-4;
+  max-width: 100%; /* Ensure analysis container doesn't overflow */
 }
 
 .progress-bar {
@@ -86,4 +91,26 @@
 
 .iteration-header {
   @apply flex items-center gap-2 py-3 px-4 bg-gradient-to-r from-background to-accent/5 border-b border-border/20;
+}
+
+/* Add responsive content handling */
+.research-content {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Handle long URLs and text */
+.truncate-url {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Add proper content wrapping */
+.content-wrapper {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }

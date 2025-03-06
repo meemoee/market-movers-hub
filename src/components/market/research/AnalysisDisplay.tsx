@@ -1,4 +1,3 @@
-
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -23,14 +22,12 @@ export function AnalysisDisplay({
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   const [showFullCode, setShowFullCode] = useState<{[key: string]: boolean}>({})
   
-  // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
     const currentContentLength = content?.length || 0
     
-    // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
@@ -47,14 +44,11 @@ export function AnalysisDisplay({
     prevContentLength.current = currentContentLength
   }, [content, isStreaming, shouldAutoScroll])
   
-  // Handle user scroll to disable auto-scroll
   useEffect(() => {
     if (!scrollRef.current) return
     
     const scrollContainer = scrollRef.current
     const handleScroll = () => {
-      // If user has scrolled up, disable auto-scroll
-      // If they scroll to the bottom, re-enable it
       const isAtBottom = Math.abs(
         (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
         scrollContainer.scrollTop
@@ -67,7 +61,6 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
-  // Check for inactive streaming with longer intervals
   useEffect(() => {
     if (!isStreaming) {
       setStreamStatus('idle')
@@ -86,7 +79,6 @@ export function AnalysisDisplay({
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime, streamStatus])
   
-  // For continuous smooth scrolling during active streaming
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
@@ -114,13 +106,13 @@ export function AnalysisDisplay({
   if (!content) return null
 
   return (
-    <div className="relative">
+    <div className="relative content-wrapper">
       <ScrollArea 
         className="rounded-xl border border-border/40 p-5 bg-gradient-to-br from-accent/5 to-background analysis-container"
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="overflow-x-auto w-full">
+        <div className="overflow-x-hidden w-full content-wrapper">
           <ReactMarkdown 
             className="text-sm prose prose-invert prose-sm max-w-none break-words prose-p:my-1.5 prose-headings:my-2 prose-pre:bg-accent/20 prose-pre:border prose-pre:border-accent/20 prose-pre:rounded-lg"
             components={{
@@ -128,8 +120,6 @@ export function AnalysisDisplay({
                 const codeContent = String(children).replace(/\n$/, '');
                 const codeId = `code-${Math.random().toString(36).substring(2, 9)}`;
                 
-                // Check if this is an inline code block
-                // ReactMarkdown passes a className for non-inline code blocks
                 const isInline = !className;
                 
                 if (isInline) {
@@ -147,7 +137,7 @@ export function AnalysisDisplay({
                 const shouldTruncate = codeContent.split('\n').length > 10 && !isExpanded;
                 
                 return (
-                  <div className="relative group">
+                  <div className="relative group max-w-full overflow-hidden">
                     <div className="absolute -top-1 -right-1 bg-accent/30 px-2 py-0.5 rounded-md text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity">
                       <Braces className="h-3.5 w-3.5 inline-block mr-1" />
                       Code
@@ -155,7 +145,7 @@ export function AnalysisDisplay({
                     <pre 
                       className={`my-4 p-4 bg-accent/20 border border-accent/20 rounded-lg overflow-x-auto text-xs ${shouldTruncate ? 'max-h-40' : ''}`}
                     >
-                      <code {...props}>{shouldTruncate ? codeContent.split('\n').slice(0, 10).join('\n') : codeContent}</code>
+                      <code className="max-w-full" {...props}>{shouldTruncate ? codeContent.split('\n').slice(0, 10).join('\n') : codeContent}</code>
                     </pre>
                     {shouldTruncate && (
                       <button 
