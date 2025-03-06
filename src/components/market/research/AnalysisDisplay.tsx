@@ -124,11 +124,15 @@ export function AnalysisDisplay({
           <ReactMarkdown 
             className="text-sm prose prose-invert prose-sm max-w-none break-words prose-p:my-1.5 prose-headings:my-2 prose-pre:bg-accent/20 prose-pre:border prose-pre:border-accent/20 prose-pre:rounded-lg"
             components={{
-              code({node, inline, className, children, ...props}) {
+              code({node, className, children, ...props}) {
                 const codeContent = String(children).replace(/\n$/, '');
                 const codeId = `code-${Math.random().toString(36).substring(2, 9)}`;
                 
-                if (inline) {
+                // Check if this is an inline code block
+                // ReactMarkdown passes a className for non-inline code blocks
+                const isInline = !className;
+                
+                if (isInline) {
                   return (
                     <code 
                       className="bg-accent/20 text-primary-foreground px-1.5 py-0.5 rounded text-xs font-mono"
