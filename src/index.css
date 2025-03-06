@@ -99,6 +99,7 @@
   word-break: break-word !important;
   hyphens: auto;
   max-width: 100% !important;
+  overflow-x: hidden !important;
 }
 
 /* Force all prose elements to respect container width */
@@ -130,4 +131,28 @@
 /* Ensure all content in ScrollArea is properly contained */
 [data-radix-scroll-area-viewport] > div {
   max-width: 100% !important;
+  width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+/* Fix for Radix UI ScrollArea */
+[data-radix-scroll-area-viewport] {
+  width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+/* Ensure content is properly constrained */
+.content-constraint {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  overflow-wrap: break-word !important;
+}
+
+/* Ensure URL text wrapping */
+.url-text {
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  max-width: 100%;
 }

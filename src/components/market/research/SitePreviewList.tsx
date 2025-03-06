@@ -13,15 +13,17 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
   if (!results.length) return null;
 
   return (
-    <ContentContainer>
-      <div className="mb-2 text-sm text-muted-foreground">
-        {results.length} {results.length === 1 ? 'source' : 'sources'} collected
-      </div>
-      <div className="space-y-2 max-w-full">
-        {results.map((result, index) => (
-          <SourceItem key={index} {...result} />
-        ))}
-      </div>
-    </ContentContainer>
+    <div className="w-full">
+      <ContentContainer>
+        <div className="mb-2 text-sm text-muted-foreground">
+          {results.length} {results.length === 1 ? 'source' : 'sources'} collected
+        </div>
+        <div className="space-y-2 w-full">
+          {results.map((result, index) => (
+            <SourceItem key={index} {...result} />
+          ))}
+        </div>
+      </ContentContainer>
+    </div>
   )
 }

@@ -13,10 +13,10 @@ export const ContentContainer = forwardRef<HTMLDivElement, ContentContainerProps
     return (
       <ScrollArea 
         ref={ref}
-        className={`rounded-md border p-4 bg-accent/5 max-w-full overflow-hidden ${className || ''}`}
-        style={{ height: maxHeight }}
+        className={`rounded-md border p-4 bg-accent/5 w-full ${className || ''}`}
+        style={{ maxHeight, height: maxHeight }}
       >
-        <div className="min-w-0 max-w-full overflow-hidden">
+        <div className="w-full overflow-hidden text-wrap-all">
           {children}
         </div>
       </ScrollArea>
