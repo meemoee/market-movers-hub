@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -65,4 +66,21 @@
   .glow-effect:hover::before {
     opacity: 1;
   }
+}
+
+/* Add specific styles for markdown content overflow */
+.prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.prose code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prose a {
+  word-break: break-all;
 }

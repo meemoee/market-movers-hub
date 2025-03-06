@@ -1137,11 +1137,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     return (
       <div className="space-y-4 w-full overflow-hidden">
-        <div>
+        <div className="w-full">
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 w-full">
             {iter.queries.map((query, idx) => (
-              <Badge key={idx} variant="secondary" className="text-xs break-all">
+              <Badge key={idx} variant="secondary" className="text-xs break-all max-w-full">
                 {query}
               </Badge>
             ))}
@@ -1149,12 +1149,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
         
         {iter.results.length > 0 && (
-          <div>
+          <div className="w-full">
             <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
-            <ScrollArea className="h-[150px] rounded-md border">
+            <ScrollArea className="h-[150px] rounded-md border w-full">
               <div className="p-4 space-y-2 w-full">
                 {iter.results.map((result, idx) => (
-                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded w-full overflow-hidden">
                     <a 
                       href={result.url} 
                       target="_blank" 
@@ -1173,9 +1173,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        <div>
+        <div className="w-full">
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
-          <div className="text-sm overflow-hidden w-full">
+          <div className="text-sm w-full overflow-hidden">
             <AnalysisDisplay 
               content={iter.analysis || "Analysis in progress..."} 
               isStreaming={isCurrentlyStreaming}
@@ -1187,7 +1187,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   };
 
   return (
-    <Card className="p-4 space-y-4">
+    <Card className="p-4 space-y-4 w-full">
       {parentResearch && (
         <div className="flex items-center gap-2 text-sm p-2 bg-accent/20 rounded-md mb-2">
           <ArrowLeftCircle className="h-4 w-4 text-muted-foreground" />
@@ -1336,8 +1336,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <ProgressDisplay messages={progress} />
       
       {iterations.length > 0 && (
-        <div className="border rounded-md overflow-hidden">
-          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
+        <div className="border rounded-md overflow-hidden w-full">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px] w-full" : "max-h-full w-full"}>
             <Accordion 
               type="multiple" 
               value={expandedIterations} 
@@ -1348,7 +1348,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 <AccordionItem 
                   key={`iteration-${iter.iteration}`} 
                   value={`iteration-${iter.iteration}`}
-                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""} w-full`}
                 >
                   <AccordionTrigger className="px-2 py-2 hover:no-underline">
                     <div className="flex items-center gap-2">
@@ -1362,7 +1362,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       </span>
                     </div>
                   </AccordionTrigger>
-                  <AccordionContent className="px-2 pb-2 overflow-hidden">
+                  <AccordionContent className="px-2 pb-2 w-full">
                     {renderIterationContent(iter)}
                   </AccordionContent>
                 </AccordionItem>
