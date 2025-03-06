@@ -142,14 +142,35 @@ p, h1, h2, h3, h4, h5, h6, span, div {
 }
 
 .query-badge {
-  display: inline-block;
+  display: inline-flex;
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 12px;
   margin-right: 4px;
   margin-bottom: 4px;
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  align-items: center;
+}
+
+/* Ensure tab content doesn't overflow */
+[role="tabpanel"] {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Improve tab styling for better contrast */
+[role="tab"] {
+  color: hsl(var(--foreground));
+}
+
+[role="tab"][data-state="active"] {
+  color: hsl(var(--primary));
+  background-color: hsl(var(--background));
+}
+
+[role="tablist"] {
+  background-color: hsl(var(--accent));
 }

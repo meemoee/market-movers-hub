@@ -121,13 +121,13 @@ export function IterationCard({
               </ScrollArea>
             </TabsContent>
             
-            <TabsContent value="queries" className="w-full max-w-full">
-              <ScrollArea className="h-[150px] rounded-md border p-3 w-full max-w-full">
+            <TabsContent value="queries" className="w-full max-w-full overflow-x-hidden">
+              <ScrollArea className="h-[150px] rounded-md border p-3 w-full">
                 <div className="flex flex-wrap gap-2 w-full">
                   {iteration.queries.map((query, idx) => (
-                    <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 max-w-full">
+                    <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 w-fit max-w-full">
                       <Search className="h-3 w-3 flex-shrink-0" />
-                      <span className="truncate text-xs">{query}</span>
+                      <span className="truncate text-xs max-w-[280px] sm:max-w-[360px] md:max-w-[400px]">{query}</span>
                     </div>
                   ))}
                   

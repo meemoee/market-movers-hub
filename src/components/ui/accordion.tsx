@@ -13,7 +13,7 @@ const AccordionItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
-    className={cn("border-b w-full max-w-full", className)}
+    className={cn("border-b w-full max-w-full overflow-hidden", className)}
     {...props}
   />
 ))
@@ -23,16 +23,16 @@ const AccordionTrigger = React.forwardRef<
   React.ElementRef<typeof AccordionPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger>
 >(({ className, children, ...props }, ref) => (
-  <AccordionPrimitive.Header className="flex w-full max-w-full">
+  <AccordionPrimitive.Header className="flex w-full max-w-full overflow-hidden">
     <AccordionPrimitive.Trigger
       ref={ref}
       className={cn(
-        "flex flex-1 items-center justify-between py-4 font-medium transition-all hover:bg-accent/10 rounded-md [&[data-state=open]>svg]:rotate-180 w-full max-w-full",
+        "flex flex-1 items-center justify-between py-4 font-medium transition-all hover:bg-accent/10 rounded-md [&[data-state=open]>svg]:rotate-180 w-full max-w-full overflow-hidden",
         className
       )}
       {...props}
     >
-      {children}
+      <div className="truncate overflow-hidden">{children}</div>
       <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200" />
     </AccordionPrimitive.Trigger>
   </AccordionPrimitive.Header>
