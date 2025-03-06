@@ -43,7 +43,7 @@ export default function Index() {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-hidden">
       {/* Purple Glow Effect */}
       <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <Glow 
@@ -53,7 +53,7 @@ export default function Index() {
       </div>
       
       <main className="container mx-auto px-4 relative z-10 overflow-hidden">
-        <div className="relative flex mx-auto justify-center max-w-full">
+        <div className="relative flex mx-auto justify-center max-w-full overflow-hidden">
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-40"
@@ -84,7 +84,7 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className="flex-1 min-w-0 min-h-screen overflow-hidden">
+          <div className="flex-1 min-w-0 min-h-screen overflow-hidden max-w-full">
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
