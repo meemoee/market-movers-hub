@@ -46,6 +46,7 @@ serve(async (req) => {
     // First try with the current access token
     console.log(`Making ${method} request to Spotify API: ${endpoint}`)
     let response = await fetchFromSpotify(endpoint, method, body, accessToken)
+    console.log('Initial response status:', response.status)
     
     // If unauthorized (401), try refreshing the token and retry the request
     if (response.status === 401 && refreshToken) {
@@ -55,12 +56,13 @@ serve(async (req) => {
       
       // Retry the original request with the new access token
       response = await fetchFromSpotify(endpoint, method, body, refreshedTokens.access_token)
+      console.log('Retry response status:', response.status)
       
       // Return both the API response and the new tokens
-      const responseData = await response.text()
+      const responseData = await parseResponse(response)
       return new Response(
         JSON.stringify({
-          data: response.ok ? JSON.parse(responseData) : null,
+          data: response.ok ? responseData : null,
           error: response.ok ? null : responseData,
           status: response.status,
           refreshedTokens: refreshedTokens
@@ -76,10 +78,10 @@ serve(async (req) => {
     }
     
     // Regular response (no token refresh needed)
-    const responseData = await response.text()
+    const responseData = await parseResponse(response)
     return new Response(
       JSON.stringify({
-        data: response.ok ? (responseData ? JSON.parse(responseData) : {}) : null,
+        data: response.ok ? responseData : null,
         error: response.ok ? null : responseData,
         status: response.status
       }),
@@ -105,6 +107,16 @@ serve(async (req) => {
     )
   }
 })
+
+// Helper function to parse response based on content
+async function parseResponse(response: Response) {
+  const contentType = response.headers.get('content-type') || ''
+  if (contentType.includes('application/json')) {
+    return await response.json()
+  } else {
+    return await response.text()
+  }
+}
 
 // Helper function to make requests to Spotify API
 async function fetchFromSpotify(endpoint: string, method: string, body: any, accessToken: string) {

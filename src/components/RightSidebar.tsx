@@ -42,17 +42,17 @@ export default function RightSidebar() {
   }
 
   interface SpotifyApiResponse {
-    data: any;
-    error: string | null;
-    status: number;
-    refreshedTokens?: SpotifyTokens;
+    data: any
+    error: string | null
+    status: number
+    refreshedTokens?: SpotifyTokens
   }
 
   const callSpotifyAPI = useCallback(async (
     endpoint: string, 
     method: string = 'GET', 
     body: any = null
-  ) => {
+  ): Promise<{data?: any, error?: string, status?: number}> => {
     if (!spotifyTokens) {
       console.error('No Spotify tokens available')
       return { error: 'Not authenticated with Spotify' }
@@ -61,7 +61,7 @@ export default function RightSidebar() {
     try {
       console.log(`Calling Spotify API (${method}): ${endpoint}`)
       
-      const response = await supabase.functions.invoke('spotify-api', {
+      const response = await supabase.functions.invoke<SpotifyApiResponse>('spotify-api', {
         body: {
           endpoint,
           method,
@@ -71,23 +71,22 @@ export default function RightSidebar() {
         }
       });
       
-      const { data, error, status, refreshedTokens } = response.data as SpotifyApiResponse;
+      // Type assertion to access the data as SpotifyApiResponse
+      const responseData = response.data as SpotifyApiResponse;
       
-      console.log('API response status:', status)
-      
-      if (refreshedTokens) {
+      if (responseData?.refreshedTokens) {
         console.log('Updating tokens with refreshed values')
-        setSpotifyTokens(refreshedTokens)
-        localStorage.setItem('spotify_tokens', JSON.stringify(refreshedTokens))
+        setSpotifyTokens(responseData.refreshedTokens)
+        localStorage.setItem('spotify_tokens', JSON.stringify(responseData.refreshedTokens))
       }
 
-      if (error) {
-        console.error('Spotify API error:', error)
-        return { error, status }
+      if (responseData?.error) {
+        console.error('Spotify API error:', responseData.error)
+        return { error: responseData.error, status: responseData.status }
       }
 
-      return { data, status }
-    } catch (err) {
+      return { data: responseData?.data, status: responseData?.status }
+    } catch (err: any) {
       console.error('Error calling Spotify API:', err)
       return { error: err.message, status: 500 }
     }
@@ -118,17 +117,33 @@ export default function RightSidebar() {
   }, [callSpotifyAPI, spotifyTokens])
 
   useEffect(() => {
+    // Load tokens from localStorage on component mount
     const savedTokens = localStorage.getItem('spotify_tokens')
     const savedProfile = localStorage.getItem('spotify_profile')
     
     if (savedTokens) {
-      setSpotifyTokens(JSON.parse(savedTokens))
+      try {
+        const parsedTokens = JSON.parse(savedTokens)
+        console.log('Loaded tokens from localStorage:', !!parsedTokens)
+        setSpotifyTokens(parsedTokens)
+      } catch (e) {
+        console.error('Error parsing saved tokens:', e)
+        localStorage.removeItem('spotify_tokens')
+      }
     }
     
     if (savedProfile) {
-      setSpotifyProfile(JSON.parse(savedProfile))
+      try {
+        const parsedProfile = JSON.parse(savedProfile)
+        console.log('Loaded profile from localStorage:', !!parsedProfile)
+        setSpotifyProfile(parsedProfile)
+      } catch (e) {
+        console.error('Error parsing saved profile:', e)
+        localStorage.removeItem('spotify_profile')
+      }
     }
 
+    // Listen for auth messages from the popup window
     const handleAuthMessage = (event: MessageEvent) => {
       console.log('Received postMessage event:', event.data)
       
@@ -155,6 +170,7 @@ export default function RightSidebar() {
     }
   }, [])
 
+  // Load playlists when tokens are available
   useEffect(() => {
     if (spotifyProfile && spotifyTokens) {
       loadUserPlaylists()
@@ -287,7 +303,7 @@ export default function RightSidebar() {
           `width=${width},height=${height},left=${left},top=${top}`
         )
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error connecting to Spotify:', error)
       setSpotifyAuthError(error.message)
     }
