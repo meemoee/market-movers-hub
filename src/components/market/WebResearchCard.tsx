@@ -19,6 +19,7 @@ import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./research/InsightsDisplay"
+import { IterationCard } from "./research/IterationCard"
 import { ChevronDown, Settings, Search, ArrowLeftCircle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -29,7 +30,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 
@@ -1132,84 +1132,49 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     );
   };
 
-  const renderIterationContent = (iter: ResearchIteration) => {
-    const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
+  const renderIterations = () => {
+    if (!iterations.length) return null;
     
     return (
-      <div className="space-y-4 w-full overflow-hidden accordion-content-wrapper">
-        <div className="max-w-full">
-          <h4 className="text-sm font-medium mb-2">Search Queries</h4>
-          <div className="flex flex-wrap gap-2 w-full">
-            {iter.queries.map((query, idx) => (
-              <Badge key={idx} variant="secondary" className="text-xs max-w-full truncate">
-                <span className="truncate">{query}</span>
-              </Badge>
-            ))}
-          </div>
-        </div>
-        
-        {iter.results.length > 0 && (
-          <div className="max-w-full">
-            <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
-            <ScrollArea className="h-[150px] rounded-md border max-w-full">
-              <div className="p-4 space-y-2 w-full">
-                {iter.results.map((result, idx) => (
-                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded max-w-full overflow-hidden">
-                    <a 
-                      href={result.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline truncate block"
-                      title={result.title || result.url}
-                    >
-                      {result.title || result.url}
-                    </a>
-                    <p className="mt-1 line-clamp-2 text-muted-foreground overflow-hidden">
-                      {result.content?.substring(0, 150)}...
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          </div>
-        )}
-        
-        <div className="max-w-full">
-          <h4 className="text-sm font-medium mb-2">Analysis</h4>
-          <div className="text-sm prose prose-sm overflow-hidden w-full">
-            <AnalysisDisplay 
-              content={iter.analysis || "Analysis in progress..."} 
-              isStreaming={isCurrentlyStreaming}
-            />
-          </div>
-        </div>
+      <div className="space-y-2 w-full max-w-full">
+        {iterations.map((iter) => (
+          <IterationCard
+            key={`iteration-${iter.iteration}`}
+            iteration={iter}
+            isExpanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
+            onToggleExpand={() => toggleIterationExpand(`iteration-${iter.iteration}`)}
+            isStreaming={isAnalyzing}
+            isCurrentIteration={iter.iteration === currentIteration}
+            maxIterations={maxIterations}
+          />
+        ))}
       </div>
     );
   };
 
   return (
-    <Card className="p-4 space-y-4">
+    <Card className="p-4 space-y-4 w-full max-w-full">
       {parentResearch && (
-        <div className="flex items-center gap-2 text-sm p-2 bg-accent/20 rounded-md mb-2">
-          <ArrowLeftCircle className="h-4 w-4 text-muted-foreground" />
+        <div className="flex items-center gap-2 text-sm p-2 bg-accent/20 rounded-md mb-2 w-full max-w-full">
+          <ArrowLeftCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           <span className="text-muted-foreground">Derived from previous research:</span>
           <Button 
             variant="ghost" 
             size="sm" 
             className="h-6 px-2 text-xs hover:bg-accent"
-            onClick={() => loadSavedResearch(parentResearch)}
+            onClick={handleViewParentResearch}
           >
             {parentResearch.focus_text || 'View parent research'}
           </Button>
           {focusText && (
-            <Badge variant="outline" className="ml-auto">
-              Focus: {focusText.length > 15 ? focusText.substring(0, 15) + '...' : focusText}
+            <Badge variant="outline" className="ml-auto truncate max-w-[150px]">
+              Focus: {focusText}
             </Badge>
           )}
         </div>
       )}
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between w-full max-w-full">
         <ResearchHeader 
           isLoading={isLoading}
           isAnalyzing={isAnalyzing}
@@ -1284,7 +1249,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       </div>
 
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2 w-full max-w-full">
         <div className="relative flex-1">
           <Input
             placeholder="Enter specific research focus (optional)..."
@@ -1314,7 +1279,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       </div>
 
       {error && (
-        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded">
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
           {error}
         </div>
       )}
@@ -1337,38 +1302,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <ProgressDisplay messages={progress} />
       
       {iterations.length > 0 && (
-        <div className="border rounded-md overflow-hidden">
+        <div className="border rounded-md overflow-hidden w-full max-w-full">
           <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
-            <Accordion 
-              type="multiple" 
-              value={expandedIterations} 
-              onValueChange={setExpandedIterations}
-              className="w-full"
-            >
-              {iterations.map((iter) => (
-                <AccordionItem 
-                  key={`iteration-${iter.iteration}`} 
-                  value={`iteration-${iter.iteration}`}
-                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
-                >
-                  <AccordionTrigger className="px-2 py-2 hover:no-underline">
-                    <div className="flex items-center gap-2">
-                      <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
-                             className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
-                        Iteration {iter.iteration}
-                        {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
-                      </Badge>
-                      <span className="text-sm">
-                        {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
-                      </span>
-                    </div>
-                  </AccordionTrigger>
-                  <AccordionContent className="px-2 pb-2">
-                    {renderIterationContent(iter)}
-                  </AccordionContent>
-                </AccordionItem>
-              ))}
-            </Accordion>
+            {renderIterations()}
           </ScrollArea>
         </div>
       )}
@@ -1390,13 +1326,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       {results.length > 0 && !iterations.length && (
         <>
-          <div className="border-t pt-4">
+          <div className="border-t pt-4 w-full max-w-full">
             <h3 className="text-lg font-medium mb-2">Search Results</h3>
             <SitePreviewList results={results} />
           </div>
           
           {analysis && (
-            <div className="border-t pt-4">
+            <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Analysis</h3>
               <AnalysisDisplay content={analysis} />
             </div>

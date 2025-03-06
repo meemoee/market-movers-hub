@@ -106,7 +106,7 @@ export function AnalysisDisplay({
   return (
     <div className="relative">
       <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5`}
+        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
