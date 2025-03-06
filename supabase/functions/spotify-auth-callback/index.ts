@@ -12,6 +12,17 @@ const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/spotify-auth-callback`
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { 
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+      }
+    })
+  }
+
   // Get the authorization code from the URL query parameters
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
@@ -76,20 +87,23 @@ serve(async (req) => {
     const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
+        'Authorization': `Basic ${authString}`,
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${authString}`
+        'Accept': 'application/json'
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code: code!,
         redirect_uri: REDIRECT_URI
-      })
+      }).toString()
     })
 
+    console.log('Token response status:', tokenResponse.status)
+    
     if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.text()
-      console.error('Error exchanging code for token:', errorData)
-      throw new Error(`Failed to exchange code for token: ${errorData}`)
+      const errorText = await tokenResponse.text()
+      console.error('Token exchange error:', errorText)
+      throw new Error(`Failed to exchange code for token: ${errorText}`)
     }
 
     const tokenData = await tokenResponse.json()
@@ -103,9 +117,9 @@ serve(async (req) => {
     })
 
     if (!profileResponse.ok) {
-      const errorData = await profileResponse.text()
-      console.error('Error fetching Spotify profile:', errorData)
-      throw new Error(`Failed to fetch Spotify profile: ${errorData}`)
+      const errorText = await profileResponse.text()
+      console.error('Profile fetch error:', errorText)
+      throw new Error(`Failed to fetch Spotify profile: ${errorText}`)
     }
 
     const profileData = await profileResponse.json()
@@ -132,7 +146,10 @@ serve(async (req) => {
         </body>
       </html>`,
       { 
-        headers: { 'Content-Type': 'text/html' },
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'text/html'
+        },
         status: 200
       }
     )
@@ -157,7 +174,10 @@ serve(async (req) => {
         </body>
       </html>`,
       { 
-        headers: { 'Content-Type': 'text/html' },
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'text/html'
+        },
         status: 500 
       }
     )
