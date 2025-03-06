@@ -1,3 +1,4 @@
+
 import { Send, Zap, TrendingUp, DollarSign, Music } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
