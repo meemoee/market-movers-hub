@@ -13,7 +13,7 @@ const AccordionItem = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <AccordionPrimitive.Item
     ref={ref}
-    className={cn("border-b w-full", className)}
+    className={cn("border-b w-full overflow-hidden", className)}
     {...props}
   />
 ))
@@ -52,7 +52,7 @@ const AccordionContent = React.forwardRef<
     {...props}
   >
     <div className="pb-4 pt-0 w-full overflow-hidden min-w-0">
-      <div className="max-w-full overflow-x-auto">
+      <div className="max-w-full overflow-hidden">
         {children}
       </div>
     </div>
