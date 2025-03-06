@@ -1,40 +1,57 @@
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const SPOTIFY_CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID') || ''
-const SPOTIFY_CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET') || ''
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || ''
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
-
 const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/spotify-auth-callback`
-const scopes = [
-  'user-read-private',
-  'user-read-email',
-  'user-top-read',
-  'user-read-recently-played',
-  'playlist-read-private'
-].join('%20')
+
+console.log('Auth function initialized with:')
+console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
+console.log('REDIRECT_URI:', REDIRECT_URI)
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { 
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      }
+    })
   }
 
   try {
-    // Generate Spotify authorization URL
-    const authUrl = `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&response_type=code&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}`
+    console.log('Generating Spotify auth URL...')
     
-    console.log('Generated Spotify auth URL:', authUrl)
+    // Add state parameter for security
+    const state = crypto.randomUUID()
+    
+    const scopes = [
+      'user-read-private',
+      'user-read-email',
+      'user-top-read',
+      'user-read-recently-played',
+      'playlist-read-private'
+    ]
+    
+    // Generate Spotify authorization URL with proper encoding
+    const authUrl = new URL('https://accounts.spotify.com/authorize')
+    authUrl.searchParams.append('client_id', SPOTIFY_CLIENT_ID)
+    authUrl.searchParams.append('response_type', 'code')
+    authUrl.searchParams.append('redirect_uri', REDIRECT_URI)
+    authUrl.searchParams.append('scope', scopes.join(' '))
+    authUrl.searchParams.append('state', state)
+    
+    console.log('Generated auth URL (partial):', authUrl.toString().substring(0, 100) + '...')
     
     return new Response(
-      JSON.stringify({ url: authUrl }),
+      JSON.stringify({ url: authUrl.toString() }),
       { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
         status: 200 
       }
     )
@@ -43,7 +60,10 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ error: error.message }),
       { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
         status: 500 
       }
     )
