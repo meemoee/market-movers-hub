@@ -1,4 +1,3 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -66,39 +65,4 @@
   .glow-effect:hover::before {
     opacity: 1;
   }
-  
-  /* Text overflow utilities */
-  .break-anywhere {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-  
-  .truncate-text {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-}
-
-/* Global prose styles to prevent overflow */
-.prose {
-  max-width: 100% !important;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-.prose pre {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  max-width: 100%;
-}
-
-.prose code {
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.prose p, .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
-  max-width: 100%;
-  overflow-wrap: break-word;
 }

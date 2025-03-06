@@ -104,31 +104,14 @@ export function AnalysisDisplay({
   if (!content) return null
 
   return (
-    <div className="relative w-full overflow-hidden">
+    <div className="relative">
       <ScrollArea 
-        className="rounded-md border p-4 bg-accent/5 w-full"
+        className={`rounded-md border p-4 bg-accent/5`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="w-full">
-          <ReactMarkdown 
-            className="prose prose-invert prose-sm max-w-full prose-p:my-1 prose-headings:my-2 break-words"
-            components={{
-              pre: ({ node, ...props }) => (
-                <div className="overflow-auto w-full my-2">
-                  <pre {...props} />
-                </div>
-              ),
-              code: ({ node, className, children, ...props }) => {
-                const isInlineCode = !className;
-                return isInlineCode ? 
-                  <code {...props} className="bg-muted/30 px-1 py-0.5 rounded text-sm" /> : 
-                  <div className="overflow-x-auto">
-                    <code {...props} className="block bg-muted/30 p-3 rounded text-sm font-mono whitespace-pre-wrap" />
-                  </div>
-              }
-            }}
-          >
+        <div className="overflow-x-hidden w-full">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
             {content}
           </ReactMarkdown>
         </div>

@@ -1,3 +1,4 @@
+
 import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -158,7 +159,7 @@ export default function RightSidebar() {
   ]
 
   return (
-    <aside className="fixed top-0 right-0 h-screen w-[400px] bg-[#1a1b1e]/70 backdrop-blur-md z-[999] border-l border-white/10 hidden 2xl:block">
+    <aside className="fixed top-0 right-0 h-screen w-[400px] bg-[#1a1b1e]/70 backdrop-blur-md z-[999] border-l border-white/10 hidden xl:block">
       <div className="p-6 overflow-y-auto h-full">
         {!hasStartedChat ? (
           <>

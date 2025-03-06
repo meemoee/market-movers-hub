@@ -43,7 +43,7 @@ export default function Index() {
   };
 
   return (
-    <div className="min-h-screen bg-background overflow-x-hidden">
+    <div className="min-h-screen bg-background">
       {/* Purple Glow Effect */}
       <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <Glow 
@@ -52,8 +52,8 @@ export default function Index() {
         />
       </div>
       
-      <main className="container mx-auto px-4 relative z-10 overflow-hidden">
-        <div className="relative flex max-w-full mx-auto justify-center overflow-hidden">
+      <main className="container mx-auto xl:pr-[400px] px-4 relative z-10">
+        <div className="relative flex max-w-[1280px] mx-auto justify-center">
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-40"
@@ -65,7 +65,7 @@ export default function Index() {
             className={`${
               isMobile 
                 ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background'
-                : 'w-[280px] flex-shrink-0 relative'
+                : 'w-[280px] relative'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
@@ -84,16 +84,14 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className="flex-1 min-w-0 min-h-screen overflow-hidden max-w-[calc(100vw-280px)]">
-            <div className="max-w-5xl mx-auto overflow-hidden 2xl:pr-[400px]">
-              <TopMoversList
-                timeIntervals={TIME_INTERVALS}
-                selectedInterval={selectedInterval}
-                onIntervalChange={handleIntervalChange}
-                openMarketsOnly={openMarketsOnly}
-                onOpenMarketsChange={setOpenMarketsOnly}
-              />
-            </div>
+          <div className={`flex-1 min-w-0 min-h-screen`}>
+            <TopMoversList
+              timeIntervals={TIME_INTERVALS}
+              selectedInterval={selectedInterval}
+              onIntervalChange={handleIntervalChange}
+              openMarketsOnly={openMarketsOnly}
+              onOpenMarketsChange={setOpenMarketsOnly}
+            />
           </div>
         </div>
       </main>
