@@ -1,6 +1,6 @@
 
 import { Send, Zap, TrendingUp, DollarSign, Music } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Button } from './ui/button'
@@ -17,6 +17,8 @@ export default function RightSidebar() {
   const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null)
   const [spotifyTokens, setSpotifyTokens] = useState<SpotifyTokens | null>(null)
   const [spotifyAuthError, setSpotifyAuthError] = useState<string | null>(null)
+  const [userPlaylists, setUserPlaylists] = useState<any[]>([])
+  const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   interface Message {
@@ -38,6 +40,76 @@ export default function RightSidebar() {
     images: { url: string }[]
     external_urls: { spotify: string }
   }
+
+  // Function to call Spotify API through our proxy
+  const callSpotifyAPI = useCallback(async (
+    endpoint: string, 
+    method: string = 'GET', 
+    body: any = null
+  ) => {
+    if (!spotifyTokens) {
+      console.error('No Spotify tokens available')
+      return { error: 'Not authenticated with Spotify' }
+    }
+
+    try {
+      console.log(`Calling Spotify API (${method}): ${endpoint}`)
+      
+      const { data, error, status, refreshedTokens } = await supabase.functions.invoke('spotify-api', {
+        body: {
+          endpoint,
+          method,
+          body,
+          accessToken: spotifyTokens.access_token,
+          refreshToken: spotifyTokens.refresh_token
+        }
+      })
+
+      console.log('API response status:', status)
+      
+      // If we got refreshed tokens, update them
+      if (refreshedTokens) {
+        console.log('Updating tokens with refreshed values')
+        setSpotifyTokens(refreshedTokens)
+        localStorage.setItem('spotify_tokens', JSON.stringify(refreshedTokens))
+      }
+
+      if (error) {
+        console.error('Spotify API error:', error)
+        return { error, status }
+      }
+
+      return { data, status }
+    } catch (err) {
+      console.error('Error calling Spotify API:', err)
+      return { error: err.message, status: 500 }
+    }
+  }, [spotifyTokens])
+
+  // Load user playlists when authenticated
+  const loadUserPlaylists = useCallback(async () => {
+    if (!spotifyTokens) return
+    
+    setIsLoadingPlaylists(true)
+    
+    try {
+      const { data, error } = await callSpotifyAPI('me/playlists?limit=10')
+      
+      if (error) {
+        console.error('Error fetching playlists:', error)
+        return
+      }
+      
+      if (data?.items) {
+        console.log('Loaded playlists:', data.items.length)
+        setUserPlaylists(data.items)
+      }
+    } catch (err) {
+      console.error('Error in loadUserPlaylists:', err)
+    } finally {
+      setIsLoadingPlaylists(false)
+    }
+  }, [callSpotifyAPI, spotifyTokens])
 
   useEffect(() => {
     // Load Spotify profile from localStorage on mount
@@ -79,6 +151,13 @@ export default function RightSidebar() {
       window.removeEventListener('message', handleAuthMessage)
     }
   }, [])
+
+  // Load playlists when user gets authenticated
+  useEffect(() => {
+    if (spotifyProfile && spotifyTokens) {
+      loadUserPlaylists()
+    }
+  }, [spotifyProfile, spotifyTokens, loadUserPlaylists])
 
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
@@ -216,6 +295,7 @@ export default function RightSidebar() {
   const handleDisconnectSpotify = () => {
     setSpotifyProfile(null)
     setSpotifyTokens(null)
+    setUserPlaylists([])
     localStorage.removeItem('spotify_profile')
     localStorage.removeItem('spotify_tokens')
   }
@@ -378,10 +458,34 @@ export default function RightSidebar() {
               
               {spotifyProfile && (
                 <div className="mt-6">
-                  <h3 className="text-lg font-medium mb-2">Music Features</h3>
-                  <p className="text-gray-400 text-sm mb-4">
-                    Your Spotify account is connected. Music features will be coming soon!
-                  </p>
+                  <h3 className="text-lg font-medium mb-2">Your Playlists</h3>
+                  {isLoadingPlaylists ? (
+                    <p className="text-gray-400 text-sm">Loading playlists...</p>
+                  ) : userPlaylists.length > 0 ? (
+                    <div className="space-y-2 mt-3">
+                      {userPlaylists.map(playlist => (
+                        <div key={playlist.id} className="bg-[#2c2e33] p-3 rounded-lg flex items-center gap-3">
+                          {playlist.images?.[0]?.url ? (
+                            <img 
+                              src={playlist.images[0].url} 
+                              alt={playlist.name} 
+                              className="w-10 h-10 rounded"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 bg-gray-700 flex items-center justify-center rounded">
+                              <Music size={18} />
+                            </div>
+                          )}
+                          <div className="overflow-hidden">
+                            <p className="font-medium truncate">{playlist.name}</p>
+                            <p className="text-xs text-gray-400">{playlist.tracks.total} tracks</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-sm">No playlists found</p>
+                  )}
                 </div>
               )}
             </div>

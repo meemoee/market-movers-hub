@@ -45,3 +45,7 @@ verify_jwt = false
 [[functions]]
 name = "spotify-auth-callback"
 verify_jwt = false
+
+[[functions]]
+name = "spotify-api"
+verify_jwt = false
