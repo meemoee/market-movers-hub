@@ -68,16 +68,20 @@ serve(async (req) => {
   }
 
   try {
+    // Create Base64 encoded authorization string
+    const authString = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`)
+    console.log('Attempting token exchange with auth string:', authString.substring(0, 10) + '...')
+
     // Exchange the authorization code for an access token
     const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`)}`
+        'Authorization': `Basic ${authString}`
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
-        code,
+        code: code!,
         redirect_uri: REDIRECT_URI
       })
     })
@@ -89,6 +93,7 @@ serve(async (req) => {
     }
 
     const tokenData = await tokenResponse.json()
+    console.log('Successfully received token data')
     
     // Get user profile from Spotify
     const profileResponse = await fetch('https://api.spotify.com/v1/me', {
@@ -104,6 +109,7 @@ serve(async (req) => {
     }
 
     const profileData = await profileResponse.json()
+    console.log('Successfully fetched profile data')
     
     // Return success response with HTML that passes data to opener
     return new Response(
