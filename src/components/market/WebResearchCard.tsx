@@ -1136,7 +1136,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
     
     return (
-      <div className="space-y-4 w-full overflow-hidden">
+      <div className="space-y-4 w-full max-w-full overflow-hidden">
         <div className="w-full">
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
           <div className="flex flex-wrap gap-2 w-full">
@@ -1149,7 +1149,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
         
         {iter.results.length > 0 && (
-          <div className="w-full">
+          <div className="w-full max-w-full">
             <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
             <ScrollArea className="h-[150px] rounded-md border w-full">
               <div className="p-4 space-y-2 w-full">
