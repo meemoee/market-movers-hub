@@ -51,7 +51,11 @@ const AccordionContent = React.forwardRef<
     )}
     {...props}
   >
-    <div className={cn("pb-4 pt-0 w-full overflow-x-auto", className)}>{children}</div>
+    <div className="pb-4 pt-0 w-full overflow-hidden min-w-0">
+      <div className="max-w-full overflow-x-auto">
+        {children}
+      </div>
+    </div>
   </AccordionPrimitive.Content>
 ))
 

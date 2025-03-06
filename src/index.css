@@ -70,7 +70,7 @@
 
 /* Add specific styles for markdown content overflow */
 .prose pre {
-  max-width: 100%;
+  max-width: 100% !important;
   overflow-x: auto;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -94,8 +94,22 @@
 
 /* Make sure all text elements have proper wrapping */
 .text-wrap-all {
-  word-wrap: break-word;
-  overflow-wrap: break-word;
-  word-break: break-word;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
   hyphens: auto;
+  max-width: 100% !important;
+}
+
+/* Force all prose elements to respect container width */
+.prose * {
+  max-width: 100% !important;
+  overflow-wrap: break-word !important;
+}
+
+/* Fix for long URLs and code blocks in markdown content */
+.prose p, .prose li, .prose blockquote {
+  overflow-wrap: break-word !important;
+  word-break: break-word !important;
+  word-wrap: break-word !important;
 }
