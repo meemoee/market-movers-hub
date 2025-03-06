@@ -1,8 +1,11 @@
 
-import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { Send, Zap, TrendingUp, DollarSign, Music } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
+import { Button } from './ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
+import { Alert, AlertTitle, AlertDescription } from './ui/alert'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
@@ -10,12 +13,66 @@ export default function RightSidebar() {
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [currentTab, setCurrentTab] = useState('chat')
+  const [spotifyProfile, setSpotifyProfile] = useState<SpotifyProfile | null>(null)
+  const [spotifyTokens, setSpotifyTokens] = useState<SpotifyTokens | null>(null)
+  const [spotifyAuthError, setSpotifyAuthError] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   interface Message {
     type: 'user' | 'assistant'
     content?: string
   }
+
+  interface SpotifyTokens {
+    access_token: string
+    refresh_token: string
+    expires_in: number
+    token_type: string
+  }
+
+  interface SpotifyProfile {
+    id: string
+    display_name: string
+    email: string
+    images: { url: string }[]
+    external_urls: { spotify: string }
+  }
+
+  useEffect(() => {
+    // Load Spotify profile from localStorage on mount
+    const savedTokens = localStorage.getItem('spotify_tokens')
+    const savedProfile = localStorage.getItem('spotify_profile')
+    
+    if (savedTokens) {
+      setSpotifyTokens(JSON.parse(savedTokens))
+    }
+    
+    if (savedProfile) {
+      setSpotifyProfile(JSON.parse(savedProfile))
+    }
+
+    // Set up event listener for Spotify auth callback
+    const handleAuthMessage = (event: MessageEvent) => {
+      if (event.data.type === 'spotify-auth-success') {
+        setSpotifyTokens(event.data.tokens)
+        setSpotifyProfile(event.data.profile)
+        setSpotifyAuthError(null)
+        
+        // Save to localStorage
+        localStorage.setItem('spotify_tokens', JSON.stringify(event.data.tokens))
+        localStorage.setItem('spotify_profile', JSON.stringify(event.data.profile))
+      } else if (event.data.type === 'spotify-auth-error') {
+        setSpotifyAuthError(event.data.error)
+      }
+    }
+
+    window.addEventListener('message', handleAuthMessage)
+    
+    return () => {
+      window.removeEventListener('message', handleAuthMessage)
+    }
+  }, [])
 
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
@@ -63,30 +120,20 @@ export default function RightSidebar() {
               }
               
               const chunk = textDecoder.decode(value)
-              // Remove this log that prints each chunk
-              // console.log('Received chunk:', chunk)
               
               const lines = chunk.split('\n').filter(line => line.trim())
-              // Remove this log of processed lines
-              // console.log('Processing lines:', lines)
               
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   const jsonStr = line.slice(6).trim()
-                  // Remove this log of JSON string
-                  // console.log('Processing JSON string:', jsonStr)
                   
                   if (jsonStr === '[DONE]') continue
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
-                    // Remove this log of parsed JSON
-                    // console.log('Parsed JSON:', parsed)
                     
                     const content = parsed.choices?.[0]?.delta?.content
                     if (content) {
-                      // Remove this log of new content
-                      // console.log('New content chunk:', content)
                       accumulatedContent += content
                       setStreamingContent(accumulatedContent)
                     }
@@ -128,6 +175,42 @@ export default function RightSidebar() {
     }
   }
 
+  const handleConnectSpotify = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('spotify-auth')
+      
+      if (error) {
+        console.error('Error starting Spotify auth:', error)
+        setSpotifyAuthError(error.message)
+        return
+      }
+      
+      if (data?.url) {
+        // Open a popup window for Spotify auth
+        const width = 500
+        const height = 700
+        const left = window.screen.width / 2 - width / 2
+        const top = window.screen.height / 2 - height / 2
+        
+        window.open(
+          data.url,
+          'Spotify Authentication',
+          `width=${width},height=${height},left=${left},top=${top}`
+        )
+      }
+    } catch (error) {
+      console.error('Error connecting to Spotify:', error)
+      setSpotifyAuthError(error.message)
+    }
+  }
+
+  const handleDisconnectSpotify = () => {
+    setSpotifyProfile(null)
+    setSpotifyTokens(null)
+    localStorage.removeItem('spotify_profile')
+    localStorage.removeItem('spotify_tokens')
+  }
+
   const defaultContent = [
     {
       icon: Zap,
@@ -161,88 +244,165 @@ export default function RightSidebar() {
   return (
     <aside className="fixed top-0 right-0 h-screen w-[400px] bg-[#1a1b1e]/70 backdrop-blur-md z-[999] border-l border-white/10 hidden xl:block">
       <div className="p-6 overflow-y-auto h-full">
-        {!hasStartedChat ? (
-          <>
-            <div className="mb-16">
-              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
-                A New Kind of Market
-              </h2>
-              <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] text-transparent bg-clip-text">
-                For a New Age
-              </h2>
-            </div>
-            {defaultContent.map((item, index) => (
-              <div key={index} className="mb-6 pb-6 border-b border-white/10 last:border-0">
-                <div className="flex items-center mb-2">
-                  <span className="mr-3 text-blue-500">
-                    <item.icon size={16} />
-                  </span>
-                  <h3 className="text-sm font-semibold">{item.question}</h3>
+        <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="spotify">Spotify</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="chat" className="w-full">
+            {!hasStartedChat ? (
+              <>
+                <div className="mb-16">
+                  <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
+                    A New Kind of Market
+                  </h2>
+                  <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] text-transparent bg-clip-text">
+                    For a New Age
+                  </h2>
                 </div>
-                <p className="text-gray-400 text-sm ml-9 mb-2">{item.answer}</p>
-                <div className="space-y-1 ml-9">
-                  {item.subPoints.map((subPoint, subIndex) => (
-                    <div key={subIndex} className="flex items-center">
-                      <span className="mr-2 text-blue-500">
-                        <subPoint.icon size={12} />
+                {defaultContent.map((item, index) => (
+                  <div key={index} className="mb-6 pb-6 border-b border-white/10 last:border-0">
+                    <div className="flex items-center mb-2">
+                      <span className="mr-3 text-blue-500">
+                        <item.icon size={16} />
                       </span>
-                      <span className="text-xs text-gray-400">{subPoint.text}</span>
+                      <h3 className="text-sm font-semibold">{item.question}</h3>
                     </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </>
-        ) : (
-          <div className="space-y-4 mb-20">
-            {messages.map((message, index) => (
-              <div key={index} className="bg-[#2c2e33] p-3 rounded-lg">
-                {message.type === 'user' ? (
-                  <p className="text-white text-sm">{message.content}</p>
-                ) : (
-                  <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
-                    {message.content || ''}
-                  </ReactMarkdown>
+                    <p className="text-gray-400 text-sm ml-9 mb-2">{item.answer}</p>
+                    <div className="space-y-1 ml-9">
+                      {item.subPoints.map((subPoint, subIndex) => (
+                        <div key={subIndex} className="flex items-center">
+                          <span className="mr-2 text-blue-500">
+                            <subPoint.icon size={12} />
+                          </span>
+                          <span className="text-xs text-gray-400">{subPoint.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <div className="space-y-4 mb-20">
+                {messages.map((message, index) => (
+                  <div key={index} className="bg-[#2c2e33] p-3 rounded-lg">
+                    {message.type === 'user' ? (
+                      <p className="text-white text-sm">{message.content}</p>
+                    ) : (
+                      <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                        {message.content || ''}
+                      </ReactMarkdown>
+                    )}
+                  </div>
+                ))}
+                {streamingContent && (
+                  <div className="bg-[#2c2e33] p-3 rounded-lg">
+                    <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                      {streamingContent}
+                    </ReactMarkdown>
+                  </div>
+                )}
+                {isLoading && !streamingContent && (
+                  <div className="bg-[#2c2e33] p-3 rounded-lg">
+                    <p className="text-white text-sm">Thinking...</p>
+                  </div>
                 )}
               </div>
-            ))}
-            {streamingContent && (
-              <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
-                  {streamingContent}
-                </ReactMarkdown>
-              </div>
             )}
-            {isLoading && !streamingContent && (
-              <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <p className="text-white text-sm">Thinking...</p>
-              </div>
-            )}
-          </div>
-        )}
+          </TabsContent>
+          
+          <TabsContent value="spotify" className="w-full">
+            <div className="mb-4">
+              <h2 className="text-2xl font-bold mb-2">Spotify Connection</h2>
+              <p className="text-gray-400 mb-4">Connect your Spotify account to enable music features</p>
+              
+              {spotifyAuthError && (
+                <Alert variant="destructive" className="mb-4">
+                  <AlertTitle>Authentication Error</AlertTitle>
+                  <AlertDescription>{spotifyAuthError}</AlertDescription>
+                </Alert>
+              )}
+
+              {spotifyProfile ? (
+                <div className="bg-[#2c2e33] p-4 rounded-lg mb-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    {spotifyProfile.images?.[0]?.url && (
+                      <img 
+                        src={spotifyProfile.images[0].url} 
+                        alt={spotifyProfile.display_name} 
+                        className="w-12 h-12 rounded-full"
+                      />
+                    )}
+                    <div>
+                      <p className="font-medium">{spotifyProfile.display_name}</p>
+                      <p className="text-sm text-gray-400">{spotifyProfile.email}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2 mt-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={() => window.open(spotifyProfile.external_urls.spotify, '_blank')}
+                    >
+                      View Profile
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleDisconnectSpotify}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button 
+                  onClick={handleConnectSpotify} 
+                  className="bg-[#1DB954] hover:bg-[#1DB954]/90 text-white"
+                >
+                  <Music className="mr-2 h-4 w-4" />
+                  Connect Spotify
+                </Button>
+              )}
+              
+              {spotifyProfile && (
+                <div className="mt-6">
+                  <h3 className="text-lg font-medium mb-2">Music Features</h3>
+                  <p className="text-gray-400 text-sm mb-4">
+                    Your Spotify account is connected. Music features will be coming soon!
+                  </p>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
         
         <div className="fixed bottom-0 right-0 w-[400px] p-4">
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={chatMessage}
-              onChange={(e) => setChatMessage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleChatMessage(chatMessage)
-                }
-              }}
-              placeholder="What do you believe?"
-              className="flex-grow p-2 bg-[#2c2e33] border border-[#4a4b50] rounded-lg text-white text-sm"
-            />
-            <button 
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors text-blue-500"
-              onClick={() => handleChatMessage(chatMessage)}
-              disabled={isLoading}
-            >
-              <Send size={20} />
-            </button>
-          </div>
+          {currentTab === 'chat' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={chatMessage}
+                onChange={(e) => setChatMessage(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleChatMessage(chatMessage)
+                  }
+                }}
+                placeholder="What do you believe?"
+                className="flex-grow p-2 bg-[#2c2e33] border border-[#4a4b50] rounded-lg text-white text-sm"
+              />
+              <button 
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors text-blue-500"
+                onClick={() => handleChatMessage(chatMessage)}
+                disabled={isLoading}
+              >
+                <Send size={20} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </aside>
