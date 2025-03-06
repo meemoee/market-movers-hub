@@ -1,3 +1,4 @@
+
 .react-flow__node {
   border-radius: 8px;
   background: transparent;
@@ -36,4 +37,26 @@
 
 .react-flow__attribution {
   background: transparent !important;
+}
+
+/* Added styles to fix iteration expandables overflow */
+.react-flow__pane,
+.react-flow__viewport {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Make sure all text in the research containers wrap properly */
+.accordion-content-wrapper {
+  max-width: 100%;
+  overflow-x: hidden;
+  word-break: break-word;
+}
+
+/* Ensure all long text in the application wraps properly */
+p, h1, h2, h3, h4, h5, h6, span, div {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  hyphens: auto;
 }

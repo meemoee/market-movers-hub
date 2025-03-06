@@ -1136,34 +1136,35 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
     
     return (
-      <div className="space-y-4 w-full overflow-hidden">
-        <div>
+      <div className="space-y-4 w-full overflow-hidden accordion-content-wrapper">
+        <div className="max-w-full">
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 w-full">
             {iter.queries.map((query, idx) => (
-              <Badge key={idx} variant="secondary" className="text-xs">
-                {query}
+              <Badge key={idx} variant="secondary" className="text-xs max-w-full truncate">
+                <span className="truncate">{query}</span>
               </Badge>
             ))}
           </div>
         </div>
         
         {iter.results.length > 0 && (
-          <div>
+          <div className="max-w-full">
             <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
-            <ScrollArea className="h-[150px] rounded-md border">
+            <ScrollArea className="h-[150px] rounded-md border max-w-full">
               <div className="p-4 space-y-2 w-full">
                 {iter.results.map((result, idx) => (
-                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded max-w-full overflow-hidden">
                     <a 
                       href={result.url} 
                       target="_blank" 
                       rel="noopener noreferrer"
                       className="text-primary hover:underline truncate block"
+                      title={result.title || result.url}
                     >
                       {result.title || result.url}
                     </a>
-                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                    <p className="mt-1 line-clamp-2 text-muted-foreground overflow-hidden">
                       {result.content?.substring(0, 150)}...
                     </p>
                   </div>
@@ -1173,7 +1174,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        <div>
+        <div className="max-w-full">
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
           <div className="text-sm prose prose-sm overflow-hidden w-full">
             <AnalysisDisplay 
