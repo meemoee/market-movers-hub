@@ -39,7 +39,7 @@ export function MarketCard({
   selectedInterval,
 }: MarketCardProps) {
   return (
-    <div className="w-full p-3 space-y-3">
+    <div className="w-full p-3 space-y-3 max-w-full overflow-hidden">
       <MarketHeader
         image={market.image}
         question={market.question}

@@ -65,7 +65,7 @@ export default function Index() {
             className={`${
               isMobile 
                 ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background'
-                : 'w-[280px] relative'
+                : 'w-[280px] flex-shrink-0 relative'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
             }`}
@@ -84,14 +84,16 @@ export default function Index() {
             </div>
           </aside>
 
-          <div className="flex-1 min-w-0 min-h-screen overflow-hidden max-w-[calc(100%-280px)]">
-            <TopMoversList
-              timeIntervals={TIME_INTERVALS}
-              selectedInterval={selectedInterval}
-              onIntervalChange={handleIntervalChange}
-              openMarketsOnly={openMarketsOnly}
-              onOpenMarketsChange={setOpenMarketsOnly}
-            />
+          <div className="flex-1 min-w-0 min-h-screen overflow-hidden max-w-[calc(100vw-280px)]">
+            <div className="max-w-4xl mx-auto overflow-hidden">
+              <TopMoversList
+                timeIntervals={TIME_INTERVALS}
+                selectedInterval={selectedInterval}
+                onIntervalChange={handleIntervalChange}
+                openMarketsOnly={openMarketsOnly}
+                onOpenMarketsChange={setOpenMarketsOnly}
+              />
+            </div>
           </div>
         </div>
       </main>
