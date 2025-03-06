@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -204,7 +203,7 @@ export default function TopMoversList({
   const sortedMarkets = displayedMarkets;
 
   return (
-    <div className="flex flex-col w-full">
+    <div className="flex flex-col w-full xl:pr-[400px]">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
         {!marketId && (
           <div className="flex items-center w-full px-4 py-3 border-b">
