@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -22,9 +22,19 @@ interface InsightsDisplayProps {
     focusText?: string;
     onView?: () => void;
   };
+  childResearches?: {
+    id: string;
+    focusText: string;
+    onView: () => void;
+  }[];
 }
 
-export function InsightsDisplay({ streamingState, onResearchArea, parentResearch }: InsightsDisplayProps) {
+export function InsightsDisplay({ 
+  streamingState, 
+  onResearchArea, 
+  parentResearch,
+  childResearches 
+}: InsightsDisplayProps) {
   // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
@@ -86,6 +96,40 @@ export function InsightsDisplay({ streamingState, onResearchArea, parentResearch
               <div className="text-sm">{parentResearch.focusText}</div>
             </div>
           )}
+        </Card>
+      )}
+
+      {childResearches && childResearches.length > 0 && (
+        <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-indigo-500/10 to-background border-indigo-500/30 rounded-xl">
+          <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent"></div>
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-500/10 p-2 rounded-full">
+              <GitBranch className="h-5 w-5 text-indigo-500" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold">Derived Research</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                This research has spawned {childResearches.length} focused deep-dives
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 space-y-2">
+            {childResearches.map((child) => (
+              <div key={child.id} className="bg-accent/20 p-2 rounded-md border border-accent/20 flex justify-between items-center">
+                <div>
+                  <div className="text-sm font-medium">Focus: {child.focusText}</div>
+                </div>
+                <Button 
+                  onClick={child.onView}
+                  variant="outline" 
+                  size="sm"
+                >
+                  <ArrowRightCircle className="h-4 w-4 mr-2" />
+                  View Research
+                </Button>
+              </div>
+            ))}
+          </div>
         </Card>
       )}
 

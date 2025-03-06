@@ -97,6 +97,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const [loadedResearchId, setLoadedResearchId] = useState<string | null>(null)
   const [parentResearchId, setParentResearchId] = useState<string | null>(null)
+  const [childResearches, setChildResearches] = useState<SavedResearch[]>([])
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -171,6 +172,19 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     return null;
   }, [savedResearch]);
   
+  const findChildResearches = useCallback((parentId: string | null) => {
+    if (!parentId || !savedResearch) return [];
+    
+    const childResearches = savedResearch.filter(r => r.parent_research_id === parentId);
+    if (childResearches.length > 0) {
+      console.log(`Found ${childResearches.length} child researches for parent ${parentId}`);
+      return childResearches;
+    }
+    
+    return [];
+  }, [savedResearch]);
+  
+  const childResearches = loadedResearchId ? findChildResearches(loadedResearchId) : [];
   const parentResearch = findParentResearch(parentResearchId);
 
   const loadSavedResearch = (research: SavedResearch) => {
@@ -1007,7 +1021,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const handleResearchArea = (area: string) => {
-    const currentResearchId = savedResearch?.find(r => r.id === loadedResearchId)?.id || loadedResearchId;
+    const currentResearchId = loadedResearchId;
     
     console.log(`Starting focused research with parent ID: ${currentResearchId} on area: ${area}`);
     
@@ -1021,8 +1035,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       return;
     }
     
+    const parentId = currentResearchId;
+    
     setLoadedResearchId(null);
-    setParentResearchId(currentResearchId);
+    setParentResearchId(parentId);
     
     setFocusText(area);
     toast({
@@ -1045,8 +1061,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     setTimeout(() => {
       handleResearch();
-    }, 100);
+    }, 200);
   };
+
+  const handleViewChildResearch = useCallback((childResearch: SavedResearch) => {
+    if (childResearch) {
+      loadSavedResearch(childResearch);
+    }
+  }, []);
+
+  const handleViewParentResearch = useCallback(() => {
+    if (parentResearch) {
+      loadSavedResearch(parentResearch);
+    }
+  }, [parentResearch]);
 
   const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
 
@@ -1157,21 +1185,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       </div>
     );
   };
-
-  const handleViewParentResearch = useCallback(() => {
-    if (parentResearch) {
-      loadSavedResearch(parentResearch);
-    }
-  }, [parentResearch]);
-
-  useEffect(() => {
-    if (parentResearchId) {
-      console.log(`parentResearchId changed to: ${parentResearchId}`);
-      if (!parentResearch) {
-        console.log('Parent research not found yet in saved research');
-      }
-    }
-  }, [parentResearchId, parentResearch]);
 
   return (
     <Card className="p-4 space-y-4">
@@ -1367,6 +1380,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText: focusText || undefined,
           onView: handleViewParentResearch
         } : undefined}
+        childResearches={childResearches.length > 0 ? childResearches.map(child => ({
+          id: child.id,
+          focusText: child.focus_text || 'Unknown focus',
+          onView: () => handleViewChildResearch(child)
+        })) : undefined}
       />
 
       {results.length > 0 && !iterations.length && (
