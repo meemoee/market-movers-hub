@@ -110,8 +110,23 @@ export function AnalysisDisplay({
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="prose prose-invert prose-sm max-w-none break-words overflow-x-auto">
-          <ReactMarkdown className="prose-p:my-1 prose-headings:my-2">
+        <div className="w-full">
+          <ReactMarkdown 
+            className="prose prose-invert prose-sm max-w-full prose-p:my-1 prose-headings:my-2 break-words"
+            components={{
+              pre: ({ node, ...props }) => (
+                <div className="overflow-auto w-full my-2">
+                  <pre {...props} />
+                </div>
+              ),
+              code: ({ node, inline, ...props }) => 
+                inline ? 
+                  <code {...props} className="bg-muted/30 px-1 py-0.5 rounded text-sm" /> : 
+                  <div className="overflow-x-auto">
+                    <code {...props} className="block bg-muted/30 p-3 rounded text-sm font-mono whitespace-pre-wrap" />
+                  </div>
+            }}
+          >
             {content}
           </ReactMarkdown>
         </div>
