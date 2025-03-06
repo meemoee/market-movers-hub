@@ -3,8 +3,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const SPOTIFY_CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID') || ''
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || ''
-const REDIRECT_URI = `${SUPABASE_URL}/functions/v1/spotify-auth-callback`
+const PROJECT_ID = Deno.env.get('PROJECT_REF') || 'lfmkoismabbhujycnqpn'
+const REDIRECT_URI = `https://${PROJECT_ID}.functions.supabase.co/spotify-auth-callback`
 
 console.log('Auth function initialized with:')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
