@@ -1,4 +1,3 @@
-
 import { Send, Zap, TrendingUp, DollarSign, Music } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -41,7 +40,13 @@ export default function RightSidebar() {
     external_urls: { spotify: string }
   }
 
-  // Function to call Spotify API through our proxy
+  interface SpotifyApiResponse {
+    data: any;
+    error: string | null;
+    status: number;
+    refreshedTokens?: SpotifyTokens;
+  }
+
   const callSpotifyAPI = useCallback(async (
     endpoint: string, 
     method: string = 'GET', 
@@ -55,7 +60,7 @@ export default function RightSidebar() {
     try {
       console.log(`Calling Spotify API (${method}): ${endpoint}`)
       
-      const { data, error, status, refreshedTokens } = await supabase.functions.invoke('spotify-api', {
+      const response = await supabase.functions.invoke('spotify-api', {
         body: {
           endpoint,
           method,
@@ -63,11 +68,12 @@ export default function RightSidebar() {
           accessToken: spotifyTokens.access_token,
           refreshToken: spotifyTokens.refresh_token
         }
-      })
-
+      });
+      
+      const { data, error, status, refreshedTokens } = response.data as SpotifyApiResponse;
+      
       console.log('API response status:', status)
       
-      // If we got refreshed tokens, update them
       if (refreshedTokens) {
         console.log('Updating tokens with refreshed values')
         setSpotifyTokens(refreshedTokens)
@@ -86,7 +92,6 @@ export default function RightSidebar() {
     }
   }, [spotifyTokens])
 
-  // Load user playlists when authenticated
   const loadUserPlaylists = useCallback(async () => {
     if (!spotifyTokens) return
     
@@ -112,7 +117,6 @@ export default function RightSidebar() {
   }, [callSpotifyAPI, spotifyTokens])
 
   useEffect(() => {
-    // Load Spotify profile from localStorage on mount
     const savedTokens = localStorage.getItem('spotify_tokens')
     const savedProfile = localStorage.getItem('spotify_profile')
     
@@ -124,7 +128,6 @@ export default function RightSidebar() {
       setSpotifyProfile(JSON.parse(savedProfile))
     }
 
-    // Set up event listener for Spotify auth callback
     const handleAuthMessage = (event: MessageEvent) => {
       console.log('Received postMessage event:', event.data)
       
@@ -136,7 +139,6 @@ export default function RightSidebar() {
         setSpotifyProfile(event.data.profile)
         setSpotifyAuthError(null)
         
-        // Save to localStorage
         localStorage.setItem('spotify_tokens', JSON.stringify(event.data.tokens))
         localStorage.setItem('spotify_profile', JSON.stringify(event.data.profile))
       } else if (event.data.type === 'spotify-auth-error') {
@@ -152,7 +154,6 @@ export default function RightSidebar() {
     }
   }, [])
 
-  // Load playlists when user gets authenticated
   useEffect(() => {
     if (spotifyProfile && spotifyTokens) {
       loadUserPlaylists()
@@ -274,7 +275,6 @@ export default function RightSidebar() {
       if (data?.url) {
         console.log('Opening auth window with URL:', data.url.substring(0, 100) + '...')
         
-        // Open a popup window for Spotify auth
         const width = 500
         const height = 700
         const left = window.screen.width / 2 - width / 2
