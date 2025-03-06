@@ -1,8 +1,11 @@
+
 .react-flow__node {
   border-radius: 8px;
   background: transparent;
   border: none;
   width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .react-flow__handle {
@@ -36,4 +39,19 @@
 
 .react-flow__attribution {
   background: transparent !important;
+}
+
+/* Text overflow handling */
+.react-flow__node-default {
+  overflow-wrap: break-word;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.react-flow__node-default p,
+.react-flow__node-default pre,
+.react-flow__node-default code {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }

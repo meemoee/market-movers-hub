@@ -104,14 +104,14 @@ export function AnalysisDisplay({
   if (!content) return null
 
   return (
-    <div className="relative">
+    <div className="relative w-full max-w-full overflow-hidden">
       <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5`}
+        className={`rounded-md border p-4 bg-accent/5 w-full`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
+        <div className="overflow-x-auto w-full max-w-full">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-[calc(100%-8px)]">
             {content}
           </ReactMarkdown>
         </div>
