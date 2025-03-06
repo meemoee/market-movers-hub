@@ -105,7 +105,7 @@ export function InsightsDisplay({
           {parentResearch.focusText && (
             <div className="mt-3 bg-accent/20 p-2 rounded-md border border-accent/20">
               <div className="text-sm font-medium mb-1">Research Focus:</div>
-              <div className="text-sm">{parentResearch.focusText}</div>
+              <div className="text-sm break-words">{parentResearch.focusText}</div>
             </div>
           )}
         </Card>
@@ -141,7 +141,7 @@ export function InsightsDisplay({
                   {isResolved ? 'Explanation' : 'Reasoning'}
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">{reasoning}</p>
+              <p className="text-sm text-muted-foreground leading-relaxed break-words">{reasoning}</p>
             </div>
           )}
         </Card>
@@ -166,12 +166,12 @@ export function InsightsDisplay({
               return (
                 <div 
                   key={index} 
-                  className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
+                  className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10 border border-accent/30' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
                   onClick={!matchingChild && onResearchArea ? () => onResearchArea(area) : undefined}
                 >
                   <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="text-sm leading-relaxed">{area}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm leading-relaxed break-words">{area}</p>
                     
                     <div className="flex gap-2 mt-2">
                       {matchingChild ? (
@@ -227,13 +227,14 @@ export function InsightsDisplay({
           <div className="mt-3 space-y-2">
             {childResearches.map((child) => (
               <div key={child.id} className="bg-accent/20 p-2 rounded-md border border-accent/20 flex justify-between items-center">
-                <div>
-                  <div className="text-sm font-medium">Focus: {child.focusText}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">Focus: {child.focusText}</div>
                 </div>
                 <Button 
                   onClick={child.onView}
                   variant="outline" 
                   size="sm"
+                  className="ml-2 flex-shrink-0"
                 >
                   <ArrowRightCircle className="h-4 w-4 mr-2" />
                   View Research

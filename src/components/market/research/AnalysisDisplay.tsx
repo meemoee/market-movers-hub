@@ -110,8 +110,8 @@ export function AnalysisDisplay({
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
+        <div className="overflow-x-auto max-w-full w-full">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
             {content}
           </ReactMarkdown>
         </div>

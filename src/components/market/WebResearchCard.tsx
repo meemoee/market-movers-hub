@@ -1141,7 +1141,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
           <div className="flex flex-wrap gap-2">
             {iter.queries.map((query, idx) => (
-              <Badge key={idx} variant="secondary" className="text-xs">
+              <Badge key={idx} variant="secondary" className="text-xs break-all">
                 {query}
               </Badge>
             ))}
@@ -1159,11 +1159,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       href={result.url} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline truncate block"
+                      className="text-primary hover:underline truncate block max-w-full overflow-hidden text-ellipsis"
                     >
                       {result.title || result.url}
                     </a>
-                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                    <p className="mt-1 line-clamp-2 text-muted-foreground break-words">
                       {result.content?.substring(0, 150)}...
                     </p>
                   </div>
@@ -1175,7 +1175,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         <div>
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
-          <div className="text-sm prose prose-sm overflow-hidden w-full">
+          <div className="text-sm overflow-hidden w-full">
             <AnalysisDisplay 
               content={iter.analysis || "Analysis in progress..."} 
               isStreaming={isCurrentlyStreaming}
@@ -1362,7 +1362,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       </span>
                     </div>
                   </AccordionTrigger>
-                  <AccordionContent className="px-2 pb-2">
+                  <AccordionContent className="px-2 pb-2 overflow-hidden">
                     {renderIterationContent(iter)}
                   </AccordionContent>
                 </AccordionItem>
