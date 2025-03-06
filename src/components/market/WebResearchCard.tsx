@@ -175,16 +175,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const findChildResearches = useCallback((parentId: string | null) => {
     if (!parentId || !savedResearch) return [];
     
-    const childResearches = savedResearch.filter(r => r.parent_research_id === parentId);
-    if (childResearches.length > 0) {
-      console.log(`Found ${childResearches.length} child researches for parent ${parentId}`);
-      return childResearches;
+    const foundChildResearches = savedResearch.filter(r => r.parent_research_id === parentId);
+    if (foundChildResearches.length > 0) {
+      console.log(`Found ${foundChildResearches.length} child researches for parent ${parentId}`);
+      return foundChildResearches;
     }
     
     return [];
   }, [savedResearch]);
   
-  const childResearches = loadedResearchId ? findChildResearches(loadedResearchId) : [];
+  const childResearchList = loadedResearchId ? findChildResearches(loadedResearchId) : [];
   const parentResearch = findParentResearch(parentResearchId);
 
   const loadSavedResearch = (research: SavedResearch) => {
@@ -1380,7 +1380,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText: focusText || undefined,
           onView: handleViewParentResearch
         } : undefined}
-        childResearches={childResearches.length > 0 ? childResearches.map(child => ({
+        childResearches={childResearchList.length > 0 ? childResearchList.map(child => ({
           id: child.id,
           focusText: child.focus_text || 'Unknown focus',
           onView: () => handleViewChildResearch(child)
