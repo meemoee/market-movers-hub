@@ -11,7 +11,7 @@ export function SourceItem({ url, title }: SourceItemProps) {
   const displayUrl = new URL(url).hostname
   
   return (
-    <div className="p-2 rounded-md border border-border/50 bg-background/50 flex flex-col w-full">
+    <div className="p-2 rounded-md border border-border/50 bg-background/50 flex flex-col w-full max-w-full">
       <div className="flex items-start gap-2 w-full">
         <div className="flex-1 min-w-0 overflow-hidden">
           <h3 className="text-sm font-medium truncate" title={displayTitle}>

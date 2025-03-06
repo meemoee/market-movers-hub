@@ -38,7 +38,7 @@ export function AnalysisDisplay({
   if (!content) return null
 
   return (
-    <div className="relative w-full">
+    <div className="relative w-full max-w-full overflow-hidden">
       <ContentContainer maxHeight={maxHeight} ref={scrollRef}>
         <MarkdownContent content={content} />
       </ContentContainer>
