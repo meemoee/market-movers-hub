@@ -203,7 +203,7 @@ export default function TopMoversList({
   const sortedMarkets = displayedMarkets;
 
   return (
-    <div className="flex flex-col w-full overflow-hidden">
+    <div className="flex flex-col w-full">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
         {!marketId && (
           <div className="flex items-center w-full px-4 py-3 border-b">
@@ -251,8 +251,8 @@ export default function TopMoversList({
         />
       </div>
       
-      <div className="w-full px-0 sm:px-4 -mt-20 overflow-hidden">
-        <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20 overflow-hidden">
+      <div className="w-full px-0 sm:px-4 -mt-20">
+        <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
           <InsightPostBox />
           <MarketStatsBento selectedInterval={selectedInterval} />
           

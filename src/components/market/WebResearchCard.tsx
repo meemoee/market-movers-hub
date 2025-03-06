@@ -1136,12 +1136,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     const isCurrentlyStreaming = isAnalyzing && iter.iteration === currentIteration;
     
     return (
-      <div className="space-y-4 w-full max-w-full overflow-hidden">
-        <div className="w-full">
+      <div className="space-y-4 w-full overflow-hidden">
+        <div>
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
-          <div className="flex flex-wrap gap-2 w-full">
+          <div className="flex flex-wrap gap-2">
             {iter.queries.map((query, idx) => (
-              <Badge key={idx} variant="secondary" className="text-xs break-all max-w-full">
+              <Badge key={idx} variant="secondary" className="text-xs">
                 {query}
               </Badge>
             ))}
@@ -1149,21 +1149,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
         
         {iter.results.length > 0 && (
-          <div className="w-full max-w-full">
+          <div>
             <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
-            <ScrollArea className="h-[150px] rounded-md border w-full">
+            <ScrollArea className="h-[150px] rounded-md border">
               <div className="p-4 space-y-2 w-full">
                 {iter.results.map((result, idx) => (
-                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded w-full overflow-hidden">
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
                     <a 
                       href={result.url} 
                       target="_blank" 
                       rel="noopener noreferrer"
-                      className="text-primary hover:underline truncate block max-w-full overflow-hidden text-ellipsis"
+                      className="text-primary hover:underline truncate block"
                     >
                       {result.title || result.url}
                     </a>
-                    <p className="mt-1 line-clamp-2 text-muted-foreground break-words">
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
                       {result.content?.substring(0, 150)}...
                     </p>
                   </div>
@@ -1173,9 +1173,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        <div className="w-full">
+        <div>
           <h4 className="text-sm font-medium mb-2">Analysis</h4>
-          <div className="text-sm w-full overflow-hidden">
+          <div className="text-sm prose prose-sm overflow-hidden w-full">
             <AnalysisDisplay 
               content={iter.analysis || "Analysis in progress..."} 
               isStreaming={isCurrentlyStreaming}
@@ -1187,7 +1187,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   };
 
   return (
-    <Card className="p-4 space-y-4 w-full">
+    <Card className="p-4 space-y-4">
       {parentResearch && (
         <div className="flex items-center gap-2 text-sm p-2 bg-accent/20 rounded-md mb-2">
           <ArrowLeftCircle className="h-4 w-4 text-muted-foreground" />
@@ -1336,8 +1336,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <ProgressDisplay messages={progress} />
       
       {iterations.length > 0 && (
-        <div className="border rounded-md overflow-hidden w-full">
-          <ScrollArea className={maxIterations > 3 ? "h-[400px] w-full" : "max-h-full w-full"}>
+        <div className="border rounded-md overflow-hidden">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
             <Accordion 
               type="multiple" 
               value={expandedIterations} 
@@ -1348,7 +1348,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 <AccordionItem 
                   key={`iteration-${iter.iteration}`} 
                   value={`iteration-${iter.iteration}`}
-                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""} w-full`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
                 >
                   <AccordionTrigger className="px-2 py-2 hover:no-underline">
                     <div className="flex items-center gap-2">
@@ -1362,7 +1362,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       </span>
                     </div>
                   </AccordionTrigger>
-                  <AccordionContent className="px-2 pb-2 w-full">
+                  <AccordionContent className="px-2 pb-2">
                     {renderIterationContent(iter)}
                   </AccordionContent>
                 </AccordionItem>
