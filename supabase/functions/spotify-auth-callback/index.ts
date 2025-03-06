@@ -94,7 +94,7 @@ serve(async (req) => {
       body: tokenParams.toString()
     })
 
-    console.log('Token response received:', tokenResponse.status)
+    console.log('Token response status:', tokenResponse.status)
     
     const responseText = await tokenResponse.text()
     console.log('Token response body:', responseText)
@@ -114,8 +114,12 @@ serve(async (req) => {
       }
     })
 
+    const profileResponseStatus = profileResponse.status
+    console.log('Profile response status:', profileResponseStatus)
+    
     if (!profileResponse.ok) {
       const errorText = await profileResponse.text()
+      console.error('Profile fetch error response:', errorText)
       throw new Error(`Failed to fetch Spotify profile: ${errorText}`)
     }
 

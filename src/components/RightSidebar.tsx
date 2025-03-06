@@ -54,7 +54,12 @@ export default function RightSidebar() {
 
     // Set up event listener for Spotify auth callback
     const handleAuthMessage = (event: MessageEvent) => {
+      console.log('Received postMessage event:', event.data)
+      
       if (event.data.type === 'spotify-auth-success') {
+        console.log('Auth success - tokens received:', !!event.data.tokens)
+        console.log('Auth success - profile received:', !!event.data.profile)
+        
         setSpotifyTokens(event.data.tokens)
         setSpotifyProfile(event.data.profile)
         setSpotifyAuthError(null)
@@ -63,6 +68,7 @@ export default function RightSidebar() {
         localStorage.setItem('spotify_tokens', JSON.stringify(event.data.tokens))
         localStorage.setItem('spotify_profile', JSON.stringify(event.data.profile))
       } else if (event.data.type === 'spotify-auth-error') {
+        console.error('Auth error:', event.data.error)
         setSpotifyAuthError(event.data.error)
       }
     }
@@ -177,6 +183,7 @@ export default function RightSidebar() {
 
   const handleConnectSpotify = async () => {
     try {
+      console.log('Initiating Spotify auth flow...')
       const { data, error } = await supabase.functions.invoke('spotify-auth')
       
       if (error) {
@@ -186,6 +193,8 @@ export default function RightSidebar() {
       }
       
       if (data?.url) {
+        console.log('Opening auth window with URL:', data.url.substring(0, 100) + '...')
+        
         // Open a popup window for Spotify auth
         const width = 500
         const height = 700
