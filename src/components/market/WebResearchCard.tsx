@@ -1107,20 +1107,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     if (!currentQueries.length) return null;
     
     return (
-      <div className="mb-4 border rounded-xl p-4 bg-gradient-to-br from-accent/5 to-background shadow-sm">
-        <h4 className="text-sm font-medium mb-3 flex items-center">
-          <Badge variant="outline" className="mr-2 bg-primary/10">Iteration {currentIteration || 1}</Badge>
-          Current Search Queries
+      <div className="mb-4 border rounded-md p-4 bg-accent/5">
+        <h4 className="text-sm font-medium mb-2">
+          Current Queries (Iteration {currentIteration || 1})
         </h4>
-        <div className="flex flex-wrap gap-2">
+        <div className="space-y-2">
           {currentQueries.map((query, index) => (
             <div 
               key={index} 
               className={`flex items-center gap-2 p-2 rounded-md text-sm ${
-                currentQueryIndex === index 
-                  ? 'bg-primary/10 border border-primary/30' 
-                  : 'bg-accent/10 border border-accent/20'
-              } transition-all duration-200`}
+                currentQueryIndex === index ? 'bg-primary/10 border border-primary/30' : 'border border-transparent'
+              }`}
             >
               {currentQueryIndex === index && (
                 <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
@@ -1144,7 +1141,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           <h4 className="text-sm font-medium mb-2">Search Queries</h4>
           <div className="flex flex-wrap gap-2">
             {iter.queries.map((query, idx) => (
-              <Badge key={idx} variant="outline" className="text-xs bg-accent/10 hover:bg-accent/20 transition-colors">
+              <Badge key={idx} variant="secondary" className="text-xs">
                 {query}
               </Badge>
             ))}
@@ -1153,25 +1150,31 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         {iter.results.length > 0 && (
           <div>
-            <h4 className="text-sm font-medium mb-2 flex items-center">
-              <Badge variant="outline" className="mr-2 bg-brand/10 text-brand-foreground">
-                {iter.results.length} {iter.results.length === 1 ? 'source' : 'sources'}
-              </Badge>
-              Search Results
-            </h4>
-            <SitePreviewList results={iter.results} />
+            <h4 className="text-sm font-medium mb-2">Sources ({iter.results.length})</h4>
+            <ScrollArea className="h-[150px] rounded-md border">
+              <div className="p-4 space-y-2 w-full">
+                {iter.results.map((result, idx) => (
+                  <div key={idx} className="text-xs hover:bg-accent/20 p-2 rounded">
+                    <a 
+                      href={result.url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline truncate block"
+                    >
+                      {result.title || result.url}
+                    </a>
+                    <p className="mt-1 line-clamp-2 text-muted-foreground">
+                      {result.content?.substring(0, 150)}...
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
           </div>
         )}
         
         <div>
-          <h4 className="text-sm font-medium mb-2 flex items-center">
-            <Badge variant={isCurrentlyStreaming ? "default" : "outline"} className="mr-2">
-              {isCurrentlyStreaming ? "Live Analysis" : "Analysis"}
-            </Badge>
-            {isCurrentlyStreaming && (
-              <span className="text-xs text-muted-foreground">Streaming in real-time...</span>
-            )}
-          </h4>
+          <h4 className="text-sm font-medium mb-2">Analysis</h4>
           <div className="text-sm prose prose-sm overflow-hidden w-full">
             <AnalysisDisplay 
               content={iter.analysis || "Analysis in progress..."} 
@@ -1333,61 +1336,39 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       <ProgressDisplay messages={progress} />
       
       {iterations.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-medium">Research Progress</h3>
-            <Badge variant={currentIteration === maxIterations ? "default" : "outline"}>
-              {currentIteration === maxIterations ? "Complete" : `${currentIteration}/${maxIterations} iterations`}
-            </Badge>
-          </div>
-          
-          <div className="w-full bg-accent/10 h-2 rounded-full overflow-hidden">
-            <div 
-              className="progress-bar"
-              style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
-            />
-          </div>
-
-          <div className="border rounded-xl overflow-hidden bg-gradient-to-br from-background to-accent/5 shadow-sm">
-            <ScrollArea className={maxIterations > 3 ? "h-[500px]" : "max-h-full"}>
-              <Accordion 
-                type="multiple" 
-                value={expandedIterations} 
-                onValueChange={setExpandedIterations}
-                className="w-full"
-              >
-                {iterations.map((iter) => (
-                  <AccordionItem 
-                    key={`iteration-${iter.iteration}`} 
-                    value={`iteration-${iter.iteration}`}
-                    className={`border-0 iteration-card ${iter.iteration === currentIteration ? 'iteration-active' : ''} ${iter.iteration === maxIterations ? "mb-0" : "mb-2"}`}
-                  >
-                    <AccordionTrigger className="iteration-header hover:no-underline">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
-                              className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary/80" : ""}>
-                          Iteration {iter.iteration}
-                        </Badge>
-                        <span className="text-sm">
-                          {iter.iteration === maxIterations 
-                            ? "Final Analysis" 
-                            : `${iter.results.length} sources found`}
-                        </span>
-                        {isAnalyzing && iter.iteration === currentIteration && (
-                          <span className="text-xs text-muted-foreground animate-pulse ml-2">
-                            Processing...
-                          </span>
-                        )}
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="p-4 pt-2">
-                      {renderIterationContent(iter)}
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            </ScrollArea>
-          </div>
+        <div className="border rounded-md overflow-hidden">
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
+            <Accordion 
+              type="multiple" 
+              value={expandedIterations} 
+              onValueChange={setExpandedIterations}
+              className="w-full"
+            >
+              {iterations.map((iter) => (
+                <AccordionItem 
+                  key={`iteration-${iter.iteration}`} 
+                  value={`iteration-${iter.iteration}`}
+                  className={`px-2 ${iter.iteration === maxIterations ? "border-b-0" : ""}`}
+                >
+                  <AccordionTrigger className="px-2 py-2 hover:no-underline">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={iter.iteration === maxIterations ? "default" : "outline"} 
+                             className={isAnalyzing && iter.iteration === currentIteration ? "animate-pulse bg-primary" : ""}>
+                        Iteration {iter.iteration}
+                        {isAnalyzing && iter.iteration === currentIteration && " (Streaming...)"}
+                      </Badge>
+                      <span className="text-sm">
+                        {iter.iteration === maxIterations ? "Final Analysis" : `${iter.results.length} sources found`}
+                      </span>
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-2 pb-2">
+                    {renderIterationContent(iter)}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </ScrollArea>
         </div>
       )}
       
