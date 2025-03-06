@@ -203,7 +203,7 @@ export default function TopMoversList({
   const sortedMarkets = displayedMarkets;
 
   return (
-    <div className="flex flex-col w-full xl:max-w-[calc(150%)]">
+    <div className="flex flex-col w-full xl:max-w-[calc(100%)]">
       <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
         {!marketId && (
           <div className="flex items-center w-full px-4 py-3 border-b">
