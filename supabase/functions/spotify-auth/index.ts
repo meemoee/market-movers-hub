@@ -3,8 +3,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { corsHeaders } from '../_shared/cors.ts'
 
 const SPOTIFY_CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID') || ''
-const PROJECT_ID = Deno.env.get('PROJECT_REF') || 'lfmkoismabbhujycnqpn'
-const REDIRECT_URI = `https://${PROJECT_ID}.functions.supabase.co/spotify-auth-callback`
+// Use the exact static redirect URI that matches what's registered in Spotify
+const REDIRECT_URI = 'https://lfmkoismabbhujycnqpn.functions.supabase.co/spotify-auth-callback'
 
 console.log('Auth function initialized with:')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
@@ -43,7 +43,8 @@ serve(async (req) => {
     authUrl.searchParams.append('scope', scopes.join(' '))
     authUrl.searchParams.append('state', state)
     
-    console.log('Generated auth URL (partial):', authUrl.toString().substring(0, 100) + '...')
+    console.log('Generated auth URL with redirect URI:', REDIRECT_URI)
+    console.log('Full auth URL (partial):', authUrl.toString().substring(0, 100) + '...')
     
     return new Response(
       JSON.stringify({ url: authUrl.toString() }),

@@ -4,8 +4,8 @@ import { corsHeaders } from '../_shared/cors.ts'
 
 const SPOTIFY_CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID') || ''
 const SPOTIFY_CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET') || ''
-const PROJECT_ID = Deno.env.get('PROJECT_REF') || 'lfmkoismabbhujycnqpn'
-const REDIRECT_URI = `https://${PROJECT_ID}.functions.supabase.co/spotify-auth-callback`
+// Use the exact static redirect URI that matches what's registered in Spotify
+const REDIRECT_URI = 'https://lfmkoismabbhujycnqpn.functions.supabase.co/spotify-auth-callback'
 
 console.log('Callback function initialized with:')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
@@ -14,6 +14,7 @@ console.log('REDIRECT_URI:', REDIRECT_URI)
 
 serve(async (req) => {
   console.log('Received callback request')
+  console.log('Request URL:', req.url)
   
   // Always set CORS headers for browser preflight requests
   if (req.method === 'OPTIONS') {
@@ -66,6 +67,7 @@ serve(async (req) => {
 
   try {
     console.log('Starting token exchange...')
+    console.log('Using redirect URI for token exchange:', REDIRECT_URI)
     
     // Create proper Base64 encoded authorization string
     const credentials = `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
