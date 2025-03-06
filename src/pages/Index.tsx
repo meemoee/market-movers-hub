@@ -85,7 +85,7 @@ export default function Index() {
           </aside>
 
           <div className="flex-1 min-w-0 min-h-screen overflow-hidden max-w-[calc(100vw-280px)]">
-            <div className="max-w-4xl mx-auto overflow-hidden 2xl:pr-[400px]">
+            <div className="max-w-5xl mx-auto overflow-hidden 2xl:pr-[400px]">
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}
