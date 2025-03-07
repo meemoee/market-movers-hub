@@ -20,21 +20,18 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
-  // Optimize scrolling with less frequent updates
+  // This effect handles scrolling when new content arrives
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
     const currentContentLength = content?.length || 0
     
-    // Only auto-scroll if content is growing or streaming
+    // Only auto-scroll if content is growing (new chunks arriving)
+    // or if we're explicitly in streaming mode
     if (currentContentLength > prevContentLength.current || isStreaming) {
-      requestAnimationFrame(() => {
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight
-        }
-        setLastUpdateTime(Date.now())
-      })
+      scrollContainer.scrollTop = scrollContainer.scrollHeight
+      setLastUpdateTime(Date.now())
       
       if (isStreaming) {
         setStreamStatus('streaming')
@@ -64,41 +61,37 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
-  // Check for inactive streaming with longer intervals
+  // Check for inactive streaming periods
   useEffect(() => {
     if (!isStreaming) {
       setStreamStatus('idle')
       return
     }
     
+    // Monitor for inactive streaming
     const interval = setInterval(() => {
       const timeSinceUpdate = Date.now() - lastUpdateTime
-      if (timeSinceUpdate > 1500) { // Reduced from 2000ms to 1500ms
+      if (timeSinceUpdate > 3000) { // If no updates for 3+ seconds
         setStreamStatus('waiting')
-      } else if (streamStatus !== 'streaming') {
+      } else {
         setStreamStatus('streaming')
       }
     }, 1000)
     
     return () => clearInterval(interval)
-  }, [isStreaming, lastUpdateTime, streamStatus])
+  }, [isStreaming, lastUpdateTime])
   
-  // For continuous smooth scrolling during active streaming
+  // Continuously scroll during streaming when auto-scroll is enabled
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
-    let rafId: number
-    
-    const scrollToBottom = () => {
-      if (scrollRef.current && shouldAutoScroll) {
+    const interval = setInterval(() => {
+      if (scrollRef.current) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-        rafId = requestAnimationFrame(scrollToBottom)
       }
-    }
+    }, 100)
     
-    rafId = requestAnimationFrame(scrollToBottom)
-    
-    return () => cancelAnimationFrame(rafId)
+    return () => clearInterval(interval)
   }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
@@ -106,12 +99,12 @@ export function AnalysisDisplay({
   return (
     <div className="relative">
       <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
+        className={`rounded-md border p-4 bg-accent/5`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full max-w-full">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+        <div className="overflow-x-hidden w-full">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2">
             {content}
           </ReactMarkdown>
         </div>
@@ -125,8 +118,8 @@ export function AnalysisDisplay({
             </span>
             <div className="flex space-x-1">
               <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
-              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-75' : 'bg-muted-foreground'}`} />
               <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-150' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-300' : 'bg-muted-foreground'}`} />
             </div>
           </div>
         </div>

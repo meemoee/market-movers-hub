@@ -1,4 +1,3 @@
-
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileText, Globe } from "lucide-react"
 import { getFaviconUrl } from "@/utils/favicon"
@@ -14,17 +13,17 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
   if (!results.length) return null;
 
   return (
-    <ScrollArea className="h-[200px] rounded-md border p-4 w-full max-w-full">
+    <ScrollArea className="h-[200px] rounded-md border p-4">
       <div className="mb-2 text-sm text-muted-foreground">
         {results.length} {results.length === 1 ? 'source' : 'sources'} collected
       </div>
       {results.map((result, index) => (
-        <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg max-w-full">
-          <div className="flex items-center gap-2 w-full">
+        <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
+          <div className="flex items-center gap-2">
             <img 
               src={getFaviconUrl(result.url)} 
               alt=""
-              className="w-4 h-4 flex-shrink-0"
+              className="w-4 h-4"
               onError={(e) => {
                 const IconComponent = result.title ? FileText : Globe;
                 const svgString = `data:image/svg+xml,${encodeURIComponent(
@@ -37,7 +36,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
                 e.currentTarget.src = svgString;
               }}
             />
-            <h4 className="text-sm font-medium truncate overflow-hidden max-w-[calc(100%-1.5rem)]">
+            <h4 className="text-sm font-medium truncate overflow-hidden">
               {result.title || new URL(result.url).hostname}
             </h4>
           </div>
@@ -45,8 +44,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
             href={result.url} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="text-xs text-blue-500 hover:underline block mt-1 truncate overflow-hidden w-full"
-            title={result.url}
+            className="text-xs text-blue-500 hover:underline block mt-1 truncate overflow-hidden"
           >
             {result.url}
           </a>

@@ -512,11 +512,9 @@ export type Database = {
           analysis: string
           areas_for_research: Json
           created_at: string
-          focus_text: string | null
           id: string
           iterations: Json | null
           market_id: string | null
-          parent_research_id: string | null
           probability: string
           query: string
           sources: Json
@@ -527,11 +525,9 @@ export type Database = {
           analysis: string
           areas_for_research: Json
           created_at?: string
-          focus_text?: string | null
           id?: string
           iterations?: Json | null
           market_id?: string | null
-          parent_research_id?: string | null
           probability: string
           query: string
           sources: Json
@@ -542,11 +538,9 @@ export type Database = {
           analysis?: string
           areas_for_research?: Json
           created_at?: string
-          focus_text?: string | null
           id?: string
           iterations?: Json | null
           market_id?: string | null
-          parent_research_id?: string | null
           probability?: string
           query?: string
           sources?: Json
@@ -559,13 +553,6 @@ export type Database = {
             columns: ["market_id"]
             isOneToOne: false
             referencedRelation: "markets"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "web_research_parent_research_id_fkey"
-            columns: ["parent_research_id"]
-            isOneToOne: false
-            referencedRelation: "web_research"
             referencedColumns: ["id"]
           },
           {

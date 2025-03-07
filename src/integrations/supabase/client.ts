@@ -16,11 +16,6 @@ export const supabase = createClient<Database>(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-    },
-    global: {
-      headers: {
-        'x-client-info': 'lovable-project',
-      },
-    },
+    }
   }
 );
