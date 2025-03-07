@@ -1,3 +1,4 @@
+
 import { Send, Zap, TrendingUp, DollarSign, Music } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -19,6 +20,7 @@ export default function RightSidebar() {
   const [userPlaylists, setUserPlaylists] = useState<any[]>([])
   const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const codeVerifierRef = useRef<string | null>(null)
 
   interface Message {
     type: 'user' | 'assistant'
@@ -293,14 +295,21 @@ export default function RightSidebar() {
         return
       }
       
-      if (data?.url) {
-        console.log('Opening auth window with URL:', data.url.substring(0, 100) + '...')
+      if (data?.url && data?.codeVerifier) {
+        console.log('Received auth URL and code verifier')
+        console.log('Auth URL (partial):', data.url.substring(0, 100) + '...')
+        console.log('Code verifier received (length):', data.codeVerifier.length)
+        
+        // Store code verifier for later use
+        codeVerifierRef.current = data.codeVerifier
         
         const width = 500
         const height = 700
         const left = window.screen.width / 2 - width / 2
         const top = window.screen.height / 2 - height / 2
         
+        // Append the code_verifier to the auth callback URL as a query parameter
+        // This will be extracted in the callback function
         window.open(
           data.url,
           'Spotify Authentication',

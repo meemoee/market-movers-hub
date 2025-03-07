@@ -31,9 +31,11 @@ serve(async (req) => {
   const url = new URL(req.url)
   const code = url.searchParams.get('code')
   const error = url.searchParams.get('error')
+  const state = url.searchParams.get('state')
   
   console.log('Auth code received:', code ? 'yes' : 'no')
   console.log('Error received:', error || 'none')
+  console.log('State received:', state || 'none')
   
   if (error || !code) {
     console.error('Error or missing code:', error || 'No code received')
@@ -69,42 +71,61 @@ serve(async (req) => {
     console.log('Starting token exchange...')
     console.log('Using redirect URI for token exchange:', REDIRECT_URI)
     
-    // Create proper Base64 encoded authorization string
-    const credentials = `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
-    const authString = btoa(credentials)
-    
-    console.log('Authorization header prepared')
+    // Extract code verifier from the request
+    // This will be passed in the URL from the client when the auth flow completes
+    const codeVerifier = url.searchParams.get('code_verifier')
+    console.log('Code verifier received:', codeVerifier ? 'yes' : 'no')
     
     // Set up token exchange parameters
     const tokenParams = new URLSearchParams()
     tokenParams.append('grant_type', 'authorization_code')
     tokenParams.append('code', code)
     tokenParams.append('redirect_uri', REDIRECT_URI)
+    tokenParams.append('client_id', SPOTIFY_CLIENT_ID)
     
-    console.log('Token request parameters prepared')
+    // Add code_verifier for PKCE if it's present
+    if (codeVerifier) {
+      tokenParams.append('code_verifier', codeVerifier)
+      console.log('Added code_verifier to token request')
+    } else {
+      // Create proper Base64 encoded authorization string for client credentials flow
+      const credentials = `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
+      const authString = btoa(credentials)
+      console.log('Using client credentials (basic auth) flow')
+    }
     
     // Make the token exchange request
+    const requestHeaders: Record<string, string> = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Accept': 'application/json'
+    }
+    
+    // If no code_verifier, use client credentials (basic auth)
+    if (!codeVerifier) {
+      const credentials = `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
+      requestHeaders['Authorization'] = `Basic ${btoa(credentials)}`
+    }
+    
+    console.log('Token request headers prepared')
+    console.log('Making token request to Spotify API')
+    
     const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
       method: 'POST',
-      headers: {
-        'Authorization': `Basic ${authString}`,
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json'
-      },
+      headers: requestHeaders,
       body: tokenParams.toString()
     })
 
     console.log('Token response status:', tokenResponse.status)
     
     const responseText = await tokenResponse.text()
-    console.log('Token response body:', responseText)
+    console.log('Token response body (first 50 chars):', responseText.substring(0, 50) + '...')
     
     if (!tokenResponse.ok) {
       throw new Error(`Failed to exchange code for token: ${responseText}`)
     }
 
     const tokenData = JSON.parse(responseText)
-    console.log('Token data parsed successfully')
+    console.log('Token data parsed successfully, access token received:', !!tokenData.access_token)
     
     // Get user profile from Spotify
     console.log('Fetching user profile...')
