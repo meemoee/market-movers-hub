@@ -1,233 +1,132 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-interface InsightsRequest {
-  webContent: string;
-  analysis: string;
-  marketId?: string; 
-  marketQuestion?: string;
-}
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const { webContent, analysis, marketId, marketQuestion } = await req.json() as InsightsRequest;
+    const { webContent, analysis } = await req.json()
     
-    // Log request info for debugging
-    console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
-      webContentLength: webContent?.length || 0,
-      analysisLength: analysis?.length || 0,
-      marketQuestion: marketQuestion?.substring(0, 100) || 'Not provided'
-    });
+    // Trim content to avoid token limits
+    const trimmedContent = webContent.slice(0, 15000)
+    console.log('Web content length:', trimmedContent.length)
+    console.log('Analysis length:', analysis.length)
 
-    // Determine which API to use
-    const openAIKey = Deno.env.get('OPENAI_API_KEY');
-    const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
-    
-    if (!openAIKey && !openRouterKey) {
-      throw new Error('No API keys configured for LLM services');
-    }
-
-    // Choose OpenAI or OpenRouter based on available keys
-    const apiKey = openAIKey || openRouterKey;
-    const apiEndpoint = openAIKey 
-      ? 'https://api.openai.com/v1/chat/completions'
-      : 'https://openrouter.ai/api/v1/chat/completions';
-    
-    // Determine auth header based on which service we're using
-    const authHeader = openAIKey
-      ? { 'Authorization': `Bearer ${apiKey}` }
-      : { 'HTTP-Referer': 'https://hunchex.com', 'X-Title': 'Hunchex Analysis', 'Authorization': `Bearer ${apiKey}` };
-
-    // Set up content limiter to prevent tokens from being exceeded
-    const contentLimit = 70000; // Arbitrary limit to prevent token overages
-    const truncatedContent = webContent.length > contentLimit 
-      ? webContent.substring(0, contentLimit) + "... [content truncated]" 
-      : webContent;
-    
-    const truncatedAnalysis = analysis.length > 10000 
-      ? analysis.substring(0, 10000) + "... [analysis truncated]" 
-      : analysis;
-
-    // Create a system prompt that emphasizes the specific market context
-    const marketContext = marketId && marketQuestion
-      ? `\nYou are analyzing market ID: ${marketId} with the question: "${marketQuestion}"\n`
-      : '';
-
-    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}
-Your task is to analyze web research content and provide precise insights about prediction market outcomes.
-Based on your analysis, provide:
-1. A specific probability estimate (a percentage) for the market outcome
-2. A list of key areas that require additional research to improve confidence
-
-Format your answer as a JSON object with the following structure:
-{
-  "probability": "X%" (numerical percentage with % sign),
-  "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings)
-}`;
-
-    // Create a longer version of the prompt for a more nuanced response
-    const prompt = `Here is the web content I've collected during research:
----
-${truncatedContent}
----
-
-And here is my analysis of this content:
----
-${truncatedAnalysis}
----
-
-Based on all this information:
-1. What is your best estimate of the probability this market event will occur? Give a specific percentage.
-2. What are the most important areas where more research is needed to improve prediction accuracy?
-
-Remember to respond with a valid JSON object with "probability" and "areasForResearch" properties.`;
-
-    // Make the streaming request
-    const response = await fetch(apiEndpoint, {
+    const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
-        ...authHeader,
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Research App',
       },
       body: JSON.stringify({
-        model: openAIKey ? 'gpt-4o-mini' : 'openai/gpt-4o-mini',
+        model: "google/gemini-flash-1.5",
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
+          {
+            role: "system",
+            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with two fields: probability (a percentage string like '75%') and areasForResearch (an array of strings describing areas needing more research)."
+          },
+          {
+            role: "user",
+            content: `Based on this web research and analysis, provide the probability and areas needing more research:\n\nWeb Content:\n${trimmedContent}\n\nAnalysis:\n${analysis}`
+          }
         ],
-        stream: true,
-        temperature: 0.2
-      }),
-    });
+        response_format: { type: "json_object" },
+        stream: true
+      })
+    })
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`API error: ${response.status} ${errorText}`);
-      throw new Error(`API error: ${response.status} ${errorText}`);
+      console.error('OpenRouter API error:', response.status, await response.text())
+      throw new Error('Failed to get insights from OpenRouter')
     }
 
-    // Process the stream to ensure we get valid JSON
+    // A simple TransformStream that buffers incoming text until full SSE events are available
+    let buffer = ""
     const transformStream = new TransformStream({
-      start(controller) {
-        this.buffer = '';
-        this.jsonAccumulator = '';
-        this.jsonStarted = false;
-        this.jsonCompleted = false;
-      },
       transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk);
-        this.buffer += text;
+        const text = new TextDecoder().decode(chunk)
+        buffer += text
         
-        // Process events in buffer
-        const lines = this.buffer.split('\n');
-        this.buffer = lines.pop() || '';
-        
-        for (const line of lines) {
-          if (line.trim() && line.startsWith('data: ')) {
-            const dataStr = line.slice(6).trim();
-            if (dataStr === '[DONE]') {
-              // Finish JSON if we've started but not completed
-              if (this.jsonStarted && !this.jsonCompleted) {
-                try {
-                  const validJson = JSON.parse(this.jsonAccumulator);
-                  controller.enqueue(new TextEncoder().encode(
-                    `data: ${JSON.stringify({
-                      choices: [{
-                        delta: { content: "" },
-                        message: { content: JSON.stringify(validJson) }
-                      }]
-                    })}\n\n`
-                  ));
-                  this.jsonCompleted = true;
-                } catch (e) {
-                  // If we can't parse, send a default
-                  controller.enqueue(new TextEncoder().encode(
-                    `data: ${JSON.stringify({
-                      choices: [{
-                        delta: { content: "" },
-                        message: { content: JSON.stringify({
-                          probability: "50%",
-                          areasForResearch: ["Additional data", "Expert opinions"]
-                        })}
-                      }]
-                    })}\n\n`
-                  ));
-                }
-              }
-              controller.enqueue(new TextEncoder().encode(`data: [DONE]\n\n`));
-              continue;
-            }
+        // Keep processing the buffer until we can't find any more complete messages
+        while (true) {
+          const nlIndex = buffer.indexOf('\n')
+          if (nlIndex === -1) break
+          
+          const line = buffer.slice(0, nlIndex)
+          buffer = buffer.slice(nlIndex + 1)
+          
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6).trim()
+            if (data === '[DONE]') continue
             
             try {
-              const parsed = JSON.parse(dataStr);
-              const content = parsed.choices?.[0]?.delta?.content || '';
+              const parsed = JSON.parse(data)
+              const content = parsed.choices?.[0]?.delta?.content || 
+                            parsed.choices?.[0]?.message?.content || ""
               
               if (content) {
-                if (!this.jsonStarted && content.includes('{')) {
-                  this.jsonStarted = true;
-                  this.jsonAccumulator = content.substring(content.indexOf('{'));
-                } else if (this.jsonStarted && !this.jsonCompleted) {
-                  this.jsonAccumulator += content;
-                  if (content.includes('}') && this.isValidJson(this.jsonAccumulator)) {
-                    this.jsonCompleted = true;
-                  }
+                const event = {
+                  choices: [{
+                    delta: { content },
+                    message: { content }
+                  }]
                 }
+                controller.enqueue(
+                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
+                )
               }
-              
-              // Re-emit the event
-              controller.enqueue(new TextEncoder().encode(`data: ${dataStr}\n\n`));
-            } catch (e) {
-              console.error('Error processing stream chunk:', e);
+            } catch (err) {
+              console.debug('Parsing chunk (expected during streaming):', err)
             }
           }
         }
       },
       flush(controller) {
-        // Final cleanup and ensuring valid JSON was emitted
-        if (this.jsonStarted && !this.jsonCompleted) {
-          try {
-            // Try to complete the JSON or send default
-            const forceCompleted = this.jsonAccumulator + 
-              (this.jsonAccumulator.includes('}') ? '' : '}');
-            
-            controller.enqueue(new TextEncoder().encode(
-              `data: ${JSON.stringify({
-                choices: [{
-                  delta: { content: "" },
-                  message: { content: JSON.stringify({
-                    probability: "50%",
-                    areasForResearch: ["Additional market data", "Expert opinions"]
-                  })}
-                }]
-              })}\n\n`
-            ));
-          } catch (e) {
-            console.error('Error in flush:', e);
+        // Process any remaining complete messages in the buffer
+        if (buffer.trim()) {
+          const lines = buffer.split('\n')
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6).trim()
+              if (data === '[DONE]') continue
+              
+              try {
+                const parsed = JSON.parse(data)
+                const content = parsed.choices?.[0]?.delta?.content || 
+                              parsed.choices?.[0]?.message?.content || ""
+                
+                if (content) {
+                  const event = {
+                    choices: [{
+                      delta: { content },
+                      message: { content }
+                    }]
+                  }
+                  controller.enqueue(
+                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
+                  )
+                }
+              } catch (err) {
+                console.debug('Parsing final chunk (expected):', err)
+              }
+            }
           }
         }
-      },
-      isValidJson(str) {
-        try {
-          JSON.parse(str);
-          return true;
-        } catch (e) {
-          return false;
-        }
+        buffer = ""
       }
-    });
+    })
 
-    // Return the transformed streaming response
     return new Response(response.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
@@ -235,23 +134,16 @@ Remember to respond with a valid JSON object with "probability" and "areasForRes
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
       }
-    });
+    })
+
   } catch (error) {
-    console.error('Error in extract-research-insights:', error);
-    
+    console.error('Error in extract-research-insights:', error)
     return new Response(
-      JSON.stringify({ 
-        error: error.message || 'Unknown error',
-        probability: "50%",
-        areasForResearch: ["Error resolution", "Technical issues"]
-      }),
-      {
+      JSON.stringify({ error: error.message }),
+      { 
         status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
-    );
+    )
   }
-});
+})

@@ -513,7 +513,6 @@ export type Database = {
           areas_for_research: Json
           created_at: string
           id: string
-          iterations: Json | null
           market_id: string | null
           probability: string
           query: string
@@ -526,7 +525,6 @@ export type Database = {
           areas_for_research: Json
           created_at?: string
           id?: string
-          iterations?: Json | null
           market_id?: string | null
           probability: string
           query: string
@@ -539,7 +537,6 @@ export type Database = {
           areas_for_research?: Json
           created_at?: string
           id?: string
-          iterations?: Json | null
           market_id?: string | null
           probability?: string
           query?: string
