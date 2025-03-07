@@ -7,7 +7,6 @@ interface AnalysisRequest {
   query: string;
   question: string;
   marketId?: string; // Add market ID to the request
-  focusText?: string; // Add research focus to the request
 }
 
 const corsHeaders = {
@@ -22,14 +21,13 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query, question, marketId, focusText } = await req.json() as AnalysisRequest;
+    const { content, query, question, marketId } = await req.json() as AnalysisRequest;
     
     // Log request info for debugging
     console.log(`Analyze web content request for market ID ${marketId || 'unknown'}:`, {
       contentLength: content?.length || 0,
       query: query?.substring(0, 100) || 'Not provided',
-      question: question?.substring(0, 100) || 'Not provided',
-      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified'
+      question: question?.substring(0, 100) || 'Not provided'
     });
 
     // Determine which API to use
@@ -62,11 +60,7 @@ serve(async (req) => {
       ? `\nImportant context: You are analyzing content for prediction market ID: ${marketId}\n`
       : '';
 
-    const focusContext = focusText
-      ? `\nIMPORTANT: Focus your analysis specifically on: "${focusText}"\n`
-      : '';
-
-    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}
+    const systemPrompt = `You are an expert market research analyst.${marketContext}
 Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
 Provide a comprehensive, balanced analysis of the key information, focusing on facts that help assess probability.
 Be factual and evidence-based, not speculative.`;
@@ -79,7 +73,6 @@ ${truncatedContent}
 
 Based solely on the information in this content:
 1. What are the key facts and insights relevant to the market question "${question}"?
-${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
 2. What evidence supports or contradicts the proposition?
 3. How does this information affect the probability assessment?
 4. What conclusions can we draw about the likely outcome?
@@ -92,8 +85,6 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       headers: {
         ...authHeader,
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache',
-        'X-Accel-Buffering': 'no',
       },
       body: JSON.stringify({
         model: openAIKey ? 'gpt-4o-mini' : 'openai/gpt-4o-mini',
@@ -111,14 +102,13 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // Return the streaming response directly without transformation
+    // Return the streaming response
     return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache, no-transform',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no'
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
       }
     });
   } catch (error) {

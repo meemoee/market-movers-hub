@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -21,8 +22,7 @@ serve(async (req) => {
       question, 
       previousResults = "", 
       iteration = 1,
-      areasForResearch = [],
-      focusText = ""
+      areasForResearch = []
     } = requestData;
     
     // Use either question or query parameter
@@ -35,8 +35,7 @@ serve(async (req) => {
       description,
       previousResults: previousResults ? "present" : "absent",
       iteration,
-      areasForResearch: Array.isArray(areasForResearch) ? areasForResearch.length : 0,
-      focusText: focusText ? focusText.substring(0, 100) + "..." : "none"
+      areasForResearch: Array.isArray(areasForResearch) ? areasForResearch.length : 0
     });
     
     const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -49,13 +48,6 @@ serve(async (req) => {
       ${description ? `Market Description: ${description}` : ''}
       ${marketId ? `Market ID: ${marketId}` : ''}
     `;
-    
-    // Add research focus if provided
-    if (focusText) {
-      contextInfo += `
-        Research Focus: ${focusText}
-      `;
-    }
     
     // Add previous results and areas for research for iterations after the first
     if (iteration > 1 && previousResults) {
@@ -76,7 +68,6 @@ serve(async (req) => {
     if (iteration === 1) {
       systemPrompt = `You are a research query generator for a prediction market platform. 
       Given a prediction market question and description, generate 3 search queries that would help research this topic.
-      ${focusText ? `IMPORTANT: Focus specifically on researching: "${focusText}"` : ''}
       Focus on factual information that would help determine the likelihood of the event.
       Queries should be concise, specific, and varied to get a broad understanding of the topic.
       Output ONLY valid JSON in the following format:
@@ -90,7 +81,6 @@ serve(async (req) => {
     } else {
       systemPrompt = `You are a research query generator for a prediction market platform.
       Based on previous analysis and identified areas needing further research, generate 3 NEW search queries that address knowledge gaps.
-      ${focusText ? `IMPORTANT: Focus specifically on researching: "${focusText}"` : ''}
       Focus specifically on areas that need additional investigation based on previous research.
       Queries should be more targeted than previous iterations, diving deeper into unclear aspects.
       DO NOT repeat previous queries, but build upon what has been learned.
@@ -104,7 +94,7 @@ serve(async (req) => {
       }`;
     }
     
-    console.log(`Sending request to OpenRouter with ${iteration > 1 ? 'refined' : 'initial'} query generation${focusText ? ` focused on: ${focusText.substring(0, 50)}...` : ''}`);
+    console.log(`Sending request to OpenRouter with ${iteration > 1 ? 'refined' : 'initial'} query generation`);
     
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
