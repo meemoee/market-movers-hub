@@ -178,12 +178,19 @@ serve(async (req) => {
       tokenParams.append('code_verifier', codeVerifier);
       
       console.log('Token request with PKCE prepared');
-      console.log('Making token request to Spotify API');
+      
+      // Create Basic Auth header with client credentials
+      const credentials = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
+      const authHeader = `Basic ${credentials}`;
+      
+      console.log('Created Basic Auth header with client credentials');
+      console.log('Making token request to Spotify API with proper authorization');
       
       const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': authHeader,
           'Accept': 'application/json'
         },
         body: tokenParams.toString()
