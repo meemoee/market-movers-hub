@@ -104,8 +104,8 @@ serve(async (req) => {
                   throw new Error('Could not retrieve code verifier');
                 }
                 
-                // Exchange the authorization code for tokens with code_verifier
-                const response = await fetch('${req.url}', {
+                // Pass only the authorization code, not the full URL
+                const response = await fetch('${REDIRECT_URI}', {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json'
