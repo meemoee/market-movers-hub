@@ -63,25 +63,30 @@ export default function RightSidebar() {
               }
               
               const chunk = textDecoder.decode(value)
-              console.log('Received chunk:', chunk)
+              // Remove this log that prints each chunk
+              // console.log('Received chunk:', chunk)
               
               const lines = chunk.split('\n').filter(line => line.trim())
-              console.log('Processing lines:', lines)
+              // Remove this log of processed lines
+              // console.log('Processing lines:', lines)
               
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   const jsonStr = line.slice(6).trim()
-                  console.log('Processing JSON string:', jsonStr)
+                  // Remove this log of JSON string
+                  // console.log('Processing JSON string:', jsonStr)
                   
                   if (jsonStr === '[DONE]') continue
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
-                    console.log('Parsed JSON:', parsed)
+                    // Remove this log of parsed JSON
+                    // console.log('Parsed JSON:', parsed)
                     
                     const content = parsed.choices?.[0]?.delta?.content
                     if (content) {
-                      console.log('New content chunk:', content)
+                      // Remove this log of new content
+                      // console.log('New content chunk:', content)
                       accumulatedContent += content
                       setStreamingContent(accumulatedContent)
                     }
