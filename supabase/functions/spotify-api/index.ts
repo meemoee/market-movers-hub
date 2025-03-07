@@ -6,13 +6,18 @@ const SPOTIFY_CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID') || ''
 const SPOTIFY_CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET') || ''
 const REDIRECT_URI = 'https://lfmkoismabbhujycnqpn.functions.supabase.co/spotify-auth-callback'
 
-console.log('Spotify API proxy initialized with:')
+console.log('---------- SPOTIFY API PROXY INITIALIZED ----------')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
 console.log('SPOTIFY_CLIENT_SECRET length:', SPOTIFY_CLIENT_SECRET.length)
 
 serve(async (req) => {
+  console.log('---------- API REQUEST RECEIVED ----------')
+  console.log('Request method:', req.method)
+  console.log('Request URL:', req.url)
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS request (CORS preflight)')
     return new Response(null, { 
       headers: {
         ...corsHeaders,
@@ -27,7 +32,7 @@ serve(async (req) => {
     let requestData;
     try {
       requestData = await req.json();
-      console.log('Received request:', JSON.stringify(requestData, null, 2));
+      console.log('Received request for endpoint:', requestData.endpoint);
     } catch (e) {
       console.error('Failed to parse request body:', e);
       throw new Error('Invalid request body: ' + e.message);
@@ -42,16 +47,17 @@ serve(async (req) => {
     } = requestData;
     
     if (!endpoint) {
+      console.error('Missing endpoint parameter');
       throw new Error('Missing endpoint parameter');
     }
     
     if (!accessToken) {
+      console.error('Missing access token');
       throw new Error('Missing access token');
     }
     
     console.log(`Making ${method} request to Spotify API: ${endpoint}`);
-    console.log('Authorization token length:', accessToken.length);
-    console.log('Authorization token first 10 chars:', accessToken.substring(0, 10));
+    console.log('Authorization token first 10 chars:', accessToken.substring(0, 10) + '...');
     
     // First try with the current access token
     let response = await fetchFromSpotify(endpoint, method, body, accessToken);
@@ -69,8 +75,7 @@ serve(async (req) => {
           throw new Error('Failed to refresh access token: ' + JSON.stringify(refreshedTokens));
         }
         
-        console.log('Token refreshed successfully, new token length:', refreshedTokens.access_token.length);
-        console.log('New token first 10 chars:', refreshedTokens.access_token.substring(0, 10));
+        console.log('Token refreshed successfully, new token first 10 chars:', refreshedTokens.access_token.substring(0, 10) + '...');
         
         // Retry the original request with the new access token
         response = await fetchFromSpotify(endpoint, method, body, refreshedTokens.access_token);
@@ -163,7 +168,6 @@ async function fetchFromSpotify(endpoint: string, method: string, body: any, acc
     : `https://api.spotify.com/v1/${endpoint}`;
   
   console.log(`Calling Spotify API: ${method} ${url}`);
-  console.log(`Using Authorization: Bearer ${accessToken.substring(0, 5)}...`);
   
   const options: RequestInit = {
     method,
@@ -206,7 +210,6 @@ async function refreshAccessToken(refreshToken: string) {
   tokenParams.append('refresh_token', refreshToken);
   
   console.log('Making token refresh request with authorization header');
-  console.log('Using Basic auth with client credentials');
   
   // Make the token refresh request
   const response = await fetch('https://accounts.spotify.com/api/token', {

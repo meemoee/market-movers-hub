@@ -6,7 +6,7 @@ const SPOTIFY_CLIENT_ID = Deno.env.get('SPOTIFY_CLIENT_ID') || ''
 // Use the exact static redirect URI that matches what's registered in Spotify
 const REDIRECT_URI = 'https://lfmkoismabbhujycnqpn.functions.supabase.co/spotify-auth-callback'
 
-console.log('Auth function initialized with:')
+console.log('---------- AUTH FUNCTION INITIALIZED ----------')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
 console.log('REDIRECT_URI:', REDIRECT_URI)
 
@@ -33,8 +33,13 @@ async function generateCodeChallenge(codeVerifier: string) {
 }
 
 serve(async (req) => {
+  console.log('---------- AUTH REQUEST RECEIVED ----------')
+  console.log('Request method:', req.method)
+  console.log('Request URL:', req.url)
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS request (CORS preflight)')
     return new Response(null, { 
       headers: {
         ...corsHeaders,
@@ -48,10 +53,14 @@ serve(async (req) => {
     
     // Add state parameter for security
     const state = crypto.randomUUID()
+    console.log('Generated state:', state)
     
     // Generate PKCE code verifier and challenge
     const codeVerifier = generateRandomString(128)
+    console.log('Generated code verifier:', codeVerifier.substring(0, 10) + '...')
+    
     const codeChallenge = await generateCodeChallenge(codeVerifier)
+    console.log('Generated code challenge:', codeChallenge.substring(0, 10) + '...')
     
     const scopes = [
       'user-read-private',
@@ -60,6 +69,7 @@ serve(async (req) => {
       'user-read-recently-played',
       'playlist-read-private'
     ]
+    console.log('Using scopes:', scopes.join(', '))
     
     // Generate Spotify authorization URL with proper encoding
     const authUrl = new URL('https://accounts.spotify.com/authorize')
@@ -74,8 +84,6 @@ serve(async (req) => {
     
     console.log('Generated auth URL with redirect URI:', REDIRECT_URI)
     console.log('Full auth URL (partial):', authUrl.toString().substring(0, 100) + '...')
-    console.log('Using PKCE with code_challenge:', codeChallenge.substring(0, 10) + '...')
-    console.log('Code verifier (for verification):', codeVerifier.substring(0, 10) + '...')
     
     return new Response(
       JSON.stringify({ 

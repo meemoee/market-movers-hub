@@ -7,17 +7,19 @@ const SPOTIFY_CLIENT_SECRET = Deno.env.get('SPOTIFY_CLIENT_SECRET') || ''
 // Use the exact static redirect URI that matches what's registered in Spotify
 const REDIRECT_URI = 'https://lfmkoismabbhujycnqpn.functions.supabase.co/spotify-auth-callback'
 
-console.log('Callback function initialized with:')
+console.log('---------- CALLBACK FUNCTION INITIALIZED ----------')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
 console.log('SPOTIFY_CLIENT_SECRET length:', SPOTIFY_CLIENT_SECRET.length)
 console.log('REDIRECT_URI:', REDIRECT_URI)
 
 serve(async (req) => {
-  console.log('Received callback request')
+  console.log('---------- CALLBACK REQUEST RECEIVED ----------')
+  console.log('Request method:', req.method)
   console.log('Request URL:', req.url)
   
   // Always set CORS headers for browser preflight requests
   if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS request (CORS preflight)')
     return new Response(null, { 
       headers: {
         ...corsHeaders,
@@ -33,7 +35,7 @@ serve(async (req) => {
   const error = url.searchParams.get('error')
   const state = url.searchParams.get('state')
   
-  console.log('Auth code received:', code ? 'yes' : 'no')
+  console.log('Auth code received:', code ? `yes (${code.substring(0, 5)}...)` : 'no')
   console.log('Error received:', error || 'none')
   console.log('State received:', state || 'none')
   
@@ -45,6 +47,7 @@ serve(async (req) => {
           <title>Spotify Authentication Failed</title>
           <script>
             window.onload = function() {
+              console.log("Auth failed, posting message to opener");
               window.opener.postMessage({ 
                 type: 'spotify-auth-error', 
                 error: '${error || 'No authorization code received'}' 
@@ -68,8 +71,7 @@ serve(async (req) => {
   }
 
   try {
-    console.log('Starting token exchange...')
-    console.log('Using redirect URI for token exchange:', REDIRECT_URI)
+    console.log('Starting token exchange process...')
     
     // This is a page that will get the code_verifier from the opener window's localStorage
     // and pass it to the parent window to complete the PKCE flow
@@ -99,11 +101,13 @@ serve(async (req) => {
 
             window.onload = async function() {
               try {
+                console.log("Callback page loaded, getting code verifier");
                 const codeVerifier = getCodeVerifier();
                 if (!codeVerifier) {
                   throw new Error('Could not retrieve code verifier');
                 }
                 
+                console.log("Got code verifier, sending to server for token exchange");
                 // Pass only the authorization code, not the full URL
                 const response = await fetch('${REDIRECT_URI}', {
                   method: 'POST',
@@ -122,6 +126,7 @@ serve(async (req) => {
                 }
                 
                 const data = await response.json();
+                console.log("Token exchange successful, posting message to opener");
                 // Post message to opener window with the results
                 window.opener.postMessage(data, '*');
               } catch (error) {
@@ -146,6 +151,7 @@ serve(async (req) => {
 
     // For GET requests, return the HTML that will execute the client-side code
     if (req.method === 'GET') {
+      console.log('Handling GET request, sending PKCE exchange HTML')
       return new Response(
         pkceExchangeHtml,
         { 
@@ -160,12 +166,23 @@ serve(async (req) => {
 
     // For POST requests, handle the token exchange server-side
     if (req.method === 'POST') {
-      const requestBody = await req.json();
+      console.log('Handling POST request for token exchange')
+      
+      let requestBody;
+      try {
+        requestBody = await req.json();
+        console.log('Parsed request body successfully')
+      } catch (e) {
+        console.error('Failed to parse request body:', e)
+        throw new Error(`Invalid request body: ${e.message}`)
+      }
+      
       const codeVerifier = requestBody.code_verifier;
       
-      console.log('Code verifier received from client:', codeVerifier ? 'yes' : 'no');
+      console.log('Code verifier received from client:', codeVerifier ? `yes (${codeVerifier.substring(0, 5)}...)` : 'no');
       
       if (!codeVerifier) {
+        console.error('Missing code_verifier in request')
         throw new Error('Missing code_verifier in request');
       }
       
@@ -177,14 +194,14 @@ serve(async (req) => {
       tokenParams.append('client_id', SPOTIFY_CLIENT_ID);
       tokenParams.append('code_verifier', codeVerifier);
       
-      console.log('Token request with PKCE prepared');
+      console.log('Token request with PKCE prepared')
       
       // Create Basic Auth header with client credentials
       const credentials = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
       const authHeader = `Basic ${credentials}`;
       
-      console.log('Created Basic Auth header with client credentials');
-      console.log('Making token request to Spotify API with proper authorization');
+      console.log('Created Basic Auth header with client credentials')
+      console.log('Making token request to Spotify API')
       
       const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
@@ -202,6 +219,7 @@ serve(async (req) => {
       console.log('Token response body (first 50 chars):', responseText.substring(0, 50) + '...');
       
       if (!tokenResponse.ok) {
+        console.error(`Failed to exchange code for token: ${responseText}`);
         throw new Error(`Failed to exchange code for token: ${responseText}`);
       }
 
@@ -245,6 +263,7 @@ serve(async (req) => {
     }
     
     // If neither GET nor POST, return method not allowed
+    console.error('Unsupported method:', req.method)
     return new Response(
       JSON.stringify({ error: 'Method not allowed' }),
       { 
