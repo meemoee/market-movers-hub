@@ -43,8 +43,10 @@ serve(async (req) => {
       throw new Error('Missing access token')
     }
     
-    // First try with the current access token
     console.log(`Making ${method} request to Spotify API: ${endpoint}`)
+    console.log('Authorization token length:', accessToken.length)
+    
+    // First try with the current access token
     let response = await fetchFromSpotify(endpoint, method, body, accessToken)
     console.log('Initial response status:', response.status)
     
@@ -52,7 +54,13 @@ serve(async (req) => {
     if (response.status === 401 && refreshToken) {
       console.log('Access token expired, refreshing token...')
       const refreshedTokens = await refreshAccessToken(refreshToken)
-      console.log('Token refreshed successfully')
+      
+      if (!refreshedTokens.access_token) {
+        console.error('Token refresh failed:', refreshedTokens)
+        throw new Error('Failed to refresh access token: ' + JSON.stringify(refreshedTokens))
+      }
+      
+      console.log('Token refreshed successfully, new token length:', refreshedTokens.access_token.length)
       
       // Retry the original request with the new access token
       response = await fetchFromSpotify(endpoint, method, body, refreshedTokens.access_token)
@@ -112,7 +120,12 @@ serve(async (req) => {
 async function parseResponse(response: Response) {
   const contentType = response.headers.get('content-type') || ''
   if (contentType.includes('application/json')) {
-    return await response.json()
+    try {
+      return await response.json()
+    } catch (e) {
+      console.error('Failed to parse JSON response:', e)
+      return await response.text()
+    }
   } else {
     return await response.text()
   }
@@ -125,6 +138,7 @@ async function fetchFromSpotify(endpoint: string, method: string, body: any, acc
     : `https://api.spotify.com/v1/${endpoint}`
   
   console.log(`Calling Spotify API: ${method} ${url}`)
+  console.log(`Using Authorization: Bearer ${accessToken.substring(0, 5)}...`)
   
   const options: RequestInit = {
     method,
@@ -138,7 +152,18 @@ async function fetchFromSpotify(endpoint: string, method: string, body: any, acc
     options.body = JSON.stringify(body)
   }
   
-  return fetch(url, options)
+  try {
+    const response = await fetch(url, options)
+    
+    if (!response.ok) {
+      console.error(`Spotify API error (${response.status}):`, await response.text().catch(() => 'Could not read error body'))
+    }
+    
+    return response
+  } catch (error) {
+    console.error('Network error calling Spotify API:', error)
+    throw error
+  }
 }
 
 // Helper function to refresh the access token
@@ -154,6 +179,8 @@ async function refreshAccessToken(refreshToken: string) {
   tokenParams.append('grant_type', 'refresh_token')
   tokenParams.append('refresh_token', refreshToken)
   
+  console.log('Making token refresh request with authorization header')
+  
   // Make the token refresh request
   const response = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
@@ -166,6 +193,7 @@ async function refreshAccessToken(refreshToken: string) {
   
   if (!response.ok) {
     const errorText = await response.text()
+    console.error(`Token refresh failed (${response.status}):`, errorText)
     throw new Error(`Failed to refresh token: ${errorText}`)
   }
   

@@ -1,4 +1,3 @@
-
 import { Send, Zap, TrendingUp, DollarSign, Music } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -60,6 +59,7 @@ export default function RightSidebar() {
 
     try {
       console.log(`Calling Spotify API (${method}): ${endpoint}`)
+      console.log('Using access token:', spotifyTokens.access_token.substring(0, 10) + '...')
       
       const response = await supabase.functions.invoke<SpotifyApiResponse>('spotify-api', {
         body: {
@@ -71,12 +71,15 @@ export default function RightSidebar() {
         }
       });
       
+      console.log('API response received:', response)
+      
       // Type assertion to access the data as SpotifyApiResponse
       const responseData = response.data as SpotifyApiResponse;
       
       if (responseData?.refreshedTokens) {
         console.log('Updating tokens with refreshed values')
         setSpotifyTokens(responseData.refreshedTokens)
+        // Save the updated tokens to localStorage
         localStorage.setItem('spotify_tokens', JSON.stringify(responseData.refreshedTokens))
       }
 
@@ -151,12 +154,13 @@ export default function RightSidebar() {
         console.log('Auth success - tokens received:', !!event.data.tokens)
         console.log('Auth success - profile received:', !!event.data.profile)
         
+        // Store tokens and profile in localStorage for persistence
+        localStorage.setItem('spotify_tokens', JSON.stringify(event.data.tokens))
+        localStorage.setItem('spotify_profile', JSON.stringify(event.data.profile))
+        
         setSpotifyTokens(event.data.tokens)
         setSpotifyProfile(event.data.profile)
         setSpotifyAuthError(null)
-        
-        localStorage.setItem('spotify_tokens', JSON.stringify(event.data.tokens))
-        localStorage.setItem('spotify_profile', JSON.stringify(event.data.profile))
       } else if (event.data.type === 'spotify-auth-error') {
         console.error('Auth error:', event.data.error)
         setSpotifyAuthError(event.data.error)
