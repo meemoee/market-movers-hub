@@ -75,6 +75,7 @@ serve(async (req) => {
     console.log('Generated auth URL with redirect URI:', REDIRECT_URI)
     console.log('Full auth URL (partial):', authUrl.toString().substring(0, 100) + '...')
     console.log('Using PKCE with code_challenge:', codeChallenge.substring(0, 10) + '...')
+    console.log('Code verifier (for verification):', codeVerifier.substring(0, 10) + '...')
     
     return new Response(
       JSON.stringify({ 

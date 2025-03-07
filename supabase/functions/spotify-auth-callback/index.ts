@@ -71,136 +71,192 @@ serve(async (req) => {
     console.log('Starting token exchange...')
     console.log('Using redirect URI for token exchange:', REDIRECT_URI)
     
-    // Extract code verifier from the request
-    // This will be passed in the URL from the client when the auth flow completes
-    const codeVerifier = url.searchParams.get('code_verifier')
-    console.log('Code verifier received:', codeVerifier ? 'yes' : 'no')
-    
-    // Set up token exchange parameters
-    const tokenParams = new URLSearchParams()
-    tokenParams.append('grant_type', 'authorization_code')
-    tokenParams.append('code', code)
-    tokenParams.append('redirect_uri', REDIRECT_URI)
-    tokenParams.append('client_id', SPOTIFY_CLIENT_ID)
-    
-    // Add code_verifier for PKCE if it's present
-    if (codeVerifier) {
-      tokenParams.append('code_verifier', codeVerifier)
-      console.log('Added code_verifier to token request')
-    } else {
-      // Create proper Base64 encoded authorization string for client credentials flow
-      const credentials = `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
-      const authString = btoa(credentials)
-      console.log('Using client credentials (basic auth) flow')
-    }
-    
-    // Make the token exchange request
-    const requestHeaders: Record<string, string> = {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Accept': 'application/json'
-    }
-    
-    // If no code_verifier, use client credentials (basic auth)
-    if (!codeVerifier) {
-      const credentials = `${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`
-      requestHeaders['Authorization'] = `Basic ${btoa(credentials)}`
-    }
-    
-    console.log('Token request headers prepared')
-    console.log('Making token request to Spotify API')
-    
-    const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: requestHeaders,
-      body: tokenParams.toString()
-    })
-
-    console.log('Token response status:', tokenResponse.status)
-    
-    const responseText = await tokenResponse.text()
-    console.log('Token response body (first 50 chars):', responseText.substring(0, 50) + '...')
-    
-    if (!tokenResponse.ok) {
-      throw new Error(`Failed to exchange code for token: ${responseText}`)
-    }
-
-    const tokenData = JSON.parse(responseText)
-    console.log('Token data parsed successfully, access token received:', !!tokenData.access_token)
-    
-    // Get user profile from Spotify
-    console.log('Fetching user profile...')
-    const profileResponse = await fetch('https://api.spotify.com/v1/me', {
-      headers: {
-        'Authorization': `Bearer ${tokenData.access_token}`
-      }
-    })
-
-    const profileResponseStatus = profileResponse.status
-    console.log('Profile response status:', profileResponseStatus)
-    
-    if (!profileResponse.ok) {
-      const errorText = await profileResponse.text()
-      console.error('Profile fetch error response:', errorText)
-      throw new Error(`Failed to fetch Spotify profile: ${errorText}`)
-    }
-
-    const profileData = await profileResponse.json()
-    console.log('Profile data fetched successfully for:', profileData.display_name)
-    
-    return new Response(
-      `<html>
+    // This is a page that will get the code_verifier from the opener window's sessionStorage
+    // and pass it to the parent window to complete the PKCE flow
+    const pkceExchangeHtml = `
+      <html>
         <head>
-          <title>Spotify Authentication Successful</title>
+          <title>Completing Authentication</title>
           <script>
-            window.onload = function() {
-              window.opener.postMessage({
-                type: 'spotify-auth-success',
-                tokens: ${JSON.stringify(tokenData)},
-                profile: ${JSON.stringify(profileData)}
-              }, '*');
-              window.close();
+            function getCodeVerifier() {
+              // The parent window stored the code_verifier in sessionStorage
+              const codeVerifier = window.opener.sessionStorage.getItem('spotify_code_verifier');
+              console.log("Code verifier from sessionStorage:", codeVerifier ? "found" : "not found");
+              
+              if (!codeVerifier) {
+                window.opener.postMessage({ 
+                  type: 'spotify-auth-error', 
+                  error: 'Code verifier not found in session storage' 
+                }, '*');
+                window.close();
+                return null;
+              }
+
+              // Remove it from sessionStorage after using it
+              window.opener.sessionStorage.removeItem('spotify_code_verifier');
+              return codeVerifier;
+            }
+
+            window.onload = async function() {
+              const codeVerifier = getCodeVerifier();
+              if (!codeVerifier) return;
+              
+              try {
+                // Exchange the authorization code for tokens with code_verifier
+                const response = await fetch('${req.url}', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({
+                    code: '${code}',
+                    code_verifier: codeVerifier
+                  })
+                });
+                
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  throw new Error(\`Token exchange failed: \${errorText}\`);
+                }
+                
+                const data = await response.json();
+                window.opener.postMessage(data, '*');
+              } catch (error) {
+                console.error('Error during token exchange:', error);
+                window.opener.postMessage({ 
+                  type: 'spotify-auth-error', 
+                  error: error.message 
+                }, '*');
+              } finally {
+                window.close();
+              }
             }
           </script>
         </head>
         <body>
-          <p>Authentication successful! This window will close automatically.</p>
+          <p>Completing authentication. This window will close automatically.</p>
         </body>
-      </html>`,
-      { 
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'text/html'
+      </html>
+    `;
+
+    // For GET requests, return the HTML that will execute the client-side code
+    if (req.method === 'GET') {
+      return new Response(
+        pkceExchangeHtml,
+        { 
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'text/html'
+          },
+          status: 200 
+        }
+      );
+    }
+
+    // For POST requests, handle the token exchange server-side
+    if (req.method === 'POST') {
+      const requestBody = await req.json();
+      const codeVerifier = requestBody.code_verifier;
+      
+      console.log('Code verifier received from client:', codeVerifier ? 'yes' : 'no');
+      
+      if (!codeVerifier) {
+        throw new Error('Missing code_verifier in request');
+      }
+      
+      // Set up token exchange parameters
+      const tokenParams = new URLSearchParams();
+      tokenParams.append('grant_type', 'authorization_code');
+      tokenParams.append('code', code);
+      tokenParams.append('redirect_uri', REDIRECT_URI);
+      tokenParams.append('client_id', SPOTIFY_CLIENT_ID);
+      tokenParams.append('code_verifier', codeVerifier);
+      
+      console.log('Token request with PKCE prepared');
+      console.log('Making token request to Spotify API');
+      
+      const tokenResponse = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
         },
-        status: 200 
+        body: tokenParams.toString()
+      });
+
+      console.log('Token response status:', tokenResponse.status);
+      
+      const responseText = await tokenResponse.text();
+      console.log('Token response body (first 50 chars):', responseText.substring(0, 50) + '...');
+      
+      if (!tokenResponse.ok) {
+        throw new Error(`Failed to exchange code for token: ${responseText}`);
       }
-    )
-  } catch (error) {
-    console.error('Error during token exchange:', error)
+
+      const tokenData = JSON.parse(responseText);
+      console.log('Token data parsed successfully, access token received:', !!tokenData.access_token);
+      
+      // Get user profile from Spotify
+      console.log('Fetching user profile...');
+      const profileResponse = await fetch('https://api.spotify.com/v1/me', {
+        headers: {
+          'Authorization': `Bearer ${tokenData.access_token}`
+        }
+      });
+
+      const profileResponseStatus = profileResponse.status;
+      console.log('Profile response status:', profileResponseStatus);
+      
+      if (!profileResponse.ok) {
+        const errorText = await profileResponse.text();
+        console.error('Profile fetch error response:', errorText);
+        throw new Error(`Failed to fetch Spotify profile: ${errorText}`);
+      }
+
+      const profileData = await profileResponse.json();
+      console.log('Profile data fetched successfully for:', profileData.display_name);
+      
+      return new Response(
+        JSON.stringify({
+          type: 'spotify-auth-success',
+          tokens: tokenData,
+          profile: profileData
+        }),
+        { 
+          headers: { 
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          },
+          status: 200 
+        }
+      );
+    }
+    
+    // If neither GET nor POST, return method not allowed
     return new Response(
-      `<html>
-        <head>
-          <title>Spotify Authentication Failed</title>
-          <script>
-            window.onload = function() {
-              window.opener.postMessage({ 
-                type: 'spotify-auth-error', 
-                error: '${error.message.replace(/'/g, "\\'")}' 
-              }, '*');
-              window.close();
-            }
-          </script>
-        </head>
-        <body>
-          <p>Authentication failed. This window will close automatically.</p>
-        </body>
-      </html>`,
+      JSON.stringify({ error: 'Method not allowed' }),
       { 
         headers: { 
           ...corsHeaders,
-          'Content-Type': 'text/html'
+          'Content-Type': 'application/json'
+        },
+        status: 405 
+      }
+    );
+  } catch (error) {
+    console.error('Error during token exchange:', error);
+    return new Response(
+      JSON.stringify({ 
+        type: 'spotify-auth-error', 
+        error: error.message 
+      }),
+      { 
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
         },
         status: 500 
       }
-    )
+    );
   }
-})
+});

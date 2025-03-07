@@ -308,10 +308,14 @@ export default function RightSidebar() {
         const left = window.screen.width / 2 - width / 2
         const top = window.screen.height / 2 - height / 2
         
-        // Append the code_verifier to the auth callback URL as a query parameter
-        // This will be extracted in the callback function
+        // Append the code_verifier to the callback URL
+        // This is crucial for the PKCE flow
+        const authUrl = new URL(data.url)
+        // Store the code verifier in sessionStorage for when the popup redirects
+        sessionStorage.setItem('spotify_code_verifier', data.codeVerifier)
+        
         window.open(
-          data.url,
+          authUrl.toString(),
           'Spotify Authentication',
           `width=${width},height=${height},left=${left},top=${top}`
         )
