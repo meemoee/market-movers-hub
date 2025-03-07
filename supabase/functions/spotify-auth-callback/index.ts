@@ -11,6 +11,7 @@ console.log('---------- CALLBACK FUNCTION INITIALIZED ----------')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
 console.log('SPOTIFY_CLIENT_SECRET length:', SPOTIFY_CLIENT_SECRET.length)
 console.log('REDIRECT_URI:', REDIRECT_URI)
+console.log('CORS headers:', corsHeaders)
 
 serve(async (req) => {
   console.log('---------- CALLBACK REQUEST RECEIVED ----------')
@@ -29,8 +30,11 @@ serve(async (req) => {
     })
   }
 
-  // Get the authorization code from the URL query parameters
+  // For GET requests directly from Spotify redirect
   const url = new URL(req.url)
+  console.log('URL pathname:', url.pathname)
+  console.log('URL search params:', Array.from(url.searchParams.entries()))
+  
   const code = url.searchParams.get('code')
   const error = url.searchParams.get('error')
   const state = url.searchParams.get('state')
@@ -172,6 +176,7 @@ serve(async (req) => {
       try {
         requestBody = await req.json();
         console.log('Parsed request body successfully')
+        console.log('Request body keys:', Object.keys(requestBody))
       } catch (e) {
         console.error('Failed to parse request body:', e)
         throw new Error(`Invalid request body: ${e.message}`)
@@ -195,6 +200,10 @@ serve(async (req) => {
       tokenParams.append('code_verifier', codeVerifier);
       
       console.log('Token request with PKCE prepared')
+      console.log('Using code:', code.substring(0, 10) + '...')
+      console.log('Using code verifier:', codeVerifier.substring(0, 10) + '...')
+      console.log('Using client ID:', SPOTIFY_CLIENT_ID.substring(0, 5) + '...')
+      console.log('Using redirect URI:', REDIRECT_URI)
       
       // Create Basic Auth header with client credentials
       const credentials = btoa(`${SPOTIFY_CLIENT_ID}:${SPOTIFY_CLIENT_SECRET}`);
@@ -223,11 +232,17 @@ serve(async (req) => {
         throw new Error(`Failed to exchange code for token: ${responseText}`);
       }
 
-      const tokenData = JSON.parse(responseText);
-      console.log('Token data parsed successfully, access token received:', !!tokenData.access_token);
+      let tokenData;
+      try {
+        tokenData = JSON.parse(responseText);
+        console.log('Token data parsed successfully, access token received:', !!tokenData.access_token);
+      } catch (e) {
+        console.error('Failed to parse token response:', e);
+        throw new Error(`Failed to parse token response: ${e.message}`);
+      }
       
       // Get user profile from Spotify
-      console.log('Fetching user profile...');
+      console.log('Fetching user profile with access token...');
       const profileResponse = await fetch('https://api.spotify.com/v1/me', {
         headers: {
           'Authorization': `Bearer ${tokenData.access_token}`
@@ -243,8 +258,14 @@ serve(async (req) => {
         throw new Error(`Failed to fetch Spotify profile: ${errorText}`);
       }
 
-      const profileData = await profileResponse.json();
-      console.log('Profile data fetched successfully for:', profileData.display_name);
+      let profileData;
+      try {
+        profileData = await profileResponse.json();
+        console.log('Profile data fetched successfully for:', profileData.display_name);
+      } catch (e) {
+        console.error('Failed to parse profile response:', e);
+        throw new Error(`Failed to parse profile response: ${e.message}`);
+      }
       
       return new Response(
         JSON.stringify({

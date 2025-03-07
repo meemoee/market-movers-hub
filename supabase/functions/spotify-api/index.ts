@@ -9,11 +9,13 @@ const REDIRECT_URI = 'https://lfmkoismabbhujycnqpn.functions.supabase.co/spotify
 console.log('---------- SPOTIFY API PROXY INITIALIZED ----------')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
 console.log('SPOTIFY_CLIENT_SECRET length:', SPOTIFY_CLIENT_SECRET.length)
+console.log('CORS headers:', corsHeaders)
 
 serve(async (req) => {
   console.log('---------- API REQUEST RECEIVED ----------')
   console.log('Request method:', req.method)
   console.log('Request URL:', req.url)
+  console.log('Request headers:', Object.fromEntries(req.headers.entries()))
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {

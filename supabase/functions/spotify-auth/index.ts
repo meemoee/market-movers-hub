@@ -9,6 +9,7 @@ const REDIRECT_URI = 'https://lfmkoismabbhujycnqpn.functions.supabase.co/spotify
 console.log('---------- AUTH FUNCTION INITIALIZED ----------')
 console.log('SPOTIFY_CLIENT_ID length:', SPOTIFY_CLIENT_ID.length)
 console.log('REDIRECT_URI:', REDIRECT_URI)
+console.log('CORS headers:', corsHeaders)
 
 // Generate a random string for PKCE code_verifier
 function generateRandomString(length: number) {
@@ -36,6 +37,7 @@ serve(async (req) => {
   console.log('---------- AUTH REQUEST RECEIVED ----------')
   console.log('Request method:', req.method)
   console.log('Request URL:', req.url)
+  console.log('Request headers:', Object.fromEntries(req.headers.entries()))
   
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
