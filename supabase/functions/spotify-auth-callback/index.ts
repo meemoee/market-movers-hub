@@ -71,7 +71,7 @@ serve(async (req) => {
     console.log('Starting token exchange...')
     console.log('Using redirect URI for token exchange:', REDIRECT_URI)
     
-    // This is a page that will get the code_verifier from the opener window's sessionStorage
+    // This is a page that will get the code_verifier from the opener window's localStorage
     // and pass it to the parent window to complete the PKCE flow
     const pkceExchangeHtml = `
       <html>
@@ -79,29 +79,31 @@ serve(async (req) => {
           <title>Completing Authentication</title>
           <script>
             function getCodeVerifier() {
-              // The parent window stored the code_verifier in sessionStorage
-              const codeVerifier = window.opener.sessionStorage.getItem('spotify_code_verifier');
-              console.log("Code verifier from sessionStorage:", codeVerifier ? "found" : "not found");
-              
-              if (!codeVerifier) {
-                window.opener.postMessage({ 
-                  type: 'spotify-auth-error', 
-                  error: 'Code verifier not found in session storage' 
-                }, '*');
-                window.close();
+              try {
+                // Try to get the code verifier from sessionStorage
+                const codeVerifier = window.opener && window.opener.sessionStorage.getItem('spotify_code_verifier');
+                console.log("Code verifier from sessionStorage:", codeVerifier ? "found" : "not found");
+                
+                if (!codeVerifier) {
+                  throw new Error('Code verifier not found in session storage');
+                }
+
+                // Remove it from sessionStorage after using it
+                window.opener.sessionStorage.removeItem('spotify_code_verifier');
+                return codeVerifier;
+              } catch (err) {
+                console.error('Error accessing code verifier:', err);
                 return null;
               }
-
-              // Remove it from sessionStorage after using it
-              window.opener.sessionStorage.removeItem('spotify_code_verifier');
-              return codeVerifier;
             }
 
             window.onload = async function() {
-              const codeVerifier = getCodeVerifier();
-              if (!codeVerifier) return;
-              
               try {
+                const codeVerifier = getCodeVerifier();
+                if (!codeVerifier) {
+                  throw new Error('Could not retrieve code verifier');
+                }
+                
                 // Exchange the authorization code for tokens with code_verifier
                 const response = await fetch('${req.url}', {
                   method: 'POST',
@@ -120,6 +122,7 @@ serve(async (req) => {
                 }
                 
                 const data = await response.json();
+                // Post message to opener window with the results
                 window.opener.postMessage(data, '*');
               } catch (error) {
                 console.error('Error during token exchange:', error);
@@ -128,6 +131,7 @@ serve(async (req) => {
                   error: error.message 
                 }, '*');
               } finally {
+                // Close the popup window
                 window.close();
               }
             }
@@ -135,6 +139,7 @@ serve(async (req) => {
         </head>
         <body>
           <p>Completing authentication. This window will close automatically.</p>
+          <p>If this window doesn't close, please check the console for errors and close it manually.</p>
         </body>
       </html>
     `;

@@ -1,4 +1,3 @@
-
 import { Send, Zap, TrendingUp, DollarSign, Music } from 'lucide-react'
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -6,6 +5,7 @@ import ReactMarkdown from 'react-markdown'
 import { Button } from './ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs'
 import { Alert, AlertTitle, AlertDescription } from './ui/alert'
+import { toast } from './ui/use-toast'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
@@ -75,13 +75,11 @@ export default function RightSidebar() {
       
       console.log('API response received:', response)
       
-      // Type assertion to access the data as SpotifyApiResponse
       const responseData = response.data as SpotifyApiResponse;
       
       if (responseData?.refreshedTokens) {
         console.log('Updating tokens with refreshed values')
         setSpotifyTokens(responseData.refreshedTokens)
-        // Save the updated tokens to localStorage
         localStorage.setItem('spotify_tokens', JSON.stringify(responseData.refreshedTokens))
       }
 
@@ -122,7 +120,6 @@ export default function RightSidebar() {
   }, [callSpotifyAPI, spotifyTokens])
 
   useEffect(() => {
-    // Load tokens from localStorage on component mount
     const savedTokens = localStorage.getItem('spotify_tokens')
     const savedProfile = localStorage.getItem('spotify_profile')
     
@@ -148,7 +145,6 @@ export default function RightSidebar() {
       }
     }
 
-    // Listen for auth messages from the popup window
     const handleAuthMessage = (event: MessageEvent) => {
       console.log('Received postMessage event:', event.data)
       
@@ -156,16 +152,24 @@ export default function RightSidebar() {
         console.log('Auth success - tokens received:', !!event.data.tokens)
         console.log('Auth success - profile received:', !!event.data.profile)
         
-        // Store tokens and profile in localStorage for persistence
         localStorage.setItem('spotify_tokens', JSON.stringify(event.data.tokens))
         localStorage.setItem('spotify_profile', JSON.stringify(event.data.profile))
         
         setSpotifyTokens(event.data.tokens)
         setSpotifyProfile(event.data.profile)
         setSpotifyAuthError(null)
+        toast({
+          title: "Spotify Connected",
+          description: `Successfully connected to Spotify as ${event.data.profile.display_name}`,
+        })
       } else if (event.data.type === 'spotify-auth-error') {
         console.error('Auth error:', event.data.error)
         setSpotifyAuthError(event.data.error)
+        toast({
+          title: "Spotify Connection Failed",
+          description: event.data.error,
+          variant: "destructive"
+        })
       }
     }
 
@@ -176,7 +180,6 @@ export default function RightSidebar() {
     }
   }, [])
 
-  // Load playlists when tokens are available
   useEffect(() => {
     if (spotifyProfile && spotifyTokens) {
       loadUserPlaylists()
@@ -292,6 +295,11 @@ export default function RightSidebar() {
       if (error) {
         console.error('Error starting Spotify auth:', error)
         setSpotifyAuthError(error.message)
+        toast({
+          title: "Authentication Error",
+          description: error.message,
+          variant: "destructive"
+        })
         return
       }
       
@@ -300,22 +308,16 @@ export default function RightSidebar() {
         console.log('Auth URL (partial):', data.url.substring(0, 100) + '...')
         console.log('Code verifier received (length):', data.codeVerifier.length)
         
-        // Store code verifier for later use
-        codeVerifierRef.current = data.codeVerifier
+        sessionStorage.setItem('spotify_code_verifier', data.codeVerifier)
+        console.log('Stored code verifier in sessionStorage')
         
         const width = 500
         const height = 700
         const left = window.screen.width / 2 - width / 2
         const top = window.screen.height / 2 - height / 2
         
-        // Append the code_verifier to the callback URL
-        // This is crucial for the PKCE flow
-        const authUrl = new URL(data.url)
-        // Store the code verifier in sessionStorage for when the popup redirects
-        sessionStorage.setItem('spotify_code_verifier', data.codeVerifier)
-        
         window.open(
-          authUrl.toString(),
+          data.url,
           'Spotify Authentication',
           `width=${width},height=${height},left=${left},top=${top}`
         )
@@ -323,6 +325,11 @@ export default function RightSidebar() {
     } catch (error: any) {
       console.error('Error connecting to Spotify:', error)
       setSpotifyAuthError(error.message)
+      toast({
+        title: "Connection Error",
+        description: error.message,
+        variant: "destructive"
+      })
     }
   }
 
@@ -332,6 +339,10 @@ export default function RightSidebar() {
     setUserPlaylists([])
     localStorage.removeItem('spotify_profile')
     localStorage.removeItem('spotify_tokens')
+    toast({
+      title: "Spotify Disconnected",
+      description: "Successfully disconnected from Spotify"
+    })
   }
 
   const defaultContent = [
