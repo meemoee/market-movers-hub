@@ -41,7 +41,7 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Based on this web research and analysis, provide the probability and areas needing more research:
+            content: `Based on this web research and analysis, provide the probability and key supporting/opposing factors:
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
