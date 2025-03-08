@@ -24,24 +24,8 @@ serve(async (req) => {
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Market question:', marketQuestion || 'not provided')
 
-    const response = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Research App',
-      },
-      body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
-        messages: [
-          {
-            role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with fields: probability (a percentage string like '75%'), supportingPoints (an array of key factors supporting the likely outcome), negativePoints (an array of key factors opposing the likely outcome), and areasForResearch (an array of strings describing areas needing more research)."
-          },
-          {
-            role: "user",
-            content: `Based on this web research and analysis, provide the probability and key supporting/opposing factors:
+    // Create the prompt content
+    const promptContent = `Based on this web research and analysis, provide the probability and key supporting/opposing factors:
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
@@ -59,107 +43,115 @@ Return ONLY a JSON object with these fields:
 2. supportingPoints: an array of 3-5 key factors supporting this outcome (each a concise string)
 3. negativePoints: an array of 3-5 key factors opposing this outcome (each a concise string)
 4. areasForResearch: an array of strings describing specific areas needing more research`
+
+    // Make the request to OpenRouter - NO streaming for JSON response
+    const jsonResponse = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Research App',
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [
+          {
+            role: "system",
+            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with fields: probability (a percentage string like '75%'), supportingPoints (an array of key factors supporting the likely outcome), negativePoints (an array of key factors opposing the likely outcome), and areasForResearch (an array of strings describing areas needing more research)."
+          },
+          {
+            role: "user",
+            content: promptContent
           }
         ],
         response_format: { type: "json_object" },
-        stream: true
+        stream: false // Changed to false to get a complete JSON response
       })
     })
 
-    if (!response.ok) {
-      console.error('OpenRouter API error:', response.status, await response.text())
+    if (!jsonResponse.ok) {
+      console.error('OpenRouter API error:', jsonResponse.status, await jsonResponse.text())
       throw new Error('Failed to get insights from OpenRouter')
     }
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available
-    let buffer = ""
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        buffer += text
-        
-        // Keep processing the buffer until we can't find any more complete messages
-        while (true) {
-          const nlIndex = buffer.indexOf('\n')
-          if (nlIndex === -1) break
-          
-          const line = buffer.slice(0, nlIndex)
-          buffer = buffer.slice(nlIndex + 1)
-          
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data === '[DONE]') continue
-            
-            try {
-              const parsed = JSON.parse(data)
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || ""
-              
-              if (content) {
-                const event = {
-                  choices: [{
-                    delta: { content },
-                    message: { content }
-                  }]
-                }
-                controller.enqueue(
-                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                )
-              }
-            } catch (err) {
-              console.debug('Parsing chunk (expected during streaming):', err)
-            }
-          }
-        }
-      },
-      flush(controller) {
-        // Process any remaining complete messages in the buffer
-        if (buffer.trim()) {
-          const lines = buffer.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim()
-              if (data === '[DONE]') continue
-              
-              try {
-                const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || 
-                              parsed.choices?.[0]?.message?.content || ""
-                
-                if (content) {
-                  const event = {
-                    choices: [{
-                      delta: { content },
-                      message: { content }
-                    }]
-                  }
-                  controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                  )
-                }
-              } catch (err) {
-                console.debug('Parsing final chunk (expected):', err)
-              }
-            }
-          }
-        }
-        buffer = ""
+    // Parse the complete JSON response
+    const data = await jsonResponse.json()
+    const result = data.choices[0].message.content
+    
+    console.log('Received JSON result:', typeof result)
+    
+    // Validate the structure of the result
+    let parsedResult
+    try {
+      // If the result is already an object, use it directly
+      // If it's a string, parse it (this handles cases where the API returns a string despite response_format)
+      parsedResult = typeof result === 'string' ? JSON.parse(result) : result
+      
+      console.log('Successfully parsed result')
+      
+      // Validate required fields
+      if (!parsedResult.probability) {
+        console.warn('Missing probability in result')
+        parsedResult.probability = "Unknown"
       }
-    })
-
-    return new Response(response.body?.pipeThrough(transformStream), {
+      
+      // Ensure arrays exist
+      if (!Array.isArray(parsedResult.supportingPoints)) {
+        console.warn('Missing or invalid supportingPoints in result')
+        parsedResult.supportingPoints = []
+      }
+      
+      if (!Array.isArray(parsedResult.negativePoints)) {
+        console.warn('Missing or invalid negativePoints in result')
+        parsedResult.negativePoints = []
+      }
+      
+      if (!Array.isArray(parsedResult.areasForResearch)) {
+        console.warn('Missing or invalid areasForResearch in result')
+        parsedResult.areasForResearch = []
+      }
+    } catch (error) {
+      console.error('Error parsing result:', error)
+      // Return a fallback object if parsing fails
+      parsedResult = {
+        probability: "Unknown",
+        supportingPoints: [],
+        negativePoints: [],
+        areasForResearch: ["Error in analysis, please try again"]
+      }
+    }
+    
+    // Send back the parsed result
+    return new Response(JSON.stringify({
+      choices: [{
+        message: {
+          content: JSON.stringify(parsedResult)
+        }
+      }]
+    }), {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+        'Content-Type': 'application/json'
       }
     })
 
   } catch (error) {
     console.error('Error in extract-research-insights:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              probability: "Error",
+              supportingPoints: [],
+              negativePoints: [],
+              areasForResearch: ["Error processing the analysis, please try again"]
+            })
+          }
+        }]
+      }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
