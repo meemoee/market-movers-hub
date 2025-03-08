@@ -70,10 +70,10 @@ export function IterationCard({
       {isExpanded && (
         <div className="p-3 w-full max-w-full">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
-            <TabsList className="w-full grid grid-cols-3 mb-3">
-              <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
-              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
-              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
+            <TabsList className="w-full grid grid-cols-3 mb-3 bg-secondary">
+              <TabsTrigger value="analysis" className="text-xs text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Analysis</TabsTrigger>
+              <TabsTrigger value="sources" className="text-xs text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Sources ({iteration.results.length})</TabsTrigger>
+              <TabsTrigger value="queries" className="text-xs text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Queries ({iteration.queries.length})</TabsTrigger>
             </TabsList>
             
             <TabsContent value="analysis" className="w-full max-w-full">
