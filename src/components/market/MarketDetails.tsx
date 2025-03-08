@@ -119,6 +119,8 @@ export function MarketDetails({
     (description ? `${question} - ${description}` : question) : 
     (description || 'No description available');
 
+  console.log(`MarketDetails for market ${marketId} with eventId: ${eventId}`);
+
   return (
     <div className="space-y-4">
       <div>
