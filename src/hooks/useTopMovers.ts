@@ -50,7 +50,7 @@ export function useTopMovers(
 ) {
   // For single market view, use a simple query instead of infinite query
   const singleMarketQuery = useQuery({
-    queryKey: ['market', marketId],
+    queryKey: ['market', marketId, interval],
     queryFn: async () => {
       if (!marketId) return null;
       
@@ -58,7 +58,8 @@ export function useTopMovers(
       const { data, error } = await supabase.functions.invoke<TopMoversResponse>('get-top-movers', {
         body: { 
           marketId,
-          interval
+          interval,
+          includeEventId: true // Explicitly request event_id to be included
         }
       });
 
@@ -70,7 +71,8 @@ export function useTopMovers(
           body: {
             marketId,
             openOnly: false,
-            interval
+            interval,
+            includeEventId: true // Explicitly request event_id to be included
           }
         });
         
@@ -114,11 +116,16 @@ export function useTopMovers(
           priceChangeMax,
           volumeMin: volumeMin !== undefined ? Number(volumeMin) : undefined,
           volumeMax: volumeMax !== undefined ? Number(volumeMax) : undefined,
-          sortBy
+          sortBy,
+          includeEventId: true // Explicitly request event_id to be included
         }
       });
 
       if (error) throw error;
+
+      if (data?.data) {
+        console.log(`Received ${data.data.length} markets, first market eventId: ${data.data[0]?.event_id}`);
+      }
       
       return {
         data: data?.data || [],
@@ -147,4 +154,3 @@ export function useTopMovers(
 
   return listQuery;
 }
-

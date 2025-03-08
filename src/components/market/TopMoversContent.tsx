@@ -62,6 +62,8 @@ export function TopMoversContent({
     );
   }
 
+  console.log("TopMoversContent - topMovers with eventIds:", topMovers.map(m => ({ id: m.market_id, eventId: m.event_id })));
+
   return (
     <div className="w-full">
       <div className="w-full space-y-3">

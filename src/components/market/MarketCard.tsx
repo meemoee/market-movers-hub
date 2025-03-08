@@ -38,6 +38,8 @@ export function MarketCard({
   onSell,
   selectedInterval,
 }: MarketCardProps) {
+  console.log(`MarketCard for market ${market.market_id} with eventId: ${market.event_id}`);
+  
   return (
     <div className="w-full p-3 space-y-3">
       <MarketHeader
