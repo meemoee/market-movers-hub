@@ -43,12 +43,20 @@ serve(async (req) => {
     if (previousQueries.length > 0 || previousAnalyses.length > 0) {
       previousResearchContext = `
 PREVIOUS RESEARCH CONTEXT:
-${previousQueries.length > 0 ? `Previous search queries used:\n${previousQueries.slice(-10).map((q, i) => `${i+1}. ${q}`).join('\n')}` : ''}
-${previousAnalyses.length > 0 ? `\nPrevious analysis summary:\n${previousAnalyses.slice(-1)[0].substring(0, 500)}${previousAnalyses.slice(-1)[0].length > 500 ? '...' : ''}` : ''}
+${previousQueries.length > 0 ? `Previous search queries used:\n${previousQueries.slice(-15).map((q, i) => `${i+1}. ${q}`).join('\n')}` : ''}
+${previousAnalyses.length > 0 ? `\nPrevious analysis summary:\n${previousAnalyses.slice(-1)[0].substring(0, 800)}${previousAnalyses.slice(-1)[0].length > 800 ? '...' : ''}` : ''}
 ${previousProbability ? `\nPrevious probability assessment: ${previousProbability}` : ''}
 
-DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions.`;
+DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
     }
+
+    // Build a more directive prompt for focused research
+    const focusedPrompt = focusText ? 
+      `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
+Your task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
+IMPORTANT: Do not generate general queries. EVERY query MUST explicitly mention or relate to "${focusText}".` 
+      : 
+      "You are a helpful assistant that generates search queries.";
     
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -63,20 +71,27 @@ DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Gene
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates search queries."
+            content: focusedPrompt
           },
           {
             role: "user",
-            content: `Generate 5 diverse search queries to gather comprehensive information about the following topic. Focus on different aspects that would be relevant for market research:
+            content: `Generate 5 diverse search queries to gather highly specific information about: ${focusText || query}
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
-${focusText ? `SPECIFIC RESEARCH FOCUS: ${focusText}` : ''}
+${focusText ? `YOUR SEARCH FOCUS MUST BE ON: ${focusText}` : ''}
 ${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
 ${previousResearchContext}
 
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
-${focusText ? `Ensure the queries specifically target information about: ${focusText}` : ''}
+${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
+
+Generate 5 search queries that are:
+1. Highly specific and detailed
+2. Directly relevant to the focus area
+3. Diverse in approach and perspective
+4. NOT repetitive of previous research
+5. Include specific entities, dates, or details to target precise information
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings. The format should be {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`
           }
@@ -142,11 +157,11 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
           console.log('Using fallback queries')
           queriesData = {
             queries: [
-              `${query} latest information`,
-              `${query} analysis and trends`,
-              `${query} expert opinions`,
-              `${query} recent developments`,
-              `${query} statistics and data`
+              `${focusText || query} latest information`,
+              `${focusText || query} analysis and trends`,
+              `${focusText || query} expert opinions`,
+              `${focusText || query} recent developments`,
+              `${focusText || query} statistics and data`
             ]
           }
         }
@@ -154,10 +169,23 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       
       // Ensure we have exactly 5 queries
       if (!queriesData.queries || !Array.isArray(queriesData.queries)) {
-        queriesData.queries = [`${query} information`, `${query} analysis`, `${query} latest`, `${query} data`, `${query} news`]
+        queriesData.queries = [
+          `${focusText || query} information`, 
+          `${focusText || query} analysis`, 
+          `${focusText || query} latest`, 
+          `${focusText || query} data`, 
+          `${focusText || query} news`
+        ]
       } else if (queriesData.queries.length < 5) {
-        // Fill remaining queries with generic ones
-        const generics = [`${query} latest`, `${query} news`, `${query} analysis`, `${query} updates`, `${query} forecast`]
+        // Fill remaining queries with focus-specific ones
+        const generics = [
+          `${focusText || query} latest developments`, 
+          `${focusText || query} recent research`, 
+          `${focusText || query} analysis methods`, 
+          `${focusText || query} critical factors`, 
+          `${focusText || query} expert assessment`
+        ]
+        
         for (let i = queriesData.queries.length; i < 5; i++) {
           queriesData.queries.push(generics[i % generics.length])
         }
@@ -166,11 +194,17 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         queriesData.queries = queriesData.queries.slice(0, 5)
       }
       
-      // Validate each query
+      // Validate each query and ensure they contain the focus area if specified
       queriesData.queries = queriesData.queries.map((q: any, i: number) => {
-        if (typeof q !== 'string' || q.trim().length < 3) {
-          return `${query} information ${i+1}`
+        if (typeof q !== 'string' || q.trim().length < 5) {
+          return `${focusText || query} specific information ${i+1}`
         }
+        
+        // If we have a focus text, ensure it's included in the query
+        if (focusText && !q.toLowerCase().includes(focusText.toLowerCase())) {
+          return `${q} specifically regarding ${focusText}`
+        }
+        
         return q.trim()
       })
       
@@ -184,17 +218,39 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
             console.log(`Query "${q}" is a duplicate of a previous query, replacing...`);
             
             // Generate alternative query
-            const focusPrefix = focusText ? focusText.split(' ').slice(0, 3).join(' ') : query;
+            const focusPrefix = focusText || query;
             const alternatives = [
-              `${focusPrefix} latest developments ${i}`,
-              `${focusPrefix} recent analysis ${i}`,
-              `${focusPrefix} expert perspective ${i}`,
-              `${focusPrefix} market indicators ${i}`,
-              `${focusPrefix} future outlook ${i}`
+              `${focusPrefix} latest developments iteration ${iteration}-${i}`,
+              `${focusPrefix} recent analysis ${iteration}-${i}`,
+              `${focusPrefix} expert perspective ${iteration}-${i}`,
+              `${focusPrefix} market indicators ${iteration}-${i}`,
+              `${focusPrefix} future outlook ${iteration}-${i}`
             ];
             
             return alternatives[i % alternatives.length];
           }
+          return q;
+        });
+      }
+
+      // Perform a final enhancement to ensure queries are focused on the research area
+      if (focusText) {
+        queriesData.queries = queriesData.queries.map((q: string, i: number) => {
+          const lowercaseQ = q.toLowerCase();
+          const lowercaseFocus = focusText.toLowerCase();
+          
+          // If query doesn't contain the focus text or is too short, create a more specific one
+          if (!lowercaseQ.includes(lowercaseFocus) || q.length < 15) {
+            const specifics = [
+              `${focusText} impact on ${query} detailed analysis`,
+              `${focusText} relation to ${query} expert assessment`,
+              `${focusText} influence on ${marketQuestion || query} statistics`,
+              `${focusText} role in determining ${query} outcomes`,
+              `${focusText} correlation with ${query} historical data`
+            ];
+            return specifics[i % specifics.length];
+          }
+          
           return q;
         });
       }
@@ -215,13 +271,19 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       console.log('Raw content:', content)
       
       // Provide fallback queries instead of failing
-      const fallbackQueries = [
+      const fallbackQueries = focusText ? [
+        `${focusText} latest information related to ${query}`,
+        `${focusText} analysis and trends for ${query}`,
+        `${focusText} expert opinions about ${query}`,
+        `${focusText} recent developments impacting ${query}`,
+        `${focusText} statistics and data regarding ${query}`
+      ] : [
         `${query} latest information`,
         `${query} analysis and trends`,
         `${query} expert opinions`,
         `${query} recent developments`,
         `${query} statistics and data`
-      ]
+      ];
       
       return new Response(
         JSON.stringify({ queries: fallbackQueries }),
