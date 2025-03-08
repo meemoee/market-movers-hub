@@ -13,6 +13,7 @@ export class StreamProcessor {
   private state: StreamingState;
   private readonly sentenceEndings = new Set(['.', '!', '?']);
   private readonly listMarkerPattern = /^\d+\.\s/;
+  private readonly headerPattern = /^#{1,6}\s/;
   private readonly markdownTokens = new Set(['**', '_', '`', '[']);
 
   constructor() {
@@ -54,8 +55,14 @@ export class StreamProcessor {
         const word = this.state.sentenceBuffer.trim();
         
         if (word.length > 0) {
+          // Handle headers (# Header)
+          if (this.headerPattern.test(word)) {
+            const headerLevel = word.match(/^(#+)/)?.[0].length || 1;
+            const headerContent = word.replace(/^#+\s+/, '');
+            output += (output ? '\n\n' : '') + '#'.repeat(headerLevel) + ' ' + headerContent;
+          }
           // Handle list markers
-          if (this.listMarkerPattern.test(word)) {
+          else if (this.listMarkerPattern.test(word)) {
             const number = parseInt(word);
             if (number === this.state.currentListNumber + 1) {
               this.state.currentListNumber = number;
@@ -63,10 +70,6 @@ export class StreamProcessor {
               output += '\n' + word;
             }
           } 
-          // Handle markdown section headings
-          else if (word.startsWith('#')) {
-            output += (output ? '\n\n' : '') + word;
-          }
           // Handle normal words
           else {
             output += (output && !output.endsWith('\n') ? ' ' : '') + word;

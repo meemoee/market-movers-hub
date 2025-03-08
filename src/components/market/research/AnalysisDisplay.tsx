@@ -118,8 +118,8 @@ export function AnalysisDisplay({
           <ReactMarkdown 
             className={cn(
               "text-sm prose prose-invert prose-sm break-words max-w-full",
-              "prose-headings:mt-3 prose-headings:mb-2 prose-headings:font-semibold",
-              "prose-h1:text-xl prose-h2:text-lg prose-h3:text-base",
+              "prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2", 
+              "prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg",
               "prose-p:my-1.5 prose-p:leading-relaxed",
               "prose-li:my-0.5",
               "prose-strong:text-primary/90 prose-strong:font-semibold",
