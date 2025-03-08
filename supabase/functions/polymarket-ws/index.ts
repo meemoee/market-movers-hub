@@ -1,8 +1,9 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, upgrade, connection, sec-websocket-key, sec-websocket-version, sec-websocket-extensions',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
@@ -19,7 +20,7 @@ serve(async (req) => {
       });
     }
 
-    // Handle HTTP diagnostic request
+    // Handle HTTP diagnostic test
     const url = new URL(req.url);
     if (url.searchParams.get('test') === 'true') {
       console.log("🧪 Diagnostic test request received");
