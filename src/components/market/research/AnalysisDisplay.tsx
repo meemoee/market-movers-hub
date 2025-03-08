@@ -74,7 +74,7 @@ export function AnalysisDisplay({
     
     const interval = setInterval(() => {
       const timeSinceUpdate = Date.now() - lastUpdateTime
-      if (timeSinceUpdate > 1500) { // Reduced from 2000ms to 1500ms
+      if (timeSinceUpdate > 1500) {
         setStreamStatus('waiting')
       } else if (streamStatus !== 'streaming') {
         setStreamStatus('streaming')
@@ -102,8 +102,8 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
-  // Process content to ensure proper line breaks
-  const processedContent = content?.replace(/\n/g, '\n\n') || '';
+  // Simplified content processing - preserves newlines but reduces excessive spacing
+  const processedContent = content || '';
 
   if (!content) return null
 
@@ -118,14 +118,14 @@ export function AnalysisDisplay({
           <ReactMarkdown 
             className={cn(
               "text-sm prose prose-invert prose-sm break-words max-w-full",
-              "prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-semibold",
+              "prose-headings:mt-3 prose-headings:mb-2 prose-headings:font-semibold",
               "prose-h1:text-xl prose-h2:text-lg prose-h3:text-base",
-              "prose-p:my-2 prose-p:leading-relaxed",
+              "prose-p:my-1.5 prose-p:leading-relaxed",
               "prose-li:my-0.5",
               "prose-strong:text-primary/90 prose-strong:font-semibold",
               "prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:text-xs",
               "prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/40 prose-blockquote:pl-4 prose-blockquote:italic",
-              "whitespace-pre-wrap"
+              "whitespace-pre-line"
             )}
           >
             {processedContent}
