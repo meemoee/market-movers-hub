@@ -306,3 +306,4 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   return null;
 }
+
