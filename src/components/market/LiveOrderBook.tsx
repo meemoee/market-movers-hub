@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 
@@ -22,10 +23,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const connectionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef<boolean>(true);
   const initialConnectRef = useRef<boolean>(false);
   const reconnectCountRef = useRef<number>(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
+  const CONNECTION_TIMEOUT_MS = 10000; // 10 seconds timeout for initial connection
 
   useEffect(() => {
     // Set mounted flag to true when component mounts
@@ -69,6 +72,13 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const cleanupExistingConnection = () => {
     console.log('[LiveOrderBook] Cleaning up existing connections');
     
+    // Clear connection timeout if it exists
+    if (connectionTimeoutRef.current) {
+      console.log('[LiveOrderBook] Clearing connection timeout');
+      clearTimeout(connectionTimeoutRef.current);
+      connectionTimeoutRef.current = null;
+    }
+    
     // Clear ping interval if it exists
     if (pingIntervalRef.current) {
       console.log('[LiveOrderBook] Clearing ping interval');
@@ -110,6 +120,22 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
+      // Set connection timeout
+      if (connectionTimeoutRef.current) {
+        clearTimeout(connectionTimeoutRef.current);
+      }
+      
+      connectionTimeoutRef.current = setTimeout(() => {
+        console.log('[LiveOrderBook] Connection timeout reached');
+        if (mountedRef.current && wsRef.current && wsRef.current.readyState !== WebSocket.OPEN) {
+          setError('Connection timeout reached. Please try again.');
+          // Force close and reconnect
+          if (wsRef.current) {
+            wsRef.current.close();
+          }
+        }
+      }, CONNECTION_TIMEOUT_MS);
+
       // Add a timestamp to prevent caching issues
       const timestamp = new Date().getTime();
       const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}&t=${timestamp}`;
@@ -124,6 +150,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           console.log('[LiveOrderBook] WebSocket connected successfully');
           setConnectionStatus("connected");
           setError(null);
+          
+          // Clear connection timeout
+          if (connectionTimeoutRef.current) {
+            clearTimeout(connectionTimeoutRef.current);
+            connectionTimeoutRef.current = null;
+          }
           
           // Reset reconnect counter on successful connection
           reconnectCountRef.current = 0;
@@ -141,7 +173,13 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             
             // Handle ping-pong messages
             if (data.ping) {
+              console.log('[LiveOrderBook] Received ping, sending pong');
               ws.send(JSON.stringify({ pong: new Date().toISOString() }));
+              return;
+            }
+            
+            if (data.pong) {
+              console.log('[LiveOrderBook] Received pong confirmation');
               return;
             }
             
@@ -202,6 +240,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       ws.onclose = (event) => {
         console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
+        
+        // Clear connection timeout if it exists
+        if (connectionTimeoutRef.current) {
+          clearTimeout(connectionTimeoutRef.current);
+          connectionTimeoutRef.current = null;
+        }
         
         // Only attempt reconnect if mounted and not intentionally closing
         if (mountedRef.current && !isClosing) {
