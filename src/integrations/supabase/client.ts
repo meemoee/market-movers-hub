@@ -24,3 +24,7 @@ export const supabase = createClient<Database>(
     },
   }
 );
+
+// Export constants for use in components that need the raw values
+export const SUPABASE_PUBLIC_URL = SUPABASE_URL;
+export const SUPABASE_PUBLIC_KEY = SUPABASE_PUBLISHABLE_KEY;
