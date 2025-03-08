@@ -82,6 +82,11 @@ serve(async (req) => {
             });
           }
           
+          // Validate token ID format to catch common errors
+          if (!/^\d+$/.test(assetId)) {
+            console.log(`⚠️ Warning: Token ID doesn't look like a numeric ID: ${assetId}`);
+          }
+          
           const polymarketUrl = `https://clob.polymarket.com/orderbook/${assetId}`;
           console.log(`🔄 Testing Polymarket API: ${polymarketUrl}`);
           
@@ -103,6 +108,7 @@ serve(async (req) => {
             });
           } else {
             const errorText = await response.text();
+            console.error(`❌ Polymarket API returned error: ${response.status}`, errorText);
             return new Response(JSON.stringify({ 
               status: "error", 
               message: "Polymarket API test failed",
@@ -164,6 +170,11 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 400,
       });
+    }
+
+    // Validate token ID format
+    if (!/^\d+$/.test(tokenId)) {
+      console.warn(`⚠️ Warning: Token ID doesn't look like a valid numeric ID: ${tokenId}`);
     }
 
     console.log(`🔗 Attempting WebSocket upgrade for token ID: ${tokenId}`);
