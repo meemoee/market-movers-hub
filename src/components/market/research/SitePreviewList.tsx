@@ -14,17 +14,17 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
   if (!results.length) return null;
 
   return (
-    <ScrollArea className="h-[200px] rounded-md border p-4">
+    <ScrollArea className="h-[200px] rounded-md border p-4 w-full max-w-full">
       <div className="mb-2 text-sm text-muted-foreground">
         {results.length} {results.length === 1 ? 'source' : 'sources'} collected
       </div>
       {results.map((result, index) => (
-        <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg">
-          <div className="flex items-center gap-2">
+        <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg max-w-full">
+          <div className="flex items-center gap-2 w-full">
             <img 
               src={getFaviconUrl(result.url)} 
               alt=""
-              className="w-4 h-4"
+              className="w-4 h-4 flex-shrink-0"
               onError={(e) => {
                 const IconComponent = result.title ? FileText : Globe;
                 const svgString = `data:image/svg+xml,${encodeURIComponent(
@@ -37,7 +37,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
                 e.currentTarget.src = svgString;
               }}
             />
-            <h4 className="text-sm font-medium">
+            <h4 className="text-sm font-medium truncate overflow-hidden max-w-[calc(100%-1.5rem)]">
               {result.title || new URL(result.url).hostname}
             </h4>
           </div>
@@ -45,7 +45,8 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
             href={result.url} 
             target="_blank" 
             rel="noopener noreferrer"
-            className="text-xs text-blue-500 hover:underline block mt-1"
+            className="text-xs text-blue-500 hover:underline block mt-1 truncate overflow-hidden w-full"
+            title={result.url}
           >
             {result.url}
           </a>
