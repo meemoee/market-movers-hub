@@ -63,7 +63,7 @@ Return ONLY a JSON object with these fields:
           }
         ],
         response_format: { type: "json_object" },
-        stream: true
+        stream: false
       })
     })
 
@@ -72,95 +72,64 @@ Return ONLY a JSON object with these fields:
       throw new Error('Failed to get insights from OpenRouter')
     }
 
-    // A simple TransformStream that buffers incoming text until full SSE events are available
-    let buffer = ""
-    const transformStream = new TransformStream({
-      transform(chunk, controller) {
-        const text = new TextDecoder().decode(chunk)
-        buffer += text
-        
-        // Keep processing the buffer until we can't find any more complete messages
-        while (true) {
-          const nlIndex = buffer.indexOf('\n')
-          if (nlIndex === -1) break
-          
-          const line = buffer.slice(0, nlIndex)
-          buffer = buffer.slice(nlIndex + 1)
-          
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6).trim()
-            if (data === '[DONE]') continue
-            
-            try {
-              const parsed = JSON.parse(data)
-              const content = parsed.choices?.[0]?.delta?.content || 
-                            parsed.choices?.[0]?.message?.content || ""
-              
-              if (content) {
-                const event = {
-                  choices: [{
-                    delta: { content },
-                    message: { content }
-                  }]
-                }
-                controller.enqueue(
-                  new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                )
-              }
-            } catch (err) {
-              console.debug('Parsing chunk (expected during streaming):', err)
-            }
-          }
-        }
-      },
-      flush(controller) {
-        // Process any remaining complete messages in the buffer
-        if (buffer.trim()) {
-          const lines = buffer.split('\n')
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6).trim()
-              if (data === '[DONE]') continue
-              
-              try {
-                const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || 
-                              parsed.choices?.[0]?.message?.content || ""
-                
-                if (content) {
-                  const event = {
-                    choices: [{
-                      delta: { content },
-                      message: { content }
-                    }]
-                  }
-                  controller.enqueue(
-                    new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`)
-                  )
-                }
-              } catch (err) {
-                console.debug('Parsing final chunk (expected):', err)
-              }
-            }
-          }
-        }
-        buffer = ""
+    const data = await response.json()
+    console.log('Got response from OpenRouter:', !!data)
+    
+    try {
+      const content = data.choices?.[0]?.message?.content
+      if (!content) {
+        throw new Error('No content in OpenRouter response')
       }
-    })
-
-    return new Response(response.body?.pipeThrough(transformStream), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+      
+      console.log('Content type:', typeof content)
+      
+      // Parse JSON content if it's a string, or use it directly if it's already an object
+      let parsed
+      if (typeof content === 'string') {
+        try {
+          parsed = JSON.parse(content)
+        } catch (err) {
+          console.error('Error parsing JSON:', err)
+          console.log('Raw content:', content)
+          throw new Error('Failed to parse OpenRouter response as JSON')
+        }
+      } else if (typeof content === 'object') {
+        parsed = content
+      } else {
+        throw new Error(`Unexpected content type: ${typeof content}`)
       }
-    })
-
+      
+      // Validate and ensure all fields exist
+      const result = {
+        probability: parsed.probability || "Unknown",
+        areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
+        supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
+        negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
+        reasoning: parsed.reasoning || "No reasoning provided"
+      }
+      
+      console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
+      console.log('Supporting points count:', result.supportingPoints.length)
+      console.log('Negative points count:', result.negativePoints.length)
+      
+      return new Response(JSON.stringify(result), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    } catch (error) {
+      console.error('Error processing OpenRouter response:', error)
+      throw error
+    }
   } catch (error) {
     console.error('Error in extract-research-insights:', error)
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message, 
+        probability: "Unknown",
+        areasForResearch: [],
+        supportingPoints: [],
+        negativePoints: [],
+        reasoning: "An error occurred while extracting insights."
+      }),
       { 
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
