@@ -38,7 +38,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with the requested fields."
+            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. Always provide exactly 5 supporting points and 5 negative points, making them specific and clear."
           },
           {
             role: "user",
@@ -57,10 +57,14 @@ ${marketPrice !== undefined ? `Consider if the current market probability of ${m
 
 Return ONLY a JSON object with these fields:
 1. probability: your estimated probability as a percentage string (e.g., "65%")
-2. areasForResearch: an array of strings describing specific areas needing more research
-3. supportingPoints: an array of strings with key evidence/arguments supporting the event occurring
-4. negativePoints: an array of strings with key evidence/arguments against the event occurring
-5. reasoning: a brief paragraph explaining your probability estimate`
+2. areasForResearch: an array of strings describing specific areas needing more research (3-5 areas)
+3. supportingPoints: EXACTLY 5 specific points of evidence supporting the event occurring (be concise but specific)
+4. negativePoints: EXACTLY 5 specific points of evidence against the event occurring (be concise but specific)
+5. reasoning: a brief paragraph explaining your probability estimate
+
+Each point should contain a specific, unique piece of information or evidence from the research.
+Do not repeat information across points and make sure they're detailed and helpful.
+If there isn't enough information for 5 points in either category, create points requesting specific missing information.`
           }
         ],
         response_format: { type: "json_object" },
@@ -100,12 +104,29 @@ Return ONLY a JSON object with these fields:
         throw new Error(`Unexpected content type: ${typeof content}`)
       }
       
-      // Validate and ensure all fields exist
+      // Ensure we have exactly 5 supporting and negative points
+      const ensureExactlyFive = (points, label) => {
+        if (!Array.isArray(points)) points = [];
+        
+        // If we have more than 5, trim to 5
+        if (points.length > 5) {
+          points = points.slice(0, 5);
+        }
+        
+        // If we have less than 5, add generic points requesting more information
+        while (points.length < 5) {
+          points.push(`Need more information about ${label} factor ${points.length + 1}. The current research is insufficient in this area.`);
+        }
+        
+        return points;
+      };
+      
+      // Validate and normalize fields
       const result = {
         probability: parsed.probability || "Unknown",
         areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
-        supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
-        negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
+        supportingPoints: ensureExactlyFive(parsed.supportingPoints, "supporting"),
+        negativePoints: ensureExactlyFive(parsed.negativePoints, "negative"),
         reasoning: parsed.reasoning || "No reasoning provided"
       }
       
@@ -128,8 +149,20 @@ Return ONLY a JSON object with these fields:
         error: error.message, 
         probability: "Unknown",
         areasForResearch: [],
-        supportingPoints: [],
-        negativePoints: [],
+        supportingPoints: [
+          "Insufficient data to provide supporting point 1",
+          "Insufficient data to provide supporting point 2",
+          "Insufficient data to provide supporting point 3",
+          "Insufficient data to provide supporting point 4",
+          "Insufficient data to provide supporting point 5"
+        ],
+        negativePoints: [
+          "Insufficient data to provide negative point 1",
+          "Insufficient data to provide negative point 2",
+          "Insufficient data to provide negative point 3",
+          "Insufficient data to provide negative point 4",
+          "Insufficient data to provide negative point 5"
+        ],
         reasoning: "An error occurred while extracting insights."
       }),
       { 
