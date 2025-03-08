@@ -66,7 +66,7 @@ Return ONLY a JSON object with these fields:
           }
         ],
         response_format: { type: "json_object" },
-        stream: false // Changed to false to get a complete JSON response
+        stream: false // Explicitly set to false to get a complete JSON response
       })
     })
 
