@@ -1,7 +1,7 @@
-
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -22,6 +22,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
   const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
+  const [diagnosticDetails, setDiagnosticDetails] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -53,6 +54,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       console.log('[LiveOrderBook] Dialog is closing, clearing error state');
       setError(null);
       setDiagnosticInfo(null);
+      setDiagnosticDetails(null);
       return;
     }
 
@@ -85,23 +87,54 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const runDiagnosticTest = async () => {
     try {
       setDiagnosticInfo("Running diagnostic test...");
+      setDiagnosticDetails(null);
       console.log('[LiveOrderBook] Running diagnostic test on edge function');
       
-      const response = await fetch(`https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?test=true`);
+      // Get the current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      // Add authentication headers if we have a session
+      if (session?.access_token) {
+        headers['Authorization'] = `Bearer ${session.access_token}`;
+      }
+      
+      // Include Supabase anon key
+      headers['apikey'] = supabase.supabaseKey;
+      
+      // Log the request details for debugging
+      console.log('[LiveOrderBook] Diagnostic request headers:', JSON.stringify(headers, null, 2));
+      
+      const response = await fetch(
+        `${supabase.supabaseUrl}/functions/v1/polymarket-ws?test=true`, 
+        { headers }
+      );
+      
+      // Log the response status and headers for debugging
+      console.log('[LiveOrderBook] Diagnostic response status:', response.status);
+      console.log('[LiveOrderBook] Diagnostic response headers:', 
+        JSON.stringify(Object.fromEntries([...response.headers.entries()]), null, 2)
+      );
       
       if (!response.ok) {
         const errorText = await response.text();
         console.error('[LiveOrderBook] Diagnostic test failed:', response.status, errorText);
         setDiagnosticInfo(`Diagnostic failed: HTTP ${response.status}. Edge function might not be deployed properly.`);
+        setDiagnosticDetails(`Error details: ${errorText}`);
         return;
       }
       
       const data = await response.json();
       console.log('[LiveOrderBook] Diagnostic test response:', data);
       setDiagnosticInfo(`Diagnostic success: Edge function is running. Timestamp: ${data.timestamp}`);
+      setDiagnosticDetails(`Response: ${JSON.stringify(data, null, 2)}`);
     } catch (err) {
       console.error('[LiveOrderBook] Error running diagnostic test:', err);
       setDiagnosticInfo(`Diagnostic error: ${err.message}. Edge function might not be accessible.`);
+      setDiagnosticDetails(`Full error: ${err.toString()}`);
     }
   };
 
@@ -139,7 +172,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     }
   };
 
-  const connectToOrderbook = (tokenId: string) => {
+  const connectToOrderbook = async (tokenId: string) => {
     try {
       console.log('[LiveOrderBook] Initiating WebSocket connection for token:', tokenId);
       setConnectionStatus("connecting");
@@ -149,8 +182,18 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
-      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}`;
-      console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
+      // Get the current session for authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      let wsUrl = `${supabase.supabaseUrl.replace('https://', 'wss://')}/functions/v1/polymarket-ws?assetId=${tokenId}`;
+      
+      // Add authentication token as a query parameter if available
+      if (session?.access_token) {
+        wsUrl += `&token=${session.access_token}`;
+      }
+      // Always include the anon key
+      wsUrl += `&apikey=${supabase.supabaseKey}`;
+      
+      console.log('[LiveOrderBook] Connecting to WebSocket URL (auth params hidden):', wsUrl.split('?')[0] + '?...');
       console.log('[LiveOrderBook] Browser WebSocket version:', typeof WebSocket !== 'undefined' ? 'Supported' : 'Not supported');
       
       // Log websocket request headers for debugging
@@ -395,8 +438,23 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         {diagnosticInfo && (
           <div className="text-xs text-muted-foreground bg-accent/20 p-2 rounded-md max-w-full overflow-x-auto">
             {diagnosticInfo}
+            {diagnosticDetails && (
+              <details className="mt-1">
+                <summary className="cursor-pointer">View details</summary>
+                <pre className="text-xs mt-1 whitespace-pre-wrap">{diagnosticDetails}</pre>
+              </details>
+            )}
           </div>
         )}
+        
+        <div className="flex space-x-2 mt-2">
+          <button 
+            onClick={runDiagnosticTest}
+            className="px-3 py-1 bg-accent/30 hover:bg-accent/50 rounded-md text-xs text-foreground"
+          >
+            Run Diagnostic
+          </button>
+        </div>
       </div>
     );
   }
@@ -408,6 +466,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         {diagnosticInfo && (
           <div className="text-xs text-muted-foreground mb-2 bg-accent/20 p-2 rounded-md">
             {diagnosticInfo}
+            {diagnosticDetails && (
+              <details className="mt-1">
+                <summary className="cursor-pointer">View details</summary>
+                <pre className="text-xs mt-1 whitespace-pre-wrap">{diagnosticDetails}</pre>
+              </details>
+            )}
           </div>
         )}
         <div className="flex space-x-2 justify-center">
