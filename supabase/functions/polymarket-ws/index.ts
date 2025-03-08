@@ -1,15 +1,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 serve(async (req) => {
-  console.log("Polymarket WebSocket function called with method:", req.method);
-  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    console.log("Handling CORS preflight request");
-    return new Response(null, { 
-      headers: corsHeaders 
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
   // Get asset ID from URL parameters
@@ -17,7 +16,6 @@ serve(async (req) => {
   const assetId = url.searchParams.get('assetId');
 
   if (!assetId) {
-    console.log("Asset ID missing in request");
     return new Response(JSON.stringify({ status: "error", message: "Asset ID is required" }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
@@ -27,20 +25,6 @@ serve(async (req) => {
   console.log(`Connecting to Polymarket WebSocket for asset ID: ${assetId}`);
 
   try {
-    // Check if this is a WebSocket request with proper upgrade headers
-    const upgradeHeader = req.headers.get('upgrade') || '';
-    if (upgradeHeader.toLowerCase() !== 'websocket') {
-      console.log("Not a WebSocket upgrade request:", upgradeHeader);
-      return new Response(JSON.stringify({ 
-        status: "error", 
-        message: "This endpoint requires a WebSocket connection",
-        headers: req.headers
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 426, // Upgrade Required
-      });
-    }
-
     // Client connection
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
     let polySocket: WebSocket | null = null;
@@ -122,10 +106,8 @@ serve(async (req) => {
               };
               polySocket.send(JSON.stringify(snapshotRequest));
               console.log('Requested initial snapshot');
-            } else {
-              console.log("Socket not open, cannot send subscription");
             }
-          }, 300); // Increased delay to ensure connection is stable
+          }, 100);
           
           // Setup ping interval to keep connection alive
           if (pingInterval) {
@@ -142,7 +124,6 @@ serve(async (req) => {
                 scheduleReconnect();
               }
             } else {
-              console.log("Socket not open, cannot send ping. Current state:", polySocket?.readyState);
               scheduleReconnect();
             }
           }, 30000);
@@ -362,11 +343,7 @@ serve(async (req) => {
     return response;
   } catch (err) {
     console.error("Error handling WebSocket connection:", err);
-    return new Response(JSON.stringify({ 
-      status: "error", 
-      message: "Failed to establish WebSocket connection", 
-      error: err.message 
-    }), {
+    return new Response(JSON.stringify({ status: "error", message: "Failed to establish WebSocket connection" }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     });
