@@ -841,90 +841,65 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setProgress(prev => [...prev, `Extracting probability and reasoning from insights...`]);
     
     try {
-      const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
+      const { data: insightsData, error: insightsError } = await supabase.functions.invoke('extract-research-insights', {
         body: insightsPayload
       });
 
-      if (insightsResponse.error) {
-        console.error("Error from extract-research-insights:", insightsResponse.error);
-        throw new Error(insightsResponse.error.message || "Error extracting insights");
+      if (insightsError) {
+        console.error("Error from extract-research-insights:", insightsError);
+        throw new Error(insightsError.message || "Error extracting insights");
       }
 
-      console.log("Received response from extract-research-insights");
-
-      const textDecoder = new TextDecoder();
-      const reader = new Response(insightsResponse.data.body).body?.getReader();
-      
-      if (!reader) {
-        throw new Error('Failed to get reader from insights response');
+      if (!insightsData) {
+        throw new Error("No data received from extract-research-insights");
       }
-      
-      let jsonContent = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
+
+      console.log("Received response from extract-research-insights:", insightsData);
+
+      try {
+        const parsedData = insightsData;
         
-        if (done) {
-          console.log("Insights stream complete");
+        if (parsedData) {
+          const probability = parsedData.probability || "Unknown";
+          const areasForResearch = Array.isArray(parsedData.areasForResearch) ? parsedData.areasForResearch : [];
+          const reasoning = parsedData.reasoning || "";
+          const supportingPoints = Array.isArray(parsedData.supportingPoints) ? parsedData.supportingPoints : [];
+          const negativePoints = Array.isArray(parsedData.negativePoints) ? parsedData.negativePoints : [];
           
-          try {
-            let finalJson = jsonContent;
-            if (finalJson.startsWith('```json')) {
-              finalJson = finalJson.replace(/^```json\n/, '').replace(/```$/, '');
-            } else if (finalJson.startsWith('```')) {
-              finalJson = finalJson.replace(/^```\n/, '').replace(/```$/, '');
+          setStreamingState({
+            rawText: JSON.stringify(parsedData, null, 2),
+            parsedData: {
+              probability,
+              areasForResearch,
+              reasoning,
+              supportingPoints,
+              negativePoints
             }
-            
-            const parsedJson = JSON.parse(finalJson);
-            
-            setStreamingState({
-              rawText: finalJson,
-              parsedData: {
-                probability: parsedJson.probability || "Unknown",
-                areasForResearch: Array.isArray(parsedJson.areasForResearch) ? parsedJson.areasForResearch : [],
-                reasoning: parsedJson.reasoning || ""
-              }
-            });
-            
-            setProgress(prev => [...prev, `Extracted probability: ${parsedJson.probability || "Unknown"}`]);
-            if (parsedJson.reasoning) {
-              setProgress(prev => [...prev, `Reasoning: ${parsedJson.reasoning}`]);
-            }
-          } catch (e) {
-            console.error('Final JSON parsing error:', e);
-            
-            setStreamingState({
-              rawText: jsonContent,
-              parsedData: {
-                probability: "Unknown (parsing error)",
-                areasForResearch: ["Could not parse research areas due to format error."],
-                reasoning: "Error parsing model output."
-              }
-            });
+          });
+          
+          setProgress(prev => [...prev, `Extracted probability: ${probability}`]);
+          if (reasoning) {
+            setProgress(prev => [...prev, `Reasoning: ${reasoning}`]);
           }
           
-          break;
+          console.log(`Extracted probability: ${probability}`);
+          console.log(`Areas for research: ${areasForResearch.length}`);
+          console.log(`Supporting points: ${supportingPoints.length}`);
+          console.log(`Negative points: ${negativePoints.length}`);
+        } else {
+          throw new Error("Failed to parse response data");
         }
+      } catch (e) {
+        console.error('Error processing insights response:', e);
         
-        const chunk = textDecoder.decode(value);
-        
-        const lines = chunk.split('\n\n');
-        
-        for (const line of lines) {
-          if (line.trim() && line.startsWith('data: ')) {
-            const jsonStr = line.slice(6).trim();
-            if (jsonStr === '[DONE]') continue;
-            
-            try {
-              const { content } = cleanStreamContent(jsonStr);
-              if (content) {
-                jsonContent += content;
-              }
-            } catch (e) {
-              console.debug('Error parsing insights SSE data (expected during streaming):', e);
-            }
+        setStreamingState({
+          rawText: JSON.stringify(insightsData || {}, null, 2),
+          parsedData: {
+            probability: "Unknown (parsing error)",
+            areasForResearch: ["Could not parse research areas due to format error."],
+            reasoning: "Error parsing model output."
           }
-        }
+        });
       }
     } catch (error) {
       console.error("Error in extractInsights:", error);
@@ -1368,4 +1343,3 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
-
