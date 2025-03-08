@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -14,12 +15,14 @@ serve(async (req) => {
   }
 
   try {
-    const { webContent, analysis } = await req.json()
+    const { webContent, analysis, marketPrice, marketQuestion } = await req.json()
     
     // Trim content to avoid token limits
     const trimmedContent = webContent.slice(0, 15000)
     console.log('Web content length:', trimmedContent.length)
     console.log('Analysis length:', analysis.length)
+    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
+    console.log('Market question:', marketQuestion || 'not provided')
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -38,7 +41,22 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Based on this web research and analysis, provide the probability and areas needing more research:\n\nWeb Content:\n${trimmedContent}\n\nAnalysis:\n${analysis}`
+            content: `Based on this web research and analysis, provide the probability and areas needing more research:
+
+${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
+${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+
+Web Content:
+${trimmedContent}
+
+Analysis:
+${analysis}
+
+${marketPrice !== undefined ? `Consider if the current market probability of ${marketPrice}% is accurate based on the available information.` : ''}
+
+Return ONLY a JSON object with these two fields:
+1. probability: your estimated probability as a percentage string (e.g., "65%")
+2. areasForResearch: an array of strings describing specific areas needing more research`
           }
         ],
         response_format: { type: "json_object" },

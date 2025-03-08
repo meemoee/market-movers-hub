@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -14,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { content, query, question } = await req.json()
+    const { content, query, question, marketPrice } = await req.json()
     
     if (!content || content.length === 0) {
       throw new Error('No content provided for analysis')
@@ -23,6 +24,7 @@ serve(async (req) => {
     console.log(`Analyzing content for query: ${query}`)
     console.log(`Market question: ${question}`)
     console.log(`Content length: ${content.length} characters`)
+    console.log(`Current market price: ${marketPrice !== undefined ? marketPrice + '%' : 'not provided'}`)
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -43,10 +45,17 @@ serve(async (req) => {
             role: "user",
             content: `Market Question: "${question}"
 
+${marketPrice !== undefined ? `The CURRENT MARKET PROBABILITY is: ${marketPrice}%` : ''}
+
 Based on this web research content, provide a LONG analysis of the likelihood and key factors for this query: ${query}
 
 Content:
-${content} ------ YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
+${content}
+
+------ 
+${marketPrice !== undefined ? `IMPORTANT: Consider the current market probability of ${marketPrice}% in your analysis. Explain whether you think this probability is accurate based on the research content.` : ''}
+
+YOU MUST indicate a percent probability at the end of your statement, along with further areas of research necessary.`
           }
         ],
         stream: true

@@ -15,13 +15,15 @@ serve(async (req) => {
   }
 
   try {
-    const { query } = await req.json()
+    const { query, marketPrice, marketQuestion } = await req.json()
 
     if (!OPENROUTER_API_KEY) {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
     console.log('Generating sub-queries for:', query)
+    console.log('Market question:', marketQuestion || 'not provided')
+    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -42,7 +44,10 @@ serve(async (req) => {
             role: "user",
             content: `Generate 5 diverse search queries to gather comprehensive information about the following topic. Focus on different aspects that would be relevant for market research:
 
-Topic: ${query}
+${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
+${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+
+${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`
           }
