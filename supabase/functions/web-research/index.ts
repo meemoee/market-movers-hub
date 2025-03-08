@@ -32,30 +32,10 @@ class ContentCollector {
   }
 }
 
-async function generateSubQueries(query: string, focusText?: string): Promise<string[]> {
-  console.log('Generating sub-queries for:', query, focusText ? `with focus: ${focusText}` : '')
+async function generateSubQueries(query: string): Promise<string[]> {
+  console.log('Generating sub-queries for:', query)
   
   try {
-    const systemPrompt = focusText 
-      ? `You are a helpful assistant that generates search queries focused specifically on: ${focusText}`
-      : 'You are a helpful assistant that generates search queries.';
-      
-    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
-${query}
-${focusText ? `With specific focus on: "${focusText}"` : ''}
-
-CRITICAL GUIDELINES FOR QUERIES:
-1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
-2. Include specific entities, dates, events, or proper nouns from the original question
-3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
-4. Make each query a complete, standalone question or statement that contains ALL relevant context
-5. If the original question asks about a future event, include timeframes or dates
-6. Use precise terminology and specific entities mentioned in the original question
-
-Focus on different aspects that would be relevant for market research. Make each query different from the others to gather a wide range of information.
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
-
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
@@ -69,11 +49,15 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         messages: [
           {
             role: "system",
-            content: systemPrompt
+            content: "You are a helpful assistant that generates search queries."
           },
           {
             role: "user",
-            content: userPrompt
+            content: `Generate 5 diverse search queries to gather comprehensive information about the following topic. Focus on different aspects that would be relevant for market research:
+
+Topic: ${query}
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`
           }
         ],
         response_format: { type: "json_object" }
@@ -87,58 +71,14 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     const result = await response.json()
     const content = result.choices[0].message.content.trim()
     const queriesData = JSON.parse(content)
-    let queries = queriesData.queries || []
-    
-    // Process queries to ensure each has full context
-    queries = queries.map((q: string) => {
-      // Check for common issues in queries
-      if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
-        // Add original query context
-        return `${q} regarding ${query}`
-      }
-      
-      // Check if query likely has enough context
-      const hasNames = /[A-Z][a-z]+/.test(q) // Has proper nouns
-      const isLongEnough = q.length > 40     // Is reasonably detailed
-      
-      if (!hasNames || !isLongEnough) {
-        // Add more context
-        if (focusText) {
-          return `${q} about ${query} focused on ${focusText}`
-        } else {
-          return `${q} about ${query}`
-        }
-      }
-      
-      return q
-    })
+    const queries = queriesData.queries || []
     
     console.log('Generated queries:', queries)
     return queries
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries with full context
-    const fallbackQueries = [
-      `${query} latest developments and facts`,
-      `${query} comprehensive analysis and expert opinions`,
-      `${query} historical precedents and similar cases`,
-      `${query} statistical data and probability estimates`,
-      `${query} future outlook and critical factors`
-    ]
-    
-    if (focusText) {
-      // Add focused variants
-      return [
-        `${focusText} in relation to ${query} analysis`,
-        `${query} specifically regarding ${focusText}`,
-        `${focusText} impact on ${query} outcome`,
-        `${query} factual information related to ${focusText}`,
-        `${focusText} historical precedents for ${query}`
-      ]
-    }
-    
-    return fallbackQueries
+    return [query] // Fallback to original query if generation fails
   }
 }
 
@@ -146,30 +86,30 @@ class WebScraper {
   private bingApiKey: string
   private collector: ContentCollector
   private encoder: TextEncoder
-  private writer: WritableStreamDefaultWriter<Uint8Array>
-  private seenUrls: Set<string>
+  private controller: ReadableStreamDefaultController<any>
 
-  constructor(bingApiKey: string, writer: WritableStreamDefaultWriter<Uint8Array>) {
+  constructor(bingApiKey: string, controller: ReadableStreamDefaultController<any>) {
     if (!bingApiKey) {
       throw new Error('Bing API key is required')
     }
     this.bingApiKey = bingApiKey
     this.collector = new ContentCollector()
     this.encoder = new TextEncoder()
-    this.writer = writer
-    this.seenUrls = new Set()
+    this.controller = controller
   }
 
-  private async sendUpdate(message: string) {
-    await this.writer.write(this.encoder.encode(`data: ${JSON.stringify({ message })}\n\n`))
+  private sendUpdate(message: string) {
+    const data = `data: ${JSON.stringify({ message })}\n\n`
+    this.controller.enqueue(this.encoder.encode(data))
   }
 
-  private async sendResults(results: any[]) {
-    await this.writer.write(this.encoder.encode(`data: ${JSON.stringify({ type: 'results', data: results })}\n\n`))
+  private sendResults(results: any[]) {
+    const data = `data: ${JSON.stringify({ type: 'results', data: results })}\n\n`
+    this.controller.enqueue(this.encoder.encode(data))
   }
 
   async searchBing(query: string) {
-    await this.sendUpdate(`Searching Bing for: ${query}`)
+    this.sendUpdate(`Searching Bing for: ${query}`)
     
     const headers = {
       "Ocp-Apim-Subscription-Key": this.bingApiKey
@@ -188,7 +128,7 @@ class WebScraper {
       }
       const data = await response.json()
       const results = data.webPages?.value || []
-      await this.sendUpdate(`Found ${results.length} search results`)
+      this.sendUpdate(`Found ${results.length} search results`)
       return results
     } catch (error) {
       console.error("Search error:", error)
@@ -198,15 +138,15 @@ class WebScraper {
 
   shouldSkipUrl(url: string): boolean {
     const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
-    return skipDomains.some(domain => url.includes(domain)) || this.seenUrls.has(url)
+    return skipDomains.some(domain => url.includes(domain))
   }
 
-  async fetchAndParseContent(url: string): Promise<{url: string, content: string, title?: string} | null> {
-    if (this.shouldSkipUrl(url)) return null
+  async fetchAndParseContent(url: string) {
+    if (this.shouldSkipUrl(url)) return
 
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000) // Reduced timeout
+      const timeoutId = setTimeout(() => controller.abort(), 10000)
 
       const response = await fetch(url, {
         headers: {
@@ -218,10 +158,10 @@ class WebScraper {
       
       clearTimeout(timeoutId)
 
-      if (!response.ok) return null
+      if (!response.ok) return
 
       const contentType = response.headers.get('content-type')
-      if (!contentType?.includes('text/html')) return null
+      if (!contentType?.includes('text/html')) return
 
       const html = await response.text()
       const $ = load(html)
@@ -237,18 +177,23 @@ class WebScraper {
         .slice(0, 5000)
 
       if (content) {
-        this.seenUrls.add(url)
-        return { url, content, title }
+        const added = this.collector.addContent(url, content, title)
+        if (added) {
+          this.sendResults([{
+            url,
+            content,
+            title
+          }])
+        }
       }
-      return null
     } catch (error) {
       // Skip failed URLs silently
-      return null
+      return
     }
   }
 
   async processBatch(urls: string[], batchSize = 15) {
-    const tasks: Promise<{url: string, content: string, title?: string} | null>[] = []
+    const tasks = []
     for (const url of urls.slice(0, batchSize)) {
       tasks.push(this.fetchAndParseContent(url))
     }
@@ -258,63 +203,42 @@ class WebScraper {
     }
 
     try {
-      const results = await Promise.all(tasks)
-      const validResults = results.filter(result => result !== null) as {url: string, content: string, title?: string}[]
-      
-      if (validResults.length > 0) {
-        await this.sendResults(validResults)
-        
-        // Add to collector for overall results
-        validResults.forEach(result => {
-          this.collector.addContent(result.url, result.content, result.title)
-        })
-      }
-      
+      await Promise.all(tasks)
       return true
     } catch (error) {
-      console.error("Error processing batch:", error)
       return true
     }
   }
 
-  async run(query: string, focusText?: string) {
-    await this.sendUpdate(`Starting web research for query: ${query}${focusText ? ` with focus on: ${focusText}` : ''}`)
+  async run(query: string) {
+    this.sendUpdate(`Starting web research for query: ${query}`)
     
     // Generate sub-queries using OpenRouter
-    const subQueries = await generateSubQueries(query, focusText)
-    await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
+    const subQueries = await generateSubQueries(query)
+    this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
     
-    // Process sub-queries in parallel with a concurrency limit
-    const concurrencyLimit = 3
-    const processSubquery = async (subQuery: string, index: number) => {
-      await this.sendUpdate(`Processing search query ${index+1}/${subQueries.length}: ${subQuery}`)
+    // Process each sub-query
+    for (const subQuery of subQueries) {
+      this.sendUpdate(`Processing search query: ${subQuery}`)
       const searchResults = await this.searchBing(subQuery)
       
       if (!searchResults.length) {
-        return
+        continue
       }
 
       const urls = searchResults.map(result => result.url)
-      const batchSize = 10
-      
-      // Process in smaller batches for more responsive streaming
+      const batchSize = 40
+
       for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
         const batchUrls = urls.slice(startIdx, startIdx + batchSize)
-        await this.processBatch(batchUrls, batchSize)
+        const shouldContinue = await this.processBatch(batchUrls, batchSize)
+        
+        if (!shouldContinue) break
+
+        await new Promise(resolve => setTimeout(resolve, 100))
       }
     }
-    
-    // Process subqueries with limited concurrency
-    for (let i = 0; i < subQueries.length; i += concurrencyLimit) {
-      const subQueryBatch = subQueries.slice(i, i + concurrencyLimit)
-      const promises = subQueryBatch.map((subQuery, idx) => 
-        processSubquery(subQuery, i + idx)
-      )
-      await Promise.all(promises)
-    }
 
-    await this.sendUpdate(`Web research complete. Collected information from ${this.collector.collectedData.length} sources.`)
-    
     return this.collector.collectedData
   }
 }
@@ -325,7 +249,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, focusText } = await req.json()
+    const { query } = await req.json()
 
     if (!BING_API_KEY) {
       throw new Error('BING_API_KEY is not configured')
@@ -335,25 +259,19 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    // Create a TransformStream for streaming response
-    const { readable, writable } = new TransformStream()
-    const writer = writable.getWriter()
-    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      start: async (controller) => {
+        try {
+          const scraper = new WebScraper(BING_API_KEY, controller)
+          await scraper.run(query)
+          controller.close()
+        } catch (error) {
+          controller.error(error)
+        }
+      },
+    })
 
-    // Start research asynchronously
-    (async () => {
-      try {
-        const scraper = new WebScraper(BING_API_KEY, writer)
-        await scraper.run(query, focusText)
-        await writer.close()
-      } catch (error) {
-        console.error("Error in web research:", error)
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
-        await writer.close()
-      }
-    })()
-
-    return new Response(readable, {
+    return new Response(stream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
@@ -362,7 +280,6 @@ serve(async (req) => {
       },
     })
   } catch (error) {
-    console.error("Error in web-research function:", error)
     return new Response(
       JSON.stringify({ error: error.message }),
       {
