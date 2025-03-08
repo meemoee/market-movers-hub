@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "../ui/card";
@@ -11,7 +10,6 @@ interface Holding {
   market_id: string;
   entry_price: number | null;
   outcome: string;
-  amount: number | null;
   market: {
     question: string;
     image: string | null;
@@ -95,7 +93,6 @@ export function AccountHoldings() {
           market_id,
           entry_price,
           outcome,
-          amount,
           market:markets (
             question,
             image,
@@ -177,9 +174,6 @@ export function AccountHoldings() {
                     <div className="space-y-1">
                       <p className="text-sm text-muted-foreground">
                         Outcome: {holding.outcome}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        Shares: {holding.amount?.toFixed(2) || '0.00'}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         Entry Price: ${holding.entry_price?.toFixed(2) || '0.00'}

@@ -87,28 +87,24 @@ export function TopMoversContent({
               isExpanded={expandedMarkets.has(mover.market_id)}
               onToggleExpand={() => toggleMarket(mover.market_id)}
               onBuy={() => {
-                const outcomes = mover.outcomes || ["Yes", "No"];
-                const selectedOutcome = outcomes[0]; // First outcome (e.g., "Yes")
-                const clobTokenId = mover.clobtokenids?.[0]; // First token ID corresponds to first outcome
+                const clobTokenId = mover.clobtokenids?.[0];
                 if (clobTokenId) {
                   setSelectedMarket({ 
                     id: mover.market_id, 
                     action: 'buy', 
                     clobTokenId,
-                    selectedOutcome
+                    selectedOutcome: "Yes"
                   });
                 }
               }}
               onSell={() => {
-                const outcomes = mover.outcomes || ["Yes", "No"];
-                const selectedOutcome = outcomes[1]; // Second outcome (e.g., "No")
-                const clobTokenId = mover.clobtokenids?.[1]; // Second token ID corresponds to second outcome
+                const clobTokenId = mover.clobtokenids?.[1];
                 if (clobTokenId) {
                   setSelectedMarket({ 
                     id: mover.market_id, 
-                    action: 'buy',  // Still 'buy' since we're buying the opposite outcome
+                    action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
                     clobTokenId,
-                    selectedOutcome
+                    selectedOutcome: "No"
                   });
                 }
               }}
