@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -117,7 +118,20 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       wsRef.current = ws;
       initialConnectRef.current = true;
 
+      // Set connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (wsRef.current && wsRef.current.readyState !== WebSocket.OPEN) {
+          console.log('[LiveOrderBook] Connection timeout reached');
+          wsRef.current.close();
+          if (mountedRef.current) {
+            setError('Connection timeout reached');
+            setConnectionStatus("error");
+          }
+        }
+      }, 10000); // 10 second timeout
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         if (mountedRef.current) {
           console.log('[LiveOrderBook] WebSocket connected successfully');
           setConnectionStatus("connected");
@@ -125,6 +139,13 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           
           // Reset reconnect counter on successful connection
           reconnectCountRef.current = 0;
+          
+          // Notify user of successful connection
+          toast({
+            title: "Orderbook Connected",
+            description: "Live orderbook data is now streaming",
+            duration: 3000,
+          });
           
           // Start ping interval to keep connection alive
           startPingInterval();
@@ -189,6 +210,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       };
 
       ws.onerror = (event) => {
+        clearTimeout(connectionTimeout);
         console.error('[LiveOrderBook] WebSocket error:', event);
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
@@ -199,11 +221,18 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       };
 
       ws.onclose = (event) => {
-        console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
+        clearTimeout(connectionTimeout);
+        console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason || "No reason provided");
         
         // Only attempt reconnect if mounted and not intentionally closing
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("disconnected");
+          
+          // Special handling for code 1006 (abnormal closure)
+          if (event.code === 1006) {
+            console.log('[LiveOrderBook] Abnormal closure detected (code 1006) - this typically indicates network issues');
+            setError('Connection closed abnormally. This may be due to network issues.');
+          }
           
           // Check if we've exceeded max reconnect attempts
           if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
@@ -306,4 +335,3 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   return null;
 }
-

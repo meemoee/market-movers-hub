@@ -1,14 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { corsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
+  console.log("Received request to polymarket-ws function");
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    console.log("Handling CORS preflight request");
+    return new Response(null, { 
+      headers: corsHeaders 
+    });
+  }
+
+  // Check for WebSocket upgrade header - this is crucial for WebSocket connections
+  const upgradeHeader = req.headers.get("upgrade") || "";
+  if (upgradeHeader.toLowerCase() !== "websocket") {
+    console.error("Expected WebSocket connection, got:", upgradeHeader);
+    return new Response(JSON.stringify({ 
+      status: "error", 
+      message: "Expected WebSocket connection" 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 400,
+    });
   }
 
   // Get asset ID from URL parameters
@@ -16,7 +30,11 @@ serve(async (req) => {
   const assetId = url.searchParams.get('assetId');
 
   if (!assetId) {
-    return new Response(JSON.stringify({ status: "error", message: "Asset ID is required" }), {
+    console.error("Missing asset ID in request");
+    return new Response(JSON.stringify({ 
+      status: "error", 
+      message: "Asset ID is required" 
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
     });
@@ -25,8 +43,11 @@ serve(async (req) => {
   console.log(`Connecting to Polymarket WebSocket for asset ID: ${assetId}`);
 
   try {
-    // Client connection
+    // Client connection - use Deno.upgradeWebSocket to convert the HTTP request to WebSocket
+    console.log("Upgrading connection to WebSocket");
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
+    console.log("Connection upgraded successfully");
+    
     let polySocket: WebSocket | null = null;
     let pingInterval: number | null = null;
     let connected = false;
@@ -34,6 +55,8 @@ serve(async (req) => {
     let reconnectAttempts = 0;
     let reconnectTimeout: number | null = null;
     const MAX_RECONNECT_ATTEMPTS = 5;
+    const CONNECTION_TIMEOUT = 15000; // 15 seconds timeout
+    let connectionTimeoutId: number | null = null;
 
     // Function to close everything and clean up
     const cleanupConnections = () => {
@@ -46,6 +69,11 @@ serve(async (req) => {
       if (reconnectTimeout) {
         clearTimeout(reconnectTimeout);
         reconnectTimeout = null;
+      }
+      
+      if (connectionTimeoutId) {
+        clearTimeout(connectionTimeoutId);
+        connectionTimeoutId = null;
       }
       
       if (polySocket && (polySocket.readyState === WebSocket.OPEN || polySocket.readyState === WebSocket.CONNECTING)) {
@@ -62,6 +90,7 @@ serve(async (req) => {
     // Function to connect to Polymarket WebSocket
     const connectToPolymarket = () => {
       if (reconnecting) {
+        console.log(`Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
         clientSocket.send(JSON.stringify({ status: "reconnecting", attempt: reconnectAttempts }));
       }
       
@@ -79,16 +108,37 @@ serve(async (req) => {
         // Connect to Polymarket WebSocket
         polySocket = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
         
+        // Set connection timeout
+        connectionTimeoutId = setTimeout(() => {
+          if (!connected) {
+            console.error("Connection timeout reached");
+            if (polySocket) {
+              polySocket.close();
+            }
+            clientSocket.send(JSON.stringify({ 
+              status: "error", 
+              message: "Connection timeout reached" 
+            }));
+            scheduleReconnect();
+          }
+        }, CONNECTION_TIMEOUT);
+        
         polySocket.onopen = () => {
           console.log("Polymarket WebSocket connected");
           connected = true;
           reconnecting = false;
           reconnectAttempts = 0;
           
+          // Clear connection timeout
+          if (connectionTimeoutId) {
+            clearTimeout(connectionTimeoutId);
+            connectionTimeoutId = null;
+          }
+          
           // Send connection status to client
           clientSocket.send(JSON.stringify({ status: "connected" }));
           
-          // Subscribe to market data with a slight delay to ensure connection is stable
+          // Subscribe to market data with a delay to ensure connection is stable
           setTimeout(() => {
             if (polySocket && polySocket.readyState === WebSocket.OPEN) {
               // Subscribe to market data
@@ -96,6 +146,7 @@ serve(async (req) => {
                 type: "Market",
                 assets_ids: [assetId]
               };
+              console.log("Sending subscription request:", JSON.stringify(subscription));
               polySocket.send(JSON.stringify(subscription));
               console.log('Subscribed to market data');
 
@@ -104,10 +155,14 @@ serve(async (req) => {
                 type: "GetMarketSnapshot",
                 asset_id: assetId
               };
+              console.log("Sending snapshot request:", JSON.stringify(snapshotRequest));
               polySocket.send(JSON.stringify(snapshotRequest));
               console.log('Requested initial snapshot');
+            } else {
+              console.error("Cannot send subscription: WebSocket not open");
+              scheduleReconnect();
             }
-          }, 100);
+          }, 500); // Increased delay to 500ms for stability
           
           // Setup ping interval to keep connection alive
           if (pingInterval) {
@@ -117,6 +172,7 @@ serve(async (req) => {
           pingInterval = setInterval(() => {
             if (polySocket && polySocket.readyState === WebSocket.OPEN) {
               try {
+                console.log("Sending PING to Polymarket");
                 polySocket.send("PING");
                 clientSocket.send(JSON.stringify({ ping: new Date().toISOString() }));
               } catch (err) {
@@ -124,6 +180,7 @@ serve(async (req) => {
                 scheduleReconnect();
               }
             } else {
+              console.error("Cannot send ping: WebSocket not open");
               scheduleReconnect();
             }
           }, 30000);
@@ -139,6 +196,7 @@ serve(async (req) => {
               return;
             }
             
+            console.log("Received data from Polymarket:", data.substring(0, 100) + (data.length > 100 ? "..." : ""));
             const parsed = JSON.parse(data);
             
             if (!Array.isArray(parsed) || parsed.length === 0) {
@@ -151,13 +209,16 @@ serve(async (req) => {
             
             for (const event of parsed) {
               if (event.event_type === "book") {
+                console.log("Processing book event");
                 orderbook = processOrderbookSnapshot(event);
               } else if (event.event_type === "price_change") {
+                console.log("Processing price_change event");
                 orderbook = processLevelUpdate(event, orderbook);
               }
             }
             
             if (orderbook) {
+              console.log("Sending orderbook update to client");
               clientSocket.send(JSON.stringify({ orderbook }));
             }
           } catch (err) {
@@ -175,8 +236,17 @@ serve(async (req) => {
         };
         
         polySocket.onclose = (event) => {
-          console.log(`Polymarket WebSocket closed with code ${event.code}, reason: ${event.reason}`);
+          console.log(`Polymarket WebSocket closed with code ${event.code}, reason: ${event.reason || "No reason provided"}`);
           connected = false;
+          
+          // Special handling for code 1006 (abnormal closure)
+          if (event.code === 1006) {
+            console.error("Abnormal closure detected (code 1006) - this typically indicates network issues");
+            clientSocket.send(JSON.stringify({ 
+              status: "error", 
+              message: "Connection to orderbook service was closed abnormally"
+            }));
+          }
           
           if (!reconnecting) {
             scheduleReconnect();
@@ -242,6 +312,7 @@ serve(async (req) => {
       
       // Process bids
       if (Array.isArray(book.bids)) {
+        console.log(`Processing ${book.bids.length} bids`);
         for (const bid of book.bids) {
           if (bid.price && bid.size) {
             const size = parseFloat(bid.size);
@@ -254,6 +325,7 @@ serve(async (req) => {
       
       // Process asks
       if (Array.isArray(book.asks)) {
+        console.log(`Processing ${book.asks.length} asks`);
         for (const ask of book.asks) {
           if (ask.price && ask.size) {
             const size = parseFloat(ask.size);
@@ -272,10 +344,12 @@ serve(async (req) => {
     // Process orderbook updates
     const processLevelUpdate = (event: any, orderbook: any) => {
       if (!orderbook) {
+        console.log("No orderbook provided, using current orderbook");
         orderbook = { ...currentOrderbook };
       }
       
       if (event.changes && Array.isArray(event.changes)) {
+        console.log(`Processing ${event.changes.length} price changes`);
         for (const change of event.changes) {
           const price = change.price;
           const size = parseFloat(change.size);
@@ -319,10 +393,12 @@ serve(async (req) => {
     
     clientSocket.onmessage = (event) => {
       try {
+        console.log("Received message from client:", event.data);
         const message = JSON.parse(event.data);
         
         // Handle ping-pong
         if (message.ping) {
+          console.log("Received ping from client, sending pong");
           clientSocket.send(JSON.stringify({ pong: new Date().toISOString() }));
         }
       } catch (err) {
@@ -330,8 +406,8 @@ serve(async (req) => {
       }
     };
     
-    clientSocket.onclose = () => {
-      console.log("Client disconnected");
+    clientSocket.onclose = (event) => {
+      console.log(`Client disconnected with code ${event.code}, reason: ${event.reason || "No reason provided"}`);
       cleanupConnections();
     };
     
@@ -340,10 +416,15 @@ serve(async (req) => {
       cleanupConnections();
     };
     
+    // Return the WebSocket response
     return response;
   } catch (err) {
     console.error("Error handling WebSocket connection:", err);
-    return new Response(JSON.stringify({ status: "error", message: "Failed to establish WebSocket connection" }), {
+    return new Response(JSON.stringify({ 
+      status: "error", 
+      message: "Failed to establish WebSocket connection",
+      error: err.message
+    }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     });
