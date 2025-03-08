@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle2, XCircle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -11,6 +11,8 @@ interface StreamingState {
     probability: string;
     areasForResearch: string[];
     reasoning?: string;
+    supportingPoints?: string[];
+    negativePoints?: string[];
   } | null;
 }
 
@@ -40,7 +42,7 @@ export function InsightsDisplay({
   // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
-  const { probability, areasForResearch, reasoning } = streamingState.parsedData;
+  const { probability, areasForResearch, reasoning, supportingPoints, negativePoints } = streamingState.parsedData;
   
   // More comprehensive check for error messages in probability
   const hasErrorInProbability = 
@@ -142,6 +144,46 @@ export function InsightsDisplay({
                 </span>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">{reasoning}</p>
+            </div>
+          )}
+
+          {/* Supporting Points Section */}
+          {supportingPoints && supportingPoints.length > 0 && (
+            <div className="mt-4 border-t pt-4 border-accent/20">
+              <div className="flex items-center gap-2 mb-3">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <span className="text-sm font-medium">Supporting Factors</span>
+              </div>
+              <div className="space-y-2">
+                {supportingPoints.map((point, index) => (
+                  <div key={`support-${index}`} className="flex gap-2">
+                    <div className="min-w-4 pt-1">
+                      <div className="h-1.5 w-1.5 rounded-full bg-green-500"></div>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{point}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Negative Points Section */}
+          {negativePoints && negativePoints.length > 0 && (
+            <div className="mt-4 border-t pt-4 border-accent/20">
+              <div className="flex items-center gap-2 mb-3">
+                <XCircle className="h-4 w-4 text-red-500" />
+                <span className="text-sm font-medium">Opposing Factors</span>
+              </div>
+              <div className="space-y-2">
+                {negativePoints.map((point, index) => (
+                  <div key={`negative-${index}`} className="flex gap-2">
+                    <div className="min-w-4 pt-1">
+                      <div className="h-1.5 w-1.5 rounded-full bg-red-500"></div>
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{point}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </Card>
