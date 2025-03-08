@@ -14,6 +14,8 @@ import { LiveOrderBook } from './LiveOrderBook';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from 'react';
+import { Input } from "@/components/ui/input";
+import { MultiRangeSlider } from "@/components/ui/multi-range-slider";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -59,6 +61,9 @@ export function TransactionDialog({
   const { toast } = useToast();
   const [size, setSize] = useState(1);
   const [isClosing, setIsClosing] = useState(false);
+  const [userBalance, setUserBalance] = useState<number | null>(null);
+  const [sharePercentage, setSharePercentage] = useState<number>(10);
+  const [shareAmount, setShareAmount] = useState<number>(0);
 
   // Add effect to log when orderbook data changes
   useEffect(() => {
@@ -76,6 +81,114 @@ export function TransactionDialog({
       });
     }
   }, [selectedMarket]);
+
+  // Fetch user balance when dialog opens
+  useEffect(() => {
+    const fetchUserBalance = async () => {
+      if (!selectedMarket) return;
+      
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) {
+          console.log('[TransactionDialog] No active user session');
+          return;
+        }
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('balance')
+          .eq('id', session.user.id)
+          .single();
+          
+        if (error) {
+          console.error('[TransactionDialog] Error fetching user balance:', error);
+          return;
+        }
+        
+        if (data) {
+          console.log('[TransactionDialog] User balance:', data.balance);
+          setUserBalance(data.balance);
+          // Initialize share amount to 10% of balance
+          updateShareAmount(10);
+        }
+      } catch (error) {
+        console.error('[TransactionDialog] Error fetching user data:', error);
+      }
+    };
+    
+    fetchUserBalance();
+  }, [selectedMarket]);
+
+  // Update share amount when percentage or orderbook data changes
+  useEffect(() => {
+    updateShareAmount(sharePercentage);
+  }, [sharePercentage, orderBookData]);
+
+  const updateShareAmount = (percentage: number) => {
+    if (!userBalance || !orderBookData) return;
+    
+    const maxAmount = userBalance * (percentage / 100);
+    const price = orderBookData.best_ask;
+    
+    // Calculate how many shares can be purchased with this amount at current price
+    const shares = price > 0 ? (maxAmount / price) : 0;
+    
+    setSharePercentage(percentage);
+    setSize(parseFloat(shares.toFixed(2)));
+    setShareAmount(parseFloat(maxAmount.toFixed(2)));
+  };
+
+  const handleSharePercentageChange = (value: number) => {
+    updateShareAmount(value);
+  };
+
+  const handleShareAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!userBalance || !orderBookData) return;
+    
+    const inputAmount = parseFloat(e.target.value);
+    
+    if (isNaN(inputAmount) || inputAmount <= 0) {
+      setShareAmount(0);
+      setSize(0);
+      setSharePercentage(0);
+      return;
+    }
+    
+    // Calculate percentage of balance
+    const percentage = Math.min((inputAmount / userBalance) * 100, 100);
+    const price = orderBookData.best_ask;
+    
+    // Calculate shares based on amount and price
+    const shares = price > 0 ? (inputAmount / price) : 0;
+    
+    setShareAmount(inputAmount);
+    setSize(parseFloat(shares.toFixed(2)));
+    setSharePercentage(percentage);
+  };
+
+  const handleShareSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!orderBookData) return;
+    
+    const inputSize = parseFloat(e.target.value);
+    
+    if (isNaN(inputSize) || inputSize <= 0) {
+      setShareAmount(0);
+      setSize(0);
+      setSharePercentage(0);
+      return;
+    }
+    
+    // Calculate dollar amount based on size and price
+    const price = orderBookData.best_ask;
+    const amount = inputSize * price;
+    
+    // Calculate percentage of balance
+    const percentage = userBalance ? Math.min((amount / userBalance) * 100, 100) : 0;
+    
+    setSize(inputSize);
+    setShareAmount(parseFloat(amount.toFixed(2)));
+    setSharePercentage(percentage);
+  };
 
   const handleClose = () => {
     console.log('[TransactionDialog] Closing dialog');
@@ -163,6 +276,9 @@ export function TransactionDialog({
     }
   };
 
+  const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
+  const formatPercentage = (value: number) => `${value}%`;
+
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
@@ -247,8 +363,70 @@ export function TransactionDialog({
                       </div>
                     </div>
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground mb-4">
                     Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
+                  </div>
+
+                  {/* Share Amount Box and Slider */}
+                  <div className="bg-accent/20 p-4 rounded-lg space-y-4">
+                    <div className="text-sm font-medium">Order Details</div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label htmlFor="amount" className="text-xs text-muted-foreground">Amount ($)</label>
+                        <Input
+                          id="amount"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={shareAmount}
+                          onChange={handleShareAmountChange}
+                          className="bg-background"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="size" className="text-xs text-muted-foreground">Size (shares)</label>
+                        <Input
+                          id="size"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={size}
+                          onChange={handleShareSizeChange}
+                          className="bg-background"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-xs text-muted-foreground">Balance: {userBalance ? formatCurrency(userBalance) : 'Loading...'}</span>
+                        <span className="text-xs font-medium">{formatPercentage(Math.round(sharePercentage))}</span>
+                      </div>
+                      
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        step="1"
+                        value={sharePercentage}
+                        onChange={(e) => handleSharePercentageChange(parseInt(e.target.value))}
+                        className="w-full h-2 bg-accent rounded-lg appearance-none cursor-pointer"
+                      />
+                      
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>0%</span>
+                        <span>25%</span>
+                        <span>50%</span>
+                        <span>75%</span>
+                        <span>100%</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between pt-2 border-t border-border">
+                      <span className="text-sm">Total Cost:</span>
+                      <span className="text-sm font-medium">${(size * orderBookData.best_ask).toFixed(2)}</span>
+                    </div>
                   </div>
                 </>
               )}
@@ -259,7 +437,7 @@ export function TransactionDialog({
           <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            disabled={!orderBookData || isOrderBookLoading}
+            disabled={!orderBookData || isOrderBookLoading || size <= 0}
             className="bg-green-500 hover:bg-green-600"
           >
             {isOrderBookLoading ? (
@@ -268,7 +446,7 @@ export function TransactionDialog({
                 Connecting...
               </>
             ) : (
-              `Confirm purchase of ${selectedMarket?.selectedOutcome}`
+              `Confirm purchase of ${selectedMarket?.selectedOutcome} (${size} shares)`
             )}
           </AlertDialogAction>
         </AlertDialogFooter>
