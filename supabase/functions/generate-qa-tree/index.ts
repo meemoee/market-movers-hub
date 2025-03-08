@@ -86,14 +86,14 @@ IMPORTANT FORMATTING INSTRUCTION:
 - Use a consistent hierarchy of headings
 - Separate list items with proper spacing
 - Format your response in a way that is easy to read with good vertical spacing`
-      : "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Use proper markdown formatting with ## for section headings, * or - for bullet points, **bold text** for emphasis, and other markdown syntax as appropriate. Include citations in square brackets [1] where relevant. Use **bold** text for important concepts or conclusions.
+      : `You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Use proper markdown formatting with ## for section headings, * or - for bullet points, **bold text** for emphasis, and other markdown syntax as appropriate. Include citations in square brackets [1] where relevant. Use **bold** text for important concepts or conclusions.
 
 IMPORTANT FORMATTING INSTRUCTION:
 - Use double line breaks between paragraphs for clear separation
 - Ensure proper spacing after each section heading
 - Use a consistent hierarchy of headings
 - Separate list items with proper spacing
-- Format your response in a way that is easy to read with good vertical spacing";
+- Format your response in a way that is easy to read with good vertical spacing`;
 
     // For analysis, stream the response from OpenRouter.
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
