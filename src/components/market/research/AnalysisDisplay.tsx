@@ -102,6 +102,9 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
+  // Process content to ensure proper line breaks
+  const processedContent = content?.replace(/\n/g, '\n\n') || '';
+
   if (!content) return null
 
   return (
@@ -121,10 +124,11 @@ export function AnalysisDisplay({
               "prose-li:my-0.5",
               "prose-strong:text-primary/90 prose-strong:font-semibold",
               "prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:text-xs",
-              "prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/40 prose-blockquote:pl-4 prose-blockquote:italic"
+              "prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/40 prose-blockquote:pl-4 prose-blockquote:italic",
+              "whitespace-pre-wrap"
             )}
           >
-            {content}
+            {processedContent}
           </ReactMarkdown>
         </div>
       </ScrollArea>

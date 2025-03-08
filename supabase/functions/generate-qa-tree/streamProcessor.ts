@@ -13,6 +13,7 @@ export class StreamProcessor {
   private readonly sentenceEndings = new Set(['.', '!', '?']);
   private readonly listMarkerPattern = /^\d+\.\s/;
   private readonly markdownTokens = new Set(['**', '_', '`', '[']);
+  private readonly paragraphBreakPattern = /\n\s*\n/;
 
   constructor() {
     this.state = {
@@ -29,6 +30,53 @@ export class StreamProcessor {
   processChunk(text: string): string {
     // Add new text to buffers
     this.state.buffer += text;
+    let output = '';
+    
+    // Check for paragraph breaks
+    const paragraphs = this.state.buffer.split(this.paragraphBreakPattern);
+    
+    if (paragraphs.length > 1) {
+      // Process all complete paragraphs
+      for (let i = 0; i < paragraphs.length - 1; i++) {
+        output += this.processParagraph(paragraphs[i]) + '\n\n';
+      }
+      
+      // Keep the last (possibly incomplete) paragraph in the buffer
+      this.state.buffer = paragraphs[paragraphs.length - 1];
+    }
+    
+    // Process character by character for the remaining buffer
+    const processedText = this.processBufferCharacters();
+    if (processedText) {
+      output += processedText;
+    }
+    
+    return output;
+  }
+  
+  private processParagraph(text: string): string {
+    let processed = '';
+    let lines = text.split('\n');
+    
+    for (const line of lines) {
+      // Check for section headers with markdown
+      if (line.startsWith('#')) {
+        processed += line + '\n\n';
+      }
+      // Check for list items
+      else if (line.trim().startsWith('- ') || line.trim().startsWith('* ') || this.listMarkerPattern.test(line.trim())) {
+        processed += line + '\n';
+      }
+      // Regular text
+      else {
+        processed += line + ' ';
+      }
+    }
+    
+    return processed.trim();
+  }
+  
+  private processBufferCharacters(): string {
     let output = '';
     
     // Process buffer character by character
@@ -54,6 +102,10 @@ export class StreamProcessor {
           else if (this.isMarkdownToken(word)) {
             this.state.isInMarkdown = !this.state.isInMarkdown;
             output += word;
+          }
+          // Handle section headings
+          else if (word.startsWith('#')) {
+            output += (output ? '\n\n' : '') + word;
           }
           // Handle normal words
           else {
