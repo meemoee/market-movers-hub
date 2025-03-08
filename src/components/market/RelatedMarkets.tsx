@@ -1,3 +1,4 @@
+
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
@@ -42,13 +43,6 @@ function cleanTextFields(market: any) {
 }
 
 export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedMarketsProps) {
-  console.log(`RelatedMarkets component mounted with eventId: ${eventId}, marketId: ${marketId}`);
-  
-  if (!eventId || !marketId) {
-    console.log("RelatedMarkets: missing eventId or marketId, not rendering");
-    return null;
-  }
-  
   const navigate = useNavigate();
   const [selectedMarket, setSelectedMarket] = useState<{ 
     id: string; 
@@ -63,8 +57,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   const { data: relatedMarkets, isLoading } = useQuery({
     queryKey: ['relatedMarkets', eventId, marketId, selectedInterval, sortBy],
     queryFn: async () => {
-      console.log(`Fetching related markets for eventId: ${eventId}, marketId: ${marketId}`);
-      
       const { data: markets, error } = await supabase
         .from('markets')
         .select(`
@@ -79,16 +71,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         .eq('event_id', eventId)
         .neq('id', marketId);
 
-      if (error) {
-        console.error("Error fetching related markets:", error);
-        throw error;
-      }
-      
-      console.log(`Found ${markets.length} related markets for eventId: ${eventId}`);
-
-      if (markets.length === 0) {
-        return [];
-      }
+      if (error) throw error;
 
       const { data: topMoversData, error: topMoversError } = await supabase.functions.invoke<{
         data: Array<{
@@ -107,10 +90,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
         }
       });
 
-      if (topMoversError) {
-        console.error("Error fetching top movers data for related markets:", topMoversError);
-        throw topMoversError;
-      }
+      if (topMoversError) throw topMoversError;
 
       const marketsWithPriceChanges = markets.map(market => {
         const moverData = topMoversData?.data?.find(m => m.market_id === market.id);
@@ -140,7 +120,6 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
       });
 
       const filteredMarkets = marketsWithPriceChanges.filter(Boolean);
-      console.log(`Processed ${filteredMarkets.length} related markets with price data`);
       
       return filteredMarkets.sort((a, b) => {
         if (sortBy === 'priceChange') {
@@ -176,15 +155,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
   }
 
   if (!relatedMarkets?.length) {
-    console.log("No related markets found for this event");
-    return (
-      <div className="space-y-4 border-t border-border pt-4">
-        <div className="text-sm text-muted-foreground">Related Markets</div>
-        <div className="py-4 text-center text-muted-foreground">
-          No related markets found for this event
-        </div>
-      </div>
-    );
+    return null;
   }
 
   const selectedTopMover = selectedMarket 
