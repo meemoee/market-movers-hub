@@ -42,7 +42,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   useEffect(() => {
     if (!isClosing && clobTokenId) {
-      runDiagnosticTest();
+      runDiagnosticTest('basic');
     }
   }, [clobTokenId, isClosing]);
 
@@ -74,11 +74,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     };
   }, [clobTokenId, isClosing]);
 
-  const runDiagnosticTest = async () => {
+  const runDiagnosticTest = async (testType = 'basic') => {
     try {
-      setDiagnosticInfo("Running diagnostic test...");
+      setDiagnosticInfo(`Running ${testType} diagnostic test...`);
       setDiagnosticDetails(null);
-      console.log('[LiveOrderBook] Running diagnostic test on edge function');
+      console.log(`[LiveOrderBook] Running ${testType} diagnostic test on edge function`);
       
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -92,29 +92,46 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       
       headers['apikey'] = SUPABASE_PUBLIC_KEY;
       
-      console.log('[LiveOrderBook] Diagnostic request headers:', JSON.stringify(headers, null, 2));
+      let url = `${SUPABASE_PUBLIC_URL}/functions/v1/polymarket-ws?test=true&type=${testType}`;
       
-      const response = await fetch(
-        `${SUPABASE_PUBLIC_URL}/functions/v1/polymarket-ws?test=true`, 
-        { headers }
-      );
+      if (testType === 'polymarket' && clobTokenId) {
+        url += `&assetId=${clobTokenId}`;
+      }
+      
+      console.log('[LiveOrderBook] Diagnostic request URL:', url);
+      
+      const response = await fetch(url, { headers });
       
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[LiveOrderBook] Diagnostic test failed:', response.status, errorText);
-        setDiagnosticInfo(`Diagnostic failed: HTTP ${response.status}. Edge function might not be deployed properly.`);
+        console.error(`[LiveOrderBook] ${testType} diagnostic test failed:`, response.status, errorText);
+        setDiagnosticInfo(`${testType} diagnostic failed: HTTP ${response.status}. Edge function might not be deployed properly.`);
         setDiagnosticDetails(`Error details: ${errorText}`);
-        return;
+        return false;
       }
       
       const data = await response.json();
-      console.log('[LiveOrderBook] Diagnostic test response:', data);
-      setDiagnosticInfo(`Diagnostic success: Edge function is running. Timestamp: ${data.timestamp}`);
+      console.log(`[LiveOrderBook] ${testType} diagnostic test response:`, data);
+      
+      if (testType === 'basic') {
+        setDiagnosticInfo(`Basic diagnostic success: Edge function is running. Timestamp: ${data.timestamp}`);
+      } else if (testType === 'ws-capability') {
+        setDiagnosticInfo(`WebSocket capability test: ${data.wsCapable ? 'Supported' : 'Not supported'}`);
+      } else if (testType === 'polymarket') {
+        setDiagnosticInfo(`Polymarket API test: ${data.status === 'ok' ? 'Success' : 'Failed'}`);
+        if (data.sample_data) {
+          const sampleDataStr = JSON.stringify(data.sample_data, null, 2);
+          setDiagnosticDetails(`Polymarket data sample: ${sampleDataStr.length > 500 ? sampleDataStr.substring(0, 500) + '...' : sampleDataStr}`);
+        }
+      }
+      
       setDiagnosticDetails(`Response: ${JSON.stringify(data, null, 2)}`);
+      return data.status === 'ok';
     } catch (err) {
-      console.error('[LiveOrderBook] Error running diagnostic test:', err);
-      setDiagnosticInfo(`Diagnostic error: ${err.message}. Edge function might not be accessible.`);
+      console.error(`[LiveOrderBook] Error running ${testType} diagnostic test:`, err);
+      setDiagnosticInfo(`${testType} diagnostic error: ${err.message}. Edge function might not be accessible.`);
       setDiagnosticDetails(`Full error: ${err.toString()}`);
+      return false;
     }
   };
 
@@ -152,6 +169,18 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       
       if (mountedRef.current) {
         setError(null);
+      }
+
+      // First run a polymarket API test to check if the asset ID is valid
+      const polymarketTestSuccess = await runDiagnosticTest('polymarket');
+      
+      if (!polymarketTestSuccess) {
+        console.error('[LiveOrderBook] Polymarket API test failed, not proceeding with WebSocket connection');
+        if (mountedRef.current) {
+          setError('Cannot connect to Polymarket API for this asset. Please check the asset ID.');
+          setConnectionStatus("error");
+        }
+        return;
       }
 
       const { data: { session } } = await supabase.auth.getSession();
@@ -363,10 +392,22 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         
         <div className="flex space-x-2 mt-2">
           <button 
-            onClick={runDiagnosticTest}
+            onClick={() => runDiagnosticTest('basic')}
             className="px-3 py-1 bg-accent/30 hover:bg-accent/50 rounded-md text-xs text-foreground"
           >
-            Run Diagnostic
+            Basic Test
+          </button>
+          <button 
+            onClick={() => runDiagnosticTest('ws-capability')}
+            className="px-3 py-1 bg-accent/30 hover:bg-accent/50 rounded-md text-xs text-foreground"
+          >
+            WebSocket Test
+          </button>
+          <button 
+            onClick={() => runDiagnosticTest('polymarket')}
+            className="px-3 py-1 bg-accent/30 hover:bg-accent/50 rounded-md text-xs text-foreground"
+          >
+            Polymarket Test
           </button>
         </div>
       </div>
@@ -390,10 +431,16 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         )}
         <div className="flex space-x-2 justify-center">
           <button 
-            onClick={runDiagnosticTest}
+            onClick={() => runDiagnosticTest('polymarket')}
             className="px-3 py-1 bg-accent/30 hover:bg-accent/50 rounded-md text-sm text-foreground"
           >
-            Run Diagnostic
+            Test Polymarket API
+          </button>
+          <button 
+            onClick={() => runDiagnosticTest('ws-capability')}
+            className="px-3 py-1 bg-accent/30 hover:bg-accent/50 rounded-md text-sm text-foreground"
+          >
+            Test WebSocket
           </button>
           <button 
             onClick={() => {

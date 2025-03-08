@@ -24,6 +24,111 @@ serve(async (req) => {
     const url = new URL(req.url);
     if (url.searchParams.get('test') === 'true') {
       console.log("🧪 Diagnostic test request received");
+      
+      // Enhanced diagnostic test
+      const testType = url.searchParams.get('type') || 'basic';
+      
+      if (testType === 'ws-capability') {
+        // Test if WebSocket capability works on the edge function
+        try {
+          // Simple test to check if Deno.upgradeWebSocket is available and functioning
+          const dummyReq = new Request("http://localhost/dummy", {
+            headers: new Headers({
+              'Upgrade': 'websocket',
+              'Connection': 'Upgrade',
+              'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+              'Sec-WebSocket-Version': '13',
+            })
+          });
+          
+          // Just check if the function exists and can be called without errors
+          const upgradeCheck = typeof Deno.upgradeWebSocket === 'function';
+          
+          return new Response(JSON.stringify({ 
+            status: "ok", 
+            message: "WebSocket capability test",
+            wsCapable: upgradeCheck,
+            timestamp: new Date().toISOString(),
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 200,
+          });
+        } catch (err) {
+          console.error("❌ WebSocket capability test failed:", err);
+          return new Response(JSON.stringify({ 
+            status: "error", 
+            message: "WebSocket capability test failed",
+            error: err.message,
+            timestamp: new Date().toISOString(),
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500,
+          });
+        }
+      }
+      
+      if (testType === 'polymarket') {
+        // Test the Polymarket API directly
+        try {
+          const assetId = url.searchParams.get('assetId');
+          if (!assetId) {
+            return new Response(JSON.stringify({ 
+              status: "error", 
+              message: "Asset ID is required for Polymarket test",
+              timestamp: new Date().toISOString(),
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 400,
+            });
+          }
+          
+          const polymarketUrl = `https://clob.polymarket.com/orderbook/${assetId}`;
+          console.log(`🔄 Testing Polymarket API: ${polymarketUrl}`);
+          
+          const response = await fetch(polymarketUrl, {
+            headers: { 'Accept': 'application/json' }
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            return new Response(JSON.stringify({ 
+              status: "ok", 
+              message: "Polymarket API test successful",
+              polymarket_status: response.status,
+              timestamp: new Date().toISOString(),
+              sample_data: data,
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: 200,
+            });
+          } else {
+            const errorText = await response.text();
+            return new Response(JSON.stringify({ 
+              status: "error", 
+              message: "Polymarket API test failed",
+              polymarket_status: response.status,
+              error_details: errorText,
+              timestamp: new Date().toISOString(),
+            }), {
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+              status: response.status,
+            });
+          }
+        } catch (err) {
+          console.error("❌ Polymarket API test failed:", err);
+          return new Response(JSON.stringify({ 
+            status: "error", 
+            message: "Polymarket API test failed",
+            error: err.message,
+            timestamp: new Date().toISOString(),
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            status: 500,
+          });
+        }
+      }
+      
+      // Basic diagnostic test (default)
       return new Response(JSON.stringify({ 
         status: "ok", 
         message: "Edge function is running correctly",
@@ -63,6 +168,43 @@ serve(async (req) => {
 
     console.log(`🔗 Attempting WebSocket upgrade for token ID: ${tokenId}`);
 
+    // Try to fetch initial data first to validate the token ID
+    try {
+      const polymarketUrl = `https://clob.polymarket.com/orderbook/${tokenId}`;
+      console.log(`🔍 Validating token ID with initial fetch: ${polymarketUrl}`);
+      
+      const validationResponse = await fetch(polymarketUrl, {
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (!validationResponse.ok) {
+        console.error(`❌ Invalid token ID or Polymarket API error: ${validationResponse.status}`);
+        const errorText = await validationResponse.text();
+        console.error('Error details:', errorText);
+        
+        return new Response(JSON.stringify({ 
+          status: "error", 
+          message: `Invalid token ID or Polymarket API error: ${validationResponse.status}`,
+          details: errorText
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: validationResponse.status,
+        });
+      }
+      
+      console.log(`✅ Token ID validated successfully`);
+    } catch (err) {
+      console.error("❌ Error validating token ID:", err);
+      return new Response(JSON.stringify({ 
+        status: "error", 
+        message: "Error validating token ID",
+        error: err.message
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 500,
+      });
+    }
+
     try {
       // Setup WebSocket connection to client
       const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
@@ -88,29 +230,38 @@ serve(async (req) => {
             console.log("✅ Successfully fetched orderbook data");
             
             // Send initial orderbook data to client
-            clientSocket.send(JSON.stringify({ 
-              status: "connected",
-              orderbook: orderBookData
-            }));
-            
-            // Start polling for updates (since we don't have a direct WS connection to Polymarket)
-            pollOrderBook(clientSocket, tokenId);
+            if (clientSocket.readyState === WebSocket.OPEN) {
+              clientSocket.send(JSON.stringify({ 
+                status: "connected",
+                orderbook: orderBookData
+              }));
+              
+              // Start polling for updates (since we don't have a direct WS connection to Polymarket)
+              pollOrderBook(clientSocket, tokenId);
+            } else {
+              console.error("❌ Client socket not open when trying to send initial data");
+            }
           } else {
             console.error(`❌ Failed to fetch orderbook: ${response.status}`);
             const errorText = await response.text();
             console.error('Error details:', errorText);
             
-            clientSocket.send(JSON.stringify({ 
-              status: "error",
-              message: `Failed to fetch orderbook: ${response.status}`
-            }));
+            if (clientSocket.readyState === WebSocket.OPEN) {
+              clientSocket.send(JSON.stringify({ 
+                status: "error",
+                message: `Failed to fetch orderbook: ${response.status}`
+              }));
+            }
           }
         } catch (err) {
           console.error("❌ Error fetching initial orderbook data:", err);
-          clientSocket.send(JSON.stringify({ 
-            status: "error",
-            message: `Error fetching orderbook: ${err.message}`
-          }));
+          
+          if (clientSocket.readyState === WebSocket.OPEN) {
+            clientSocket.send(JSON.stringify({ 
+              status: "error",
+              message: `Error fetching orderbook: ${err.message}`
+            }));
+          }
         }
       };
       
@@ -121,9 +272,11 @@ serve(async (req) => {
           
           // Handle ping messages to keep connection alive
           if (message.ping) {
-            clientSocket.send(JSON.stringify({ 
-              pong: new Date().toISOString() 
-            }));
+            if (clientSocket.readyState === WebSocket.OPEN) {
+              clientSocket.send(JSON.stringify({ 
+                pong: new Date().toISOString() 
+              }));
+            }
           }
         } catch (err) {
           console.error("❌ Error handling client message:", err);
@@ -179,9 +332,11 @@ async function pollOrderBook(clientSocket, tokenId) {
     
     if (response.ok) {
       const data = await response.json();
-      clientSocket.send(JSON.stringify({ 
-        orderbook: data
-      }));
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        clientSocket.send(JSON.stringify({ 
+          orderbook: data
+        }));
+      }
     } else {
       console.error(`❌ Failed to fetch orderbook update: ${response.status}`);
     }
