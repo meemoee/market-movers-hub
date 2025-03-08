@@ -110,7 +110,9 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
-      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}`;
+      // Add a timestamp to prevent caching issues
+      const timestamp = new Date().getTime();
+      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}&t=${timestamp}`;
       console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
       
       const ws = new WebSocket(wsUrl);
@@ -306,4 +308,3 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   return null;
 }
-

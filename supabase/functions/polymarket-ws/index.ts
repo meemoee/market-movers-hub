@@ -1,14 +1,16 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
 serve(async (req) => {
+  console.log("Received request to polymarket-ws");
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    console.log("Handling OPTIONS request with CORS headers");
+    return new Response(null, { 
+      headers: corsHeaders 
+    });
   }
 
   // Get asset ID from URL parameters
@@ -25,6 +27,21 @@ serve(async (req) => {
   console.log(`Connecting to Polymarket WebSocket for asset ID: ${assetId}`);
 
   try {
+    // Check if this is a WebSocket upgrade request
+    const upgradeHeader = req.headers.get('upgrade') || '';
+    if (upgradeHeader.toLowerCase() !== 'websocket') {
+      console.log("Request is not a WebSocket upgrade request");
+      return new Response(JSON.stringify({ 
+        status: "error", 
+        message: "WebSocket connection expected" 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 400,
+      });
+    }
+
+    console.log("Upgrading connection to WebSocket");
+    
     // Client connection
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
     let polySocket: WebSocket | null = null;
@@ -340,7 +357,17 @@ serve(async (req) => {
       cleanupConnections();
     };
     
-    return response;
+    // Add appropriate headers to the WebSocket response
+    const headers = new Headers(response.headers);
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      headers.set(key, value);
+    });
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
   } catch (err) {
     console.error("Error handling WebSocket connection:", err);
     return new Response(JSON.stringify({ status: "error", message: "Failed to establish WebSocket connection" }), {
