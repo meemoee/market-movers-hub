@@ -54,7 +54,8 @@ DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Gene
     const focusedPrompt = focusText ? 
       `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
 Your task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
-IMPORTANT: Do not generate general queries. EVERY query MUST explicitly mention or relate to "${focusText}".` 
+IMPORTANT: Do not generate general queries. EVERY query MUST explicitly mention or relate to "${focusText}".
+STRICT REQUIREMENT: Each query MUST contain "${focusText}" AND include additional specific qualifiers, angles, or dimensions.` 
       : 
       "You are a helpful assistant that generates search queries.";
     
@@ -87,11 +88,16 @@ ${marketPrice !== undefined ? `Generate search queries to explore both supportin
 ${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed
-2. Directly relevant to the focus area
+1. Highly specific and detailed about "${focusText}"
+2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
-4. NOT repetitive of previous research
+4. COMPLETELY DIFFERENT from previous research queries
 5. Include specific entities, dates, or details to target precise information
+
+EXAMPLE FORMAT for focused queries on "economic impact":
+- "economic impact detailed statistical analysis on employment rates 2022-2023"
+- "economic impact case studies in developing countries with quantitative measurements"
+- "economic impact negative consequences on small businesses documented research"
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings. The format should be {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`
           }
@@ -233,26 +239,66 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         });
       }
 
-      // Perform a final enhancement to ensure queries are focused on the research area
+      // Enhanced focused query generation for research areas
       if (focusText) {
         queriesData.queries = queriesData.queries.map((q: string, i: number) => {
           const lowercaseQ = q.toLowerCase();
           const lowercaseFocus = focusText.toLowerCase();
           
-          // If query doesn't contain the focus text or is too short, create a more specific one
-          if (!lowercaseQ.includes(lowercaseFocus) || q.length < 15) {
-            const specifics = [
-              `${focusText} impact on ${query} detailed analysis`,
-              `${focusText} relation to ${query} expert assessment`,
-              `${focusText} influence on ${marketQuestion || query} statistics`,
-              `${focusText} role in determining ${query} outcomes`,
-              `${focusText} correlation with ${query} historical data`
+          // If query is too generic or just repeats the focus text
+          if (q.length < 30 || q.toLowerCase() === focusText.toLowerCase() || 
+              (q.toLowerCase().includes(focusText.toLowerCase()) && 
+               q.replace(new RegExp(focusText, 'i'), '').trim().length < 10)) {
+            
+            // Generate more specific, contextual queries
+            const specificAngles = [
+              `${focusText} quantitative analysis with statistical trends since 2023`,
+              `${focusText} critical expert assessments in peer-reviewed publications`,
+              `${focusText} comparative case studies with measurable outcomes`,
+              `${focusText} unexpected consequences documented in research papers`,
+              `${focusText} methodological approaches for accurate assessment`
             ];
-            return specifics[i % specifics.length];
+            
+            // Choose alternative that doesn't exist in previous queries
+            let alternative = specificAngles[i % specificAngles.length];
+            if (prevQuerySet && prevQuerySet.has(alternative.toLowerCase().trim())) {
+              alternative = `${focusText} specialized research angle ${iteration}-${i}: ${alternative.split(':')[1] || 'detailed analysis'}`;
+            }
+            
+            return alternative;
+          }
+          
+          // If query doesn't contain the focus text
+          if (!lowercaseQ.includes(lowercaseFocus)) {
+            return `${focusText} in context of: ${q}`;
           }
           
           return q;
         });
+        
+        // Final check for diversity - ensure queries aren't too similar to each other
+        const queryWords = queriesData.queries.map((q: string) => 
+          new Set(q.toLowerCase().split(/\s+/).filter(w => w.length > 3 && w !== focusText.toLowerCase()))
+        );
+        
+        for (let i = 0; i < queriesData.queries.length; i++) {
+          // Compare each query with others for similarity
+          for (let j = i + 1; j < queriesData.queries.length; j++) {
+            const similarity = [...queryWords[i]].filter(word => queryWords[j].has(word)).length;
+            const uniqueWordsThreshold = Math.max(queryWords[i].size, queryWords[j].size) * 0.5;
+            
+            // If too similar, replace the second query
+            if (similarity > uniqueWordsThreshold) {
+              const replacementTemplates = [
+                `${focusText} alternative perspectives from ${['economic', 'political', 'social', 'technological', 'environmental'][j % 5]} analysis`,
+                `${focusText} contrasting viewpoints based on ${['historical', 'current', 'theoretical', 'practical', 'futuristic'][j % 5]} evidence`,
+                `${focusText} ${['challenges', 'opportunities', 'misconceptions', 'breakthroughs', 'failures'][j % 5]} documented in recent studies`
+              ];
+              
+              queriesData.queries[j] = replacementTemplates[j % replacementTemplates.length];
+            }
+          }
+        }
       }
       
       console.log('Generated queries:', queriesData.queries)

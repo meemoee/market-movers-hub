@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -37,7 +38,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. If there isn't enough information to provide 5 supporting and 5 negative points, simply provide as many as you can reasonably extract from the data."
+            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. Extract ONLY factual points directly supported by the provided content. Do not invent, interpolate, or add information not explicitly found in the source material."
           },
           {
             role: "user",
@@ -61,8 +62,7 @@ Return ONLY a JSON object with these fields:
 4. negativePoints: specific points of evidence against the event occurring
 5. reasoning: a brief paragraph explaining your probability estimate
 
-Each point must contain specific evidence or analysis drawn directly from the provided content.
-If there isn't enough explicit information for sufficient points in either category, only include the points you can extract from the data without making up generic statements.`
+Each point must be a direct fact or evidence found in the provided content. Do not create generic points or infer information not explicitly stated. Only include points that have specific evidence in the source material.`
           }
         ],
         response_format: { type: "json_object" },
