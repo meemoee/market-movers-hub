@@ -37,11 +37,11 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with two fields: probability (a percentage string like '75%') and areasForResearch (an array of strings describing areas needing more research)."
+            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with the requested fields."
           },
           {
             role: "user",
-            content: `Based on this web research and analysis, provide the probability and areas needing more research:
+            content: `Based on this web research and analysis, provide the probability and insights:
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
@@ -54,9 +54,12 @@ ${analysis}
 
 ${marketPrice !== undefined ? `Consider if the current market probability of ${marketPrice}% is accurate based on the available information.` : ''}
 
-Return ONLY a JSON object with these two fields:
+Return ONLY a JSON object with these fields:
 1. probability: your estimated probability as a percentage string (e.g., "65%")
-2. areasForResearch: an array of strings describing specific areas needing more research`
+2. areasForResearch: an array of strings describing specific areas needing more research
+3. supportingPoints: an array of strings with key evidence/arguments supporting the event occurring
+4. negativePoints: an array of strings with key evidence/arguments against the event occurring
+5. reasoning: a brief paragraph explaining your probability estimate`
           }
         ],
         response_format: { type: "json_object" },

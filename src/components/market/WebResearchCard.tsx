@@ -50,6 +50,8 @@ interface StreamingState {
     probability: string;
     areasForResearch: string[];
     reasoning?: string;
+    supportingPoints?: string[];
+    negativePoints?: string[];
   } | null;
 }
 
@@ -1366,3 +1368,4 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
+

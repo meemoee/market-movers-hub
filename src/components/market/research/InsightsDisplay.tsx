@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ArrowUp, ArrowDown } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -11,6 +11,8 @@ interface StreamingState {
     probability: string;
     areasForResearch: string[];
     reasoning?: string;
+    supportingPoints?: string[];
+    negativePoints?: string[];
   } | null;
 }
 
@@ -40,7 +42,7 @@ export function InsightsDisplay({
   // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
-  const { probability, areasForResearch, reasoning } = streamingState.parsedData;
+  const { probability, areasForResearch, reasoning, supportingPoints, negativePoints } = streamingState.parsedData;
   
   // More comprehensive check for error messages in probability
   const hasErrorInProbability = 
@@ -132,6 +134,42 @@ export function InsightsDisplay({
                 : 'likelihood based on research'}
             </div>
           </div>
+          
+          {/* Supporting Points Section */}
+          {supportingPoints && supportingPoints.length > 0 && (
+            <div className="mt-4 border-t pt-4 border-accent/20">
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowUp className="h-4 w-4 text-green-500" />
+                <span className="text-sm font-medium">Supporting Evidence</span>
+              </div>
+              <ul className="space-y-2">
+                {supportingPoints.map((point, index) => (
+                  <li key={index} className="text-sm text-muted-foreground leading-relaxed flex gap-2">
+                    <span className="text-green-500 font-medium">+</span>
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          
+          {/* Negative Points Section */}
+          {negativePoints && negativePoints.length > 0 && (
+            <div className="mt-4 border-t pt-4 border-accent/20">
+              <div className="flex items-center gap-2 mb-2">
+                <ArrowDown className="h-4 w-4 text-red-500" />
+                <span className="text-sm font-medium">Counterevidence</span>
+              </div>
+              <ul className="space-y-2">
+                {negativePoints.map((point, index) => (
+                  <li key={index} className="text-sm text-muted-foreground leading-relaxed flex gap-2">
+                    <span className="text-red-500 font-medium">-</span>
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           
           {reasoning && (
             <div className="mt-4 border-t pt-4 border-accent/20">
