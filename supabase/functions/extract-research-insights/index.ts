@@ -24,6 +24,7 @@ serve(async (req) => {
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Market question:', marketQuestion || 'not provided')
 
+    // Make request to OpenRouter API
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
@@ -112,6 +113,7 @@ Return ONLY a JSON object with these fields:
       console.log('Supporting points count:', result.supportingPoints.length)
       console.log('Negative points count:', result.negativePoints.length)
       
+      // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
