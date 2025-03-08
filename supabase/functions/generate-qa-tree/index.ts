@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -77,8 +78,8 @@ Previous Analysis: ${researchContext.analysis}
 Probability Assessment: ${researchContext.probability}
 Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}
 
-Start your response with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.`
-      : "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.";
+Start your response with complete sentences, avoid markdown headers or numbered lists at the start. Use proper markdown formatting with ## for section headings, * or - for bullet points, **bold text** for emphasis, and other markdown syntax as appropriate. Include citations in square brackets [1] where relevant. Use **bold** text for important concepts or conclusions.`
+      : "You are a helpful assistant providing detailed analysis. Start responses with complete sentences, avoid markdown headers or numbered lists at the start. Use proper markdown formatting with ## for section headings, * or - for bullet points, **bold text** for emphasis, and other markdown syntax as appropriate. Include citations in square brackets [1] where relevant. Use **bold** text for important concepts or conclusions.";
 
     // For analysis, stream the response from OpenRouter.
     const analysisResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {

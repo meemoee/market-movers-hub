@@ -70,10 +70,31 @@ export function IterationCard({
       {isExpanded && (
         <div className="p-3 w-full max-w-full">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
-            <TabsList className="w-full grid grid-cols-3 mb-3 bg-secondary">
-              <TabsTrigger value="analysis" className="text-xs text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Analysis</TabsTrigger>
-              <TabsTrigger value="sources" className="text-xs text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Sources ({iteration.results.length})</TabsTrigger>
-              <TabsTrigger value="queries" className="text-xs text-secondary-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">Queries ({iteration.queries.length})</TabsTrigger>
+            <TabsList className="w-full grid grid-cols-3 mb-3 bg-secondary/80">
+              <TabsTrigger 
+                value="analysis" 
+                className="text-xs text-secondary-foreground bg-transparent 
+                           data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
+                           data-[state=inactive]:bg-secondary/80 data-[state=inactive]:text-secondary-foreground"
+              >
+                Analysis
+              </TabsTrigger>
+              <TabsTrigger 
+                value="sources" 
+                className="text-xs text-secondary-foreground bg-transparent
+                           data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
+                           data-[state=inactive]:bg-secondary/80 data-[state=inactive]:text-secondary-foreground"
+              >
+                Sources ({iteration.results.length})
+              </TabsTrigger>
+              <TabsTrigger 
+                value="queries" 
+                className="text-xs text-secondary-foreground bg-transparent
+                           data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
+                           data-[state=inactive]:bg-secondary/80 data-[state=inactive]:text-secondary-foreground"
+              >
+                Queries ({iteration.queries.length})
+              </TabsTrigger>
             </TabsList>
             
             <TabsContent value="analysis" className="w-full max-w-full">
@@ -88,10 +109,10 @@ export function IterationCard({
               <ScrollArea className="h-[200px] rounded-md border p-3 w-full max-w-full">
                 <div className="space-y-2 w-full">
                   {iteration.results.map((result, idx) => (
-                    <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full">
+                    <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 p-2 rounded-md w-full max-w-full">
                       <div className="flex items-center gap-2">
                         <FileText className="h-3 w-3 flex-shrink-0" />
-                        <span className="source-title text-sm">
+                        <span className="source-title text-sm font-medium">
                           {result.title || new URL(result.url).hostname}
                         </span>
                       </div>
@@ -99,13 +120,13 @@ export function IterationCard({
                         href={result.url} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="source-url flex items-center gap-1 text-primary hover:underline"
+                        className="source-url flex items-center gap-1 text-xs text-primary hover:underline mt-1"
                       >
                         <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                        {result.url}
+                        <span className="truncate">{result.url}</span>
                       </a>
                       {result.content && (
-                        <div className="source-content text-muted-foreground">
+                        <div className="source-content text-xs text-muted-foreground mt-2">
                           {result.content.substring(0, 120)}...
                         </div>
                       )}
@@ -125,7 +146,7 @@ export function IterationCard({
               <ScrollArea className="h-[150px] rounded-md border p-3 w-full">
                 <div className="flex flex-wrap gap-2 w-full">
                   {iteration.queries.map((query, idx) => (
-                    <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 w-fit max-w-full">
+                    <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 p-1.5 rounded-md w-fit max-w-full">
                       <Search className="h-3 w-3 flex-shrink-0" />
                       <span className="truncate text-xs max-w-[280px] sm:max-w-[360px] md:max-w-[400px]">{query}</span>
                     </div>

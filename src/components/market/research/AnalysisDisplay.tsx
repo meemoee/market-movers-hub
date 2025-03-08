@@ -2,6 +2,7 @@
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
+import { cn } from "@/lib/utils"
 
 interface AnalysisDisplayProps {
   content: string
@@ -111,7 +112,18 @@ export function AnalysisDisplay({
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+          <ReactMarkdown 
+            className={cn(
+              "text-sm prose prose-invert prose-sm break-words max-w-full",
+              "prose-headings:mt-4 prose-headings:mb-2 prose-headings:font-semibold",
+              "prose-h1:text-xl prose-h2:text-lg prose-h3:text-base",
+              "prose-p:my-2 prose-p:leading-relaxed",
+              "prose-li:my-0.5",
+              "prose-strong:text-primary/90 prose-strong:font-semibold",
+              "prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:text-xs",
+              "prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/40 prose-blockquote:pl-4 prose-blockquote:italic"
+            )}
+          >
             {content}
           </ReactMarkdown>
         </div>
