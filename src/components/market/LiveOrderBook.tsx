@@ -28,7 +28,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const initialConnectRef = useRef<boolean>(false);
   const reconnectCountRef = useRef<number>(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
-  const CONNECTION_TIMEOUT_MS = 10000; // 10 seconds timeout for initial connection
+  const CONNECTION_TIMEOUT_MS = 15000; // Increased to 15 seconds timeout for initial connection
 
   useEffect(() => {
     // Set mounted flag to true when component mounts
@@ -232,7 +232,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         console.error('[LiveOrderBook] WebSocket error:', event);
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
-          setError('WebSocket connection error');
+          setError('WebSocket connection error. Please check your network connection and try again.');
           
           // Handle reconnection in onclose since that's always called after an error
         }
@@ -250,6 +250,13 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         // Only attempt reconnect if mounted and not intentionally closing
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("disconnected");
+          
+          // Custom error message for specific close codes
+          if (event.code === 1006) {
+            setError('Connection closed abnormally. The server might be unavailable or undergoing maintenance.');
+          } else if (event.code === 1001) {
+            setError('Server is restarting. Please try again in a moment.');
+          }
           
           // Check if we've exceeded max reconnect attempts
           if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {

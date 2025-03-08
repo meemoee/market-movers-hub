@@ -49,4 +49,3 @@ verify_jwt = false
 [[functions]]
 name = "get-orderbook"
 verify_jwt = false
-
