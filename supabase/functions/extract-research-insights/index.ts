@@ -44,7 +44,7 @@ Return ONLY a JSON object with these fields:
 3. negativePoints: an array of 3-5 key factors opposing this outcome (each a concise string)
 4. areasForResearch: an array of strings describing specific areas needing more research`
 
-    // Make the request to OpenRouter - NO streaming for JSON response
+    // Make the request to OpenRouter - explicitly NOT streaming
     const openRouterResponse = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
@@ -66,7 +66,7 @@ Return ONLY a JSON object with these fields:
           }
         ],
         response_format: { type: "json_object" },
-        stream: false // Explicitly set to false to get a complete JSON response
+        stream: false // Make sure streaming is explicitly disabled
       })
     })
 
@@ -79,9 +79,8 @@ Return ONLY a JSON object with these fields:
 
     // Parse the complete JSON response
     const data = await openRouterResponse.json()
-    console.log('OpenRouter response received:', typeof data)
+    console.log('OpenRouter response structure:', JSON.stringify(data, null, 2))
     
-    // Enhanced logging to debug the response structure
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
       console.error('Invalid response structure:', JSON.stringify(data))
       throw new Error('Invalid response structure from OpenRouter')
@@ -89,6 +88,7 @@ Return ONLY a JSON object with these fields:
     
     const result = data.choices[0].message.content
     console.log('Content type:', typeof result)
+    console.log('Content preview:', typeof result === 'string' ? result.substring(0, 100) : 'Not a string')
     
     // Validate and parse the result
     let parsedResult
@@ -97,7 +97,7 @@ Return ONLY a JSON object with these fields:
       // If it's a string, parse it (handles cases where the API returns a string despite response_format)
       parsedResult = typeof result === 'string' ? JSON.parse(result) : result
       
-      console.log('Successfully parsed result')
+      console.log('Successfully parsed result:', JSON.stringify(parsedResult, null, 2))
       
       // Validate required fields with fallbacks
       if (!parsedResult.probability) {
@@ -131,17 +131,9 @@ Return ONLY a JSON object with these fields:
       }
     }
     
-    // Format the response to match expected structure for streaming
-    const responseBody = JSON.stringify({
-      choices: [{
-        message: {
-          content: JSON.stringify(parsedResult)
-        }
-      }]
-    })
-    
-    // Return a properly formatted response with CORS headers
-    return new Response(responseBody, {
+    // Important: Return a DIRECT response with the expected structure
+    // Do NOT return a stream or a response that requires streaming to be read
+    return new Response(JSON.stringify(parsedResult), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json'
@@ -150,20 +142,14 @@ Return ONLY a JSON object with these fields:
 
   } catch (error) {
     console.error('Error in extract-research-insights:', error)
-    // Return a structured error response that the frontend can handle
+    // Return a direct error response
     return new Response(
       JSON.stringify({ 
         error: error.message,
-        choices: [{
-          message: {
-            content: JSON.stringify({
-              probability: "Error",
-              supportingPoints: [],
-              negativePoints: [],
-              areasForResearch: ["Error processing the analysis, please try again"]
-            })
-          }
-        }]
+        probability: "Error",
+        supportingPoints: [],
+        negativePoints: [],
+        areasForResearch: ["Error processing the analysis, please try again"]
       }),
       { 
         status: 500,
