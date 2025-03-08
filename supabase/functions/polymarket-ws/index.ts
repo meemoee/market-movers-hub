@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
@@ -123,8 +122,10 @@ serve(async (req) => {
               };
               polySocket.send(JSON.stringify(snapshotRequest));
               console.log('Requested initial snapshot');
+            } else {
+              console.log("Socket not open, cannot send subscription");
             }
-          }, 100);
+          }, 300); // Increased delay to ensure connection is stable
           
           // Setup ping interval to keep connection alive
           if (pingInterval) {
@@ -141,6 +142,7 @@ serve(async (req) => {
                 scheduleReconnect();
               }
             } else {
+              console.log("Socket not open, cannot send ping. Current state:", polySocket?.readyState);
               scheduleReconnect();
             }
           }, 30000);
