@@ -98,6 +98,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [loadedResearchId, setLoadedResearchId] = useState<string | null>(null)
   const [parentResearchId, setParentResearchId] = useState<string | null>(null)
   const [childResearches, setChildResearches] = useState<SavedResearch[]>([])
+  const [previousResearchContext, setPreviousResearchContext] = useState<{
+    queries: string[],
+    analyses: string[],
+    probability?: string
+  } | null>(null)
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -197,6 +202,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     if (research.iterations && research.iterations.length > 0) {
       setIterations(research.iterations)
       setExpandedIterations([`iteration-${research.iterations.length}`])
+      
+      const allQueries = research.iterations.flatMap(iter => iter.queries || []);
+      const allAnalyses = research.iterations.map(iter => iter.analysis || '').filter(a => a);
+      
+      setPreviousResearchContext({
+        queries: allQueries,
+        analyses: allAnalyses,
+        probability: research.probability
+      });
     }
     
     setStreamingState({
@@ -420,6 +434,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       if (focusText?.trim()) {
         scrapePayload.focusText = focusText.trim();
         scrapePayload.researchFocus = focusText.trim();
+        
+        if (previousResearchContext) {
+          scrapePayload.previousQueries = previousResearchContext.queries;
+          scrapePayload.previousAnalyses = previousResearchContext.analyses;
+          
+          setProgress(prev => [...prev, 
+            `Using context from ${previousResearchContext.queries.length} previous queries and ${previousResearchContext.analyses.length} analyses for focused research.`
+          ]);
+        }
+        
         setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
       }
       

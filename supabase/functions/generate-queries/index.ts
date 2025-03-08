@@ -15,7 +15,16 @@ serve(async (req) => {
   }
 
   try {
-    const { query, marketPrice, marketQuestion } = await req.json()
+    const { 
+      query, 
+      marketPrice, 
+      marketQuestion, 
+      focusText, 
+      previousQueries = [],
+      previousAnalyses = [],
+      previousProbability,
+      iteration = 1
+    } = await req.json()
 
     if (!OPENROUTER_API_KEY) {
       throw new Error('OPENROUTER_API_KEY is not configured')
@@ -24,6 +33,22 @@ serve(async (req) => {
     console.log('Generating sub-queries for:', query)
     console.log('Market question:', marketQuestion || 'not provided')
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
+    console.log('Focus text:', focusText || 'not provided')
+    console.log('Iteration:', iteration)
+    console.log('Previous queries count:', previousQueries.length)
+    console.log('Previous analyses count:', previousAnalyses.length)
+    
+    // Create context from previous research if available
+    let previousResearchContext = '';
+    if (previousQueries.length > 0 || previousAnalyses.length > 0) {
+      previousResearchContext = `
+PREVIOUS RESEARCH CONTEXT:
+${previousQueries.length > 0 ? `Previous search queries used:\n${previousQueries.slice(-10).map((q, i) => `${i+1}. ${q}`).join('\n')}` : ''}
+${previousAnalyses.length > 0 ? `\nPrevious analysis summary:\n${previousAnalyses.slice(-1)[0].substring(0, 500)}${previousAnalyses.slice(-1)[0].length > 500 ? '...' : ''}` : ''}
+${previousProbability ? `\nPrevious probability assessment: ${previousProbability}` : ''}
+
+DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions.`;
+    }
     
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -46,8 +71,12 @@ serve(async (req) => {
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+${focusText ? `SPECIFIC RESEARCH FOCUS: ${focusText}` : ''}
+${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
+${previousResearchContext}
 
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
+${focusText ? `Ensure the queries specifically target information about: ${focusText}` : ''}
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings. The format should be {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`
           }
@@ -144,6 +173,31 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         }
         return q.trim()
       })
+      
+      // If we have previous queries, make sure we're not duplicating them
+      if (previousQueries.length > 0) {
+        const prevQuerySet = new Set(previousQueries.map(q => q.toLowerCase().trim()));
+        
+        // Replace any duplicate queries with alternatives
+        queriesData.queries = queriesData.queries.map((q: string, i: number) => {
+          if (prevQuerySet.has(q.toLowerCase().trim())) {
+            console.log(`Query "${q}" is a duplicate of a previous query, replacing...`);
+            
+            // Generate alternative query
+            const focusPrefix = focusText ? focusText.split(' ').slice(0, 3).join(' ') : query;
+            const alternatives = [
+              `${focusPrefix} latest developments ${i}`,
+              `${focusPrefix} recent analysis ${i}`,
+              `${focusPrefix} expert perspective ${i}`,
+              `${focusPrefix} market indicators ${i}`,
+              `${focusPrefix} future outlook ${i}`
+            ];
+            
+            return alternatives[i % alternatives.length];
+          }
+          return q;
+        });
+      }
       
       console.log('Generated queries:', queriesData.queries)
 
