@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
@@ -20,6 +21,7 @@ interface LiveOrderBookProps {
 export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosing }: LiveOrderBookProps) {
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
+  const [diagnosticInfo, setDiagnosticInfo] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -39,10 +41,18 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   }, []);
 
   useEffect(() => {
+    // Run a diagnostic test on the edge function
+    if (!isClosing && clobTokenId) {
+      runDiagnosticTest();
+    }
+  }, [clobTokenId, isClosing]);
+
+  useEffect(() => {
     // Clear any existing error when closing
     if (isClosing) {
       console.log('[LiveOrderBook] Dialog is closing, clearing error state');
       setError(null);
+      setDiagnosticInfo(null);
       return;
     }
 
@@ -55,17 +65,45 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     // Clean up any existing connection first
     cleanupExistingConnection();
 
-    // Create a new WebSocket connection
-    connectToOrderbook(clobTokenId);
+    // Wait for diagnostic test to complete before trying WebSocket connection
+    // Just a short delay to make sure our function is ready
+    const connectDelay = setTimeout(() => {
+      // Create a new WebSocket connection
+      connectToOrderbook(clobTokenId);
+    }, 1000);
 
     // Cleanup function
     return () => {
+      clearTimeout(connectDelay);
       cleanupExistingConnection();
       
       // Set mounted ref to false to prevent any further state updates
       mountedRef.current = false;
     };
   }, [clobTokenId, isClosing]);
+
+  const runDiagnosticTest = async () => {
+    try {
+      setDiagnosticInfo("Running diagnostic test...");
+      console.log('[LiveOrderBook] Running diagnostic test on edge function');
+      
+      const response = await fetch(`https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?test=true`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[LiveOrderBook] Diagnostic test failed:', response.status, errorText);
+        setDiagnosticInfo(`Diagnostic failed: HTTP ${response.status}. Edge function might not be deployed properly.`);
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('[LiveOrderBook] Diagnostic test response:', data);
+      setDiagnosticInfo(`Diagnostic success: Edge function is running. Timestamp: ${data.timestamp}`);
+    } catch (err) {
+      console.error('[LiveOrderBook] Error running diagnostic test:', err);
+      setDiagnosticInfo(`Diagnostic error: ${err.message}. Edge function might not be accessible.`);
+    }
+  };
 
   const cleanupExistingConnection = () => {
     console.log('[LiveOrderBook] Cleaning up existing connections');
@@ -113,6 +151,15 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}`;
       console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
+      console.log('[LiveOrderBook] Browser WebSocket version:', typeof WebSocket !== 'undefined' ? 'Supported' : 'Not supported');
+      
+      // Log websocket request headers for debugging
+      console.log('[LiveOrderBook] Connection will include these headers by default:', {
+        'Upgrade': 'websocket',
+        'Connection': 'Upgrade',
+        'Sec-WebSocket-Version': '13',
+        'Sec-WebSocket-Key': '[Browser generates this]'
+      });
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -124,7 +171,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           console.log('[LiveOrderBook] Connection timeout reached');
           wsRef.current.close();
           if (mountedRef.current) {
-            setError('Connection timeout reached');
+            setError('Connection timeout reached. Please check browser console for details.');
             setConnectionStatus("error");
           }
         }
@@ -139,6 +186,14 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           
           // Reset reconnect counter on successful connection
           reconnectCountRef.current = 0;
+          
+          // Send initial ping to verify connection
+          try {
+            ws.send(JSON.stringify({ ping: "initial", timestamp: new Date().toISOString() }));
+            console.log('[LiveOrderBook] Sent initial ping');
+          } catch (err) {
+            console.error('[LiveOrderBook] Error sending initial ping:', err);
+          }
           
           // Notify user of successful connection
           toast({
@@ -158,9 +213,26 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             console.log('[LiveOrderBook] Received WebSocket message:', event.data);
             const data = JSON.parse(event.data);
             
+            // Handle connection status messages
+            if (data.status === "connected") {
+              console.log('[LiveOrderBook] Connection confirmed by server');
+              return;
+            }
+            
+            // Handle echo messages (diagnostic)
+            if (data.status === "echo") {
+              console.log('[LiveOrderBook] Received echo from server:', data);
+              return;
+            }
+            
             // Handle ping-pong messages
             if (data.ping) {
               ws.send(JSON.stringify({ pong: new Date().toISOString() }));
+              return;
+            }
+            
+            if (data.pong) {
+              console.log('[LiveOrderBook] Received pong response');
               return;
             }
             
@@ -214,7 +286,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         console.error('[LiveOrderBook] WebSocket error:', event);
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
-          setError('WebSocket connection error');
+          setError('WebSocket connection error. Please check browser console for details.');
           
           // Handle reconnection in onclose since that's always called after an error
         }
@@ -230,8 +302,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           
           // Special handling for code 1006 (abnormal closure)
           if (event.code === 1006) {
-            console.log('[LiveOrderBook] Abnormal closure detected (code 1006) - this typically indicates network issues');
-            setError('Connection closed abnormally. This may be due to network issues.');
+            console.log('[LiveOrderBook] Abnormal closure detected (code 1006) - this typically indicates network issues or edge function problems');
+            setError('Connection closed abnormally (code 1006). This may indicate edge function issues or network problems.');
           }
           
           // Check if we've exceeded max reconnect attempts
@@ -259,7 +331,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       console.error('[LiveOrderBook] Error setting up WebSocket:', err);
       if (mountedRef.current && !isClosing) {
         setConnectionStatus("error");
-        setError('Failed to connect to orderbook service');
+        setError(`Failed to connect to orderbook service: ${err.message}`);
         
         // Schedule reconnect attempt if not at max attempts
         if (reconnectCountRef.current < MAX_RECONNECT_ATTEMPTS) {
@@ -291,7 +363,15 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     pingIntervalRef.current = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         console.log('[LiveOrderBook] Sending ping to keep connection alive');
-        wsRef.current.send(JSON.stringify({ ping: new Date().toISOString() }));
+        try {
+          wsRef.current.send(JSON.stringify({ ping: new Date().toISOString() }));
+        } catch (err) {
+          console.error('[LiveOrderBook] Error sending ping:', err);
+          // If we can't send a ping, the connection is likely broken
+          if (wsRef.current) {
+            wsRef.current.close();
+          }
+        }
       } else {
         // Clear interval if socket is no longer open
         clearInterval(pingIntervalRef.current!);
@@ -302,13 +382,21 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   if (isLoading && !isClosing) {
     return (
-      <div className="flex items-center justify-center py-4">
-        <Loader2 className="w-6 h-6 animate-spin" />
-        <span className="ml-2">
-          {connectionStatus === "connecting" ? "Connecting to orderbook..." : 
-           connectionStatus === "reconnecting" ? `Reconnecting to orderbook (attempt ${reconnectCountRef.current})...` :
-           "Loading orderbook..."}
-        </span>
+      <div className="flex flex-col items-center justify-center py-4 space-y-2">
+        <div className="flex items-center">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="ml-2">
+            {connectionStatus === "connecting" ? "Connecting to orderbook..." : 
+             connectionStatus === "reconnecting" ? `Reconnecting to orderbook (attempt ${reconnectCountRef.current})...` :
+             "Loading orderbook..."}
+          </span>
+        </div>
+        
+        {diagnosticInfo && (
+          <div className="text-xs text-muted-foreground bg-accent/20 p-2 rounded-md max-w-full overflow-x-auto">
+            {diagnosticInfo}
+          </div>
+        )}
       </div>
     );
   }
@@ -317,18 +405,31 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     return (
       <div className="text-center text-red-500 py-4">
         <div className="mb-2">{error}</div>
-        <button 
-          onClick={() => {
-            if (clobTokenId) {
-              cleanupExistingConnection();
-              reconnectCountRef.current = 0;
-              connectToOrderbook(clobTokenId);
-            }
-          }}
-          className="px-3 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-sm"
-        >
-          Retry Connection
-        </button>
+        {diagnosticInfo && (
+          <div className="text-xs text-muted-foreground mb-2 bg-accent/20 p-2 rounded-md">
+            {diagnosticInfo}
+          </div>
+        )}
+        <div className="flex space-x-2 justify-center">
+          <button 
+            onClick={runDiagnosticTest}
+            className="px-3 py-1 bg-accent/30 hover:bg-accent/50 rounded-md text-sm text-foreground"
+          >
+            Run Diagnostic
+          </button>
+          <button 
+            onClick={() => {
+              if (clobTokenId) {
+                cleanupExistingConnection();
+                reconnectCountRef.current = 0;
+                connectToOrderbook(clobTokenId);
+              }
+            }}
+            className="px-3 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-sm"
+          >
+            Retry Connection
+          </button>
+        </div>
       </div>
     );
   }
