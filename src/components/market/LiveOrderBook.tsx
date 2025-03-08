@@ -184,27 +184,22 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       // Get the current session for authentication
       const { data: { session } } = await supabase.auth.getSession();
-      let wsUrl = `${supabase.supabaseUrl.replace('https://', 'wss://')}/functions/v1/polymarket-ws?assetId=${tokenId}`;
       
-      // Add authentication token as a query parameter if available
-      if (session?.access_token) {
-        wsUrl += `&token=${session.access_token}`;
-      }
-      // Always include the anon key
-      wsUrl += `&apikey=${supabase.supabaseKey}`;
+      // Build the WebSocket URL with the correct format
+      const supabaseUrl = supabase.supabaseUrl;
+      const wsUrl = `${supabaseUrl.replace('https://', 'wss://')}/functions/v1/polymarket-ws?assetId=${tokenId}`;
       
-      console.log('[LiveOrderBook] Connecting to WebSocket URL (auth params hidden):', wsUrl.split('?')[0] + '?...');
-      console.log('[LiveOrderBook] Browser WebSocket version:', typeof WebSocket !== 'undefined' ? 'Supported' : 'Not supported');
+      // Append authentication token if available
+      const authParams = session?.access_token ? `&token=${session.access_token}` : '';
       
-      // Log websocket request headers for debugging
-      console.log('[LiveOrderBook] Connection will include these headers by default:', {
-        'Upgrade': 'websocket',
-        'Connection': 'Upgrade',
-        'Sec-WebSocket-Version': '13',
-        'Sec-WebSocket-Key': '[Browser generates this]'
-      });
+      // Append API key
+      const apiKey = supabase.supabaseKey;
+      const fullWsUrl = `${wsUrl}${authParams}&apikey=${apiKey}`;
       
-      const ws = new WebSocket(wsUrl);
+      console.log('[LiveOrderBook] Connecting to WebSocket URL (auth params hidden):', wsUrl);
+      
+      // Create WebSocket connection
+      const ws = new WebSocket(fullWsUrl);
       wsRef.current = ws;
       initialConnectRef.current = true;
 
@@ -259,62 +254,34 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             // Handle connection status messages
             if (data.status === "connected") {
               console.log('[LiveOrderBook] Connection confirmed by server');
-              return;
-            }
-            
-            // Handle echo messages (diagnostic)
-            if (data.status === "echo") {
-              console.log('[LiveOrderBook] Received echo from server:', data);
+              if (data.orderbook) {
+                console.log('[LiveOrderBook] Initial orderbook data received');
+                onOrderBookData(data.orderbook);
+              }
               return;
             }
             
             // Handle ping-pong messages
-            if (data.ping) {
-              ws.send(JSON.stringify({ pong: new Date().toISOString() }));
-              return;
-            }
-            
             if (data.pong) {
               console.log('[LiveOrderBook] Received pong response');
               return;
             }
             
-            // Handle status messages
-            if (data.status) {
-              console.log('[LiveOrderBook] Received status update:', data.status);
-              
-              if (data.status === "error") {
-                setError(data.message || "Error in orderbook connection");
-                return;
-              }
-              
-              if (data.status === "reconnecting") {
-                setConnectionStatus("reconnecting");
-                return;
-              }
-              
-              if (data.status === "failed") {
-                setError("Failed to connect to orderbook service after multiple attempts");
-                return;
-              }
-              
-              if (data.status === "connected") {
-                setConnectionStatus("connected");
-                setError(null);
-                return;
-              }
-              
+            // Handle orderbook data
+            if (data.orderbook) {
+              console.log('[LiveOrderBook] Orderbook data received');
+              onOrderBookData(data.orderbook);
+              setError(null);
               return;
             }
             
-            // Handle orderbook data
-            if (data.orderbook) {
-              console.log('[LiveOrderBook] Valid orderbook data received:', data.orderbook);
-              onOrderBookData(data.orderbook);
-              setError(null);
-            } else {
-              console.warn('[LiveOrderBook] Received message without orderbook data:', data);
+            // Handle status messages
+            if (data.status === "error") {
+              setError(data.message || "Error in orderbook connection");
+              return;
             }
+            
+            console.warn('[LiveOrderBook] Received unknown message format:', data);
           } catch (err) {
             console.error('[LiveOrderBook] Error parsing WebSocket message:', err, 'Raw data:', event.data);
             if (mountedRef.current) {
@@ -330,8 +297,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
           setError('WebSocket connection error. Please check browser console for details.');
-          
-          // Handle reconnection in onclose since that's always called after an error
         }
       };
 
