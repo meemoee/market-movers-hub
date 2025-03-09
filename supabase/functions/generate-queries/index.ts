@@ -1,5 +1,6 @@
+
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
+import OpenAI from 'https://esm.sh/openai';
 
 const openai = new OpenAI({
   apiKey: process.env['OPENAI_API_KEY'],

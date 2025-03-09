@@ -1,3 +1,4 @@
+
 import { useState, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -43,7 +44,7 @@ export function WebResearchCard({ marketId, marketQuestion, marketDescription }:
   const [progress, setProgress] = useState<number[]>([]);
   const [currentQueries, setCurrentQueries] = useState<string[]>([]);
   const [currentQueryIndex, setCurrentQueryIndex] = useState(-1);
-	const [previousResearchContext, setPreviousResearchContext] = useState<any | null>(null);
+  const [previousResearchContext, setPreviousResearchContext] = useState<any | null>(null);
 
   const handleResearch = useCallback(async () => {
     if (!marketId) {
@@ -118,7 +119,7 @@ export function WebResearchCard({ marketId, marketQuestion, marketDescription }:
       } else {
         console.warn("No queries returned from function.");
         toast({
-          variant: "warning",
+          variant: "destructive",
           title: "No Queries",
           description: "No search queries were generated. Please try again.",
         });
@@ -153,7 +154,7 @@ export function WebResearchCard({ marketId, marketQuestion, marketDescription }:
             query: currentQuery,
             marketId,
             focusText: focusText?.trim(),
-						previousResearchContext,
+            previousResearchContext,
           },
         });
 
@@ -240,7 +241,6 @@ export function WebResearchCard({ marketId, marketQuestion, marketDescription }:
     setCurrentQueryIndex(-1);
     
     // Set the previous focus as parent for nested research
-    // This is what we're adding - track the current focus as parent when nesting
     const currentParent = focusText || null;
     setParentFocusText(currentParent);
     
@@ -274,7 +274,7 @@ export function WebResearchCard({ marketId, marketQuestion, marketDescription }:
           isAnalyzing={isAnalyzing} 
           onResearch={handleResearch}
           focusText={focusText}
-		  parentFocusText={parentFocusText}
+          parentFocusText={parentFocusText}
         />
 
         {currentQueries.map((q, i) => (
