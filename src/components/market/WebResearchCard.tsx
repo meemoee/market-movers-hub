@@ -406,7 +406,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
+  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = [], activeFocusText?: string) => {
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
       setCurrentIteration(iteration)
@@ -415,6 +415,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
+      console.log(`Active focus text: ${activeFocusText || focusText || 'none'}`)
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -433,9 +434,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketDescription: description
       };
 
-      if (focusText?.trim()) {
-        scrapePayload.focusText = focusText.trim();
-        scrapePayload.researchFocus = focusText.trim();
+      const actualFocusText = activeFocusText?.trim() || focusText.trim();
+      
+      if (actualFocusText) {
+        scrapePayload.focusText = actualFocusText;
+        scrapePayload.researchFocus = actualFocusText;
+        
+        setProgress(prev => [...prev, `Conducting focused web research on: ${actualFocusText}`]);
         
         if (previousResearchContext) {
           scrapePayload.previousQueries = previousResearchContext.queries;
@@ -446,7 +451,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           ]);
         }
         
-        setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
+        setProgress(prev => [...prev, `Focusing web research on: ${actualFocusText}`]);
       }
       
       const response = await supabase.functions.invoke('web-scrape', {
@@ -916,7 +921,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const handleResearch = async () => {
+  const handleResearch = async (specificFocusText?: string) => {
     setLoadedResearchId(null);
     
     setIsLoading(true)
@@ -925,421 +930,307 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setError(null)
     setAnalysis('')
     setIsAnalyzing(false)
-    setStreamingState({ rawText: '', parsedData: null })
+    setStreamingState({ 
+      rawText: '',
+      parsedData: null
+    })
+    
     setCurrentIteration(0)
     setIterations([])
-    setExpandedIterations(['iteration-1'])
-    setCurrentQueries([])
-    setCurrentQueryIndex(-1)
-
+    
+    const actualFocusText = specificFocusText || focusText
+    if (specificFocusText) {
+      setFocusText(specificFocusText)
+    }
+    
+    console.log(`Starting research with focus text: "${actualFocusText || 'none'}"`)
+    
     try {
-      setProgress(prev => [...prev, "Starting iterative web research..."])
-      setProgress(prev => [...prev, `Researching market: ${marketId}`])
-      setProgress(prev => [...prev, `Market question: ${description}`])
+      const initialQueries = [`${description.substring(0, 150)}`]
       
-      if (focusText.trim()) {
-        setProgress(prev => [...prev, `Research focus: ${focusText.trim()}`])
+      if (actualFocusText) {
+        initialQueries.unshift(`${actualFocusText}`)
+        initialQueries.push(`${actualFocusText} latest information`)
       }
       
-      setProgress(prev => [...prev, "Generating initial search queries..."])
-
-      try {
-        console.log("Calling generate-queries with:", { 
-          description, 
-          marketId,
-          descriptionLength: description ? description.length : 0,
-          focusText: focusText.trim() || null
-        });
-        
-        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-          body: JSON.stringify({ 
-            query: description,
-            marketId: marketId,
-            marketDescription: description,
-            question: description,
-            iteration: 1,
-            focusText: focusText.trim()
+      setCurrentQueries(initialQueries)
+      setCurrentQueryIndex(-1)
+      
+      if (parentResearchId) {
+        const parent = findParentResearch(parentResearchId)
+        if (parent) {
+          setPreviousResearchContext({
+            queries: parent.iterations?.flatMap(iter => iter.queries || []) || [],
+            analyses: parent.iterations?.map(iter => iter.analysis || '') || [],
+            probability: parent.probability
           })
-        });
-
-        if (queriesError) {
-          console.error("Error from generate-queries:", queriesError)
-          throw new Error(`Error generating queries: ${queriesError.message}`)
+          
+          console.log(`Loaded context from parent research: ${parentResearchId}`)
         }
-
-        console.log("Received queries data:", queriesData)
-
-        if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
-          console.error("Invalid queries response:", queriesData)
-          throw new Error('Invalid queries response')
-        }
-
-        const cleanQueries = queriesData.queries.map(q => q.replace(new RegExp(` ${marketId}$`), ''));
-        
-        console.log("Generated clean queries:", cleanQueries)
-        setProgress(prev => [...prev, `Generated ${cleanQueries.length} search queries`])
-        
-        setCurrentQueries(cleanQueries);
-        
-        cleanQueries.forEach((query: string, index: number) => {
-          setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
-        });
-
-        await handleWebScrape(cleanQueries, 1);
-      } catch (error) {
-        console.error("Error generating initial queries:", error);
-        
-        const cleanDescription = description.trim();
-        let keywords = cleanDescription.split(/\s+/).filter(word => word.length > 3);
-        
-        const fallbackQueries = keywords.length >= 3 
-          ? [
-              `${keywords.slice(0, 5).join(' ')}`,
-              `${keywords.slice(0, 3).join(' ')} latest information`,
-              `${keywords.slice(0, 3).join(' ')} analysis prediction`
-            ]
-          : [
-              `${description.split(' ').slice(0, 10).join(' ')}`,
-              `${description.split(' ').slice(0, 8).join(' ')} latest`,
-              `${description.split(' ').slice(0, 8).join(' ')} prediction`
-            ];
-        
-        setCurrentQueries(fallbackQueries);
-        
-        setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
-        await handleWebScrape(fallbackQueries, 1);
       }
-
-      setProgress(prev => [...prev, "Research complete!"])
-
+      
+      await handleWebScrape(initialQueries, 1, [], actualFocusText)
+      await saveResearch()
     } catch (error) {
-      console.error('Error in web research:', error)
-      setError(`Error occurred during research: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    } finally {
+      console.error("Error starting research:", error)
+      setError(`Error starting research: ${error.message}`)
       setIsLoading(false)
-      setIsAnalyzing(false)
     }
   }
-
+  
   const handleResearchArea = (area: string) => {
-    const currentResearchId = loadedResearchId;
-    
-    console.log(`Starting focused research with parent ID: ${currentResearchId} on area: ${area}`);
-    
-    if (!currentResearchId) {
-      console.warn("Cannot create focused research: No parent research ID available");
-      toast({
-        title: "Cannot create focused research",
-        description: "Please save the current research first",
-        variant: "destructive"
-      });
-      return;
+    if (loadedResearchId) {
+      setParentResearchId(loadedResearchId)
     }
     
-    const parentId = currentResearchId;
-    
-    setLoadedResearchId(null);
-    setParentResearchId(parentId);
-    
-    setFocusText(area);
-    toast({
-      title: "Research focus set",
-      description: `Starting new research focused on: ${area}`
-    });
-    
-    setIsLoading(true);
-    setProgress([]);
-    setResults([]);
-    setError(null);
-    setAnalysis('');
-    setIsAnalyzing(false);
-    setStreamingState({ rawText: '', parsedData: null });
-    setCurrentIteration(0);
-    setIterations([]);
-    setExpandedIterations(['iteration-1']);
-    setCurrentQueries([]);
-    setCurrentQueryIndex(-1);
-    
-    setTimeout(() => {
-      handleResearch();
-    }, 200);
-  };
-
-  const handleViewChildResearch = useCallback((childResearch: SavedResearch) => {
-    if (childResearch) {
-      loadSavedResearch(childResearch);
-    }
-  }, []);
-
-  const handleViewParentResearch = useCallback(() => {
-    if (parentResearch) {
-      loadSavedResearch(parentResearch);
-    }
-  }, [parentResearch]);
-
-  const canSave = !isLoading && !isAnalyzing && results.length > 0 && analysis && streamingState.parsedData
-
-  useEffect(() => {
-    const shouldAutoSave = !isLoading && 
-                          !isAnalyzing && 
-                          !isLoadingSaved &&
-                          results.length > 0 && 
-                          analysis && 
-                          streamingState.parsedData &&
-                          !error &&
-                          !loadedResearchId;
-
-    if (shouldAutoSave) {
-      saveResearch();
-    }
-  }, [isLoading, isAnalyzing, results.length, analysis, streamingState.parsedData, error, isLoadingSaved, loadedResearchId]);
-
-  const toggleIterationExpand = (iterationId: string) => {
-    setExpandedIterations(prev => {
-      if (prev.includes(iterationId)) {
-        return prev.filter(id => id !== iterationId);
-      } else {
-        return [...prev, iterationId];
-      }
-    });
-  };
-
-  const renderQueryDisplay = () => {
-    if (!currentQueries.length) return null;
-    
-    return (
-      <div className="mb-4 border rounded-md p-4 bg-accent/5">
-        <h4 className="text-sm font-medium mb-2">
-          Current Queries (Iteration {currentIteration || 1})
-        </h4>
-        <div className="space-y-2">
-          {currentQueries.map((query, index) => (
-            <div 
-              key={index} 
-              className={`flex items-center gap-2 p-2 rounded-md text-sm ${
-                currentQueryIndex === index ? 'bg-primary/10 border border-primary/30' : 'border border-transparent'
-              }`}
-            >
-              {currentQueryIndex === index && (
-                <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
-              )}
-              <span className={currentQueryIndex === index ? 'font-medium' : ''}>
-                {index + 1}. {query}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
-  const renderIterations = () => {
-    if (!iterations.length) return null;
-    
-    return (
-      <div className="space-y-2 w-full max-w-full">
-        {iterations.map((iter) => (
-          <IterationCard
-            key={`iteration-${iter.iteration}`}
-            iteration={iter}
-            isExpanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
-            onToggleExpand={() => toggleIterationExpand(`iteration-${iter.iteration}`)}
-            isStreaming={isAnalyzing}
-            isCurrentIteration={iter.iteration === currentIteration}
-            maxIterations={maxIterations}
-          />
-        ))}
-      </div>
-    );
-  };
+    handleResearch(area)
+  }
 
   return (
-    <Card className="p-4 space-y-4 w-full max-w-full">
-      {parentResearch && (
-        <div className="flex items-center gap-2 text-sm p-2 bg-accent/20 rounded-md mb-2 w-full max-w-full">
-          <ArrowLeftCircle className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          <span className="text-muted-foreground">Derived from previous research:</span>
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-6 px-2 text-xs hover:bg-accent"
-            onClick={handleViewParentResearch}
-          >
-            {parentResearch.focus_text || 'View parent research'}
-          </Button>
-          {focusText && (
-            <Badge variant="outline" className="ml-auto truncate max-w-[150px]">
-              Focus: {focusText}
-            </Badge>
+    <Card className="overflow-hidden">
+      <div className="p-4 space-y-4">
+        <ResearchHeader 
+          isLoading={isLoading} 
+          isAnalyzing={isAnalyzing} 
+          onResearch={() => handleResearch()} 
+          focusText={focusText}
+        />
+
+        <div className="space-y-2">
+          {progress.length > 0 && (
+            <ProgressDisplay 
+              messages={progress} 
+              currentIteration={currentIteration} 
+              maxIterations={maxIterations}
+              currentQueryIndex={currentQueryIndex}
+              queries={currentQueries}
+              isLoading={isLoading || isAnalyzing}
+            />
+          )}
+          
+          {error && (
+            <div className="text-sm p-2 bg-destructive/10 text-destructive rounded">
+              {error}
+            </div>
+          )}
+                  
+          {results.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">Research Results</h4>
+                <span className="text-xs text-muted-foreground">{results.length} sources</span>
+              </div>
+              
+              <SitePreviewList results={results} />
+            </div>
           )}
         </div>
-      )}
-
-      <div className="flex items-center justify-between w-full max-w-full">
-        <ResearchHeader 
-          isLoading={isLoading}
-          isAnalyzing={isAnalyzing}
-          onResearch={handleResearch}
-        />
         
-        <div className="flex space-x-2">
+        {analysis && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Analysis</h4>
+            <AnalysisDisplay content={analysis} />
+          </div>
+        )}
+        
+        {streamingState.parsedData && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Key Insights</h4>
+            <InsightsDisplay 
+              streamingState={streamingState}
+              onResearchArea={handleResearchArea}
+            />
+          </div>
+        )}
+        
+        {iterations.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Research Iterations</h4>
+            <div className="space-y-2">
+              {iterations.map(iteration => (
+                <IterationCard
+                  key={`iteration-${iteration.iteration}`}
+                  iteration={iteration}
+                  isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
+                  onToggleExpand={() => {
+                    setExpandedIterations(prev => {
+                      const id = `iteration-${iteration.iteration}`
+                      if (prev.includes(id)) {
+                        return prev.filter(i => i !== id)
+                      } else {
+                        return [...prev, id]
+                      }
+                    })
+                  }}
+                  isStreaming={isLoading || isAnalyzing}
+                  isCurrentIteration={iteration.iteration === currentIteration}
+                  maxIterations={maxIterations}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {savedResearch && savedResearch.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Research History</h4>
+            <div className="space-y-2">
+              <ScrollArea className="h-[200px]">
+                {savedResearch.map(research => (
+                  <div 
+                    key={research.id} 
+                    className={`
+                      p-2 text-xs rounded flex items-center justify-between cursor-pointer
+                      ${loadedResearchId === research.id ? 'bg-primary/10 border border-primary/20' : 'hover:bg-muted'}
+                    `}
+                    onClick={() => {
+                      if (!isLoading && !isAnalyzing) {
+                        loadSavedResearch(research)
+                      }
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <div className="font-medium">
+                        {research.focus_text || 'General Research'}
+                        {research.id === loadedResearchId && ' (Current)'}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {format(new Date(research.created_at), 'MMM d, yyyy h:mm a')}
+                      </div>
+                      {research.probability && (
+                        <div className={`
+                          text-xs mt-1 
+                          ${research.probability.includes('high') ? 'text-green-500' : 
+                           research.probability.includes('low') ? 'text-red-500' : 'text-amber-500'}
+                        `}>
+                          {research.probability}
+                        </div>
+                      )}
+                    </div>
+                    {isLoadingSaved && loadedResearchId === research.id ? (
+                      <div className="animate-spin h-3 w-3 border border-primary rounded-full border-t-transparent"></div>
+                    ) : (
+                      <div className="flex gap-1">
+                        {(research.parent_research_id || childResearchList.some(r => r.parent_research_id === research.id)) && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {research.parent_research_id ? 'Child' : 'Parent'}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </ScrollArea>
+            </div>
+          </div>
+        )}
+        
+        {(parentResearch || childResearchList.length > 0) && loadedResearchId && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Research Context</h4>
+            
+            {parentResearch && (
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Parent Research:</div>
+                <div 
+                  className="p-2 text-xs rounded flex items-center justify-between cursor-pointer bg-muted hover:bg-muted/80"
+                  onClick={() => {
+                    if (!isLoading && !isAnalyzing) {
+                      loadSavedResearch(parentResearch)
+                    }
+                  }}
+                >
+                  <div className="flex flex-col">
+                    <div className="font-medium">
+                      {parentResearch.focus_text || 'General Research'}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {format(new Date(parentResearch.created_at), 'MMM d, yyyy h:mm a')}
+                    </div>
+                  </div>
+                  <ArrowLeftCircle className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </div>
+            )}
+            
+            {childResearchList.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Child Research:</div>
+                {childResearchList.map(child => (
+                  <div 
+                    key={child.id} 
+                    className="p-2 text-xs rounded flex items-center justify-between cursor-pointer bg-muted hover:bg-muted/80"
+                    onClick={() => {
+                      if (!isLoading && !isAnalyzing) {
+                        loadSavedResearch(child)
+                      }
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <div className="font-medium">
+                        {child.focus_text || 'General Research'}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {format(new Date(child.created_at), 'MMM d, yyyy h:mm a')}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">
+                      Focus: {child.focus_text?.substring(0, 15)}{child.focus_text && child.focus_text.length > 15 ? '...' : ''}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        
+        <div className="pt-2">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="icon">
+              <Button variant="outline" size="sm" className="w-full flex items-center justify-center gap-2">
                 <Settings className="h-4 w-4" />
+                <span>Research Settings</span>
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-80">
               <div className="space-y-4">
-                <h4 className="font-medium text-sm">Research Settings</h4>
+                <h4 className="font-medium">Research Settings</h4>
+                
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm">Number of Iterations</span>
-                    <span className="text-sm font-medium">{maxIterations}</span>
-                  </div>
+                  <label className="text-sm">Max Iterations: {maxIterations}</label>
                   <Slider
                     value={[maxIterations]}
                     min={1}
                     max={5}
                     step={1}
-                    onValueChange={(values) => setMaxIterations(values[0])}
-                    disabled={isLoading || isAnalyzing}
+                    onValueChange={(value) => setMaxIterations(value[0])}
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Higher values will provide more thorough research but take longer to complete.
-                  </p>
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm">Research Focus (Optional)</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={focusText}
+                      onChange={(e) => setFocusText(e.target.value)}
+                      placeholder="Enter specific focus area..."
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setFocusText('')}
+                      disabled={!focusText}
+                    >
+                      &times;
+                    </Button>
+                  </div>
                 </div>
               </div>
             </PopoverContent>
           </Popover>
-          
-          {savedResearch && savedResearch.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline">
-                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[300px]">
-                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {savedResearch.map((research) => (
-                  <DropdownMenuItem 
-                    key={research.id}
-                    onClick={() => loadSavedResearch(research)}
-                    className="flex flex-col items-start"
-                  >
-                    <div className="font-medium truncate w-full">
-                      {research.focus_text ? (
-                        <span className="flex items-center gap-1">
-                          {research.parent_research_id && <ArrowLeftCircle className="h-3 w-3 text-muted-foreground" />}
-                          <span>{research.focus_text}</span>
-                        </span>
-                      ) : (
-                        research.query.substring(0, 40) + (research.query.length > 40 ? '...' : '')
-                      )}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
-                    </div>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
         </div>
       </div>
-
-      <div className="flex items-center space-x-2 w-full max-w-full">
-        <div className="relative flex-1">
-          <Input
-            placeholder="Enter specific research focus (optional)..."
-            value={focusText}
-            onChange={(e) => setFocusText(e.target.value)}
-            disabled={isLoading || isAnalyzing}
-            className="pr-8"
-          />
-          {focusText && (
-            <button
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              onClick={() => setFocusText('')}
-              disabled={isLoading || isAnalyzing}
-            >
-              ×
-            </button>
-          )}
-        </div>
-        {focusText && (
-          <div className="shrink-0">
-            <Badge variant="outline" className="whitespace-nowrap">
-              <Search className="h-3 w-3 mr-1" />
-              Focus: {focusText.length > 20 ? focusText.substring(0, 20) + '...' : focusText}
-            </Badge>
-          </div>
-        )}
-      </div>
-
-      {error && (
-        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
-          {error}
-        </div>
-      )}
-
-      {currentIteration > 0 && (
-        <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
-          <div 
-            className="bg-primary h-full transition-all duration-500 ease-in-out"
-            style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
-          />
-          <div className="flex justify-between text-xs text-muted-foreground mt-1">
-            <span>Iteration {currentIteration} of {maxIterations}</span>
-            <span>{Math.round((currentIteration / maxIterations) * 100)}% complete</span>
-          </div>
-        </div>
-      )}
-
-      {(isLoading || isAnalyzing) && renderQueryDisplay()}
-
-      <ProgressDisplay messages={progress} />
-      
-      {iterations.length > 0 && (
-        <div className="border rounded-md overflow-hidden w-full max-w-full">
-          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
-            {renderIterations()}
-          </ScrollArea>
-        </div>
-      )}
-      
-      <InsightsDisplay 
-        streamingState={streamingState} 
-        onResearchArea={handleResearchArea}
-        parentResearch={parentResearchId && parentResearch ? {
-          id: parentResearch.id,
-          focusText: focusText || undefined,
-          onView: handleViewParentResearch
-        } : undefined}
-        childResearches={childResearchList.length > 0 ? childResearchList.map(child => ({
-          id: child.id,
-          focusText: child.focus_text || 'Unknown focus',
-          onView: () => handleViewChildResearch(child)
-        })) : undefined}
-      />
-
-      {results.length > 0 && !iterations.length && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
-          </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
-        </>
-      )}
     </Card>
-  );
+  )
 }

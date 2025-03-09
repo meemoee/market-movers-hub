@@ -1,19 +1,15 @@
-
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ArrowUp, ArrowDown } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
-interface StreamingState {
-  rawText: string;
-  parsedData: {
-    probability: string;
-    areasForResearch: string[];
-    reasoning?: string;
-    supportingPoints?: string[];
-    negativePoints?: string[];
-  } | null;
+interface InsightsData {
+  probability: string;
+  areasForResearch: string[];
+  reasoning?: string;
+  supportingPoints?: string[];
+  negativePoints?: string[];
 }
 
 interface ResearchChild {
@@ -23,7 +19,11 @@ interface ResearchChild {
 }
 
 interface InsightsDisplayProps {
-  streamingState: StreamingState;
+  streamingState?: {
+    rawText: string;
+    parsedData: InsightsData | null;
+  };
+  data?: InsightsData;
   onResearchArea?: (area: string) => void;
   parentResearch?: {
     id: string;
@@ -35,14 +35,18 @@ interface InsightsDisplayProps {
 
 export function InsightsDisplay({ 
   streamingState, 
+  data,
   onResearchArea, 
   parentResearch,
   childResearches 
 }: InsightsDisplayProps) {
+  // Get data either from streamingState or direct data prop
+  const insightsData = data || (streamingState?.parsedData);
+  
   // Return loading state or null if no parsed data yet
-  if (!streamingState.parsedData) return null;
+  if (!insightsData) return null;
 
-  const { probability, areasForResearch, reasoning, supportingPoints, negativePoints } = streamingState.parsedData;
+  const { probability, areasForResearch, reasoning, supportingPoints, negativePoints } = insightsData;
   
   // More comprehensive check for error messages in probability
   const hasErrorInProbability = 
@@ -60,7 +64,7 @@ export function InsightsDisplay({
 
   // Don't show the component if there's an error in probability and no valid research areas
   if ((hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) || 
-      streamingState.rawText.length < 10) {  // Also don't show if we have barely any raw text (still streaming)
+      (streamingState && streamingState.rawText.length < 10)) {  // Also don't show if we have barely any raw text (still streaming)
     return null;
   }
 
