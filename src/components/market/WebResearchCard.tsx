@@ -931,4 +931,316 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setError(null)
     setAnalysis('')
     setIsAnalyzing(false)
-    setStreamingState({ rawText:
+    setStreamingState({ 
+      rawText: '',
+      parsedData: null
+    })
+    
+    setCurrentIteration(0)
+    setIterations([])
+    
+    // If a specific focus text is provided, use it immediately
+    const actualFocusText = specificFocusText || focusText
+    if (specificFocusText) {
+      setFocusText(specificFocusText)
+    }
+    
+    console.log(`Starting research with focus text: "${actualFocusText || 'none'}"`)
+    
+    try {
+      const initialQueries = [`${description.substring(0, 150)}`]
+      
+      if (actualFocusText) {
+        initialQueries.unshift(`${actualFocusText}`)
+        initialQueries.push(`${actualFocusText} latest information`)
+      }
+      
+      setCurrentQueries(initialQueries)
+      setCurrentQueryIndex(-1)
+      
+      if (parentResearchId) {
+        const parent = findParentResearch(parentResearchId)
+        if (parent) {
+          setPreviousResearchContext({
+            queries: parent.iterations?.flatMap(iter => iter.queries || []) || [],
+            analyses: parent.iterations?.map(iter => iter.analysis || '') || [],
+            probability: parent.probability
+          })
+          
+          console.log(`Loaded context from parent research: ${parentResearchId}`)
+        }
+      }
+      
+      await handleWebScrape(initialQueries, 1, [], actualFocusText)
+      await saveResearch()
+    } catch (error) {
+      console.error("Error starting research:", error)
+      setError(`Error starting research: ${error.message}`)
+      setIsLoading(false)
+    }
+  }
+  
+  // Handle clicking on a research area
+  const handleResearchArea = (area: string) => {
+    // Set parent research ID to current research if available
+    if (loadedResearchId) {
+      setParentResearchId(loadedResearchId)
+    }
+    
+    // Immediate pass the selected area to handleResearch
+    // rather than relying on state update
+    handleResearch(area)
+  }
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="p-4 space-y-4">
+        <ResearchHeader 
+          isLoading={isLoading} 
+          isAnalyzing={isAnalyzing} 
+          onResearch={() => handleResearch()} 
+          focusText={focusText}
+        />
+
+        {/* Progress and Results */}
+        <div className="space-y-2">
+          {progress.length > 0 && (
+            <ProgressDisplay 
+              progress={progress} 
+              currentIteration={currentIteration} 
+              maxIterations={maxIterations}
+              currentQueryIndex={currentQueryIndex}
+              queries={currentQueries}
+              isLoading={isLoading || isAnalyzing}
+            />
+          )}
+          
+          {error && (
+            <div className="text-sm p-2 bg-destructive/10 text-destructive rounded">
+              {error}
+            </div>
+          )}
+                  
+          {results.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-medium">Research Results</h4>
+                <span className="text-xs text-muted-foreground">{results.length} sources</span>
+              </div>
+              
+              <SitePreviewList results={results} />
+            </div>
+          )}
+        </div>
+        
+        {/* Analysis */}
+        {analysis && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Analysis</h4>
+            <AnalysisDisplay content={analysis} />
+          </div>
+        )}
+        
+        {/* Insights */}
+        {streamingState.parsedData && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Key Insights</h4>
+            <InsightsDisplay 
+              data={streamingState.parsedData} 
+              onResearchArea={handleResearchArea}
+            />
+          </div>
+        )}
+        
+        {/* Iterations */}
+        {iterations.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Research Iterations</h4>
+            <div className="space-y-2">
+              {iterations.map(iteration => (
+                <IterationCard
+                  key={`iteration-${iteration.iteration}`}
+                  iteration={iteration}
+                  isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
+                  onToggle={() => {
+                    setExpandedIterations(prev => {
+                      const id = `iteration-${iteration.iteration}`
+                      if (prev.includes(id)) {
+                        return prev.filter(i => i !== id)
+                      } else {
+                        return [...prev, id]
+                      }
+                    })
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Saved Research */}
+        {savedResearch && savedResearch.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Research History</h4>
+            <div className="space-y-2">
+              <ScrollArea className="h-[200px]">
+                {savedResearch.map(research => (
+                  <div 
+                    key={research.id} 
+                    className={`
+                      p-2 text-xs rounded flex items-center justify-between cursor-pointer
+                      ${loadedResearchId === research.id ? 'bg-primary/10 border border-primary/20' : 'hover:bg-muted'}
+                    `}
+                    onClick={() => {
+                      if (!isLoading && !isAnalyzing) {
+                        loadSavedResearch(research)
+                      }
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <div className="font-medium">
+                        {research.focus_text || 'General Research'}
+                        {research.id === loadedResearchId && ' (Current)'}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {format(new Date(research.created_at), 'MMM d, yyyy h:mm a')}
+                      </div>
+                      {research.probability && (
+                        <div className={`
+                          text-xs mt-1 
+                          ${research.probability.includes('high') ? 'text-green-500' : 
+                           research.probability.includes('low') ? 'text-red-500' : 'text-amber-500'}
+                        `}>
+                          {research.probability}
+                        </div>
+                      )}
+                    </div>
+                    {isLoadingSaved && loadedResearchId === research.id ? (
+                      <div className="animate-spin h-3 w-3 border border-primary rounded-full border-t-transparent"></div>
+                    ) : (
+                      <div className="flex gap-1">
+                        {(research.parent_research_id || childResearchList.some(r => r.parent_research_id === research.id)) && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {research.parent_research_id ? 'Child' : 'Parent'}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </ScrollArea>
+            </div>
+          </div>
+        )}
+        
+        {/* Research Parent-Child Relationship */}
+        {(parentResearch || childResearchList.length > 0) && loadedResearchId && (
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Research Context</h4>
+            
+            {parentResearch && (
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Parent Research:</div>
+                <div 
+                  className="p-2 text-xs rounded flex items-center justify-between cursor-pointer bg-muted hover:bg-muted/80"
+                  onClick={() => {
+                    if (!isLoading && !isAnalyzing) {
+                      loadSavedResearch(parentResearch)
+                    }
+                  }}
+                >
+                  <div className="flex flex-col">
+                    <div className="font-medium">
+                      {parentResearch.focus_text || 'General Research'}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {format(new Date(parentResearch.created_at), 'MMM d, yyyy h:mm a')}
+                    </div>
+                  </div>
+                  <ArrowLeftCircle className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </div>
+            )}
+            
+            {childResearchList.length > 0 && (
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Child Research:</div>
+                {childResearchList.map(child => (
+                  <div 
+                    key={child.id} 
+                    className="p-2 text-xs rounded flex items-center justify-between cursor-pointer bg-muted hover:bg-muted/80"
+                    onClick={() => {
+                      if (!isLoading && !isAnalyzing) {
+                        loadSavedResearch(child)
+                      }
+                    }}
+                  >
+                    <div className="flex flex-col">
+                      <div className="font-medium">
+                        {child.focus_text || 'General Research'}
+                      </div>
+                      <div className="text-muted-foreground">
+                        {format(new Date(child.created_at), 'MMM d, yyyy h:mm a')}
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-[10px]">
+                      Focus: {child.focus_text?.substring(0, 15)}{child.focus_text && child.focus_text.length > 15 ? '...' : ''}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        
+        {/* Advanced Settings */}
+        <div className="pt-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="w-full flex items-center justify-center gap-2">
+                <Settings className="h-4 w-4" />
+                <span>Research Settings</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-4">
+                <h4 className="font-medium">Research Settings</h4>
+                
+                <div className="space-y-2">
+                  <label className="text-sm">Max Iterations: {maxIterations}</label>
+                  <Slider
+                    value={[maxIterations]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={(value) => setMaxIterations(value[0])}
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <label className="text-sm">Research Focus (Optional)</label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={focusText}
+                      onChange={(e) => setFocusText(e.target.value)}
+                      placeholder="Enter specific focus area..."
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setFocusText('')}
+                      disabled={!focusText}
+                    >
+                      &times;
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      </div>
+    </Card>
+  )
+}
