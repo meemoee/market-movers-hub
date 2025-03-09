@@ -23,6 +23,11 @@ serve(async (req) => {
       previousQueries = [],
       previousAnalyses = [],
       previousProbability,
+      parentQuery = '',
+      parentAnalysis = '',
+      parentProbability = '',
+      supportingPoints = [],
+      negativePoints = [],
       iteration = 1
     } = await req.json()
 
@@ -37,6 +42,8 @@ serve(async (req) => {
     console.log('Iteration:', iteration)
     console.log('Previous queries count:', previousQueries.length)
     console.log('Previous analyses count:', previousAnalyses.length)
+    console.log('Parent query provided:', !!parentQuery)
+    console.log('Parent analysis provided:', !!parentAnalysis)
     
     // Create context from previous research if available
     let previousResearchContext = '';
@@ -48,6 +55,20 @@ ${previousAnalyses.length > 0 ? `\nPrevious analysis summary:\n${previousAnalyse
 ${previousProbability ? `\nPrevious probability assessment: ${previousProbability}` : ''}
 
 DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
+    }
+
+    // Add parent research context if available
+    let parentResearchContext = '';
+    if (parentQuery || parentAnalysis) {
+      parentResearchContext = `
+PARENT RESEARCH CONTEXT:
+${parentQuery ? `Original research question: "${parentQuery}"` : ''}
+${parentProbability ? `\nProbability assessment from parent research: ${parentProbability}` : ''}
+${parentAnalysis ? `\nKey findings from parent research:\n${parentAnalysis.substring(0, 800)}${parentAnalysis.length > 800 ? '...' : ''}` : ''}
+${supportingPoints && supportingPoints.length > 0 ? `\nSupporting evidence from parent research:\n${supportingPoints.slice(0, 3).map((p, i) => `- ${p}`).join('\n')}` : ''}
+${negativePoints && negativePoints.length > 0 ? `\nCountering evidence from parent research:\n${negativePoints.slice(0, 3).map((p, i) => `- ${p}`).join('\n')}` : ''}
+
+Your task is to create search queries that DEEPEN the investigation on "${focusText}" based on this parent research context. Generate queries that EXTEND beyond what was already discovered.`;
     }
 
     // Build a more directive prompt for focused research
@@ -82,6 +103,7 @@ ${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
 ${focusText ? `YOUR SEARCH FOCUS MUST BE ON: ${focusText}` : ''}
 ${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
+${parentResearchContext}
 ${previousResearchContext}
 
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}

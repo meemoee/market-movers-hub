@@ -103,7 +103,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [previousResearchContext, setPreviousResearchContext] = useState<{
     queries: string[],
     analyses: string[],
-    probability?: string
+    probability?: string,
+    parentContext?: {
+      parentQuery: string,
+      parentAnalysis: string,
+      parentProbability: string,
+      supportingPoints: string[],
+      negativePoints: string[]
+    }
   } | null>(null)
   const { toast } = useToast()
 
@@ -951,15 +958,29 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText: focusText.trim() || null
         });
         
-        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-          body: JSON.stringify({ 
+        const queryPayload = { 
             query: description,
             marketId: marketId,
             marketDescription: description,
-            question: description,
+            marketQuestion: description,
             iteration: 1,
             focusText: focusText.trim()
-          })
+        };
+        
+        if (previousResearchContext?.parentContext) {
+          Object.assign(queryPayload, {
+            parentQuery: previousResearchContext.parentContext.parentQuery,
+            parentAnalysis: previousResearchContext.parentContext.parentAnalysis,
+            parentProbability: previousResearchContext.parentContext.parentProbability,
+            supportingPoints: previousResearchContext.parentContext.supportingPoints,
+            negativePoints: previousResearchContext.parentContext.negativePoints
+          });
+          
+          setProgress(prev => [...prev, `Including context from parent research for improved focus.`]);
+        }
+        
+        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
+          body: JSON.stringify(queryPayload)
         });
 
         if (queriesError) {
