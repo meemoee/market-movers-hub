@@ -438,12 +438,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         scrapePayload.researchFocus = focusText.trim();
         
         if (previousResearchContext) {
-          scrapePayload.previousQueries = previousResearchContext.queries;
-          scrapePayload.previousAnalyses = previousResearchContext.analyses;
+          if (previousResearchContext.queries) {
+            scrapePayload.previousQueries = previousResearchContext.queries.slice(-3);
+          }
+          
+          if (previousResearchContext.analyses) {
+            const lastAnalysis = previousResearchContext.analyses.slice(-1)[0];
+            scrapePayload.previousAnalyses = lastAnalysis ? [lastAnalysis] : [];
+          }
           
           setProgress(prev => [...prev, 
-            `Using context from ${previousResearchContext.queries.length} previous queries and ${previousResearchContext.analyses.length} analyses for focused research.`
+            `Using limited context from previous research for focused research on: ${focusText.trim()}`
           ]);
+        } else {
+          console.log("No previous research context available for this focus area");
         }
         
         setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);

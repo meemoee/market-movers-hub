@@ -40,7 +40,18 @@ serve(async (req) => {
     
     // Create context from previous research if available
     let previousResearchContext = '';
-    if (previousQueries.length > 0 || previousAnalyses.length > 0) {
+    
+    // Only use limited history if there's a specific focus text to avoid contamination
+    if (focusText && (previousQueries.length > 0 || previousAnalyses.length > 0)) {
+      // For focused research, only provide a brief summary of previous context
+      // but heavily prioritize the current focus text
+      previousResearchContext = `
+PREVIOUS RESEARCH CONTEXT (ABBREVIATED):
+${previousAnalyses.length > 0 ? `\nPrevious analysis summary (USE ONLY AS BACKGROUND):\n${previousAnalyses.slice(-1)[0].substring(0, 500)}${previousAnalyses.slice(-1)[0].length > 500 ? '...' : ''}` : ''}
+
+CRITICAL INSTRUCTION: Your queries MUST be EXCLUSIVELY about "${focusText}" regardless of any previous context. DO NOT let previous queries influence your new queries about "${focusText}".`;
+    } else if (previousQueries.length > 0 || previousAnalyses.length > 0) {
+      // For regular research, use more previous context
       previousResearchContext = `
 PREVIOUS RESEARCH CONTEXT:
 ${previousQueries.length > 0 ? `Previous search queries used:\n${previousQueries.slice(-15).map((q, i) => `${i+1}. ${q}`).join('\n')}` : ''}
@@ -88,7 +99,7 @@ ${marketPrice !== undefined ? `Generate search queries to explore both supportin
 ${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed about "${focusText}"
+1. Highly specific and detailed about "${focusText || query}"
 2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
 4. COMPLETELY DIFFERENT from previous research queries
