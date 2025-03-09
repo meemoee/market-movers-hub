@@ -916,8 +916,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const handleResearch = async () => {
+  const handleResearch = async (directFocus?: string) => {
     setLoadedResearchId(null);
+    
+    if (directFocus !== undefined) {
+      setFocusText(directFocus);
+    }
+    
+    const effectiveFocusText = directFocus !== undefined ? directFocus : focusText;
     
     setIsLoading(true)
     setProgress([])
@@ -937,8 +943,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
       setProgress(prev => [...prev, `Market question: ${description}`])
       
-      if (focusText.trim()) {
-        setProgress(prev => [...prev, `Research focus: ${focusText.trim()}`])
+      if (effectiveFocusText.trim()) {
+        setProgress(prev => [...prev, `Research focus: ${effectiveFocusText.trim()}`])
       }
       
       setProgress(prev => [...prev, "Generating initial search queries..."])
@@ -948,7 +954,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           description, 
           marketId,
           descriptionLength: description ? description.length : 0,
-          focusText: focusText.trim() || null
+          focusText: effectiveFocusText.trim() || null
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
@@ -958,7 +964,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketDescription: description,
             question: description,
             iteration: 1,
-            focusText: focusText.trim()
+            focusText: effectiveFocusText.trim()
           })
         });
 
@@ -1041,7 +1047,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setLoadedResearchId(null);
     setParentResearchId(parentId);
     
-    setFocusText(area);
     toast({
       title: "Research focus set",
       description: `Starting new research focused on: ${area}`
@@ -1060,9 +1065,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
-    setTimeout(() => {
-      handleResearch();
-    }, 200);
+    handleResearch(area);
   };
 
   const handleViewChildResearch = useCallback((childResearch: SavedResearch) => {

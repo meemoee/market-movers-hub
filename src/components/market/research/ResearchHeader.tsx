@@ -1,10 +1,11 @@
+
 import { Button } from "@/components/ui/button"
 import { Loader2, Search } from "lucide-react"
 
 interface ResearchHeaderProps {
   isLoading: boolean
   isAnalyzing: boolean
-  onResearch: () => void
+  onResearch: (directFocus?: string) => void
 }
 
 export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
@@ -12,7 +13,7 @@ export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchH
     <div className="flex items-center justify-between">
       <h3 className="text-lg font-semibold">Web Research</h3>
       <Button 
-        onClick={onResearch} 
+        onClick={() => onResearch()} 
         disabled={isLoading || isAnalyzing}
         variant="outline"
         size="sm"
