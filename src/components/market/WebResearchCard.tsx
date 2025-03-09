@@ -20,7 +20,7 @@ import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { IterationCard } from "./research/IterationCard"
-import { ChevronDown, Settings, Search, ArrowLeftCircle } from 'lucide-react'
+import { ChevronDown, Settings, Search, ArrowLeftCircle, GitBranch } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { useToast } from "@/components/ui/use-toast"
@@ -337,6 +337,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return;
       }
 
+      if (!streamingState.parsedData?.areasForResearch) {
+        console.log("Skipping save because areasForResearch is not available yet");
+        return;
+      }
+
       const sanitizeJson = (data: any): any => {
         if (data === null || data === undefined) return null;
         
@@ -363,7 +368,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       const sanitizedResults = sanitizeJson(results);
       const sanitizedAnalysis = analysis ? analysis.replace(/\u0000/g, '') : '';
-      const sanitizedAreasForResearch = sanitizeJson(streamingState.parsedData?.areasForResearch);
+      const sanitizedAreasForResearch = sanitizeJson(streamingState.parsedData?.areasForResearch) || [];
       const sanitizedIterations = sanitizeJson(iterations);
       const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
       
@@ -837,9 +842,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setStreamingState({
       rawText: '',
       parsedData: {
-        probability: "Unknown (parsing error)",
-        areasForResearch: ["Could not parse research areas due to format error."],
-        reasoning: "Error parsing model output."
+        probability: "Processing...",
+        areasForResearch: ["Analyzing research areas..."],
+        reasoning: "Processing insights..."
       }
     });
 
@@ -891,6 +896,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           console.log(`Areas for research: ${areasForResearch.length}`);
           console.log(`Supporting points: ${supportingPoints.length}`);
           console.log(`Negative points: ${negativePoints.length}`);
+          
+          await saveResearch();
         } else {
           throw new Error("Failed to parse response data");
         }
@@ -905,6 +912,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             reasoning: "Error parsing model output."
           }
         });
+        
+        await saveResearch();
       }
     } catch (error) {
       console.error("Error in extractInsights:", error);
@@ -918,6 +927,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           reasoning: "An error occurred during analysis."
         }
       });
+      
+      await saveResearch();
     }
   };
 
@@ -932,7 +943,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setIsAnalyzing(false)
     setStreamingState({ 
       rawText: '',
-      parsedData: null
+      parsedData: {
+        probability: "Initializing...",
+        areasForResearch: ["Preparing research..."],
+        reasoning: "Starting analysis..."
+      }
     })
     
     setCurrentIteration(0)
