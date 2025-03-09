@@ -78,35 +78,6 @@ interface SavedResearch {
   parent_research_id?: string;
 }
 
-interface QueryGenerationPayload {
-  query: string;
-  previousResults?: string;
-  iteration: number;
-  marketId: string;
-  marketDescription: string;
-  areasForResearch: string[];
-  previousAnalyses: string;
-  previousQueries: string[];
-  marketPrice?: number;
-  focusText?: string;
-  parentQuery?: string;
-  parentAnalysis?: string;
-  parentProbability?: string;
-  supportingPoints?: string[];
-  negativePoints?: string[];
-  previousProbability?: string;
-}
-
-interface InitialQueryPayload {
-  query: string;
-  marketId: string;
-  marketDescription: string;
-  marketQuestion: string;
-  iteration: number;
-  marketPrice?: number;
-  focusText?: string;
-}
-
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -132,14 +103,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [previousResearchContext, setPreviousResearchContext] = useState<{
     queries: string[],
     analyses: string[],
-    probability?: string,
-    parentContext?: {
-      parentQuery: string,
-      parentAnalysis: string,
-      parentProbability: string,
-      supportingPoints: string[],
-      negativePoints: string[]
-    }
+    probability?: string
   } | null>(null)
   const { toast } = useToast()
 
@@ -789,39 +753,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
-          const queryGenPayload: QueryGenerationPayload = { 
-            query: description,
-            previousResults: analysisContent,
-            iteration: iteration,
-            marketId: marketId,
-            marketDescription: description,
-            areasForResearch: streamingState.parsedData?.areasForResearch || [],
-            previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-            previousQueries: iterations.flatMap(iter => iter.queries || []),
-            marketPrice: marketPrice
-          };
-          
-          if (focusText?.trim()) {
-            queryGenPayload.focusText = focusText.trim();
-            setProgress(prev => [...prev, `Ensuring continued focus on: ${focusText.trim()} for query generation`]);
-            
-            if (parentResearchId && previousResearchContext?.parentContext) {
-              queryGenPayload.parentQuery = previousResearchContext.parentContext.parentQuery;
-              queryGenPayload.parentAnalysis = previousResearchContext.parentContext.parentAnalysis;
-              queryGenPayload.parentProbability = previousResearchContext.parentContext.parentProbability;
-              queryGenPayload.supportingPoints = previousResearchContext.parentContext.supportingPoints;
-              queryGenPayload.negativePoints = previousResearchContext.parentContext.negativePoints;
-              
-              setProgress(prev => [...prev, `Maintaining parent research context for focused iteration ${iteration + 1}`]);
-            }
-            
-            if (previousResearchContext?.probability) {
-              queryGenPayload.previousProbability = previousResearchContext.probability;
-            }
-          }
-
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-            body: JSON.stringify(queryGenPayload)
+            body: JSON.stringify({ 
+              query: description,
+              previousResults: analysisContent,
+              iteration: iteration,
+              marketId: marketId,
+              marketDescription: description,
+              areasForResearch: streamingState.parsedData?.areasForResearch || [],
+              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+              focusText: focusText.trim()
+            })
           })
 
           if (refinedQueriesError) {
@@ -1009,34 +951,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText: focusText.trim() || null
         });
         
-        const queryPayload: InitialQueryPayload = { 
+        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
+          body: JSON.stringify({ 
             query: description,
             marketId: marketId,
             marketDescription: description,
-            marketQuestion: description,
+            question: description,
             iteration: 1,
-            marketPrice: marketPrice
-        };
-        
-        if (focusText?.trim()) {
-          queryPayload.focusText = focusText.trim();
-          setProgress(prev => [...prev, `Ensuring primary focus on: ${focusText.trim()} for all queries`]);
-        }
-        
-        if (previousResearchContext?.parentContext) {
-          Object.assign(queryPayload, {
-            parentQuery: previousResearchContext.parentContext.parentQuery,
-            parentAnalysis: previousResearchContext.parentContext.parentAnalysis,
-            parentProbability: previousResearchContext.parentContext.parentProbability,
-            supportingPoints: previousResearchContext.parentContext.supportingPoints,
-            negativePoints: previousResearchContext.parentContext.negativePoints
-          });
-          
-          setProgress(prev => [...prev, `Including context from parent research for improved focus.`]);
-        }
-        
-        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-          body: JSON.stringify(queryPayload)
+            focusText: focusText.trim()
+          })
         });
 
         if (queriesError) {
@@ -1114,28 +1037,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
     
     const parentId = currentResearchId;
-    
-    if (streamingState.parsedData) {
-      const parentQueryContext = {
-        parentQuery: description,
-        parentAnalysis: analysis,
-        parentProbability: streamingState.parsedData.probability || '',
-        supportingPoints: streamingState.parsedData.supportingPoints || [],
-        negativePoints: streamingState.parsedData.negativePoints || []
-      };
-      
-      const allQueries = iterations.flatMap(iter => iter.queries || []);
-      const allAnalyses = iterations.map(iter => iter.analysis || '').filter(a => a);
-      
-      setPreviousResearchContext({
-        queries: allQueries,
-        analyses: allAnalyses,
-        probability: streamingState.parsedData.probability,
-        parentContext: parentQueryContext
-      });
-      
-      console.log('Setting parent research context for focused queries:', parentQueryContext);
-    }
     
     setLoadedResearchId(null);
     setParentResearchId(parentId);
