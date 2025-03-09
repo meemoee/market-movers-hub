@@ -1,242 +1,374 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js'
-import { OpenAI } from 'https://esm.sh/openai'
+const BING_API_KEY = Deno.env.get('BING_API_KEY')
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+const BING_SEARCH_URL = "https://api.bing.microsoft.com/v7.0/search"
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 
-const openai = new OpenAI({
-  apiKey: process.env['OPENAI_API_KEY'], // This is also the default, can be omitted
-});
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
-const supabaseAdmin = createClient(
-  // Supabase URL
-  process.env.SUPABASE_URL ?? '',
-  // Supabase service role key
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
-  {
-    auth: {
-      persistSession: false,
-    },
+class ContentCollector {
+  totalChars: number
+  collectedData: { url: string; content: string; title?: string }[]
+  seenUrls: Set<string>
+
+  constructor() {
+    this.totalChars = 0
+    this.collectedData = []
+    this.seenUrls = new Set()
   }
-)
 
-async function analyzeSite(url: string, query: string, focusText: string | null = null, previousAnalyses: string[] = []): Promise<string> {
-  try {
-    console.log("Attempting to fetch:", url);
-    const response = await fetch(url, {
-      //credentials: "include",
-      //mode: "no-cors"
-    });
-
-    if (!response.ok) {
-      console.error(`HTTP error! status: ${response.status}`);
-      return `Failed to fetch content from ${url}. Status: ${response.status}`;
-    }
-
-    const contentType = response.headers.get("content-type");
-    if (!contentType || !contentType.includes("text/html")) {
-      console.error(`Content type not HTML: ${contentType}`);
-      return `Content type not HTML from ${url}. Type: ${contentType}`;
-    }
-
-    const html = await response.text();
-    if (!html) {
-      console.warn(`Empty HTML received from ${url}`);
-      return `Empty HTML received from ${url}`;
-    }
-
-    //console.log("Fetched HTML:", html.substring(0, 200) + "...");
-
-    const prompt = `You are an expert research assistant tasked with analyzing content from a webpage to answer a specific question.
-
-  Your task is to extract and synthesize information from the provided HTML content to directly answer the user's question. Focus on providing a clear, concise, and factual answer. Cite specific parts of the content to back up your claims.
-
-  If the content does not contain information relevant to the question, state that the webpage does not contain relevant information.
-
-  HTML content:
-  ${html}
-
-  QUESTION: ${query}
-  ${focusText ? `SPECIFIC FOCUS: ${focusText}` : ''}
-  ${previousAnalyses.length > 0 ? `PREVIOUS ANALYSIS SUMMARY:\n${previousAnalyses.join('\n\n')}` : ''}
-
-  INSTRUCTIONS:
-  1. Focus on answering the question using ONLY the provided HTML content.
-  2. Be concise and clear.
-  3. Cite specific portions of the HTML content to support your answer.
-  4. If the HTML content is irrelevant or does not contain an answer, clearly state that the webpage does not contain relevant information.
-  5. Do not make assumptions or use external knowledge.
-  6. Do not include any introductory or concluding remarks.
-
-  RESPONSE:`;
-
-    console.log("Sending prompt to OpenAI:", prompt.substring(0, 500) + "...");
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4-1106-preview',
-      messages: [{ role: "system", content: prompt }],
-      max_tokens: 1000,
-    });
-
-    const analysis = completion.choices[0].message?.content;
-
-    if (!analysis) {
-      console.warn(`No analysis generated for ${url}`);
-      return `No analysis generated from ${url}`;
-    }
-
-    console.log("Analysis generated:", analysis.substring(0, 200) + "...");
-    return analysis;
-
-  } catch (error) {
-    console.error(`Error during analysis of ${url}:`, error);
-    return `Error analyzing ${url}: ${error}`;
+  addContent(url: string, content: string, title?: string): boolean {
+    if (this.seenUrls.has(url)) return false
+    
+    this.seenUrls.add(url)
+    this.collectedData.push({ url, content, title })
+    return true
   }
 }
 
-Bun.serve({
-  async fetch(req) {
-    if (req.method === 'OPTIONS') {
-      return new Response(null, {
-        status: 204,
+async function generateSubQueries(query: string, focusText?: string): Promise<string[]> {
+  console.log('Generating sub-queries for:', query, focusText ? `with focus: ${focusText}` : '')
+  
+  try {
+    const systemPrompt = focusText 
+      ? `You are a helpful assistant that generates search queries focused specifically on: ${focusText}`
+      : 'You are a helpful assistant that generates search queries.';
+      
+    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
+${query}
+${focusText ? `With specific focus on: "${focusText}"` : ''}
+
+CRITICAL GUIDELINES FOR QUERIES:
+1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
+2. Include specific entities, dates, events, or proper nouns from the original question
+3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
+4. Make each query a complete, standalone question or statement that contains ALL relevant context
+5. If the original question asks about a future event, include timeframes or dates
+6. Use precise terminology and specific entities mentioned in the original question
+
+Focus on different aspects that would be relevant for market research. Make each query different from the others to gather a wide range of information.
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
+
+    const response = await fetch(OPENROUTER_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost:5173',
+        'X-Title': 'Market Research App',
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
+            content: userPrompt
+          }
+        ],
+        response_format: { type: "json_object" }
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`)
+    }
+
+    const result = await response.json()
+    const content = result.choices[0].message.content.trim()
+    const queriesData = JSON.parse(content)
+    let queries = queriesData.queries || []
+    
+    // Process queries to ensure each has full context
+    queries = queries.map((q: string) => {
+      // Check for common issues in queries
+      if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
+        // Add original query context
+        return `${q} regarding ${query}`
+      }
+      
+      // Check if query likely has enough context
+      const hasNames = /[A-Z][a-z]+/.test(q) // Has proper nouns
+      const isLongEnough = q.length > 40     // Is reasonably detailed
+      
+      if (!hasNames || !isLongEnough) {
+        // Add more context
+        if (focusText) {
+          return `${q} about ${query} focused on ${focusText}`
+        } else {
+          return `${q} about ${query}`
+        }
+      }
+      
+      return q
+    })
+    
+    console.log('Generated queries:', queries)
+    return queries
+
+  } catch (error) {
+    console.error("Error generating queries:", error)
+    // Generate fallback queries with full context
+    const fallbackQueries = [
+      `${query} latest developments and facts`,
+      `${query} comprehensive analysis and expert opinions`,
+      `${query} historical precedents and similar cases`,
+      `${query} statistical data and probability estimates`,
+      `${query} future outlook and critical factors`
+    ]
+    
+    if (focusText) {
+      // Add focused variants
+      return [
+        `${focusText} in relation to ${query} analysis`,
+        `${query} specifically regarding ${focusText}`,
+        `${focusText} impact on ${query} outcome`,
+        `${query} factual information related to ${focusText}`,
+        `${focusText} historical precedents for ${query}`
+      ]
+    }
+    
+    return fallbackQueries
+  }
+}
+
+class WebScraper {
+  private bingApiKey: string
+  private collector: ContentCollector
+  private encoder: TextEncoder
+  private writer: WritableStreamDefaultWriter<Uint8Array>
+  private seenUrls: Set<string>
+
+  constructor(bingApiKey: string, writer: WritableStreamDefaultWriter<Uint8Array>) {
+    if (!bingApiKey) {
+      throw new Error('Bing API key is required')
+    }
+    this.bingApiKey = bingApiKey
+    this.collector = new ContentCollector()
+    this.encoder = new TextEncoder()
+    this.writer = writer
+    this.seenUrls = new Set()
+  }
+
+  private async sendUpdate(message: string) {
+    await this.writer.write(this.encoder.encode(`data: ${JSON.stringify({ message })}\n\n`))
+  }
+
+  private async sendResults(results: any[]) {
+    await this.writer.write(this.encoder.encode(`data: ${JSON.stringify({ type: 'results', data: results })}\n\n`))
+  }
+
+  async searchBing(query: string) {
+    await this.sendUpdate(`Searching Bing for: ${query}`)
+    
+    const headers = {
+      "Ocp-Apim-Subscription-Key": this.bingApiKey
+    }
+    
+    const params = new URLSearchParams({
+      q: query,
+      count: "50",
+      responseFilter: "Webpages"
+    })
+
+    try {
+      const response = await fetch(`${BING_SEARCH_URL}?${params}`, { headers })
+      if (!response.ok) {
+        throw new Error(`Bing API error: ${response.status}`)
+      }
+      const data = await response.json()
+      const results = data.webPages?.value || []
+      await this.sendUpdate(`Found ${results.length} search results`)
+      return results
+    } catch (error) {
+      console.error("Search error:", error)
+      return []
+    }
+  }
+
+  shouldSkipUrl(url: string): boolean {
+    const skipDomains = ['reddit.com', 'facebook.com', 'twitter.com', 'instagram.com']
+    return skipDomains.some(domain => url.includes(domain)) || this.seenUrls.has(url)
+  }
+
+  async fetchAndParseContent(url: string): Promise<{url: string, content: string, title?: string} | null> {
+    if (this.shouldSkipUrl(url)) return null
+
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000) // Reduced timeout
+
+      const response = await fetch(url, {
         headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html',
         },
-      });
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
+
+      if (!response.ok) return null
+
+      const contentType = response.headers.get('content-type')
+      if (!contentType?.includes('text/html')) return null
+
+      const html = await response.text()
+      const $ = load(html)
+      
+      // Remove scripts and styles
+      $('script').remove()
+      $('style').remove()
+      
+      const title = $('title').text().trim()
+      const content = $('body').text()
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 5000)
+
+      if (content) {
+        this.seenUrls.add(url)
+        return { url, content, title }
+      }
+      return null
+    } catch (error) {
+      // Skip failed URLs silently
+      return null
+    }
+  }
+
+  async processBatch(urls: string[], batchSize = 15) {
+    const tasks: Promise<{url: string, content: string, title?: string} | null>[] = []
+    for (const url of urls.slice(0, batchSize)) {
+      tasks.push(this.fetchAndParseContent(url))
+    }
+
+    if (tasks.length === 0) {
+      return false
     }
 
     try {
-      const { marketId, query, focusText, parentFocusText, previousQueries, previousAnalyses } = await req.json();
-
-      if (!marketId || !query) {
-        return new Response(JSON.stringify({ error: 'Missing marketId or query' }), {
-          status: 400,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
-        });
+      const results = await Promise.all(tasks)
+      const validResults = results.filter(result => result !== null) as {url: string, content: string, title?: string}[]
+      
+      if (validResults.length > 0) {
+        await this.sendResults(validResults)
+        
+        // Add to collector for overall results
+        validResults.forEach(result => {
+          this.collector.addContent(result.url, result.content, result.title)
+        })
       }
-
-      console.log(`Received request for marketId: ${marketId}, query: ${query}, focusText: ${focusText}, parentFocusText: ${parentFocusText}`);
-
-      // 1. Generate search queries
-      const { data: queriesData, error: queriesError } = await supabaseAdmin.functions.invoke('generate-queries', {
-        body: {
-          query,
-          focusText,
-          parentFocusText, // Add this line
-          previousQueries: previousQueries || [],
-          previousAnalyses: previousAnalyses || []
-        }
-      });
-
-      if (queriesError) {
-        console.error('Error generating queries:', queriesError);
-        return new Response(JSON.stringify({ error: 'Failed to generate search queries', details: queriesError }), {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
-        });
-      }
-
-      const searchQueries = queriesData;
-      console.log('Generated search queries:', searchQueries);
-
-      // 2. Execute search queries and scrape websites
-      //const searchResults = await Promise.all(searchQueries.map(runSearch));
-      //console.log('Search results:', searchResults);
-
-      // Mock search results for testing
-      const searchResults = searchQueries.map(q => ({
-        query: q,
-        url: `https://www.google.com/search?q=${encodeURIComponent(q)}`,
-      }));
-
-      // 3. Analyze each website
-      const analyses = await Promise.all(searchResults.map(async (result) => {
-        const analysis = await analyzeSite(result.url, query, focusText, previousAnalyses);
-        return {
-          query: result.query,
-          url: result.url,
-          analysis: analysis,
-        };
-      }));
-
-      console.log('Website analyses:', analyses);
-
-      // 4. Summarize findings
-      // const { data: summaryData, error: summaryError } = await supabaseAdmin.functions.invoke('summarize-research', {
-      //   body: {
-      //     query,
-      //     analyses,
-      //     previousAnalyses: previousAnalyses || []
-      //   }
-      // });
-
-      // if (summaryError) {
-      //   console.error('Error summarizing research:', summaryError);
-      //   return new Response(JSON.stringify({ error: 'Failed to summarize research', details: summaryError }), {
-      //     status: 500,
-      //     headers: {
-      //       'Content-Type': 'application/json',
-      //       'Access-Control-Allow-Origin': '*',
-      //     },
-      //   });
-      // }
-
-      // const summary = summaryData;
-      // console.log('Research summary:', summary);
-
-      // 5. Store results in Supabase
-      const { data: insertData, error: insertError } = await supabaseAdmin
-        .from('web_research')
-        .insert([
-          {
-            market_id: marketId,
-            query: query,
-            analysis: JSON.stringify(analyses), //summary,
-            queries: searchQueries,
-            sources: searchResults.map(r => r.url),
-          },
-        ])
-        .select();
-
-      if (insertError) {
-        console.error('Error inserting data:', insertError);
-        return new Response(JSON.stringify({ error: 'Failed to insert data into Supabase', details: insertError }), {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*',
-          },
-        });
-      }
-
-      console.log('Data inserted into Supabase:', insertData);
-
-      return new Response(JSON.stringify({ data: analyses }), {  //summary
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
-
+      
+      return true
     } catch (error) {
-      console.error('Function execution error:', error);
-      return new Response(JSON.stringify({ error: 'Internal server error', details: error }), {
-        status: 500,
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
+      console.error("Error processing batch:", error)
+      return true
     }
-  },
-  port: parseInt(process.env.PORT || '8000'),
-  development: process.env.NODE_ENV !== 'production',
-});
+  }
 
-console.log(`🦊 Supabase Edge Function "web-research" running on port ${process.env.PORT || '8000'}`)
+  async run(query: string, focusText?: string) {
+    await this.sendUpdate(`Starting web research for query: ${query}${focusText ? ` with focus on: ${focusText}` : ''}`)
+    
+    // Generate sub-queries using OpenRouter
+    const subQueries = await generateSubQueries(query, focusText)
+    await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
+    
+    // Process sub-queries in parallel with a concurrency limit
+    const concurrencyLimit = 3
+    const processSubquery = async (subQuery: string, index: number) => {
+      await this.sendUpdate(`Processing search query ${index+1}/${subQueries.length}: ${subQuery}`)
+      const searchResults = await this.searchBing(subQuery)
+      
+      if (!searchResults.length) {
+        return
+      }
+
+      const urls = searchResults.map(result => result.url)
+      const batchSize = 10
+      
+      // Process in smaller batches for more responsive streaming
+      for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
+        const batchUrls = urls.slice(startIdx, startIdx + batchSize)
+        await this.processBatch(batchUrls, batchSize)
+      }
+    }
+    
+    // Process subqueries with limited concurrency
+    for (let i = 0; i < subQueries.length; i += concurrencyLimit) {
+      const subQueryBatch = subQueries.slice(i, i + concurrencyLimit)
+      const promises = subQueryBatch.map((subQuery, idx) => 
+        processSubquery(subQuery, i + idx)
+      )
+      await Promise.all(promises)
+    }
+
+    await this.sendUpdate(`Web research complete. Collected information from ${this.collector.collectedData.length} sources.`)
+    
+    return this.collector.collectedData
+  }
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders })
+  }
+
+  try {
+    const { query, focusText } = await req.json()
+
+    if (!BING_API_KEY) {
+      throw new Error('BING_API_KEY is not configured')
+    }
+
+    if (!OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY is not configured')
+    }
+
+    // Create a TransformStream for streaming response
+    const { readable, writable } = new TransformStream()
+    const writer = writable.getWriter()
+    const encoder = new TextEncoder()
+
+    // Start research asynchronously
+    (async () => {
+      try {
+        const scraper = new WebScraper(BING_API_KEY, writer)
+        await scraper.run(query, focusText)
+        await writer.close()
+      } catch (error) {
+        console.error("Error in web research:", error)
+        await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
+        await writer.close()
+      }
+    })()
+
+    return new Response(readable, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
+  } catch (error) {
+    console.error("Error in web-research function:", error)
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    )
+  }
+})

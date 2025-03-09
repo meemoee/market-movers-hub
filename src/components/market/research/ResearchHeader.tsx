@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button"
 import { Loader2, Search } from "lucide-react"
 
@@ -6,27 +5,12 @@ interface ResearchHeaderProps {
   isLoading: boolean
   isAnalyzing: boolean
   onResearch: () => void
-  focusText?: string
-  parentFocusText?: string
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText, parentFocusText }: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
-      <h3 className="text-lg font-semibold">
-        {focusText ? (
-          <span>
-            Focused Research: <span className="text-primary">{focusText}</span>
-            {parentFocusText && (
-              <span className="text-xs text-muted-foreground ml-2">
-                (from {parentFocusText})
-              </span>
-            )}
-          </span>
-        ) : (
-          "Web Research"
-        )}
-      </h3>
+      <h3 className="text-lg font-semibold">Web Research</h3>
       <Button 
         onClick={onResearch} 
         disabled={isLoading || isAnalyzing}

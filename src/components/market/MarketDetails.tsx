@@ -133,9 +133,8 @@ export function MarketDetails({
       {/* Web Research Section */}
       {description && (
         <WebResearchCard 
+          description={description} 
           marketId={marketId}
-          marketQuestion={question}
-          marketDescription={description}
         />
       )}
 
