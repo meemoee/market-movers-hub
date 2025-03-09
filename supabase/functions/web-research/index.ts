@@ -32,17 +32,21 @@ class ContentCollector {
   }
 }
 
-async function generateSubQueries(query: string, focusText?: string): Promise<string[]> {
-  console.log('Generating sub-queries for:', query, focusText ? `with focus: ${focusText}` : '')
+async function generateSubQueries(primaryResearchTopic: string, marketQuestion?: string): Promise<string[]> {
+  console.log('Generating sub-queries for:', primaryResearchTopic, marketQuestion ? `with market question: ${marketQuestion}` : '')
+  
+  // Determine if this is a focused query (contains ":")
+  const isFocusedQuery = primaryResearchTopic.includes(':');
+  const focusText = isFocusedQuery ? primaryResearchTopic.split(':')[0].trim() : '';
   
   try {
-    const systemPrompt = focusText 
+    const systemPrompt = isFocusedQuery 
       ? `You are a helpful assistant that generates search queries focused specifically on: ${focusText}`
       : 'You are a helpful assistant that generates search queries.';
       
-    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
-${query}
-${focusText ? `With specific focus on: "${focusText}"` : ''}
+    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about:
+${primaryResearchTopic}
+${marketQuestion ? `For the prediction market question: "${marketQuestion}"` : ''}
 
 CRITICAL GUIDELINES FOR QUERIES:
 1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
@@ -51,6 +55,7 @@ CRITICAL GUIDELINES FOR QUERIES:
 4. Make each query a complete, standalone question or statement that contains ALL relevant context
 5. If the original question asks about a future event, include timeframes or dates
 6. Use precise terminology and specific entities mentioned in the original question
+${isFocusedQuery ? `7. EVERY query MUST start with "${focusText}: " (this exact prefix is MANDATORY)` : ''}
 
 Focus on different aspects that would be relevant for market research. Make each query different from the others to gather a wide range of information.
 
@@ -89,56 +94,49 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     const queriesData = JSON.parse(content)
     let queries = queriesData.queries || []
     
-    // Process queries to ensure each has full context
+    // Process queries to ensure each has full context and proper focus format
     queries = queries.map((q: string) => {
+      // For focused queries, ensure proper formatting
+      if (isFocusedQuery && !q.toLowerCase().startsWith(focusText.toLowerCase())) {
+        return `${focusText}: ${q}`;
+      }
+      
       // Check for common issues in queries
       if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
-        // Add original query context
-        return `${q} regarding ${query}`
+        // Add original context
+        return `${q} regarding ${primaryResearchTopic}`;
       }
       
-      // Check if query likely has enough context
-      const hasNames = /[A-Z][a-z]+/.test(q) // Has proper nouns
-      const isLongEnough = q.length > 40     // Is reasonably detailed
-      
-      if (!hasNames || !isLongEnough) {
-        // Add more context
-        if (focusText) {
-          return `${q} about ${query} focused on ${focusText}`
-        } else {
-          return `${q} about ${query}`
-        }
-      }
-      
-      return q
-    })
+      return q;
+    });
     
     console.log('Generated queries:', queries)
-    return queries
+    return queries;
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries with full context
-    const fallbackQueries = [
-      `${query} latest developments and facts`,
-      `${query} comprehensive analysis and expert opinions`,
-      `${query} historical precedents and similar cases`,
-      `${query} statistical data and probability estimates`,
-      `${query} future outlook and critical factors`
-    ]
     
-    if (focusText) {
-      // Add focused variants
+    // Generate fallback queries with proper focus handling
+    if (primaryResearchTopic.includes(':')) {
+      const focusParts = primaryResearchTopic.split(':');
+      const focusPrefix = focusParts[0].trim();
+      
       return [
-        `${focusText} in relation to ${query} analysis`,
-        `${query} specifically regarding ${focusText}`,
-        `${focusText} impact on ${query} outcome`,
-        `${query} factual information related to ${focusText}`,
-        `${focusText} historical precedents for ${query}`
-      ]
+        `${focusPrefix}: latest developments and facts`,
+        `${focusPrefix}: comprehensive analysis and expert opinions`,
+        `${focusPrefix}: historical precedents and similar cases`,
+        `${focusPrefix}: statistical data and probability estimates`,
+        `${focusPrefix}: future outlook and critical factors`
+      ];
+    } else {
+      return [
+        `${primaryResearchTopic} latest developments and facts`,
+        `${primaryResearchTopic} comprehensive analysis and expert opinions`,
+        `${primaryResearchTopic} historical precedents and similar cases`,
+        `${primaryResearchTopic} statistical data and probability estimates`,
+        `${primaryResearchTopic} future outlook and critical factors`
+      ];
     }
-    
-    return fallbackQueries
   }
 }
 
@@ -325,7 +323,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, focusText } = await req.json()
+    const { query, focusText, marketQuestion } = await req.json()
 
     if (!BING_API_KEY) {
       throw new Error('BING_API_KEY is not configured')
@@ -340,11 +338,14 @@ serve(async (req) => {
     const writer = writable.getWriter()
     const encoder = new TextEncoder()
 
+    // Determine the primary research target - focused text takes precedence
+    const primaryResearchTarget = focusText ? `${focusText}: ${query}` : query;
+
     // Start research asynchronously
     (async () => {
       try {
         const scraper = new WebScraper(BING_API_KEY, writer)
-        await scraper.run(query, focusText)
+        await scraper.run(primaryResearchTarget, marketQuestion)
         await writer.close()
       } catch (error) {
         console.error("Error in web research:", error)

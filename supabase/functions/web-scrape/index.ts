@@ -16,7 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId } = await req.json();
+    const { queries, marketId, focusText, marketDescription } = await req.json();
     
     // Ensure queries don't have the market ID accidentally appended
     const cleanedQueries = queries.map((query: string) => {
@@ -37,6 +37,15 @@ serve(async (req) => {
     const stream = new ReadableStream({
       start(controller) {
         const encoder = new TextEncoder();
+        
+        const researchContext = focusText 
+          ? `Research focus: ${focusText} in context of market "${marketDescription || marketId}"`
+          : `Research for market: ${marketDescription || marketId}`;
+            
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+          type: 'message',
+          message: researchContext
+        })}\n\n`));
         
         const processQueries = async () => {
           let allResults = [];

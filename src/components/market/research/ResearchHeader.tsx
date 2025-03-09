@@ -7,16 +7,17 @@ interface ResearchHeaderProps {
   isAnalyzing: boolean
   onResearch: (directFocus?: string) => void
   isFocusMode?: boolean
+  focusText?: string
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch, isFocusMode }: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch, isFocusMode, focusText }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <h3 className="text-lg font-semibold flex items-center">
         Web Research
         {isFocusMode && (
           <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-            Focus Mode
+            Focus: {focusText && focusText.length > 15 ? `${focusText.substring(0, 15)}...` : focusText}
           </span>
         )}
       </h3>
