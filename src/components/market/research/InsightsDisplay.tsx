@@ -106,6 +106,16 @@ export function InsightsDisplay({
       }
     }
   };
+
+  // Enhanced debug function that specifically shows what happens during area selection
+  const debugAreaSelection = (area: string) => {
+    console.log('=== FOCUS AREA SELECTION DEBUG ===');
+    console.log('Selected research area:', area);
+    console.log('Parent research ID:', parentResearch?.id);
+    console.log('Parent research focus text:', parentResearch?.focusText);
+    console.log('This is what will be used for the new research focus');
+    console.log('================================');
+  };
   
   return (
     <div className="space-y-5">
@@ -259,7 +269,11 @@ export function InsightsDisplay({
                 <div 
                   key={index} 
                   className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
-                  onClick={!matchingChild && onResearchArea ? () => onResearchArea(area) : undefined}
+                  onClick={!matchingChild && onResearchArea ? () => {
+                    // Add the debug area selection log before handling the click
+                    debugAreaSelection(area);
+                    onResearchArea(area);
+                  } : undefined}
                 >
                   <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                   <div className="flex-1">
@@ -286,6 +300,8 @@ export function InsightsDisplay({
                           className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
                           onClick={(e) => {
                             e.stopPropagation();
+                            // Add the debug area selection log before handling the click
+                            debugAreaSelection(area);
                             onResearchArea(area);
                           }}
                         >

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
@@ -50,7 +49,7 @@ type SavedQATree = Database['public']['Tables']['qa_trees']['Row'] & {
 interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
-  marketDescription?: string;  // Added this prop definition
+  marketDescription?: string;
 }
 
 export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
@@ -888,6 +887,35 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     );
   }
 
+  const debugQAContext = () => {
+    console.log('=== QA CONTEXT DEBUG INFO ===');
+    console.log('Selected research:', selectedResearch);
+    
+    if (selectedResearch && selectedResearch !== 'none') {
+      const research = savedResearch?.find(r => r.id === selectedResearch);
+      if (research) {
+        console.log('Selected research data:', research);
+        console.log('Research focus text:', research.focus_text);
+        console.log('Research analysis:', research.analysis?.substring(0, 100) + '...');
+      }
+    }
+    
+    console.log('QA tree data:', qaData);
+    console.log('Root extensions:', rootExtensions);
+    console.log('Navigation history depth:', navigationHistory.length);
+    console.log('==============================');
+  };
+
+  useEffect(() => {
+    console.log('QADisplay mounted/updated with selected research:', selectedResearch);
+    if (savedResearch && selectedResearch !== 'none') {
+      const research = savedResearch.find(r => r.id === selectedResearch);
+      if (research) {
+        console.log('Research focus text:', research.focus_text);
+      }
+    }
+  }, [selectedResearch, savedResearch]);
+
   return (
     <Card className="p-4 mt-4 bg-card relative">
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
@@ -901,6 +929,16 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             ← Back to Previous Analysis
           </Button>
         )}
+
+        <Button 
+          variant="outline" 
+          size="sm"
+          onClick={debugQAContext}
+          className="bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20 hover:text-red-600"
+        >
+          Debug QA Context
+        </Button>
+
         <div className="flex-1 min-w-[200px] max-w-[300px]">
           <Select
             value={selectedResearch}
@@ -919,6 +957,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             </SelectContent>
           </Select>
         </div>
+
         <div className="flex-1 min-w-[200px] max-w-[300px]">
           <Select
             value={selectedQATree}
@@ -946,6 +985,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             </SelectContent>
           </Select>
         </div>
+
         <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
           <Button onClick={handleAnalyze} disabled={isAnalyzing}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze'}
@@ -963,4 +1003,3 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     </Card>
   );
 }
-
