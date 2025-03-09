@@ -16,7 +16,7 @@ export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }
       <div className="flex items-center gap-2">
         <h3 className="text-lg font-semibold">Web Research</h3>
         {focusText && (
-          <Badge variant="outline" className="text-xs">
+          <Badge variant="outline" className="text-xs bg-primary/10 border-primary/20">
             Focus: {focusText.length > 25 ? `${focusText.substring(0, 25)}...` : focusText}
           </Badge>
         )}
