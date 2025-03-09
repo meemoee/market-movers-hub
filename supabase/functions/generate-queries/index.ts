@@ -30,7 +30,8 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    console.log('Generating sub-queries for:', query)
+    // IMPORTANT FIX: Log the focus text to verify it's being received properly
+    console.log('Generating sub-queries for:', focusText || query)
     console.log('Market question:', marketQuestion || 'not provided')
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Focus text:', focusText || 'not provided')
@@ -88,7 +89,7 @@ ${marketPrice !== undefined ? `Generate search queries to explore both supportin
 ${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed about "${focusText}"
+1. Highly specific and detailed about "${focusText || query}"
 2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
 4. COMPLETELY DIFFERENT from previous research queries

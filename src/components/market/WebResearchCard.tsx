@@ -755,14 +755,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         try {
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
             body: JSON.stringify({ 
-              query: description,
+              query: focusText.trim() || description, // Use focusText as primary query when available
+              marketQuestion: description,  // Keep market description as context
               previousResults: analysisContent,
               iteration: iteration,
               marketId: marketId,
               marketDescription: description,
               areasForResearch: streamingState.parsedData?.areasForResearch || [],
               previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: focusText.trim()
+              focusText: focusText.trim(), // Also pass separately for backward compatibility
+              previousQueries: iterations.flatMap(iter => iter.queries || []) // Make sure previous queries are included
             })
           })
 
@@ -953,12 +955,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
           body: JSON.stringify({ 
-            query: description,
+            query: focusText.trim() || description, // Use focusText as primary query when available
             marketId: marketId,
             marketDescription: description,
             question: description,
             iteration: 1,
-            focusText: focusText.trim()
+            focusText: focusText.trim() // Also pass separately for backward compatibility
           })
         });
 
@@ -1343,3 +1345,4 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
+
