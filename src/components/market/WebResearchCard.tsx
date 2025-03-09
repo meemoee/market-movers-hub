@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge"
 interface WebResearchCardProps {
   description: string;
   marketId: string;
+  marketQuestion?: string;
 }
 
 interface ResearchResult {
@@ -78,7 +79,7 @@ interface SavedResearch {
   parent_research_id?: string;
 }
 
-export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
+export function WebResearchCard({ description, marketId, marketQuestion }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [results, setResults] = useState<ResearchResult[]>([])
@@ -415,6 +416,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
+      console.log(`Market question: ${marketQuestion || description}`)
       console.log(`Active focus text: ${activeFocusText || focusText || 'none'}`)
       
       setCurrentQueries(queries);
@@ -431,7 +433,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const scrapePayload: any = { 
         queries: shortenedQueries,
         marketId: marketId,
-        marketDescription: description
+        marketDescription: description,
+        marketQuestion: marketQuestion || description
       };
 
       const actualFocusText = activeFocusText?.trim() || focusText.trim();
@@ -602,7 +605,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const analyzePayload = {
         content: allContent.join('\n\n'),
         query: description,
-        question: description,
+        question: marketQuestion || description,
         marketId: marketId,
         marketDescription: description,
         previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
@@ -826,7 +829,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       webContent: allContent.join('\n\n'),
       analysis: finalAnalysis,
       marketId: marketId,
-      marketQuestion: description,
+      marketQuestion: marketQuestion || description,
       previousAnalyses: previousAnalyses,
       iterations: iterations,
       queries: allQueries,
