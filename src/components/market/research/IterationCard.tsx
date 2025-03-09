@@ -1,173 +1,103 @@
 
-import { useState } from 'react'
-import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { AnalysisDisplay } from "./AnalysisDisplay"
-import { cn } from "@/lib/utils"
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { ResearchIteration } from "@/types";
 
-interface ResearchResult {
-  url: string;
-  content: string;
-  title?: string;
-}
-
-interface IterationCardProps {
-  iteration: {
-    iteration: number;
-    queries: string[];
-    results: ResearchResult[];
-    analysis: string;
-  };
+export interface IterationCardProps {
+  iteration: ResearchIteration;
   isExpanded: boolean;
+  onToggle: () => void;
   onToggleExpand: () => void;
-  isStreaming?: boolean;
-  isCurrentIteration?: boolean;
-  maxIterations?: number;
-  onToggle?: () => void; // Adding this for backward compatibility
 }
 
-export function IterationCard({
-  iteration,
-  isExpanded,
-  onToggleExpand,
-  onToggle, // For backward compatibility
-  isStreaming,
-  isCurrentIteration,
-  maxIterations = 1
-}: IterationCardProps) {
-  const [activeTab, setActiveTab] = useState<string>("analysis")
-  const isFinalIteration = iteration.iteration === maxIterations
-  
-  // Use onToggleExpand for toggle functionality, fall back to onToggle if provided for compatibility
-  const handleToggle = onToggleExpand || onToggle || (() => {});
+export function IterationCard({ iteration, isExpanded, onToggle, onToggleExpand }: IterationCardProps) {
+  const [expandedSites, setExpandedSites] = useState<Set<string>>(new Set());
+
+  const toggleSite = (siteId: string) => {
+    setExpandedSites(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(siteId)) {
+        newSet.delete(siteId);
+      } else {
+        newSet.add(siteId);
+      }
+      return newSet;
+    });
+  };
 
   return (
-    <div className={cn(
-      "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
+    <Card className={cn(
+      "w-full transition-all duration-300 overflow-hidden",
+      isExpanded ? "max-h-[2000px]" : "max-h-32"
     )}>
-      <div 
-        className={cn(
-          "iteration-card-header flex items-center justify-between p-3 w-full",
-          isExpanded ? "bg-accent/10" : "",
-          "hover:bg-accent/10 cursor-pointer"
-        )}
-        onClick={handleToggle}
-      >
-        <div className="flex items-center gap-2 overflow-hidden">
-          <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
-            Iteration {iteration.iteration}
-            {isStreaming && isCurrentIteration && " (Streaming...)"}
-          </Badge>
-          <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
-          </span>
+      <CardHeader className="pb-2">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-base font-medium">
+            Iteration {iteration.iteration}: {iteration.query}
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={onToggleExpand} className="h-8 w-8 p-0">
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </Button>
         </div>
-        {isExpanded ? 
-          <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 
-          <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        }
-      </div>
+        <CardDescription className="text-xs">
+          {iteration.sitesFound} sources found
+        </CardDescription>
+      </CardHeader>
       
       {isExpanded && (
-        <div className="p-3 w-full max-w-full">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
-            <TabsList className="w-full grid grid-cols-3 mb-3 bg-secondary/80">
-              <TabsTrigger 
-                value="analysis" 
-                className="text-xs text-secondary-foreground bg-transparent 
-                           data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
-                           data-[state=inactive]:bg-secondary/80 data-[state=inactive]:text-secondary-foreground"
-              >
-                Analysis
-              </TabsTrigger>
-              <TabsTrigger 
-                value="sources" 
-                className="text-xs text-secondary-foreground bg-transparent
-                           data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
-                           data-[state=inactive]:bg-secondary/80 data-[state=inactive]:text-secondary-foreground"
-              >
-                Sources ({iteration.results.length})
-              </TabsTrigger>
-              <TabsTrigger 
-                value="queries" 
-                className="text-xs text-secondary-foreground bg-transparent
-                           data-[state=active]:bg-primary data-[state=active]:text-primary-foreground
-                           data-[state=inactive]:bg-secondary/80 data-[state=inactive]:text-secondary-foreground"
-              >
-                Queries ({iteration.queries.length})
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="analysis" className="w-full max-w-full">
-              <AnalysisDisplay 
-                content={iteration.analysis || "Analysis in progress..."} 
-                isStreaming={isStreaming && isCurrentIteration}
-                maxHeight={isFinalIteration ? "300px" : "200px"}
-              />
-            </TabsContent>
-            
-            <TabsContent value="sources" className="w-full max-w-full">
-              <ScrollArea className="h-[200px] rounded-md border p-3 w-full max-w-full">
-                <div className="space-y-2 w-full">
-                  {iteration.results.map((result, idx) => (
-                    <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 p-2 rounded-md w-full max-w-full">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-3 w-3 flex-shrink-0" />
-                        <span className="source-title text-sm font-medium">
-                          {result.title || new URL(result.url).hostname}
-                        </span>
-                      </div>
+        <CardContent className="pb-2">
+          <div className="space-y-4">
+            <div>
+              <h4 className="text-sm font-medium mb-2">Sources:</h4>
+              <div className="space-y-2">
+                {iteration.sites?.map((site, idx) => (
+                  <div key={`${site.url}-${idx}`} className="border rounded-md overflow-hidden">
+                    <div 
+                      className="flex justify-between items-center p-2 bg-muted/30 cursor-pointer"
+                      onClick={() => toggleSite(site.url)}
+                    >
+                      <div className="text-xs font-medium truncate flex-1">{site.title || site.url}</div>
                       <a 
-                        href={result.url} 
+                        href={site.url} 
                         target="_blank" 
                         rel="noopener noreferrer"
-                        className="source-url flex items-center gap-1 text-xs text-primary hover:underline mt-1"
+                        className="ml-2 text-muted-foreground hover:text-foreground"
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate">{result.url}</span>
+                        <ExternalLink className="h-3 w-3" />
                       </a>
-                      {result.content && (
-                        <div className="source-content text-xs text-muted-foreground mt-2">
-                          {result.content.substring(0, 120)}...
-                        </div>
-                      )}
                     </div>
-                  ))}
-                  
-                  {iteration.results.length === 0 && (
-                    <div className="p-4 text-center text-muted-foreground">
-                      No sources found for this iteration.
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </TabsContent>
+                    {expandedSites.has(site.url) && (
+                      <div className="p-2 text-xs bg-card/50">
+                        {site.content}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
             
-            <TabsContent value="queries" className="w-full max-w-full overflow-x-hidden">
-              <ScrollArea className="h-[150px] rounded-md border p-3 w-full">
-                <div className="flex flex-wrap gap-2 w-full">
-                  {iteration.queries.map((query, idx) => (
-                    <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 p-1.5 rounded-md w-fit max-w-full">
-                      <Search className="h-3 w-3 flex-shrink-0" />
-                      <span className="truncate text-xs max-w-[280px] sm:max-w-[360px] md:max-w-[400px]">{query}</span>
-                    </div>
-                  ))}
-                  
-                  {iteration.queries.length === 0 && (
-                    <div className="p-4 text-center text-muted-foreground">
-                      No queries for this iteration.
-                    </div>
-                  )}
-                </div>
-              </ScrollArea>
-            </TabsContent>
-          </Tabs>
-        </div>
+            {iteration.analysis && (
+              <div>
+                <h4 className="text-sm font-medium mb-2">Analysis:</h4>
+                <div className="text-xs">{iteration.analysis}</div>
+              </div>
+            )}
+          </div>
+        </CardContent>
       )}
-    </div>
+
+      <CardFooter className={cn("pt-0", isExpanded ? "" : "absolute bottom-0 right-0")}>
+        {!isExpanded && (
+          <Button variant="ghost" size="sm" onClick={onToggle} className="ml-auto">
+            Show details
+          </Button>
+        )}
+      </CardFooter>
+    </Card>
   );
 }
