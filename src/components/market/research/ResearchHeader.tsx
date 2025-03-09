@@ -8,9 +8,10 @@ interface ResearchHeaderProps {
   isAnalyzing: boolean
   onResearch: () => void
   focusText?: string
+  hasError?: boolean
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText, hasError }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
@@ -18,6 +19,11 @@ export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }
         {focusText && (
           <Badge variant="outline" className="text-xs bg-primary/10 border-primary/20">
             Focus: {focusText.length > 25 ? `${focusText.substring(0, 25)}...` : focusText}
+          </Badge>
+        )}
+        {hasError && (
+          <Badge variant="destructive" className="text-xs">
+            Error
           </Badge>
         )}
       </div>

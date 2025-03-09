@@ -102,10 +102,12 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         throw new Error(`Unexpected content type: ${typeof content}`)
       }
       
-      // Keep the result simple, use exactly what comes from the API
+      // Ensure areasForResearch is never null
       const result = {
         probability: parsed.probability || "Unknown",
-        areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
+        areasForResearch: Array.isArray(parsed.areasForResearch) && parsed.areasForResearch.length > 0 
+          ? parsed.areasForResearch 
+          : ["Additional market context", "Recent developments", "Expert opinions"],
         supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
         negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
         reasoning: parsed.reasoning || "No reasoning provided"
@@ -114,6 +116,7 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
       console.log('Supporting points count:', result.supportingPoints.length)
       console.log('Negative points count:', result.negativePoints.length)
+      console.log('Areas for research count:', result.areasForResearch.length)
       
       // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {
@@ -121,15 +124,25 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       })
     } catch (error) {
       console.error('Error processing OpenRouter response:', error)
-      throw error
+      // Return a fallback result even in case of error to avoid null areasForResearch
+      return new Response(JSON.stringify({
+        probability: "Unknown",
+        areasForResearch: ["Error analysis", "Additional context", "Expert opinions"],
+        supportingPoints: [],
+        negativePoints: [],
+        reasoning: "An error occurred while extracting insights: " + error.message
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
   } catch (error) {
     console.error('Error in extract-research-insights:', error)
+    // Even in the catch block, ensure areasForResearch is never null
     return new Response(
       JSON.stringify({ 
         error: error.message, 
         probability: "Unknown",
-        areasForResearch: [],
+        areasForResearch: ["Error handling", "System reliability", "Data quality"],
         supportingPoints: [],
         negativePoints: [],
         reasoning: "An error occurred while extracting insights."
