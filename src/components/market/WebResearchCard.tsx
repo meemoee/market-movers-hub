@@ -1045,6 +1045,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setLoadedResearchId(null);
     setParentResearchId(parentId);
     
+    // Store the clicked focus area
     setFocusText(area);
     toast({
       title: "Research focus set",
@@ -1064,6 +1065,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
+    // Use setTimeout to ensure state updates before starting research
     setTimeout(() => {
       handleResearch();
     }, 200);
