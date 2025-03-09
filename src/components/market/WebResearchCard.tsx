@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -1026,7 +1027,18 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const handleResearchArea = (area: string) => {
     const currentResearchId = loadedResearchId;
     
-    console.log(`Starting focused research with parent ID: ${currentResearchId} on area: ${area}`);
+    console.log('=== RESEARCH AREA CLICK DEBUG ===');
+    console.log('Clicked area:', area);
+    console.log('Current loaded research ID:', loadedResearchId);
+    console.log('Current research state:', {
+      isLoading,
+      focusText,
+      analysis: analysis?.length || 0,
+      resultsCount: results?.length || 0,
+      parsedData: streamingState?.parsedData
+    });
+    console.log('Child researches before click:', childResearchList?.length || 0);
+    console.log('Areas for research:', streamingState?.parsedData?.areasForResearch);
     
     if (!currentResearchId) {
       console.warn("Cannot create focused research: No parent research ID available");
@@ -1039,16 +1051,35 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
     
     const parentId = currentResearchId;
+    console.log('Setting parent ID to:', parentId);
     
     setLoadedResearchId(null);
     setParentResearchId(parentId);
     
+    console.log('New focus text being set to:', area);
     setFocusText(area);
+    
+    // Let's check if we already have a child research with this focus
+    const existingChild = childResearchList.find(child => 
+      child.focus_text?.toLowerCase() === area.toLowerCase() ||
+      (child.focus_text && area.toLowerCase().includes(child.focus_text.toLowerCase())) ||
+      (child.focus_text && child.focus_text.toLowerCase().includes(area.toLowerCase()))
+    );
+    
+    if (existingChild) {
+      console.log('Found existing child research with similar focus:', existingChild.id);
+      console.log('Existing child focus:', existingChild.focus_text);
+      console.log('Not creating new research, loading existing one instead');
+      loadSavedResearch(existingChild);
+      return;
+    }
+    
     toast({
       title: "Research focus set",
       description: `Starting new research focused on: ${area}`
     });
     
+    // Reset all state for new research
     setIsLoading(true);
     setProgress([]);
     setResults([]);
@@ -1062,7 +1093,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
+    console.log('State reset for new research. Starting research with focus:', area);
+    
     setTimeout(() => {
+      console.log('Starting new research with focus:', area);
+      console.log('Parent research ID:', parentId);
       handleResearch();
     }, 200);
   };
