@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -319,37 +320,15 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       // Final validation - ensure EVERY query contains the focus text if one was provided
       if (focusText) {
         const focusLower = focusText.toLowerCase().trim();
-        
-        // Log before validation
-        console.log('Pre-validation queries:', queriesData.queries);
-        
-        queriesData.queries = queriesData.queries.map((q: string, i: number) => {
-          if (!q || typeof q !== 'string') {
-            return `${focusText} detailed information ${i+1}`;
-          }
-          
-          if (!q.toLowerCase().includes(focusLower)) {
-            console.log(`Query missing focus text "${focusText}": "${q}"`);
-            return `${focusText}: ${q}`;
-          }
-          return q;
-        });
-        
-        // Log after validation to confirm all queries contain the focus text
-        console.log('Post-validation queries:', queriesData.queries);
-        
-        // Second pass - make sure focus is prominent
         queriesData.queries = queriesData.queries.map((q: string) => {
-          const qLower = q.toLowerCase();
-          // If focus is buried in the middle, move it to the front
-          if (qLower.includes(focusLower) && !qLower.startsWith(focusLower.substring(0, 10))) {
-            return `${focusText} - ${q.replace(new RegExp(focusText, 'i'), '').trim()}`;
+          if (!q.toLowerCase().includes(focusLower)) {
+            return `${focusText}: ${q}`;
           }
           return q;
         });
       }
       
-      console.log('Final generated queries:', queriesData.queries)
+      console.log('Generated queries:', queriesData.queries)
 
       return new Response(
         JSON.stringify({ queries: queriesData.queries }),

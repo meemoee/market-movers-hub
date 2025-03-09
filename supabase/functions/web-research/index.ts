@@ -102,18 +102,8 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
           `${query} latest information`;
       }
       
-      if (focusText) {
-        const focusLower = focusText.toLowerCase();
-        const qLower = q.toLowerCase();
-        
-        if (!qLower.includes(focusLower)) {
-          console.log(`Adding missing focus text "${focusText}" to query: "${q}"`);
-          return `${focusText} in context of: ${q}`;
-        }
-        
-        if (!qLower.startsWith(focusLower.substring(0, 10))) {
-          return `${focusText} - ${q.replace(new RegExp(focusText, 'i'), '').trim()}`;
-        }
+      if (focusText && !q.toLowerCase().includes(focusText.toLowerCase())) {
+        return `${focusText} in context of: ${q}`;
       }
       
       if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
@@ -294,19 +284,10 @@ class WebScraper {
   }
 
   async run(query: string, focusText?: string) {
-    await this.sendUpdate(`Starting web research for query: ${query}${focusText ? ` with focus on: ${focusText}` : ''}`);
-    console.log(`Starting web research - Query: "${query}" | Focus: "${focusText || 'None'}"`);
+    await this.sendUpdate(`Starting web research for query: ${query}${focusText ? ` with focus on: ${focusText}` : ''}`)
     
-    const subQueries = await generateSubQueries(query, focusText);
-    await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`);
-    
-    if (focusText) {
-      const focusLower = focusText.toLowerCase();
-      subQueries.forEach((q, i) => {
-        const containsFocus = q.toLowerCase().includes(focusLower);
-        console.log(`Query ${i+1}: "${q}" - Contains focus text "${focusText}": ${containsFocus}`);
-      });
-    }
+    const subQueries = await generateSubQueries(query, focusText)
+    await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
     
     const concurrencyLimit = 3
     const processSubquery = async (subQuery: string, index: number) => {
