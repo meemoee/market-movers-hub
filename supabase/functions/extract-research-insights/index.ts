@@ -102,13 +102,10 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         throw new Error(`Unexpected content type: ${typeof content}`)
       }
       
-      // Ensure all fields have valid default values if they're missing
+      // Keep the result simple, use exactly what comes from the API
       const result = {
         probability: parsed.probability || "Unknown",
-        // Ensure areasForResearch is always an array with at least one default item
-        areasForResearch: Array.isArray(parsed.areasForResearch) && parsed.areasForResearch.length > 0 
-          ? parsed.areasForResearch 
-          : ["More recent information is needed"],
+        areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
         supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
         negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
         reasoning: parsed.reasoning || "No reasoning provided"
@@ -117,7 +114,6 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
       console.log('Supporting points count:', result.supportingPoints.length)
       console.log('Negative points count:', result.negativePoints.length)
-      console.log('Areas for research count:', result.areasForResearch.length)
       
       // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {
@@ -133,8 +129,7 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       JSON.stringify({ 
         error: error.message, 
         probability: "Unknown",
-        // Always provide a default value for areasForResearch
-        areasForResearch: ["More data needed", "Technical error occurred"],
+        areasForResearch: [],
         supportingPoints: [],
         negativePoints: [],
         reasoning: "An error occurred while extracting insights."

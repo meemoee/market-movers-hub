@@ -2,7 +2,6 @@
 import { cn } from "@/lib/utils"
 import { useEffect, useState, useRef, useLayoutEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { AlertCircle } from "lucide-react"
 
 interface ProgressDisplayProps {
   messages: string[]
@@ -11,7 +10,6 @@ interface ProgressDisplayProps {
   currentQueryIndex?: number
   queries?: string[]
   isLoading?: boolean
-  error?: string | null
 }
 
 export function ProgressDisplay({ 
@@ -20,8 +18,7 @@ export function ProgressDisplay({
   maxIterations, 
   currentQueryIndex, 
   queries,
-  isLoading,
-  error
+  isLoading 
 }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -45,7 +42,7 @@ export function ProgressDisplay({
     }
   }, [messages]);
 
-  if (!messages.length && !error) return null
+  if (!messages.length) return null
   
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
@@ -67,12 +64,6 @@ export function ProgressDisplay({
               </span>
             </div>
           ))}
-          {error && (
-            <div className="flex items-center gap-3 py-1 text-sm text-destructive">
-              <AlertCircle className="h-4 w-4" />
-              <span>{error}</span>
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>

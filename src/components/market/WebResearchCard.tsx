@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -321,120 +320,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const extractInsights = async (allContent: string[], finalAnalysis: string) => {
-    setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
-    
-    const previousAnalyses = iterations.map(iter => iter.analysis);
-    
-    const allQueries = iterations.flatMap(iter => iter.queries);
-    
-    const insightsPayload = {
-      webContent: allContent.join('\n\n'),
-      analysis: finalAnalysis,
-      marketId: marketId,
-      marketQuestion: description,
-      previousAnalyses: previousAnalyses,
-      iterations: iterations,
-      queries: allQueries,
-      areasForResearch: streamingState.parsedData?.areasForResearch || [],
-      marketPrice: marketPrice
-    };
-    
-    setStreamingState({
-      rawText: '',
-      parsedData: {
-        probability: "Analyzing...",
-        areasForResearch: ["Analysis in progress..."],
-        reasoning: "Extracting insights from research data..."
-      }
-    });
-
-    setProgress(prev => [...prev, `Extracting probability and reasoning from insights...`]);
-    
-    try {
-      const { data: insightsData, error: insightsError } = await supabase.functions.invoke('extract-research-insights', {
-        body: insightsPayload
-      });
-
-      if (insightsError) {
-        console.error("Error from extract-research-insights:", insightsError);
-        throw new Error(insightsError.message || "Error extracting insights");
-      }
-
-      if (!insightsData) {
-        throw new Error("No data received from extract-research-insights");
-      }
-
-      console.log("Received response from extract-research-insights:", insightsData);
-
-      try {
-        const parsedData = insightsData;
-        
-        if (parsedData) {
-          const probability = parsedData.probability || "Unknown";
-          const areasForResearch = Array.isArray(parsedData.areasForResearch) && parsedData.areasForResearch.length > 0
-            ? parsedData.areasForResearch
-            : ["More data needed"];
-          const reasoning = parsedData.reasoning || "";
-          const supportingPoints = Array.isArray(parsedData.supportingPoints) ? parsedData.supportingPoints : [];
-          const negativePoints = Array.isArray(parsedData.negativePoints) ? parsedData.negativePoints : [];
-          
-          setStreamingState({
-            rawText: JSON.stringify(parsedData, null, 2),
-            parsedData: {
-              probability,
-              areasForResearch,
-              reasoning,
-              supportingPoints,
-              negativePoints
-            }
-          });
-          
-          setProgress(prev => [...prev, `Extracted probability: ${probability}`]);
-          if (reasoning) {
-            setProgress(prev => [...prev, `Reasoning: ${reasoning}`]);
-          }
-          
-          console.log(`Extracted probability: ${probability}`);
-          console.log(`Areas for research: ${areasForResearch.length}`);
-          console.log(`Supporting points: ${supportingPoints.length}`);
-          console.log(`Negative points: ${negativePoints.length}`);
-          
-          await saveResearch();
-        } else {
-          throw new Error("Failed to parse response data");
-        }
-      } catch (e) {
-        console.error('Error processing insights response:', e);
-        
-        setStreamingState({
-          rawText: JSON.stringify(insightsData || {}, null, 2),
-          parsedData: {
-            probability: "Unknown (parsing error)",
-            areasForResearch: ["Could not parse research areas due to format error."],
-            reasoning: "Error parsing model output."
-          }
-        });
-        
-        await saveResearch();
-      }
-    } catch (error) {
-      console.error("Error in extractInsights:", error);
-      setError(`Error extracting insights: ${error.message}`);
-      
-      setStreamingState({
-        rawText: '',
-        parsedData: {
-          probability: "Unknown (error occurred)",
-          areasForResearch: ["Error occurred during analysis", "Additional research needed"],
-          reasoning: "An error occurred during analysis."
-        }
-      });
-      
-      await saveResearch();
-    }
-  };
-
   const saveResearch = async () => {
     try {
       const { data: user } = await supabase.auth.getUser()
@@ -478,33 +363,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       const sanitizedResults = sanitizeJson(results);
       const sanitizedAnalysis = analysis ? analysis.replace(/\u0000/g, '') : '';
-      
-      const defaultAreasForResearch = ["More research needed"];
-      let areasForResearch = streamingState.parsedData?.areasForResearch && 
-        Array.isArray(streamingState.parsedData.areasForResearch) && 
-        streamingState.parsedData.areasForResearch.length > 0
-          ? streamingState.parsedData.areasForResearch
-          : defaultAreasForResearch;
-      
-      let sanitizedAreasForResearch = sanitizeJson(areasForResearch);
-      
-      if (!Array.isArray(sanitizedAreasForResearch) || sanitizedAreasForResearch.length === 0) {
-        console.error("Invalid areas_for_research after sanitization, using default");
-        sanitizedAreasForResearch = defaultAreasForResearch;
-      }
-      
-      // Add the missing sanitized variables
+      const sanitizedAreasForResearch = sanitizeJson(streamingState.parsedData?.areasForResearch);
       const sanitizedIterations = sanitizeJson(iterations);
       const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
-      
-      console.log("Saving research with areas_for_research:", sanitizedAreasForResearch);
       
       const researchPayload = {
         user_id: user.user.id,
         query: description.replace(/\u0000/g, ''),
         sources: sanitizedResults as unknown as Json,
         analysis: sanitizedAnalysis,
-        probability: streamingState.parsedData?.probability?.replace(/\u0000/g, '') || 'Unknown',
+        probability: streamingState.parsedData?.probability?.replace(/\u0000/g, '') || '',
         areas_for_research: sanitizedAreasForResearch as unknown as Json,
         market_id: marketId,
         iterations: sanitizedIterations as unknown as Json,
@@ -515,10 +383,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log("Saving sanitized research data", parentResearchId ? `with parent research: ${parentResearchId}` : "without parent");
       const { data, error } = await supabase.from('web_research').insert(researchPayload).select('id')
 
-      if (error) {
-        console.error("Error saving research:", error);
-        throw error;
-      }
+      if (error) throw error
 
       if (data && data[0] && data[0].id) {
         setLoadedResearchId(data[0].id);
@@ -950,6 +815,112 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
+  const extractInsights = async (allContent: string[], finalAnalysis: string) => {
+    setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
+    
+    const previousAnalyses = iterations.map(iter => iter.analysis);
+    
+    const allQueries = iterations.flatMap(iter => iter.queries);
+    
+    const insightsPayload = {
+      webContent: allContent.join('\n\n'),
+      analysis: finalAnalysis,
+      marketId: marketId,
+      marketQuestion: description,
+      previousAnalyses: previousAnalyses,
+      iterations: iterations,
+      queries: allQueries,
+      areasForResearch: streamingState.parsedData?.areasForResearch || [],
+      marketPrice: marketPrice
+    };
+    
+    setStreamingState({
+      rawText: '',
+      parsedData: {
+        probability: "Unknown (parsing error)",
+        areasForResearch: ["Could not parse research areas due to format error."],
+        reasoning: "Error parsing model output."
+      }
+    });
+
+    setProgress(prev => [...prev, `Extracting probability and reasoning from insights...`]);
+    
+    try {
+      const { data: insightsData, error: insightsError } = await supabase.functions.invoke('extract-research-insights', {
+        body: insightsPayload
+      });
+
+      if (insightsError) {
+        console.error("Error from extract-research-insights:", insightsError);
+        throw new Error(insightsError.message || "Error extracting insights");
+      }
+
+      if (!insightsData) {
+        throw new Error("No data received from extract-research-insights");
+      }
+
+      console.log("Received response from extract-research-insights:", insightsData);
+
+      try {
+        const parsedData = insightsData;
+        
+        if (parsedData) {
+          const probability = parsedData.probability || "Unknown";
+          const areasForResearch = Array.isArray(parsedData.areasForResearch) ? parsedData.areasForResearch : [];
+          const reasoning = parsedData.reasoning || "";
+          const supportingPoints = Array.isArray(parsedData.supportingPoints) ? parsedData.supportingPoints : [];
+          const negativePoints = Array.isArray(parsedData.negativePoints) ? parsedData.negativePoints : [];
+          
+          setStreamingState({
+            rawText: JSON.stringify(parsedData, null, 2),
+            parsedData: {
+              probability,
+              areasForResearch,
+              reasoning,
+              supportingPoints,
+              negativePoints
+            }
+          });
+          
+          setProgress(prev => [...prev, `Extracted probability: ${probability}`]);
+          if (reasoning) {
+            setProgress(prev => [...prev, `Reasoning: ${reasoning}`]);
+          }
+          
+          console.log(`Extracted probability: ${probability}`);
+          console.log(`Areas for research: ${areasForResearch.length}`);
+          console.log(`Supporting points: ${supportingPoints.length}`);
+          console.log(`Negative points: ${negativePoints.length}`);
+        } else {
+          throw new Error("Failed to parse response data");
+        }
+      } catch (e) {
+        console.error('Error processing insights response:', e);
+        
+        setStreamingState({
+          rawText: JSON.stringify(insightsData || {}, null, 2),
+          parsedData: {
+            probability: "Unknown (parsing error)",
+            areasForResearch: ["Could not parse research areas due to format error."],
+            reasoning: "Error parsing model output."
+          }
+        });
+      }
+    } catch (error) {
+      console.error("Error in extractInsights:", error);
+      setError(`Error extracting insights: ${error.message}`);
+      
+      setStreamingState({
+        rawText: '',
+        parsedData: {
+          probability: "Unknown (error occurred)",
+          areasForResearch: ["Error occurred during analysis"],
+          reasoning: "An error occurred during analysis."
+        }
+      });
+    }
+  };
+
   const handleResearch = async (specificFocusText?: string) => {
     setLoadedResearchId(null);
     
@@ -961,11 +932,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setIsAnalyzing(false)
     setStreamingState({ 
       rawText: '',
-      parsedData: {
-        probability: "Researching...",
-        areasForResearch: ["Research in progress..."],
-        reasoning: "Starting research process..."
-      }
+      parsedData: null
     })
     
     setCurrentIteration(0)
@@ -1003,19 +970,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
       
       await handleWebScrape(initialQueries, 1, [], actualFocusText)
+      await saveResearch()
     } catch (error) {
       console.error("Error starting research:", error)
       setError(`Error starting research: ${error.message}`)
       setIsLoading(false)
-      
-      setStreamingState({
-        rawText: '',
-        parsedData: {
-          probability: "Unknown (error occurred)",
-          areasForResearch: ["Error occurred during research", "Try different search terms"],
-          reasoning: "An error occurred during the research process."
-        }
-      });
     }
   }
   
@@ -1035,11 +994,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           isAnalyzing={isAnalyzing} 
           onResearch={() => handleResearch()} 
           focusText={focusText}
-          error={error}
         />
 
         <div className="space-y-2">
-          {(progress.length > 0 || error) && (
+          {progress.length > 0 && (
             <ProgressDisplay 
               messages={progress} 
               currentIteration={currentIteration} 
@@ -1047,7 +1005,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               currentQueryIndex={currentQueryIndex}
               queries={currentQueries}
               isLoading={isLoading || isAnalyzing}
-              error={error}
             />
           )}
           
