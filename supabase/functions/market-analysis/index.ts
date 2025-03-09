@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -14,8 +15,17 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory } = await req.json()
-    console.log('Received request:', { message, chatHistory })
+    const { message, chatHistory, focusText, parentFocusText } = await req.json()
+    console.log('Received request:', { message, chatHistory, focusText, parentFocusText })
+
+    let contentContext = '';
+    if (focusText) {
+      contentContext += `Current Research Focus: ${focusText}\n`;
+      if (parentFocusText) {
+        contentContext += `Parent Research Focus: ${parentFocusText}\n`;
+      }
+      contentContext += '\n';
+    }
 
     console.log('Making request to OpenRouter API...')
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -35,7 +45,7 @@ serve(async (req) => {
           },
           {
             role: "user",
-            content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
+            content: `${contentContext}Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
           }
         ],
         stream: true

@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { webContent, analysis, marketPrice, marketQuestion } = await req.json()
+    const { webContent, analysis, marketPrice, marketQuestion, focusAreaText, parentFocusText } = await req.json()
     
     // Trim content to avoid token limits
     const trimmedContent = webContent.slice(0, 15000)
@@ -23,6 +23,8 @@ serve(async (req) => {
     console.log('Analysis length:', analysis.length)
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Market question:', marketQuestion || 'not provided')
+    console.log('Focus area text:', focusAreaText || 'not provided')
+    console.log('Parent focus text:', parentFocusText || 'not provided')
 
     // Make request to OpenRouter API
     const response = await fetch(OPENROUTER_URL, {
@@ -46,6 +48,8 @@ serve(async (req) => {
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+${focusAreaText ? `Current Research Focus: ${focusAreaText}` : ''}
+${parentFocusText ? `Parent Research Focus: ${parentFocusText}` : ''}
 
 Web Content:
 ${trimmedContent}
