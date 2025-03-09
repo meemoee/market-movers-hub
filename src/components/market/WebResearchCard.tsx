@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -967,6 +968,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText: effectiveFocusText.trim()
         };
         
+        // Always include previous research context when available, especially for focused research
         if (previousResearchContext) {
           Object.assign(generateQueriesPayload, {
             previousQueries: previousResearchContext.queries,
@@ -1010,20 +1012,35 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       } catch (error) {
         console.error("Error generating initial queries:", error);
         
-        const cleanDescription = description.trim();
-        let keywords = cleanDescription.split(/\s+/).filter(word => word.length > 3);
+        // Enhanced fallback queries with better focus handling
+        let fallbackQueries = [];
         
-        const fallbackQueries = keywords.length >= 3 
-          ? [
-              `${keywords.slice(0, 5).join(' ')}`,
-              `${keywords.slice(0, 3).join(' ')} latest information`,
-              `${keywords.slice(0, 3).join(' ')} analysis prediction`
-            ]
-          : [
-              `${description.split(' ').slice(0, 10).join(' ')}`,
-              `${description.split(' ').slice(0, 8).join(' ')} latest`,
-              `${description.split(' ').slice(0, 8).join(' ')} prediction`
-            ];
+        if (effectiveFocusText && effectiveFocusText.trim()) {
+          const focusedText = effectiveFocusText.trim();
+          fallbackQueries = [
+            `${focusedText} detailed analysis and recent developments`,
+            `${focusedText} statistical evidence and research studies`,
+            `${focusedText} expert opinions and critical assessments`,
+            `${focusedText} quantitative measurements and impact evaluation`,
+            `${focusedText} future projections based on current trends`
+          ];
+          console.log(`Using focused fallback queries for: ${focusedText}`);
+        } else {
+          const cleanDescription = description.trim();
+          let keywords = cleanDescription.split(/\s+/).filter(word => word.length > 3);
+          
+          fallbackQueries = keywords.length >= 3 
+            ? [
+                `${keywords.slice(0, 5).join(' ')}`,
+                `${keywords.slice(0, 3).join(' ')} latest information`,
+                `${keywords.slice(0, 3).join(' ')} analysis prediction`
+              ]
+            : [
+                `${description.split(' ').slice(0, 10).join(' ')}`,
+                `${description.split(' ').slice(0, 8).join(' ')} latest`,
+                `${description.split(' ').slice(0, 8).join(' ')} prediction`
+              ];
+        }
         
         setCurrentQueries(fallbackQueries);
         
@@ -1198,6 +1215,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           isLoading={isLoading}
           isAnalyzing={isAnalyzing}
           onResearch={handleResearch}
+          isFocusMode={!!focusText.trim()}
         />
         
         <div className="flex space-x-2">

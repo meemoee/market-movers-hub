@@ -55,9 +55,16 @@ DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Gene
       `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
 Your task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
 IMPORTANT: Do not generate general queries. EVERY query MUST explicitly mention or relate to "${focusText}".
-STRICT REQUIREMENT: Each query MUST contain "${focusText}" AND include additional specific qualifiers, angles, or dimensions.` 
+STRICT REQUIREMENT: Each query MUST contain "${focusText}" AND include additional specific qualifiers, angles, or dimensions.
+RESPOND ONLY WITH A JSON OBJECT containing an array of 5 specific, detailed search queries.
+EXAMPLE JSON FORMAT: {"queries": ["detailed query 1", "detailed query 2", ...]}` 
       : 
-      "You are a helpful assistant that generates search queries.";
+      `You are a helpful assistant that generates search queries. 
+RESPOND ONLY WITH A JSON OBJECT containing an array of 5 specific, detailed search queries.
+EXAMPLE JSON FORMAT: {"queries": ["detailed query 1", "detailed query 2", ...]}`;
+    
+    // Log additional debug information
+    console.log('Using focused prompt:', focusedPrompt.substring(0, 100) + '...')
     
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -88,7 +95,7 @@ ${marketPrice !== undefined ? `Generate search queries to explore both supportin
 ${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed about "${focusText}"
+1. Highly specific and detailed about "${focusText || query}"
 2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
 4. COMPLETELY DIFFERENT from previous research queries
@@ -121,8 +128,9 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       // First try parsing the content directly
       try {
         queriesData = JSON.parse(content)
+        console.log('Successfully parsed JSON response directly')
       } catch (parseError) {
-        console.log('Standard JSON parsing failed, attempting alternate parsing methods')
+        console.log('Standard JSON parsing failed, attempting alternate parsing methods:', parseError)
         
         // Try to extract JSON from markdown code blocks
         const jsonMatch = content.match(/```(?:json)?\s*({[\s\S]*?})\s*```/)
@@ -160,21 +168,37 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         
         // Last resort: use fallback queries
         if (!queriesData || !queriesData.queries || !Array.isArray(queriesData.queries) || queriesData.queries.length === 0) {
-          console.log('Using fallback queries')
-          queriesData = {
-            queries: [
-              `${focusText || query} latest information`,
-              `${focusText || query} analysis and trends`,
-              `${focusText || query} expert opinions`,
-              `${focusText || query} recent developments`,
-              `${focusText || query} statistics and data`
-            ]
+          console.log('Using fallback queries for focus:', focusText || query)
+          
+          // Enhanced fallback queries for focused research
+          if (focusText) {
+            console.log('Creating specialized fallback queries for focus text:', focusText)
+            queriesData = {
+              queries: [
+                `${focusText} detailed analysis and recent developments`,
+                `${focusText} statistical evidence and research studies`,
+                `${focusText} expert opinions and critical assessments`,
+                `${focusText} quantitative measurements and impact evaluation`,
+                `${focusText} future projections based on current trends`
+              ]
+            }
+          } else {
+            queriesData = {
+              queries: [
+                `${query} latest information`,
+                `${query} analysis and trends`,
+                `${query} expert opinions`,
+                `${query} recent developments`,
+                `${query} statistics and data`
+              ]
+            }
           }
         }
       }
       
       // Ensure we have exactly 5 queries
       if (!queriesData.queries || !Array.isArray(queriesData.queries)) {
+        console.log('No valid queries array found, creating default queries')
         queriesData.queries = [
           `${focusText || query} information`, 
           `${focusText || query} analysis`, 
@@ -184,6 +208,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         ]
       } else if (queriesData.queries.length < 5) {
         // Fill remaining queries with focus-specific ones
+        console.log('Filling missing queries, current count:', queriesData.queries.length)
         const generics = [
           `${focusText || query} latest developments`, 
           `${focusText || query} recent research`, 
@@ -197,50 +222,50 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         }
       } else if (queriesData.queries.length > 5) {
         // Trim to 5 queries
+        console.log('Trimming excess queries from', queriesData.queries.length, 'to 5')
         queriesData.queries = queriesData.queries.slice(0, 5)
       }
       
       // Validate each query and ensure they contain the focus area if specified
+      const prevQuerySet = previousQueries.length > 0 ? 
+        new Set(previousQueries.map(q => q.toLowerCase().trim())) : new Set();
+      
       queriesData.queries = queriesData.queries.map((q: any, i: number) => {
         if (typeof q !== 'string' || q.trim().length < 5) {
+          console.log(`Query at index ${i} is invalid, replacing with default`)
           return `${focusText || query} specific information ${i+1}`
         }
         
         // If we have a focus text, ensure it's included in the query
         if (focusText && !q.toLowerCase().includes(focusText.toLowerCase())) {
-          return `${q} specifically regarding ${focusText}`
+          console.log(`Adding focus "${focusText}" to query: ${q}`)
+          return `${focusText} ${q}`
+        }
+        
+        // Check if this query is a duplicate of a previous query
+        if (prevQuerySet.has(q.toLowerCase().trim())) {
+          console.log(`Query "${q}" is a duplicate of a previous query, replacing...`)
+          
+          // Generate alternative query
+          const focusPrefix = focusText || query;
+          const alternatives = [
+            `${focusPrefix} latest developments iteration ${iteration}-${i}`,
+            `${focusPrefix} recent analysis ${iteration}-${i}`,
+            `${focusPrefix} expert perspective ${iteration}-${i}`,
+            `${focusPrefix} market indicators ${iteration}-${i}`,
+            `${focusPrefix} future outlook ${iteration}-${i}`
+          ];
+          
+          return alternatives[i % alternatives.length];
         }
         
         return q.trim()
       })
       
-      // If we have previous queries, make sure we're not duplicating them
-      if (previousQueries.length > 0) {
-        const prevQuerySet = new Set(previousQueries.map(q => q.toLowerCase().trim()));
-        
-        // Replace any duplicate queries with alternatives
-        queriesData.queries = queriesData.queries.map((q: string, i: number) => {
-          if (prevQuerySet.has(q.toLowerCase().trim())) {
-            console.log(`Query "${q}" is a duplicate of a previous query, replacing...`);
-            
-            // Generate alternative query
-            const focusPrefix = focusText || query;
-            const alternatives = [
-              `${focusPrefix} latest developments iteration ${iteration}-${i}`,
-              `${focusPrefix} recent analysis ${iteration}-${i}`,
-              `${focusPrefix} expert perspective ${iteration}-${i}`,
-              `${focusPrefix} market indicators ${iteration}-${i}`,
-              `${focusPrefix} future outlook ${iteration}-${i}`
-            ];
-            
-            return alternatives[i % alternatives.length];
-          }
-          return q;
-        });
-      }
-
       // Enhanced focused query generation for research areas
       if (focusText) {
+        console.log('Performing additional validation for focused queries')
+        
         queriesData.queries = queriesData.queries.map((q: string, i: number) => {
           const lowercaseQ = q.toLowerCase();
           const lowercaseFocus = focusText.toLowerCase();
@@ -249,6 +274,8 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
           if (q.length < 30 || q.toLowerCase() === focusText.toLowerCase() || 
               (q.toLowerCase().includes(focusText.toLowerCase()) && 
                q.replace(new RegExp(focusText, 'i'), '').trim().length < 10)) {
+            
+            console.log(`Query too generic: "${q}", replacing with more specific query`)
             
             // Generate more specific, contextual queries
             const specificAngles = [
@@ -261,7 +288,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
             
             // Choose alternative that doesn't exist in previous queries
             let alternative = specificAngles[i % specificAngles.length];
-            if (prevQuerySet && prevQuerySet.has(alternative.toLowerCase().trim())) {
+            if (prevQuerySet.has(alternative.toLowerCase().trim())) {
               alternative = `${focusText} specialized research angle ${iteration}-${i}: ${alternative.split(':')[1] || 'detailed analysis'}`;
             }
             
@@ -270,38 +297,15 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
           
           // If query doesn't contain the focus text
           if (!lowercaseQ.includes(lowercaseFocus)) {
+            console.log(`Focus "${focusText}" missing from query: "${q}"`)
             return `${focusText} in context of: ${q}`;
           }
           
           return q;
         });
-        
-        // Final check for diversity - ensure queries aren't too similar to each other
-        const queryWords = queriesData.queries.map((q: string) => 
-          new Set(q.toLowerCase().split(/\s+/).filter(w => w.length > 3 && w !== focusText.toLowerCase()))
-        );
-        
-        for (let i = 0; i < queriesData.queries.length; i++) {
-          // Compare each query with others for similarity
-          for (let j = i + 1; j < queriesData.queries.length; j++) {
-            const similarity = [...queryWords[i]].filter(word => queryWords[j].has(word)).length;
-            const uniqueWordsThreshold = Math.max(queryWords[i].size, queryWords[j].size) * 0.5;
-            
-            // If too similar, replace the second query
-            if (similarity > uniqueWordsThreshold) {
-              const replacementTemplates = [
-                `${focusText} alternative perspectives from ${['economic', 'political', 'social', 'technological', 'environmental'][j % 5]} analysis`,
-                `${focusText} contrasting viewpoints based on ${['historical', 'current', 'theoretical', 'practical', 'futuristic'][j % 5]} evidence`,
-                `${focusText} ${['challenges', 'opportunities', 'misconceptions', 'breakthroughs', 'failures'][j % 5]} documented in recent studies`
-              ];
-              
-              queriesData.queries[j] = replacementTemplates[j % replacementTemplates.length];
-            }
-          }
-        }
       }
       
-      console.log('Generated queries:', queriesData.queries)
+      console.log('Final generated queries:', queriesData.queries)
 
       return new Response(
         JSON.stringify({ queries: queriesData.queries }),
