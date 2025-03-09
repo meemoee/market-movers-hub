@@ -12,9 +12,13 @@ interface ResearchHeaderProps {
 export function ResearchHeader({ isLoading, isAnalyzing, onResearch, isFocusMode }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
-      <h3 className="text-lg font-semibold">
+      <h3 className="text-lg font-semibold flex items-center">
         Web Research
-        {isFocusMode && <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">Focus Mode</span>}
+        {isFocusMode && (
+          <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+            Focus Mode
+          </span>
+        )}
       </h3>
       <Button 
         onClick={() => onResearch()} 
@@ -30,7 +34,7 @@ export function ResearchHeader({ isLoading, isAnalyzing, onResearch, isFocusMode
         ) : (
           <>
             <Search className="mr-2 h-4 w-4" />
-            {isFocusMode ? 'Refocus' : 'Research'}
+            {isFocusMode ? 'Refocus Research' : 'Research'}
           </>
         )}
       </Button>
