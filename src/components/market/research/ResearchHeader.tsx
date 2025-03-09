@@ -7,16 +7,25 @@ interface ResearchHeaderProps {
   isAnalyzing: boolean
   onResearch: () => void
   focusText?: string
+  parentFocusText?: string
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText, parentFocusText }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <h3 className="text-lg font-semibold">
-        {focusText ? 
-          <span>Focused Research: <span className="text-primary">{focusText}</span></span> : 
+        {focusText ? (
+          <span>
+            Focused Research: <span className="text-primary">{focusText}</span>
+            {parentFocusText && (
+              <span className="text-xs text-muted-foreground ml-2">
+                (from {parentFocusText})
+              </span>
+            )}
+          </span>
+        ) : (
           "Web Research"
-        }
+        )}
       </h3>
       <Button 
         onClick={onResearch} 
