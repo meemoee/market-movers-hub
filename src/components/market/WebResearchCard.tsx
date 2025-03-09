@@ -406,69 +406,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const generateInitialQueries = async (queryText: string, specificFocusText?: string): Promise<string[]> => {
-    try {
-      setProgress(prev => [...prev, `Generating initial search queries...`]);
-      
-      const actualFocusText = specificFocusText?.trim() || focusText.trim();
-      console.log(`Generating initial queries with focus: "${actualFocusText || 'none'}" for: ${queryText}`);
-      
-      const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-        body: JSON.stringify({ 
-          query: queryText,
-          marketQuestion: queryText,
-          focusText: actualFocusText,
-          marketPrice: marketPrice,
-          iteration: 1,
-          previousQueries: previousResearchContext?.queries || []
-        })
-      });
-
-      if (queriesError) {
-        console.error("Error from generate-queries for initial queries:", queriesError);
-        throw new Error(`Error generating initial queries: ${queriesError.message}`);
-      }
-
-      if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
-        console.error("Invalid initial queries response:", queriesData);
-        throw new Error('Invalid initial queries response');
-      }
-
-      console.log(`Generated ${queriesData.queries.length} initial search queries:`, queriesData.queries);
-      setProgress(prev => [...prev, `Generated ${queriesData.queries.length} initial search queries`]);
-      
-      // Log each query for debugging
-      queriesData.queries.forEach((query: string, index: number) => {
-        console.log(`Initial Query ${index + 1}: "${query}"`);
-        setProgress(prev => [...prev, `Initial Query ${index + 1}: "${query}"`]);
-      });
-
-      // Verify that focus queries contain the focus text
-      if (actualFocusText) {
-        const actualFocusLower = actualFocusText.toLowerCase();
-        const validatedQueries = queriesData.queries.map((q: string, i: number) => {
-          if (!q.toLowerCase().includes(actualFocusLower)) {
-            console.log(`Initial query missing focus text "${actualFocusText}": "${q}"`);
-            return `${actualFocusText}: ${q}`;
-          }
-          return q;
-        });
-        return validatedQueries;
-      }
-      
-      return queriesData.queries;
-    } catch (error) {
-      console.error("Error generating initial queries:", error);
-      // Fallback to basic queries if generation fails
-      const fallbackQueries = specificFocusText ? 
-        [`${specificFocusText} information`, `${specificFocusText} in context of ${queryText}`] : 
-        [`${queryText} information`, `${queryText} analysis`];
-      
-      setProgress(prev => [...prev, `Using fallback initial queries due to error: ${error.message}`]);
-      return fallbackQueries;
-    }
-  };
-
   const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = [], activeFocusText?: string) => {
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
@@ -1009,7 +946,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     console.log(`Starting research with focus text: "${actualFocusText || 'none'}"`)
     
     try {
-      setProgress(prev => [...prev, `Preparing initial search queries...`]);
+      const initialQueries = [`${description.substring(0, 150)}`]
+      
+      if (actualFocusText) {
+        initialQueries.unshift(`${actualFocusText}`)
+        initialQueries.push(`${actualFocusText} latest information`)
+      }
+      
+      setCurrentQueries(initialQueries)
+      setCurrentQueryIndex(-1)
       
       if (parentResearchId) {
         const parent = findParentResearch(parentResearchId)
@@ -1024,17 +969,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       }
       
-      const initialQueries = await generateInitialQueries(description, actualFocusText);
-      
-      setCurrentQueries(initialQueries);
-      setCurrentQueryIndex(-1);
-      
-      await handleWebScrape(initialQueries, 1, [], actualFocusText);
-      await saveResearch();
+      await handleWebScrape(initialQueries, 1, [], actualFocusText)
+      await saveResearch()
     } catch (error) {
-      console.error("Error starting research:", error);
-      setError(`Error starting research: ${error.message}`);
-      setIsLoading(false);
+      console.error("Error starting research:", error)
+      setError(`Error starting research: ${error.message}`)
+      setIsLoading(false)
     }
   }
   
