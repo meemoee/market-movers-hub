@@ -1180,6 +1180,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           isLoading={isLoading}
           isAnalyzing={isAnalyzing}
           onResearch={handleResearch}
+          focusText={focusText}
         />
         
         <div className="flex space-x-2">
