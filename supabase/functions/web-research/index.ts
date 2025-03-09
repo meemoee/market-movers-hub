@@ -33,24 +33,30 @@ class ContentCollector {
 }
 
 async function generateSubQueries(query: string, focusText?: string): Promise<string[]> {
-  console.log('Generating sub-queries for:', query, focusText ? `with focus: ${focusText}` : '')
+  console.log('Generating sub-queries with:');
+  console.log('- query:', query);
+  console.log('- focusText:', focusText || 'not provided');
   
   try {
     const systemPrompt = focusText 
-      ? `You are a helpful assistant that generates search queries focused specifically on: ${focusText}`
+      ? `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
+Your task is to generate highly specific search queries about ${focusText} that provide targeted information.
+CRITICAL REQUIREMENTS: 
+1. EVERY query MUST explicitly contain "${focusText}" verbatim
+2. Each query MUST include additional specific qualifiers beyond just the focus text
+3. Queries should target different aspects, angles, or dimensions of "${focusText}"`
       : 'You are a helpful assistant that generates search queries.';
       
-    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
-${query}
-${focusText ? `With specific focus on: "${focusText}"` : ''}
+    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about ${focusText ? `"${focusText}"` : `the following topic: ${query}`}
+${focusText ? `\nAdditional context: ${query}` : ''}
 
 CRITICAL GUIDELINES FOR QUERIES:
-1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
-2. Include specific entities, dates, events, or proper nouns from the original question
-3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
-4. Make each query a complete, standalone question or statement that contains ALL relevant context
+1. Each query MUST be self-contained and provide full context
+2. Include specific entities, dates, events, or proper nouns
+${focusText ? `3. EVERY query MUST explicitly include "${focusText}" verbatim` : '3. Make queries specific and detailed'}
+4. Make each query different from the others to gather a wide range of information
 5. If the original question asks about a future event, include timeframes or dates
-6. Use precise terminology and specific entities mentioned in the original question
+6. Use precise terminology and specific entities
 
 Focus on different aspects that would be relevant for market research. Make each query different from the others to gather a wide range of information.
 
@@ -89,56 +95,59 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     const queriesData = JSON.parse(content)
     let queries = queriesData.queries || []
     
-    // Process queries to ensure each has full context
     queries = queries.map((q: string) => {
-      // Check for common issues in queries
-      if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
-        // Add original query context
-        return `${q} regarding ${query}`
+      if (typeof q !== 'string' || q.trim().length < 10) {
+        return focusText ? 
+          `${focusText} information related to ${query}` : 
+          `${query} latest information`;
       }
       
-      // Check if query likely has enough context
+      if (focusText && !q.toLowerCase().includes(focusText.toLowerCase())) {
+        return `${focusText} in context of: ${q}`;
+      }
+      
+      if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
+        return focusText ?
+          `${q} regarding ${focusText}` :
+          `${q} regarding ${query}`;
+      }
+      
       const hasNames = /[A-Z][a-z]+/.test(q) // Has proper nouns
       const isLongEnough = q.length > 40     // Is reasonably detailed
       
       if (!hasNames || !isLongEnough) {
-        // Add more context
         if (focusText) {
-          return `${q} about ${query} focused on ${focusText}`
+          return `${q} about ${focusText} in context of ${query}`;
         } else {
-          return `${q} about ${query}`
+          return `${q} about ${query}`;
         }
       }
       
-      return q
-    })
+      return q;
+    });
     
-    console.log('Generated queries:', queries)
-    return queries
+    console.log('Generated sub-queries:', queries);
+    return queries;
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries with full context
-    const fallbackQueries = [
+    if (focusText) {
+      return [
+        `${focusText} in relation to ${query} analysis`,
+        `${focusText} specifically regarding ${query}`,
+        `${focusText} impact on ${query} outcome`,
+        `${query} factual information related to ${focusText}`,
+        `${focusText} historical precedents for ${query}`
+      ];
+    }
+    
+    return [
       `${query} latest developments and facts`,
       `${query} comprehensive analysis and expert opinions`,
       `${query} historical precedents and similar cases`,
       `${query} statistical data and probability estimates`,
       `${query} future outlook and critical factors`
-    ]
-    
-    if (focusText) {
-      // Add focused variants
-      return [
-        `${focusText} in relation to ${query} analysis`,
-        `${query} specifically regarding ${focusText}`,
-        `${focusText} impact on ${query} outcome`,
-        `${query} factual information related to ${focusText}`,
-        `${focusText} historical precedents for ${query}`
-      ]
-    }
-    
-    return fallbackQueries
+    ];
   }
 }
 
@@ -226,7 +235,6 @@ class WebScraper {
       const html = await response.text()
       const $ = load(html)
       
-      // Remove scripts and styles
       $('script').remove()
       $('style').remove()
       
@@ -242,7 +250,6 @@ class WebScraper {
       }
       return null
     } catch (error) {
-      // Skip failed URLs silently
       return null
     }
   }
@@ -264,7 +271,6 @@ class WebScraper {
       if (validResults.length > 0) {
         await this.sendResults(validResults)
         
-        // Add to collector for overall results
         validResults.forEach(result => {
           this.collector.addContent(result.url, result.content, result.title)
         })
@@ -280,11 +286,9 @@ class WebScraper {
   async run(query: string, focusText?: string) {
     await this.sendUpdate(`Starting web research for query: ${query}${focusText ? ` with focus on: ${focusText}` : ''}`)
     
-    // Generate sub-queries using OpenRouter
     const subQueries = await generateSubQueries(query, focusText)
     await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
     
-    // Process sub-queries in parallel with a concurrency limit
     const concurrencyLimit = 3
     const processSubquery = async (subQuery: string, index: number) => {
       await this.sendUpdate(`Processing search query ${index+1}/${subQueries.length}: ${subQuery}`)
@@ -297,14 +301,12 @@ class WebScraper {
       const urls = searchResults.map(result => result.url)
       const batchSize = 10
       
-      // Process in smaller batches for more responsive streaming
       for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
         const batchUrls = urls.slice(startIdx, startIdx + batchSize)
         await this.processBatch(batchUrls, batchSize)
       }
     }
     
-    // Process subqueries with limited concurrency
     for (let i = 0; i < subQueries.length; i += concurrencyLimit) {
       const subQueryBatch = subQueries.slice(i, i + concurrencyLimit)
       const promises = subQueryBatch.map((subQuery, idx) => 
@@ -327,6 +329,10 @@ serve(async (req) => {
   try {
     const { query, focusText } = await req.json()
 
+    console.log('Web-research received request with:');
+    console.log('- query:', query);
+    console.log('- focusText:', focusText || 'not provided');
+
     if (!BING_API_KEY) {
       throw new Error('BING_API_KEY is not configured')
     }
@@ -335,12 +341,10 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    // Create a TransformStream for streaming response
     const { readable, writable } = new TransformStream()
     const writer = writable.getWriter()
     const encoder = new TextEncoder()
 
-    // Start research asynchronously
     (async () => {
       try {
         const scraper = new WebScraper(BING_API_KEY, writer)
