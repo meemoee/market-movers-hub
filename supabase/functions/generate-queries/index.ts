@@ -15,6 +15,17 @@ serve(async (req) => {
   }
 
   try {
+    // Read the request body ONCE and store it
+    const requestText = await req.text();
+    let requestData;
+    
+    try {
+      requestData = JSON.parse(requestText);
+    } catch (parseError) {
+      console.error('Error parsing request JSON:', parseError);
+      throw new Error(`Invalid JSON in request body: ${parseError.message}`);
+    }
+    
     const { 
       query, 
       marketPrice, 
@@ -24,7 +35,7 @@ serve(async (req) => {
       previousAnalyses = [],
       previousProbability,
       iteration = 1
-    } = await req.json()
+    } = requestData;
 
     if (!OPENROUTER_API_KEY) {
       throw new Error('OPENROUTER_API_KEY is not configured')
@@ -32,8 +43,8 @@ serve(async (req) => {
 
     // ENHANCED DEBUG: Log all input parameters to help diagnose the focus text issue
     console.log('=== GENERATE QUERIES DEBUG INFO ===');
-    console.log('Raw request body:', await req.text());
-    console.log('Parsed request body:', await req.json());
+    console.log('Raw request body:', requestText);
+    console.log('Parsed request body:', requestData);
     console.log('Query parameter:', query);
     console.log('Focus text parameter:', focusText);
     console.log('Market question parameter:', marketQuestion);
