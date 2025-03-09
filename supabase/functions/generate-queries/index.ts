@@ -30,7 +30,7 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    console.log('Generating sub-queries for:', query)
+    console.log('Generating queries for:', query)
     console.log('Market question:', marketQuestion || 'not provided')
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Focus text:', focusText || 'not provided')
@@ -47,16 +47,16 @@ ${previousQueries.length > 0 ? `Previous search queries used:\n${previousQueries
 ${previousAnalyses.length > 0 ? `\nPrevious analysis summary:\n${previousAnalyses.slice(-1)[0].substring(0, 800)}${previousAnalyses.slice(-1)[0].length > 800 ? '...' : ''}` : ''}
 ${previousProbability ? `\nPrevious probability assessment: ${previousProbability}` : ''}
 
-DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
+DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search queries focused specifically on "${focusText || query}".`;
     }
 
-    // Enhanced system prompt with stricter guidelines
+    // Generate appropriate system prompt based on whether this is a focus area query
     const systemPrompt = generateSystemPrompt(focusText, query);
     
-    // Log additional debug information
-    console.log('Using system prompt:', systemPrompt.substring(0, 100) + '...')
+    // Log system prompt for debugging
+    console.log('Using system prompt:', systemPrompt.substring(0, 200) + '...')
     
-    // Construct a more specific user prompt with explicit formatting requirements
+    // Generate user prompt
     const userPrompt = generateUserPrompt(focusText, query, marketQuestion, marketPrice, iteration, previousResearchContext);
     
     try {
@@ -94,37 +94,46 @@ DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Gene
       const result = await response.json();
       console.log('OpenRouter API response received');
       
-      // Check if we have a valid content
+      // Log the complete raw response for debugging
+      console.log('Complete raw LLM response:', JSON.stringify(result));
+      
       if (!result?.choices?.[0]?.message?.content) {
         console.error('Invalid response format from OpenRouter:', result);
         throw new Error('Invalid response format from OpenRouter');
       }
       
       const content = result.choices[0].message.content.trim();
-      console.log('Raw LLM response:', content);
+      console.log('Content from LLM:', content);
       
-      // Parse the JSON response with more robust error handling
+      // Try to parse the response as JSON
       try {
-        // Parse the JSON response directly
         const queriesData = JSON.parse(content);
         
         if (!queriesData.queries || !Array.isArray(queriesData.queries) || queriesData.queries.length === 0) {
           console.error('No valid queries in response:', queriesData);
-          console.log('Attempting to extract queries from malformed response...');
           
-          // Try to extract queries from non-standard response
+          // Try to extract queries from malformed response
           const extractedQueries = extractQueriesFromText(content, focusText || query);
           if (extractedQueries.length > 0) {
             console.log('Successfully extracted queries from text:', extractedQueries);
-            return formatSuccessResponse(enhanceQueriesWithFocus(extractedQueries, focusText, query));
+            const enhancedQueries = enhanceQueriesWithFocus(extractedQueries, focusText, query);
+            console.log('Final queries after extraction:', enhancedQueries);
+            return formatSuccessResponse(enhancedQueries);
           }
           
-          throw new Error('No valid queries in response and extraction failed');
+          // If extraction fails, use fallback generator
+          console.log('Using fallback query generator as last resort');
+          const fallbackQueries = generateFocusedFallbackQueries(
+            focusText || query, 
+            5, 
+            Math.max(1, iteration || 1)
+          );
+          console.log('Fallback queries:', fallbackQueries);
+          return formatSuccessResponse(fallbackQueries);
         }
         
-        // Process and enhance the queries for better focus
-        let enhancedQueries = enhanceQueriesWithFocus(queriesData.queries, focusText, query);
-        
+        // Clean and enhance the queries with focus text
+        const enhancedQueries = cleanAndEnhanceQueries(queriesData.queries, focusText, query);
         console.log('Final enhanced queries:', enhancedQueries);
         
         return formatSuccessResponse(enhancedQueries);
@@ -132,24 +141,42 @@ DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Gene
         console.error('Error parsing LLM response:', parseError);
         console.error('Raw content causing error:', content);
         
-        // Try to extract queries from malformed response
+        // Try to extract queries directly from the text content
         const extractedQueries = extractQueriesFromText(content, focusText || query);
         if (extractedQueries.length > 0) {
           console.log('Successfully extracted queries despite parse error:', extractedQueries);
-          return formatSuccessResponse(enhanceQueriesWithFocus(extractedQueries, focusText, query));
+          const enhancedQueries = enhanceQueriesWithFocus(extractedQueries, focusText, query);
+          console.log('Final queries after extraction from error case:', enhancedQueries);
+          return formatSuccessResponse(enhancedQueries);
         }
         
-        throw parseError;
+        // Use fallback generator as last resort
+        console.log('Using fallback query generator after parse error');
+        const fallbackQueries = generateFocusedFallbackQueries(
+          focusText || query, 
+          5, 
+          Math.max(1, iteration || 1)
+        );
+        console.log('Fallback queries after parse error:', fallbackQueries);
+        return formatSuccessResponse(fallbackQueries);
       }
     } catch (apiError) {
       console.error('Error in OpenRouter API call:', apiError);
-      throw apiError;
+      
+      // Use fallback generator
+      console.log('Using fallback query generator due to API error');
+      const fallbackQueries = generateFocusedFallbackQueries(
+        focusText || query, 
+        5, 
+        Math.max(1, iteration || 1)
+      );
+      console.log('Fallback queries after API error:', fallbackQueries);
+      return formatSuccessResponse(fallbackQueries);
     }
   } catch (error) {
     console.error('Error generating queries:', error);
     
-    // Only use fallback queries as a last resort
-    // Create highly specialized fallback queries based on focus text
+    // Create highly specialized fallback queries 
     const fallbackQueries = generateFocusedFallbackQueries(
       focusText || query, 
       5, 
@@ -164,7 +191,7 @@ DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Gene
         error: error.message 
       }),
       { 
-        status: 200, // Still return 200 with fallback queries
+        status: 200,
         headers: { 
           ...corsHeaders,
           'Content-Type': 'application/json'
@@ -174,6 +201,34 @@ DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Gene
   }
 });
 
+// Helper function to clean and enhance queries
+function cleanAndEnhanceQueries(
+  queries: string[], 
+  focusText: string | undefined, 
+  query: string
+): string[] {
+  if (!queries || queries.length === 0) {
+    return generateFocusedFallbackQueries(focusText || query, 5, 1);
+  }
+  
+  // Clean the queries
+  let cleanedQueries = queries.map(q => {
+    // Remove markdown formatting, bullets, numbers, etc.
+    let cleaned = q.replace(/^[-*•#0-9]+\.\s*/, '').trim();
+    // Remove quotes
+    cleaned = cleaned.replace(/^["']|["']$/g, '').trim();
+    return cleaned;
+  });
+  
+  // Filter out empty or duplicate queries
+  cleanedQueries = cleanedQueries.filter((q, i, arr) => 
+    q.length > 0 && arr.indexOf(q) === i
+  );
+  
+  // Enhance with focus text if needed
+  return enhanceQueriesWithFocus(cleanedQueries, focusText, query);
+}
+
 // Helper function to generate focused fallback queries
 function generateFocusedFallbackQueries(focusText: string, count: number, iteration: number): string[] {
   // Add unique identifier to prevent duplicates
@@ -181,18 +236,18 @@ function generateFocusedFallbackQueries(focusText: string, count: number, iterat
   
   // For focus text, create specific and diverse queries
   if (focusText) {
-    // Template patterns for focused research with explicit query requirements
+    // Template patterns specifically designed for the focus text
     const templates = [
-      `${focusText}: recent verified information from official sources ${uniqueId}-${iteration}`,
-      `${focusText}: detailed factual analysis with supporting evidence ${uniqueId}-${iteration}`,
-      `${focusText}: comprehensive evaluation from multiple perspectives ${uniqueId}-${iteration}`,
-      `${focusText}: specific documented examples from reliable sources ${uniqueId}-${iteration}`,
-      `${focusText}: expert assessments and professional opinions ${uniqueId}-${iteration}`,
-      `${focusText}: statistical data and quantitative measurements ${uniqueId}-${iteration}`,
-      `${focusText}: historical development and progressive changes ${uniqueId}-${iteration}`,
-      `${focusText}: verified timeline of key events and decisions ${uniqueId}-${iteration}`,
-      `${focusText}: contrasting viewpoints with evidential support ${uniqueId}-${iteration}`,
-      `${focusText}: latest developments reported by credible outlets ${uniqueId}-${iteration}`
+      `${focusText}: recent verified information from reliable sources`,
+      `${focusText}: detailed analysis with supporting evidence`,
+      `${focusText}: comprehensive evaluation from multiple perspectives`,
+      `${focusText}: specific examples and case studies`,
+      `${focusText}: expert opinions and assessments`,
+      `${focusText}: statistical data and measurements`,
+      `${focusText}: historical development and changes`,
+      `${focusText}: timeline of key events`,
+      `${focusText}: contrasting viewpoints and debates`,
+      `${focusText}: latest developments and news`
     ];
     
     // Return unique templates based on the count needed
@@ -201,31 +256,37 @@ function generateFocusedFallbackQueries(focusText: string, count: number, iterat
   
   // For general queries without focus
   return [
-    `${query} latest authoritative information ${uniqueId}-${iteration}`,
-    `${query} detailed analysis from multiple sources ${uniqueId}-${iteration}`,
-    `${query} expert perspectives and specialized knowledge ${uniqueId}-${iteration}`,
-    `${query} recent developments with contextual background ${uniqueId}-${iteration}`,
-    `${query} factual statistics with proper attribution ${uniqueId}-${iteration}`
+    `${query} latest information`,
+    `${query} detailed analysis`,
+    `${query} expert perspectives`,
+    `${query} recent developments`,
+    `${query} factual statistics`
   ].slice(0, count);
 }
 
-// Helper function to generate system prompt with appropriate constraints
+// Helper function to generate system prompt
 function generateSystemPrompt(focusText: string | undefined, query: string): string {
   if (focusText) {
-    return `You are a specialized research assistant with EXCLUSIVE FOCUS on: "${focusText}".
-Your critical task is to generate highly specific search queries about "${focusText}" that will provide targeted information relevant to the topic.
+    return `You are a specialized research assistant focused on generating search queries about "${focusText}".
 
 CRITICAL REQUIREMENTS:
-1. EVERY query MUST explicitly start with "${focusText}: " followed by specific qualifiers
-2. EVERY query MUST be directly about "${focusText}" - this is non-negotiable
-3. Do not generate general or tangential queries that fail to focus specifically on "${focusText}"
-4. If you cannot generate queries about "${focusText}", you MUST still format your response as a JSON object with the 'queries' array`;
+1. EVERY query MUST start with "${focusText}: " followed by specific search terms
+2. Each query must be about "${focusText}" directly
+3. Generate diverse search queries that explore different aspects of "${focusText}"
+4. Each query should be concise (10-20 words) but specific
+5. DO NOT generate questions - only search terms
+6. DO NOT include explanations or commentary
+7. Return EXACTLY 5 search queries in a JSON array
+
+FOCUS EXCLUSIVELY on "${focusText}" and nothing else.`;
   } else {
-    return 'You are a helpful assistant that generates search queries. Your goal is to provide diverse, specific, and useful queries that will yield informative search results.';
+    return `You are a research assistant generating search queries to gather information on "${query}".
+Your goal is to create 5 diverse, specific search queries that will yield informative results.
+Return the queries as a JSON object with a "queries" array property.`;
   }
 }
 
-// Helper function to generate user prompt with explicit guidance
+// Helper function to generate user prompt
 function generateUserPrompt(
   focusText: string | undefined, 
   query: string, 
@@ -234,32 +295,32 @@ function generateUserPrompt(
   iteration: number,
   previousResearchContext: string
 ): string {
-  let prompt = `Generate 5 diverse search queries to gather comprehensive information about: ${focusText || query}
+  let prompt = `Generate 5 diverse search queries to research:
+${focusText ? `"${focusText}"` : `"${query}"`}
 
-${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
-${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
-${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
+${marketQuestion ? `Related to market question: ${marketQuestion}` : ''}
+${marketPrice !== undefined ? `Current market probability: ${marketPrice}%` : ''}
+${iteration > 1 ? `Research iteration: ${iteration}` : ''}
 ${previousResearchContext}`;
 
   // Add stronger guidance for focused queries
   if (focusText) {
-    prompt += `\n\nABSOLUTE REQUIREMENTS FOR YOUR QUERIES:
+    prompt += `
+\nIMPORTANT REQUIREMENTS:
 1. EVERY query MUST begin with "${focusText}: " exactly as written
-2. Each query must be 10-20 words long after the "${focusText}: " prefix
-3. Each query must explore a distinct aspect or angle of "${focusText}"
-4. NEVER repeat or paraphrase previous queries
-5. Do not include questions, just search terms
+2. Each query should be 10-20 words long
+3. Each query must explore a distinct aspect or angle
+4. Do not include questions, just search terms
+5. DO NOT repeat previous queries
 
-EXAMPLE FORMAT (follow this precisely):
-- "${focusText}: statistical analysis from official government data 2023-2024"
-- "${focusText}: verified statements from authoritative sources with evidence"
+EXAMPLES OF WELL-FORMED QUERIES:
+- "${focusText}: statistical analysis from government data 2023-2024"
+- "${focusText}: verified statements from authoritative sources"
 - "${focusText}: documented case studies with supporting evidence"
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
   } else {
-    prompt += `\n\nGenerate 5 search queries that are diverse, specific, and include different aspects of the topic.
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
+    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
   }
   
   return prompt;
@@ -276,19 +337,12 @@ function enhanceQueriesWithFocus(
   
   // Process each query to ensure it properly focuses on the topic
   let enhancedQueries = queries.map(queryText => {
-    // Clean the query of any markdown or other formatting
-    let cleanQuery = queryText.replace(/^[-*•>]+\s*/, '').trim();
+    // Clean the query text
+    let cleanQuery = queryText.trim();
     
-    // If the query doesn't start with the focus text, ensure it does
+    // Check if it already starts with the focus text
     if (!cleanQuery.toLowerCase().startsWith(focusText.toLowerCase())) {
-      // Remove any occurrences of the focus text to avoid duplication
-      const focusTextRegex = new RegExp(focusText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-      cleanQuery = cleanQuery.replace(focusTextRegex, '').trim();
-      
-      // Handle punctuation between focus text and the rest of the query
-      cleanQuery = cleanQuery.replace(/^[:\-;,.\s]+/, '').trim();
-      
-      // Combine focus text with the cleaned query
+      // If not, prepend the focus text
       return `${focusText}: ${cleanQuery}`;
     }
     
@@ -298,7 +352,7 @@ function enhanceQueriesWithFocus(
   // Filter out empty or too short queries
   enhancedQueries = enhancedQueries.filter(q => q.length > focusText.length + 3);
   
-  // Ensure we have enough queries
+  // Ensure we have enough queries (at least 5)
   while (enhancedQueries.length < 5) {
     const fallbackQuery = generateFocusedFallbackQueries(focusText, 1, Date.now())[0];
     if (!enhancedQueries.includes(fallbackQuery)) {
@@ -306,15 +360,15 @@ function enhanceQueriesWithFocus(
     }
   }
   
-  // Return at most 5 queries
+  // Return exactly 5 queries
   return enhancedQueries.slice(0, 5);
 }
 
-// Helper function to extract queries from potentially malformed responses
+// Helper function to extract queries from text
 function extractQueriesFromText(text: string, focusText: string): string[] {
   const queries: string[] = [];
   
-  // Try multiple extraction patterns
+  // Try to extract queries using multiple patterns
   
   // Pattern 1: Look for numbered lists (1. query text)
   const numberedRegex = /\d+\.\s*(.+?)(?=\n\d+\.|\n\n|$)/gs;
@@ -351,6 +405,7 @@ function extractQueriesFromText(text: string, focusText: string): string[] {
     queries.push(...lines);
   }
   
+  // Clean extracted queries
   return queries
     .map(q => q.replace(/^[-*•>]+\s*/, '').trim())
     .filter((q, i, arr) => q.length > 5 && arr.indexOf(q) === i)
