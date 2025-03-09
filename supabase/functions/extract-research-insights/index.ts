@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -15,14 +14,18 @@ serve(async (req) => {
   }
 
   try {
-    const { webContent, analysis, marketPrice, marketQuestion } = await req.json()
+    // Parse the request body once to avoid "Body already consumed" error
+    const requestText = await req.text();
+    const requestData = JSON.parse(requestText);
+    const { webContent, analysis, marketPrice, marketQuestion, focusText } = requestData;
     
     // Trim content to avoid token limits
-    const trimmedContent = webContent.slice(0, 15000)
-    console.log('Web content length:', trimmedContent.length)
-    console.log('Analysis length:', analysis.length)
-    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
-    console.log('Market question:', marketQuestion || 'not provided')
+    const trimmedContent = webContent.slice(0, 15000);
+    console.log('Web content length:', trimmedContent.length);
+    console.log('Analysis length:', analysis.length);
+    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided');
+    console.log('Market question:', marketQuestion || 'not provided');
+    console.log('Focus text:', focusText || 'not provided');
 
     // Make request to OpenRouter API
     const response = await fetch(OPENROUTER_URL, {
@@ -46,6 +49,7 @@ serve(async (req) => {
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+${focusText ? `Research Focus Area: ${focusText}` : ''}
 
 Web Content:
 ${trimmedContent}
@@ -71,35 +75,35 @@ Each point must be a direct fact or evidence found in the provided content. Do n
     });
 
     if (!response.ok) {
-      console.error('OpenRouter API error:', response.status, await response.text())
-      throw new Error('Failed to get insights from OpenRouter')
+      console.error('OpenRouter API error:', response.status, await response.text());
+      throw new Error('Failed to get insights from OpenRouter');
     }
 
-    const data = await response.json()
-    console.log('Got response from OpenRouter:', !!data)
+    const data = await response.json();
+    console.log('Got response from OpenRouter:', !!data);
     
     try {
-      const content = data.choices?.[0]?.message?.content
+      const content = data.choices?.[0]?.message?.content;
       if (!content) {
-        throw new Error('No content in OpenRouter response')
+        throw new Error('No content in OpenRouter response');
       }
       
-      console.log('Content type:', typeof content)
+      console.log('Content type:', typeof content);
       
       // Parse JSON content if it's a string, or use it directly if it's already an object
-      let parsed
+      let parsed;
       if (typeof content === 'string') {
         try {
-          parsed = JSON.parse(content)
+          parsed = JSON.parse(content);
         } catch (err) {
-          console.error('Error parsing JSON:', err)
-          console.log('Raw content:', content)
-          throw new Error('Failed to parse OpenRouter response as JSON')
+          console.error('Error parsing JSON:', err);
+          console.log('Raw content:', content);
+          throw new Error('Failed to parse OpenRouter response as JSON');
         }
       } else if (typeof content === 'object') {
-        parsed = content
+        parsed = content;
       } else {
-        throw new Error(`Unexpected content type: ${typeof content}`)
+        throw new Error(`Unexpected content type: ${typeof content}`);
       }
       
       // Keep the result simple, use exactly what comes from the API
@@ -109,22 +113,22 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
         negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
         reasoning: parsed.reasoning || "No reasoning provided"
-      }
+      };
       
-      console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
-      console.log('Supporting points count:', result.supportingPoints.length)
-      console.log('Negative points count:', result.negativePoints.length)
+      console.log('Returning formatted result with fields:', Object.keys(result).join(', '));
+      console.log('Supporting points count:', result.supportingPoints.length);
+      console.log('Negative points count:', result.negativePoints.length);
       
       // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      });
     } catch (error) {
-      console.error('Error processing OpenRouter response:', error)
-      throw error
+      console.error('Error processing OpenRouter response:', error);
+      throw error;
     }
   } catch (error) {
-    console.error('Error in extract-research-insights:', error)
+    console.error('Error in extract-research-insights:', error);
     return new Response(
       JSON.stringify({ 
         error: error.message, 
@@ -138,6 +142,6 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
-    )
+    );
   }
 })
