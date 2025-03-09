@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -491,6 +492,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         console.error("Invalid areas_for_research after sanitization, using default");
         sanitizedAreasForResearch = defaultAreasForResearch;
       }
+      
+      // Add the missing sanitized variables
+      const sanitizedIterations = sanitizeJson(iterations);
+      const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
       
       console.log("Saving research with areas_for_research:", sanitizedAreasForResearch);
       
