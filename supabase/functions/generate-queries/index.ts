@@ -40,69 +40,65 @@ serve(async (req) => {
       previousAnalysesCount: previousAnalyses.length
     })
 
-    // Determine if this is a focused query or a general query
-    const isFocusedQuery = !!focusText;
+    // Determine if this is a focused query 
+    const isFocusedQuery = Boolean(focusText);
+    console.log(`Query type: ${isFocusedQuery ? 'Focused' : 'General'}`)
     
-    // Construct system prompt
-    const systemPrompt = isFocusedQuery 
-      ? `You are a specialized search query generator focusing on "${focusText}".
-
-CRITICAL REQUIREMENTS:
-1. Generate EXACTLY 5 detailed search queries about "${focusText}"
-2. EVERY query MUST start with "${focusText}: " (this prefix is MANDATORY)
-3. Each query should be specific, detailed, and diverse to gather comprehensive information
-4. Each query should be a search phrase (not a question) with 10-20 words
-5. Respond ONLY with a JSON object containing a 'queries' array of 5 string elements`
-      : `You are a search query generator for market research.
+    // Base system prompt that works for both focused and general queries
+    let systemPrompt = `You are an expert search query generator for market prediction research.
 
 REQUIREMENTS:
-1. Generate EXACTLY 5 diverse search queries for researching "${query}"
-2. Each query should be specific and focused to gather comprehensive information
+1. Generate EXACTLY 5 diverse search queries${isFocusedQuery ? ` focused specifically on researching "${focusText}"` : ` for researching "${query}"`}
+2. Each query MUST be specific, detailed and actionable
 3. Format as search terms rather than questions
 4. Respond ONLY with a JSON object containing a 'queries' array of 5 string elements`;
 
-    // Construct user prompt
-    let userPrompt = isFocusedQuery
-      ? `Generate 5 diverse, specific search queries to thoroughly research "${focusText}".
-
-Each query MUST:
-1. Start with "${focusText}: "
-2. Contain 10-20 words
-3. Be specific and actionable
-4. Explore different aspects of the topic
-
-These queries will be used to research information about ${marketQuestion || query}.
-${marketPrice !== undefined ? `Current market probability: ${marketPrice}%` : ''}
-${iteration > 1 ? `Research iteration: ${iteration}` : ''}
-
-${previousQueries.length > 0 
-  ? `DO NOT repeat these previous queries:\n${previousQueries.slice(-10).map(q => `- ${q}`).join('\n')}`
-  : ''}`
-      : `Generate 5 diverse search queries to research "${query}"${marketQuestion ? ` related to ${marketQuestion}` : ''}.
-${marketPrice !== undefined ? `Current market probability: ${marketPrice}%` : ''}
-${iteration > 1 ? `Research iteration: ${iteration}` : ''}
-
-${previousQueries.length > 0 
-  ? `DO NOT repeat these previous queries:\n${previousQueries.slice(-10).map(q => `- ${q}`).join('\n')}`
-  : ''}`;
-
-    // Example of well-formed queries for focus queries
+    // Add focused query specific instructions
     if (isFocusedQuery) {
-      userPrompt += `
+      systemPrompt += `\n\nCRITICAL FORMATTING INSTRUCTION:
+5. EVERY query MUST start with "${focusText}: " (this exact prefix is MANDATORY)
+6. Each query should be 10-20 words long (not counting the prefix)`;
+    }
 
-EXAMPLES of well-formed queries:
-- "${focusText}: historical data and statistics from 2020-2024"
-- "${focusText}: expert analysis and recent developments"
-- "${focusText}: impact on ${query.split(' ').slice(0, 3).join(' ')}"`;
+    console.log('System prompt:', systemPrompt)
+
+    // Construct user prompt with context about the market and previous research
+    let userPrompt = isFocusedQuery
+      ? `Generate 5 detailed search queries to thoroughly research "${focusText}" ${marketQuestion ? `in the context of the prediction market question: "${marketQuestion}"` : ''}.`
+      : `Generate 5 diverse search queries to research "${query}"${marketQuestion ? ` related to the prediction market question: "${marketQuestion}"` : ''}.`
+    
+    // Add market price context if available
+    if (marketPrice !== undefined) {
+      userPrompt += `\nCurrent market probability: ${marketPrice}%`
+    }
+    
+    // Add iteration information
+    if (iteration > 1) {
+      userPrompt += `\nThis is research iteration #${iteration}.`
+    }
+
+    // Add previous queries to avoid duplication
+    if (previousQueries.length > 0) {
+      const recentQueries = previousQueries.slice(-10);
+      userPrompt += `\n\nDO NOT repeat these previous queries:\n${recentQueries.map(q => `- ${q}`).join('\n')}`
+    }
+
+    // Add format instructions with examples
+    if (isFocusedQuery) {
+      userPrompt += `\n\nFORMATTING REQUIREMENTS:
+1. EVERY query MUST start with "${focusText}: " (this exact prefix is MANDATORY)
+2. Each query should be specific and contain 10-20 words (not counting the prefix)
+
+EXAMPLES of well-formatted queries:
+- "${focusText}: historical precedents and statistical analysis from 2020-2024"
+- "${focusText}: expert opinions and recent developments"
+- "${focusText}: impact on market predictions and betting odds"`
     }
 
     // Add response format instructions
-    userPrompt += `
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
-
-    console.log('Using system prompt:', systemPrompt.substring(0, 200) + '...')
-    console.log('Using user prompt:', userPrompt.substring(0, 200) + '...')
+    userPrompt += `\n\nRespond with a JSON object containing a 'queries' array with EXACTLY 5 search query strings.`;
+    
+    console.log('User prompt:', userPrompt.substring(0, 200) + '...')
     
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -136,7 +132,9 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     }
     
     const content = result.choices[0].message.content.trim();
-    console.log('Content from LLM:', content);
+    
+    // For debugging
+    console.log('Raw LLM response:', content.substring(0, 500) + (content.length > 500 ? '...' : ''));
     
     // Try to parse the response as JSON
     try {
@@ -146,11 +144,13 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         throw new Error('No valid queries in response');
       }
       
-      // Ensure proper formatting for focus queries
+      // Process queries - ensure proper formatting for focus queries
       let finalQueries = queriesData.queries;
       
       if (isFocusedQuery) {
+        console.log('Processing focused queries to ensure correct formatting');
         finalQueries = finalQueries.map(query => {
+          // Only add the focus prefix if it's not already there
           if (!query.toLowerCase().startsWith(focusText.toLowerCase())) {
             return `${focusText}: ${query}`;
           }
@@ -160,10 +160,12 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       
       // Ensure we have exactly 5 queries
       while (finalQueries.length < 5) {
-        finalQueries.push(isFocusedQuery
-          ? `${focusText}: additional information and recent developments ${finalQueries.length}`
-          : `${query} ${finalQueries.length > 0 ? 'additional' : ''} relevant information ${finalQueries.length}`
-        );
+        const backupQuery = isFocusedQuery
+          ? `${focusText}: additional relevant information and analysis ${finalQueries.length + 1}`
+          : `${query} additional relevant information ${finalQueries.length + 1}`;
+        
+        console.log(`Adding backup query to reach 5: ${backupQuery}`);
+        finalQueries.push(backupQuery);
       }
       
       // Limit to 5 queries
@@ -184,14 +186,14 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       console.error('Error parsing LLM response:', parseError);
       console.error('Raw content causing error:', content);
       
-      // Simple fallback for parsing failure
-      const extractedQueries = extractQueriesFromText(content, focusText || query);
-      console.log('Extracted queries from malformed response:', extractedQueries);
+      // Create simple fallback queries
+      const fallbackQueries = generateFallbackQueries(isFocusedQuery ? focusText : query);
+      console.log('Using fallback queries due to parse error:', fallbackQueries);
       
       return new Response(
         JSON.stringify({ 
-          queries: extractedQueries,
-          error: 'Error parsing LLM response, using extracted queries' 
+          queries: fallbackQueries,
+          error: 'Error parsing LLM response, using fallback queries' 
         }),
         { 
           headers: { 
@@ -223,66 +225,17 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
   }
 });
 
-// Simple extraction of queries from text
-function extractQueriesFromText(text: string, focusText: string): string[] {
-  const queries = [];
-  
-  // Extract lines that might be queries
-  const lines = text.split('\n');
-  for (const line of lines) {
-    // Remove markdown formatting, bullets, numbers, etc.
-    let cleaned = line.replace(/^[-*•#0-9]+\.?\s*/, '').trim();
-    // Remove quotes
-    cleaned = cleaned.replace(/^["']|["']$/g, '').trim();
-    
-    if (cleaned.length > 5) {
-      queries.push(cleaned);
-    }
-  }
-  
-  // If we couldn't extract queries, try looking for quoted text
-  if (queries.length === 0) {
-    const quoteMatches = text.match(/"([^"]+)"/g);
-    if (quoteMatches) {
-      for (const match of quoteMatches) {
-        const cleaned = match.replace(/^"|"$/g, '').trim();
-        if (cleaned.length > 5) {
-          queries.push(cleaned);
-        }
-      }
-    }
-  }
-  
-  // Format the queries with the focus text if needed
-  const formattedQueries = queries.map(q => {
-    if (focusText && !q.toLowerCase().startsWith(focusText.toLowerCase())) {
-      return `${focusText}: ${q}`;
-    }
-    return q;
-  });
-  
-  // Ensure we have at least 5 queries
-  while (formattedQueries.length < 5) {
-    formattedQueries.push(focusText 
-      ? `${focusText}: additional information ${formattedQueries.length}` 
-      : `relevant information ${formattedQueries.length}`);
-  }
-  
-  return formattedQueries.slice(0, 5);
-}
-
-// Fallback query generator for when everything else fails
+// Simplified fallback query generator
 function generateFallbackQueries(topic: string): string[] {
-  const isFocusQuery = topic.includes(':');
-  const focusText = isFocusQuery ? topic.split(':')[0].trim() : topic;
+  // Check if topic appears to be a focus text (contains a colon)
+  const hasFocusFormat = topic.includes(':');
+  const focusText = hasFocusFormat ? topic : topic;
   
-  const templates = [
+  return [
     `${focusText}: recent verified information from reliable sources`,
     `${focusText}: detailed analysis with supporting evidence`,
     `${focusText}: comprehensive evaluation from multiple perspectives`,
     `${focusText}: specific examples and case studies`,
     `${focusText}: expert opinions and statistical data`
   ];
-  
-  return templates;
 }

@@ -4,7 +4,7 @@ import { PriceData, FillSegment } from './types';
 
 export const useChartData = (data: PriceData[]) => {
   return useMemo(() => {
-    if (!data.length) return { segments: [], domain: { min: 0, max: 100 } };
+    if (!data || !data.length) return { segments: [], domain: { min: 0, max: 100 } };
 
     const segments: FillSegment[] = [];
     let currentSegment: PriceData[] = [];
