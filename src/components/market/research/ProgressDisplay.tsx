@@ -2,6 +2,7 @@
 import { cn } from "@/lib/utils"
 import { useEffect, useState, useRef, useLayoutEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Loader2 } from "lucide-react"
 
 interface ProgressDisplayProps {
   messages: string[]
@@ -53,11 +54,11 @@ export function ProgressDisplay({
               key={`${index}-${message.substring(0, 20)}`}
               className={cn(
                 "flex items-center gap-3 py-1 text-sm",
-                index === messages.length - 1 ? "animate-pulse" : ""
+                index === messages.length - 1 && isLoading ? "animate-pulse" : ""
               )}
             >
-              {index === messages.length - 1 && (
-                <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              {index === messages.length - 1 && isLoading && (
+                <Loader2 className="h-3 w-3 animate-spin text-primary flex-shrink-0" />
               )}
               <span className={index === messages.length - 1 ? "text-foreground" : "text-muted-foreground"}>
                 {message}
