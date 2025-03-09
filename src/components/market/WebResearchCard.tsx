@@ -479,16 +479,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const sanitizedAnalysis = analysis ? analysis.replace(/\u0000/g, '') : '';
       
       const defaultAreasForResearch = ["More research needed"];
-      const sanitizedAreasForResearch = sanitizeJson(
-        streamingState.parsedData?.areasForResearch && 
+      let areasForResearch = streamingState.parsedData?.areasForResearch && 
         Array.isArray(streamingState.parsedData.areasForResearch) && 
         streamingState.parsedData.areasForResearch.length > 0
           ? streamingState.parsedData.areasForResearch
-          : defaultAreasForResearch
-      );
+          : defaultAreasForResearch;
       
-      const sanitizedIterations = sanitizeJson(iterations);
-      const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
+      let sanitizedAreasForResearch = sanitizeJson(areasForResearch);
       
       if (!Array.isArray(sanitizedAreasForResearch) || sanitizedAreasForResearch.length === 0) {
         console.error("Invalid areas_for_research after sanitization, using default");
