@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -364,7 +365,17 @@ export function WebResearchCard({ description, marketId, marketQuestion }: WebRe
 
       const sanitizedResults = sanitizeJson(results);
       const sanitizedAnalysis = analysis ? analysis.replace(/\u0000/g, '') : '';
-      const sanitizedAreasForResearch = sanitizeJson(streamingState.parsedData?.areasForResearch);
+      
+      // Ensure areas_for_research is never null
+      const defaultAreasForResearch = ['Additional research needed', 'More data required', 'Further analysis recommended'];
+      const sanitizedAreasForResearch = sanitizeJson(
+        streamingState.parsedData?.areasForResearch && 
+        Array.isArray(streamingState.parsedData?.areasForResearch) && 
+        streamingState.parsedData?.areasForResearch.length > 0
+          ? streamingState.parsedData?.areasForResearch
+          : defaultAreasForResearch
+      );
+      
       const sanitizedIterations = sanitizeJson(iterations);
       const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
       
@@ -373,7 +384,7 @@ export function WebResearchCard({ description, marketId, marketQuestion }: WebRe
         query: description.replace(/\u0000/g, ''),
         sources: sanitizedResults as unknown as Json,
         analysis: sanitizedAnalysis,
-        probability: streamingState.parsedData?.probability?.replace(/\u0000/g, '') || '',
+        probability: streamingState.parsedData?.probability?.replace(/\u0000/g, '') || 'Unknown',
         areas_for_research: sanitizedAreasForResearch as unknown as Json,
         market_id: marketId,
         iterations: sanitizedIterations as unknown as Json,
@@ -382,6 +393,8 @@ export function WebResearchCard({ description, marketId, marketQuestion }: WebRe
       };
 
       console.log("Saving sanitized research data", parentResearchId ? `with parent research: ${parentResearchId}` : "without parent");
+      console.log("Areas for research:", researchPayload.areas_for_research);
+      
       const { data, error } = await supabase.from('web_research').insert(researchPayload).select('id')
 
       if (error) throw error

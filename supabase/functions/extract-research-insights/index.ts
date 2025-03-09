@@ -102,12 +102,15 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         throw new Error(`Unexpected content type: ${typeof content}`)
       }
       
-      // Ensure areas_for_research is always a non-null array
+      // ALWAYS ensure areasForResearch is a non-empty array
+      const defaultAreas = ["Additional context and information", "More recent data", "Expert opinions"];
+      const areasForResearch = Array.isArray(parsed.areasForResearch) && parsed.areasForResearch.length > 0 
+        ? parsed.areasForResearch 
+        : defaultAreas;
+      
       const result = {
         probability: parsed.probability || "Unknown",
-        areasForResearch: Array.isArray(parsed.areasForResearch) && parsed.areasForResearch.length > 0 
-          ? parsed.areasForResearch 
-          : ["Additional context and information", "More recent data", "Expert opinions"],
+        areasForResearch: areasForResearch,
         supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
         negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
         reasoning: parsed.reasoning || "No reasoning provided"
