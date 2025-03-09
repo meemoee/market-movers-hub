@@ -78,6 +78,35 @@ interface SavedResearch {
   parent_research_id?: string;
 }
 
+interface QueryGenerationPayload {
+  query: string;
+  previousResults?: string;
+  iteration: number;
+  marketId: string;
+  marketDescription: string;
+  areasForResearch: string[];
+  previousAnalyses: string;
+  previousQueries: string[];
+  marketPrice?: number;
+  focusText?: string;
+  parentQuery?: string;
+  parentAnalysis?: string;
+  parentProbability?: string;
+  supportingPoints?: string[];
+  negativePoints?: string[];
+  previousProbability?: string;
+}
+
+interface InitialQueryPayload {
+  query: string;
+  marketId: string;
+  marketDescription: string;
+  marketQuestion: string;
+  iteration: number;
+  marketPrice?: number;
+  focusText?: string;
+}
+
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -760,7 +789,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
-          const queryGenPayload = { 
+          const queryGenPayload: QueryGenerationPayload = { 
             query: description,
             previousResults: analysisContent,
             iteration: iteration,
@@ -980,7 +1009,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText: focusText.trim() || null
         });
         
-        const queryPayload = { 
+        const queryPayload: InitialQueryPayload = { 
             query: description,
             marketId: marketId,
             marketDescription: description,
