@@ -1,59 +1,52 @@
 
-import { Button } from "@/components/ui/button"
-import { Loader2, Search } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button";
+import { Lightbulb, Search } from "lucide-react";
 
-interface ResearchHeaderProps {
-  isLoading: boolean
-  isAnalyzing: boolean
-  onResearch: () => void
-  focusText?: string
-  description?: string
-  marketId?: string
-  marketPrice?: number
+export interface ResearchHeaderProps {
+  isLoading: boolean;
+  isAnalyzing: boolean;
+  onResearch: () => void;
+  focusText?: string;
+  description?: string;
+  marketPrice?: number;
+  marketId?: string;
 }
 
-export function ResearchHeader({ 
-  isLoading, 
-  isAnalyzing, 
-  onResearch, 
-  focusText, 
+export function ResearchHeader({
+  isLoading,
+  isAnalyzing,
+  onResearch,
+  focusText,
   description,
-  marketPrice 
+  marketPrice,
+  marketId
 }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <h3 className="text-lg font-semibold">Web Research</h3>
-        {focusText && (
-          <Badge variant="outline" className="text-xs bg-primary/10 border-primary/20">
-            Focus: {focusText.length > 25 ? `${focusText.substring(0, 25)}...` : focusText}
-          </Badge>
-        )}
-        {marketPrice !== undefined && (
-          <Badge variant="outline" className="text-xs bg-accent/20 border-accent/30">
-            Current Price: {marketPrice}%
-          </Badge>
-        )}
+      <div className="flex items-center space-x-2">
+        <Lightbulb className="h-5 w-5 text-primary" />
+        <div>
+          <h2 className="text-lg font-medium">Web Research</h2>
+          <p className="text-sm text-muted-foreground">
+            {focusText 
+              ? `Research focused on: ${focusText}` 
+              : 'Research the market question with AI assistance'}
+          </p>
+        </div>
       </div>
+      
       <Button 
         onClick={onResearch} 
         disabled={isLoading || isAnalyzing}
-        variant="outline"
-        size="sm"
+        className="gap-1"
       >
-        {isLoading || isAnalyzing ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {isAnalyzing ? 'Analyzing...' : 'Researching...'}
-          </>
-        ) : (
-          <>
-            <Search className="mr-2 h-4 w-4" />
-            Research
-          </>
-        )}
+        <Search className="h-4 w-4" />
+        {isLoading
+          ? "Researching..."
+          : isAnalyzing
+          ? "Analyzing..."
+          : "Start Research"}
       </Button>
     </div>
-  )
+  );
 }

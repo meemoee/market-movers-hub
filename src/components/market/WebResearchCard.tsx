@@ -9,197 +9,173 @@ import { ProgressDisplay } from "./research/ProgressDisplay";
 import { ResearchHeader } from "./research/ResearchHeader";
 import { IterationCard } from "./research/IterationCard";
 import { InsightsDisplay } from "./research/InsightsDisplay";
-import { ResearchIteration, ResearchMarket } from "@/types";
+import { ResearchIteration, ResearchMarket, ResearchInsights } from "@/types";
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from "@/integrations/supabase/client";
 
-interface WebResearchCardProps {
-  market: ResearchMarket
-  onSave?: (market: ResearchMarket) => Promise<void>
+export interface WebResearchCardProps {
+  market: ResearchMarket;
+  onSave?: (market: ResearchMarket) => Promise<void>;
 }
 
 export function WebResearchCard({ market, onSave }: WebResearchCardProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [focusText, setFocusText] = useState(market?.focus_text || "")
-  const [description, setDescription] = useState(market?.description || "")
-  const [messages, setMessages] = useState<string[]>([])
-  const [queryList, setQueryList] = useState<string[]>([])
-  const [currentIteration, setCurrentIteration] = useState(0)
-  const [maxIterations, setMaxIterations] = useState(3)
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [currentQuery, setCurrentQuery] = useState<string | null>(null)
-  const [progress, setProgress] = useState(0)
-  const [isComplete, setIsComplete] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle')
-  const [iterations, setIterations] = useState<ResearchIteration[]>([])
-  const [expandedIterations, setExpandedIterations] = useState<string[]>([])
-  const [insights, setInsights] = useState<{
-    areasForResearch: string[]
-    supportingPoints: string[]
-    negativePoints: string[]
-    reasoning: string
-    probability: string
-  } | null>(null)
-  const [currentSubject, setCurrentSubject] = useState("")
-  const { toast } = useToast()
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [focusText, setFocusText] = useState(market?.focus_text || "");
+  const [description, setDescription] = useState(market?.description || "");
+  const [messages, setMessages] = useState<string[]>([]);
+  const [queryList, setQueryList] = useState<string[]>([]);
+  const [currentIteration, setCurrentIteration] = useState(0);
+  const [maxIterations, setMaxIterations] = useState(3);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentQuery, setCurrentQuery] = useState<string | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [iterations, setIterations] = useState<ResearchIteration[]>([]);
+  const [expandedIterations, setExpandedIterations] = useState<string[]>([]);
+  const [insights, setInsights] = useState<ResearchInsights | null>(null);
+  const [currentSubject, setCurrentSubject] = useState("");
+  const { toast } = useToast();
 
   useEffect(() => {
     if (market) {
-      setFocusText(market.focus_text || "")
-      setDescription(market.description || "")
+      setFocusText(market.focus_text || "");
+      setDescription(market.description || "");
     }
-  }, [market])
+  }, [market]);
 
   const toggleIterationExpand = (id: string) => {
     setExpandedIterations(prev => {
       if (prev.includes(id)) {
-        return prev.filter(iterationId => iterationId !== id)
+        return prev.filter(iterationId => iterationId !== id);
       } else {
-        return [...prev, id]
+        return [...prev, id];
       }
-    })
-  }
+    });
+  };
 
   const handleSave = async () => {
-    if (!market) return
+    if (!market) return;
 
-    setSaveStatus('saving')
+    setSaveStatus('saving');
     try {
       if (onSave) {
         await onSave({
           ...market,
           focus_text: focusText,
           description: description,
-        })
-        setSaveStatus('success')
+        });
+        setSaveStatus('success');
         toast({
           title: "Market Saved",
           description: "This market's research settings have been saved.",
-        })
+        });
       } else {
-        console.log("No onSave function provided")
-        setSaveStatus('idle')
+        console.log("No onSave function provided");
+        setSaveStatus('idle');
       }
     } catch (error) {
-      console.error("Error saving market:", error)
-      setSaveStatus('error')
+      console.error("Error saving market:", error);
+      setSaveStatus('error');
       toast({
         title: "Error Saving Market",
         description: "There was an error saving this market's research settings.",
         variant: "destructive",
-      })
+      });
     } finally {
       setTimeout(() => {
-        setSaveStatus('idle')
-      }, 2000)
+        setSaveStatus('idle');
+      }, 2000);
     }
-  }
+  };
 
   const runWebResearch = useCallback(async (researchQuery: string, researchFocusText?: string) => {
     if (!market) {
-      console.error("Market is null or undefined")
-      return
+      console.error("Market is null or undefined");
+      return;
     }
 
     if (!researchQuery) {
-      console.warn("Research query is empty")
-      return
+      console.warn("Research query is empty");
+      return;
     }
 
-    setIsAnalyzing(true)
-    setMessages([])
-    setIterations([])
-    setInsights(null)
+    setIsAnalyzing(true);
+    setMessages([]);
+    setIterations([]);
+    setInsights(null);
 
-    const { data, error } = await supabase.functions.stream('web-research', {
-      body: {
-        query: researchQuery,
-        focusText: researchFocusText,
-      },
-    })
+    try {
+      const { data, error } = await supabase.functions.invoke('web-scrape', {
+        body: {
+          query: researchQuery,
+          focusText: researchFocusText,
+        },
+      });
 
-    if (error) {
-      console.error("Error streaming web research:", error)
-      toast({
-        title: "Research Failed",
-        description: error.message || "Failed to perform web research",
-        variant: "destructive",
-      })
-      setIsAnalyzing(false)
-      return
-    }
+      if (error) {
+        console.error("Error running web research:", error);
+        toast({
+          title: "Research Failed",
+          description: error.message || "Failed to perform web research",
+          variant: "destructive",
+        });
+        setIsAnalyzing(false);
+        return;
+      }
 
-    let currentSites: any[] = []
-    let iterationNumber = 1
-    let sitesFound = 0
-
-    data.pipeTo(new WritableStream({
-      write: (chunk) => {
-        try {
-          const message = JSON.parse(new TextDecoder().decode(chunk))
-
-          if (message.message) {
-            setMessages(prev => [...prev, message.message])
-          }
-
-          if (message.type === 'results') {
-            currentSites = message.data
-            sitesFound += message.data.length
-          }
-        } catch (error) {
-          console.error("Error processing chunk:", error)
-        }
-      },
-      close: () => {
-        setIsAnalyzing(false)
-        setIsComplete(true)
+      if (data && Array.isArray(data)) {
+        const sitesFound = data.length;
+        const newIteration: ResearchIteration = {
+          id: uuidv4(),
+          iteration: currentIteration,
+          query: researchQuery,
+          sites: data,
+          sitesFound: sitesFound,
+          analysis: 'Analysis complete',
+        };
+        
+        setIterations(prev => [...prev, newIteration]);
+        setMessages(prev => [...prev, `Found ${sitesFound} sites for query "${researchQuery}"`]);
+        setIsAnalyzing(false);
+        setIsComplete(true);
+        
         toast({
           title: "Research Complete",
           description: "Web research completed successfully!",
-        })
-
-        const newIteration: ResearchIteration = {
-          id: uuidv4(),
-          iteration: iterationNumber,
-          query: researchQuery,
-          sites: currentSites,
-          sitesFound: sitesFound,
-          analysis: 'Analysis pending...',
-        }
-        setIterations(prev => [...prev, newIteration])
-      },
-      abort: (reason) => {
-        console.error("Stream aborted:", reason)
-        setIsAnalyzing(false)
-        toast({
-          title: "Research Aborted",
-          description: reason || "Web research was aborted",
-          variant: "destructive",
-        })
-      },
-    }))
-  }, [market, toast])
+        });
+      }
+    } catch (error) {
+      console.error("Error in web research:", error);
+      setIsAnalyzing(false);
+      toast({
+        title: "Research Failed",
+        description: "An error occurred during web research",
+        variant: "destructive",
+      });
+    }
+  }, [market, toast, currentIteration]);
 
   const startDeepResearch = useCallback(async () => {
     if (!market) {
-      console.error("Market is null or undefined")
-      return
+      console.error("Market is null or undefined");
+      return;
     }
 
     if (!description) {
-      console.warn("Market description is empty")
-      return
+      console.warn("Market description is empty");
+      return;
     }
 
-    setIsLoading(true)
-    setResearchStep("initial")
-    setMessages(["Starting deep research..."])
-    setCurrentSubject(focusText || "")
-    setIsComplete(false)
-    setSaveStatus("idle")
-    setIterations([])
-    setInsights(null)
+    setIsLoading(true);
+    setResearchStep("initial");
+    setMessages(["Starting deep research..."]);
+    setCurrentSubject(focusText || "");
+    setIsComplete(false);
+    setSaveStatus("idle");
+    setIterations([]);
+    setInsights(null);
 
     try {
       const { data, error } = await supabase.functions.invoke('deep-research', {
@@ -208,29 +184,29 @@ export function WebResearchCard({ market, onSave }: WebResearchCardProps) {
           marketId: market.id,
           iterations: maxIterations,
         },
-      })
+      });
 
       if (error) {
-        console.error("Deep research error:", error)
-        setMessages(prev => [...prev, `Error: ${error.message}`])
+        console.error("Deep research error:", error);
+        setMessages(prev => [...prev, `Error: ${error.message}`]);
         toast({
           title: "Deep Research Failed",
           description: error.message || "Failed to perform deep research",
           variant: "destructive",
-        })
-        setIsLoading(false)
-        return
+        });
+        setIsLoading(false);
+        return;
       }
 
       if (data?.report) {
-        setMessages(prev => [...prev, "Research report generated successfully!"])
+        setMessages(prev => [...prev, "Research report generated successfully!"]);
         setInsights({
           areasForResearch: data.report.keyFindings || [],
           supportingPoints: data.report.keyFindings || [],
           negativePoints: data.report.keyFindings || [],
           reasoning: data.report.analysis || "No analysis available",
           probability: data.report.conclusion || "No conclusion available",
-        })
+        });
       }
 
       if (data?.steps) {
@@ -241,26 +217,26 @@ export function WebResearchCard({ market, onSave }: WebResearchCardProps) {
           sites: [],
           sitesFound: 0,
           analysis: step.results,
-        }))
-        setIterations(newIterations)
+        }));
+        setIterations(newIterations);
       }
 
-      setIsLoading(false)
-      setIsComplete(true)
+      setIsLoading(false);
+      setIsComplete(true);
     } catch (error) {
-      console.error("Error in deep research:", error)
+      console.error("Error in deep research:", error);
       toast({
         title: "Deep Research Error",
         description: "An unexpected error occurred during deep research",
         variant: "destructive",
-      })
-      setIsLoading(false)
+      });
+      setIsLoading(false);
     }
-  }, [market, description, maxIterations, focusText, toast])
+  }, [market, description, maxIterations, focusText, toast]);
 
   const [researchStep, setResearchStep] = useState<
     "initial" | "query" | "research" | "analysis" | "complete"
-  >("initial")
+  >("initial");
 
   const startWebResearch = async () => {
     if (!market) {
@@ -379,6 +355,7 @@ export function WebResearchCard({ market, onSave }: WebResearchCardProps) {
           focusText={focusText}
           description={description}
           marketPrice={market?.price}
+          marketId={market?.id}
         />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
