@@ -437,8 +437,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         scrapePayload.focusText = focusText.trim();
         scrapePayload.researchFocus = focusText.trim();
         
-        setProgress(prev => [...prev, `Conducting focused web research on: ${focusText.trim()}`]);
-        
         if (previousResearchContext) {
           scrapePayload.previousQueries = previousResearchContext.queries;
           scrapePayload.previousAnalyses = previousResearchContext.analyses;
@@ -937,12 +935,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     try {
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
+      setProgress(prev => [...prev, `Market question: ${description}`])
       
       if (focusText.trim()) {
-        setProgress(prev => [...prev, `PRIMARY Research focus: ${focusText.trim()}`])
-        setProgress(prev => [...prev, `Market context: ${description}`])
-      } else {
-        setProgress(prev => [...prev, `Market question: ${description}`])
+        setProgress(prev => [...prev, `Research focus: ${focusText.trim()}`])
       }
       
       setProgress(prev => [...prev, "Generating initial search queries..."])
@@ -957,12 +953,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
           body: JSON.stringify({ 
-            query: focusText.trim() || description,
+            query: description,
             marketId: marketId,
             marketDescription: description,
-            marketQuestion: description,
+            question: description,
             iteration: 1,
-            focusText: focusText.trim() || null
+            focusText: focusText.trim()
           })
         });
 
@@ -1184,7 +1180,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           isLoading={isLoading}
           isAnalyzing={isAnalyzing}
           onResearch={handleResearch}
-          focusText={focusText}
         />
         
         <div className="flex space-x-2">

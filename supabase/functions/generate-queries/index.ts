@@ -30,11 +30,10 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    // Log the inputs to help with debugging
-    console.log('Focus text:', focusText || 'not provided')
+    console.log('Generating sub-queries for:', query)
     console.log('Market question:', marketQuestion || 'not provided')
-    console.log('Query:', query || 'not provided')
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
+    console.log('Focus text:', focusText || 'not provided')
     console.log('Iteration:', iteration)
     console.log('Previous queries count:', previousQueries.length)
     console.log('Previous analyses count:', previousAnalyses.length)
@@ -51,15 +50,12 @@ ${previousProbability ? `\nPrevious probability assessment: ${previousProbabilit
 DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
     }
 
-    // Build a directive prompt prioritizing the focus text if available
+    // Build a more directive prompt for focused research
     const focusedPrompt = focusText ? 
       `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
 Your task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
-CRITICAL REQUIREMENTS: 
-1. EVERY query MUST explicitly contain "${focusText}" verbatim
-2. Each query MUST include additional specific qualifiers beyond just the focus text
-3. Queries should target different aspects, angles, or dimensions of "${focusText}"
-4. Do NOT generate queries about the general topic "${query}" unless they specifically relate to "${focusText}"` 
+IMPORTANT: Do not generate general queries. EVERY query MUST explicitly mention or relate to "${focusText}".
+STRICT REQUIREMENT: Each query MUST contain "${focusText}" AND include additional specific qualifiers, angles, or dimensions.` 
       : 
       "You are a helpful assistant that generates search queries.";
     
@@ -89,19 +85,19 @@ ${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
 ${previousResearchContext}
 
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
-${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Each query MUST CONTAIN "${focusText}" verbatim.` : ''}
+${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed
+1. Highly specific and detailed about "${focusText}"
 2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
 4. COMPLETELY DIFFERENT from previous research queries
 5. Include specific entities, dates, or details to target precise information
 
-${focusText ? `EXAMPLE FORMAT for focused queries on "${focusText}":
-- "${focusText} detailed statistical analysis on employment rates 2022-2023"
-- "${focusText} case studies in developing countries with quantitative measurements"
-- "${focusText} negative consequences on small businesses documented research"` : ''}
+EXAMPLE FORMAT for focused queries on "economic impact":
+- "economic impact detailed statistical analysis on employment rates 2022-2023"
+- "economic impact case studies in developing countries with quantitative measurements"
+- "economic impact negative consequences on small businesses documented research"
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings. The format should be {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`
           }
@@ -205,30 +201,18 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       }
       
       // Validate each query and ensure they contain the focus area if specified
-      if (focusText) {
-        queriesData.queries = queriesData.queries.map((q: any, i: number) => {
-          if (typeof q !== 'string') {
-            return `${focusText} specific information ${i+1}`;
-          }
-          
-          const qLower = q.toLowerCase().trim();
-          const focusLower = focusText.toLowerCase().trim();
-          
-          // If focus text is not in the query, add it
-          if (!qLower.includes(focusLower)) {
-            return `${focusText} in context of: ${q}`;
-          }
-          
-          return q.trim();
-        });
-      } else {
-        queriesData.queries = queriesData.queries.map((q: any, i: number) => {
-          if (typeof q !== 'string' || q.trim().length < 5) {
-            return `${query} specific information ${i+1}`;
-          }
-          return q.trim();
-        });
-      }
+      queriesData.queries = queriesData.queries.map((q: any, i: number) => {
+        if (typeof q !== 'string' || q.trim().length < 5) {
+          return `${focusText || query} specific information ${i+1}`
+        }
+        
+        // If we have a focus text, ensure it's included in the query
+        if (focusText && !q.toLowerCase().includes(focusText.toLowerCase())) {
+          return `${q} specifically regarding ${focusText}`
+        }
+        
+        return q.trim()
+      })
       
       // If we have previous queries, make sure we're not duplicating them
       if (previousQueries.length > 0) {
@@ -315,17 +299,6 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
             }
           }
         }
-      }
-      
-      // Final validation - ensure EVERY query contains the focus text if one was provided
-      if (focusText) {
-        const focusLower = focusText.toLowerCase().trim();
-        queriesData.queries = queriesData.queries.map((q: string) => {
-          if (!q.toLowerCase().includes(focusLower)) {
-            return `${focusText}: ${q}`;
-          }
-          return q;
-        });
       }
       
       console.log('Generated queries:', queriesData.queries)
