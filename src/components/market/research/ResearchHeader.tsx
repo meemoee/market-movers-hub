@@ -1,28 +1,28 @@
 
 import { Button } from "@/components/ui/button"
 import { Loader2, Search } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 
 interface ResearchHeaderProps {
   isLoading: boolean
   isAnalyzing: boolean
-  onResearch: (directFocus?: string) => void
-  isFocusMode?: boolean
+  onResearch: () => void
   focusText?: string
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch, isFocusMode, focusText }: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
-      <h3 className="text-lg font-semibold flex items-center">
-        Web Research
-        {isFocusMode && (
-          <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">
-            Focus: {focusText && focusText.length > 15 ? `${focusText.substring(0, 15)}...` : focusText}
-          </span>
+      <div className="flex items-center gap-2">
+        <h3 className="text-lg font-semibold">Web Research</h3>
+        {focusText && (
+          <Badge variant="outline" className="text-xs bg-primary/10 border-primary/20">
+            Focus: {focusText.length > 25 ? `${focusText.substring(0, 25)}...` : focusText}
+          </Badge>
         )}
-      </h3>
+      </div>
       <Button 
-        onClick={() => onResearch()} 
+        onClick={onResearch} 
         disabled={isLoading || isAnalyzing}
         variant="outline"
         size="sm"
@@ -35,7 +35,7 @@ export function ResearchHeader({ isLoading, isAnalyzing, onResearch, isFocusMode
         ) : (
           <>
             <Search className="mr-2 h-4 w-4" />
-            {isFocusMode ? 'Refocus Research' : 'Research'}
+            Research
           </>
         )}
       </Button>
