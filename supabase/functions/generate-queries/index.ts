@@ -38,7 +38,7 @@ serve(async (req) => {
     console.log('Previous queries count:', previousQueries.length)
     console.log('Previous analyses count:', previousAnalyses.length)
     
-    // Create context from previous research if available
+    // Enhanced context processing for focused research with improved logging
     let previousResearchContext = '';
     if (previousQueries.length > 0 || previousAnalyses.length > 0) {
       previousResearchContext = `
