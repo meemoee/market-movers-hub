@@ -946,15 +946,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     console.log(`Starting research with focus text: "${actualFocusText || 'none'}"`)
     
     try {
-      const initialQueries = [`${description.substring(0, 150)}`]
-      
-      if (actualFocusText) {
-        initialQueries.unshift(`${actualFocusText}`)
-        initialQueries.push(`${actualFocusText} latest information`)
-      }
-      
-      setCurrentQueries(initialQueries)
-      setCurrentQueryIndex(-1)
+      setProgress(prev => [...prev, `Generating initial search queries...`])
       
       if (parentResearchId) {
         const parent = findParentResearch(parentResearchId)
@@ -968,8 +960,59 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           console.log(`Loaded context from parent research: ${parentResearchId}`)
         }
       }
+
+      try {
+        const { data: initialQueriesData, error: initialQueriesError } = await supabase.functions.invoke('generate-queries', {
+          body: JSON.stringify({ 
+            query: description,
+            marketQuestion: description,
+            marketId: marketId,
+            marketPrice: marketPrice,
+            focusText: actualFocusText,
+            iteration: 1,
+            previousQueries: previousResearchContext?.queries || [],
+            previousAnalyses: previousResearchContext?.analyses || [],
+            previousProbability: previousResearchContext?.probability
+          })
+        })
+
+        if (initialQueriesError) {
+          console.error("Error from generate-queries for initial queries:", initialQueriesError);
+          throw new Error(`Error generating initial queries: ${initialQueriesError.message}`)
+        }
+
+        if (!initialQueriesData?.queries || !Array.isArray(initialQueriesData.queries)) {
+          console.error("Invalid initial queries response:", initialQueriesData);
+          throw new Error('Invalid initial queries response')
+        }
+
+        console.log(`Generated initial queries:`, initialQueriesData.queries)
+        setProgress(prev => [...prev, `Generated ${initialQueriesData.queries.length} initial search queries`])
+        
+        setCurrentQueries(initialQueriesData.queries);
+        setCurrentQueryIndex(-1);
+        
+        initialQueriesData.queries.forEach((query: string, index: number) => {
+          setProgress(prev => [...prev, `Initial Query ${index + 1}: "${query}"`])
+        })
+
+        await handleWebScrape(initialQueriesData.queries, 1, [], actualFocusText)
+      } catch (error) {
+        console.error("Error generating initial queries:", error);
+        
+        const fallbackQueries = [
+          `${description.substring(0, 150)}`,
+          ...(actualFocusText ? [`${actualFocusText}`, `${actualFocusText} latest information`] : []),
+          `${marketId} recent updates`,
+          `${description.split(' ').slice(0, 10).join(' ')} analysis`
+        ]
+        
+        setProgress(prev => [...prev, `Using fallback queries due to error: ${error.message}`])
+        setCurrentQueries(fallbackQueries);
+        setCurrentQueryIndex(-1);
+        await handleWebScrape(fallbackQueries, 1, [], actualFocusText)
+      }
       
-      await handleWebScrape(initialQueries, 1, [], actualFocusText)
       await saveResearch()
     } catch (error) {
       console.error("Error starting research:", error)

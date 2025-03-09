@@ -65,6 +65,25 @@ export function ProgressDisplay({
             </div>
           ))}
           <div ref={messagesEndRef} />
+          
+          {isLoading && currentQueryIndex !== undefined && currentQueryIndex >= 0 && queries && queries.length > 0 && (
+            <div className="mt-2 pt-2 border-t">
+              <div className="text-xs text-muted-foreground mb-1">Current search queries:</div>
+              <div className="space-y-1">
+                {queries.map((query, index) => (
+                  <div 
+                    key={`query-${index}`}
+                    className={cn(
+                      "text-xs px-2 py-1 rounded",
+                      index === currentQueryIndex ? "bg-primary/10 text-primary" : "text-muted-foreground"
+                    )}
+                  >
+                    {index + 1}. {query.length > 80 ? `${query.substring(0, 80)}...` : query}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
     </div>

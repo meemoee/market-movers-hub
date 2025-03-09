@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -29,12 +30,12 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    // Log the inputs to help with debugging
+    // Enhanced logging, especially for the first iteration
+    console.log(`========== GENERATE QUERIES - ITERATION ${iteration} ==========`)
     console.log('Focus text:', focusText || 'not provided')
     console.log('Market question:', marketQuestion || 'not provided')
     console.log('Query:', query || 'not provided')
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
-    console.log('Iteration:', iteration)
     console.log('Previous queries count:', previousQueries.length)
     console.log('Previous analyses count:', previousAnalyses.length)
     
@@ -47,8 +48,33 @@ ${previousQueries.length > 0 ? `Previous search queries used:\n${previousQueries
 ${previousAnalyses.length > 0 ? `\nPrevious analysis summary:\n${previousAnalyses.slice(-1)[0].substring(0, 800)}${previousAnalyses.slice(-1)[0].length > 800 ? '...' : ''}` : ''}
 ${previousProbability ? `\nPrevious probability assessment: ${previousProbability}` : ''}
 
-DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
+DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions.`;
     }
+
+    // Different prompt strategy for first iteration vs. subsequent iterations
+    const isFirstIteration = iteration <= 1;
+    
+    // For first iteration, give more structure to ensure good foundation
+    const firstIterationPrompt = `You are a professional research assistant with expertise in creating effective search queries for market research.
+
+TASK: Generate 5 well-structured search queries to gather comprehensive information about: "${query}"
+
+RESEARCH CONTEXT:
+${marketQuestion ? `- Market Question: ${marketQuestion}` : `- Topic: ${query}`}
+${marketPrice !== undefined ? `- Current Market Probability: ${marketPrice}%` : ''}
+${focusText ? `- Your focus area: ${focusText}` : ''}
+
+QUERY REQUIREMENTS:
+1. Each query must be specific, detailed, and designed to return high-quality information
+2. Include a diverse mix of factual, analytical, and perspective-seeking queries
+3. Each query should target a different aspect of the topic
+4. Use precise wording, including dates, statistics, or entities when relevant
+5. Format each query as a proper search term, not a question`;
+
+    // For later iterations, focus on filling research gaps
+    const laterIterationPrompt = `You are a specialized research assistant focusing on expanding existing research.
+
+Your task is to generate search queries that explore NEW dimensions of: "${query}"${focusText ? ` with a focus on "${focusText}"` : ''}`;
 
     // Build a directive prompt prioritizing the focus text if available
     const focusedPrompt = focusText ? 
@@ -60,14 +86,14 @@ CRITICAL REQUIREMENTS:
 3. Queries should target different aspects, angles, or dimensions of "${focusText}"
 4. Do NOT generate queries about the general topic "${query}" unless they specifically relate to "${focusText}"` 
       : 
-      "You are a helpful assistant that generates search queries.";
+      isFirstIteration ? firstIterationPrompt : laterIterationPrompt;
     
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
+        'HTTP-Referer': 'https://hunchex.io', // Using a real domain to avoid OpenRouter restrictions
         'X-Title': 'Market Research App',
       },
       body: JSON.stringify({
@@ -84,7 +110,7 @@ CRITICAL REQUIREMENTS:
 ${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
 ${focusText ? `YOUR SEARCH FOCUS MUST BE ON: ${focusText}` : ''}
-${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
+${iteration > 1 ? `Current research iteration: ${iteration}` : 'This is the FIRST iteration of research.'}
 ${previousResearchContext}
 
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
@@ -102,6 +128,8 @@ ${focusText ? `EXAMPLE FORMAT for focused queries on "${focusText}":
 - "${focusText} case studies in developing countries with quantitative measurements"
 - "${focusText} negative consequences on small businesses documented research"` : ''}
 
+${isFirstIteration ? `Since this is the FIRST iteration, ensure your queries establish a strong foundation for the research by targeting the most important aspects of ${focusText || query}.` : `For this follow-up iteration, focus on areas that might have been missed in earlier research.`}
+
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings. The format should be {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`
           }
         ],
@@ -110,6 +138,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     })
 
     if (!response.ok) {
+      console.error(`OpenRouter API error: ${response.status}`)
       throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
@@ -124,6 +153,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       // First try parsing the content directly
       try {
         queriesData = JSON.parse(content)
+        console.log('Successfully parsed JSON response')
       } catch (parseError) {
         console.log('Standard JSON parsing failed, attempting alternate parsing methods')
         
@@ -163,15 +193,29 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         
         // Last resort: use fallback queries
         if (!queriesData || !queriesData.queries || !Array.isArray(queriesData.queries) || queriesData.queries.length === 0) {
-          console.log('Using fallback queries')
-          queriesData = {
-            queries: [
-              `${focusText || query} latest information`,
-              `${focusText || query} analysis and trends`,
-              `${focusText || query} expert opinions`,
-              `${focusText || query} recent developments`,
-              `${focusText || query} statistics and data`
-            ]
+          console.log('Using fallback queries for iteration', iteration)
+          
+          // Different fallbacks for first iteration vs subsequent ones
+          if (isFirstIteration) {
+            queriesData = {
+              queries: [
+                `${focusText || query} comprehensive overview`,
+                `${focusText || query} latest developments 2023-2024`,
+                `${focusText || query} analysis and statistics`,
+                `${focusText || query} expert opinions and research papers`,
+                `${focusText || query} critical factors and indicators`
+              ]
+            }
+          } else {
+            queriesData = {
+              queries: [
+                `${focusText || query} latest information iteration ${iteration}`,
+                `${focusText || query} analysis and trends iteration ${iteration}`,
+                `${focusText || query} expert perspectives iteration ${iteration}`,
+                `${focusText || query} recent developments iteration ${iteration}`,
+                `${focusText || query} statistical data iteration ${iteration}`
+              ]
+            }
           }
         }
       }
@@ -349,7 +393,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         });
       }
       
-      console.log('Final generated queries:', queriesData.queries)
+      console.log(`Final generated queries for iteration ${iteration}:`, queriesData.queries)
 
       return new Response(
         JSON.stringify({ queries: queriesData.queries }),
