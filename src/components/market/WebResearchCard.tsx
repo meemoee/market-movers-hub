@@ -1,4 +1,4 @@
-<lov-code>
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -930,4 +930,396 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           };
           
           setStreamingState({
-            rawText: JSON.stringify(parsedData, null, 2
+            rawText: JSON.stringify(parsedData, null, 2),
+            parsedData: {
+              probability,
+              areasForResearch,
+              reasoning,
+              supportingPoints,
+              negativePoints
+            }
+          });
+          
+          // Log the extracted data for debugging
+          console.log("Extracted probability:", probability);
+          console.log("Areas for research:", areasForResearch.length);
+          console.log("Supporting points:", supportingPoints.length);
+          console.log("Negative points:", negativePoints.length);
+          
+          // Save research using the direct insights data rather than waiting for state updates
+          await saveResearch(insightsForSaving);
+          
+          setIsLoading(false);
+          setIsAnalyzing(false);
+        }
+      } catch (e) {
+        console.error("Error processing insights response:", e);
+        setError(`Error processing insights: ${e.message}`);
+        
+        // Still try to save with whatever data we have
+        if (insightsData.probability) {
+          await saveResearch({
+            probability: insightsData.probability,
+            areasForResearch: Array.isArray(insightsData.areasForResearch) ? insightsData.areasForResearch : ["Further research needed"],
+            reasoning: insightsData.reasoning || ""
+          });
+        }
+        
+        setIsLoading(false);
+        setIsAnalyzing(false);
+      }
+    } catch (error) {
+      console.error("Error extracting insights:", error);
+      setError(`Error extracting insights: ${error.message}`);
+      setIsLoading(false);
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleStartResearch = () => {
+    setIsLoading(true)
+    setError(null)
+    setResults([])
+    setAnalysis('')
+    setIterations([])
+    setProgress([])
+    setStreamingState({
+      rawText: '',
+      parsedData: null
+    })
+    setExpandedIterations(['iteration-1'])
+    setParentResearchId(null)
+    setLoadedResearchId(null)
+    
+    const initialQueries = [
+      description,
+      `${description} analysis`,
+      `${description} probability`
+    ];
+    
+    setProgress([`Starting web research on: ${description}`])
+    
+    handleWebScrape(initialQueries, 1)
+  }
+
+  const handleFocusedResearch = () => {
+    if (!focusText.trim()) {
+      toast({
+        title: "Focus text required",
+        description: "Please enter a specific area to focus your research on.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsLoading(true)
+    setError(null)
+    setResults([])
+    setAnalysis('')
+    setIterations([])
+    setProgress([])
+    setStreamingState({
+      rawText: '',
+      parsedData: null
+    })
+    setExpandedIterations(['iteration-1'])
+    
+    // If we have a loaded research, set it as the parent for this new focused research
+    if (loadedResearchId) {
+      setParentResearchId(loadedResearchId)
+    }
+    
+    // Clear the loaded research ID so we can save this as a new research item
+    setLoadedResearchId(null)
+    
+    // Generate focused queries
+    const focusedQueries = [
+      focusText.trim(),
+      `${focusText.trim()} analysis`,
+      `${focusText.trim()} evidence`,
+      `${description} ${focusText.trim()}`
+    ];
+    
+    setProgress([
+      `Starting focused web research on: ${focusText.trim()}`,
+      `Core market question: ${description}`,
+    ]);
+    
+    handleWebScrape(focusedQueries, 1, [], focusText.trim());
+  }
+
+  const renderResearchActions = () => {
+    if (isLoading) {
+      return (
+        <Button variant="outline" disabled>
+          <div className="animate-spin mr-2 h-4 w-4 border-2 border-primary border-t-transparent rounded-full" />
+          Research in progress...
+        </Button>
+      )
+    }
+
+    if (savedResearch && savedResearch.length > 0) {
+      return (
+        <div className="flex flex-wrap gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex gap-1 items-center">
+                <Search size={16} />
+                Load Research
+                <ChevronDown size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="w-72">
+              <DropdownMenuLabel>Saved Research</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <ScrollArea className="h-[300px]">
+                {savedResearch.map(research => (
+                  <DropdownMenuItem 
+                    key={research.id} 
+                    className="flex flex-col items-start p-3 border-b cursor-pointer"
+                    onClick={() => loadSavedResearch(research)}
+                  >
+                    <div className="flex w-full justify-between items-center gap-2">
+                      <span className="font-medium text-sm truncate max-w-[220px]">
+                        {research.focus_text ? research.focus_text : 'General research'}
+                      </span>
+                      <Badge variant="outline" className="text-[10px]">
+                        {research.probability || 'N/A'}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground mt-1">
+                      {format(new Date(research.created_at), 'MMM d, h:mm a')}
+                    </span>
+                    {research.parent_research_id && (
+                      <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
+                        <GitBranch size={10} />
+                        <span>Focused research</span>
+                      </div>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </ScrollArea>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          <Button variant="default" onClick={handleStartResearch}>
+            <Search size={16} className="mr-2" />
+            New Research
+          </Button>
+          
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline">
+                <Settings size={16} className="mr-2" />
+                Settings
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-4">
+                <h4 className="font-medium">Research Settings</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <label className="text-sm">Max Iterations: {maxIterations}</label>
+                    <span className="text-sm text-muted-foreground">{maxIterations}</span>
+                  </div>
+                  <Slider
+                    defaultValue={[maxIterations]}
+                    max={5}
+                    min={1}
+                    step={1}
+                    onValueChange={(values) => setMaxIterations(values[0])}
+                  />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex gap-2">
+        <Button variant="default" onClick={handleStartResearch}>
+          <Search size={16} className="mr-2" />
+          Research this Market
+        </Button>
+        
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline">
+              <Settings size={16} className="mr-2" />
+              Settings
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-80">
+            <div className="space-y-4">
+              <h4 className="font-medium">Research Settings</h4>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <label className="text-sm">Max Iterations: {maxIterations}</label>
+                  <span className="text-sm text-muted-foreground">{maxIterations}</span>
+                </div>
+                <Slider
+                  defaultValue={[maxIterations]}
+                  max={5}
+                  min={1}
+                  step={1}
+                  onValueChange={(values) => setMaxIterations(values[0])}
+                />
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+      </div>
+    )
+  }
+
+  return (
+    <Card className="p-4 w-full relative overflow-hidden">
+      <ResearchHeader 
+        description={description} 
+        marketId={marketId}
+        marketPrice={marketPrice}
+      />
+
+      {/* Research Actions */}
+      <div className="mt-4 space-y-4">
+        {renderResearchActions()}
+  
+        {parentResearch && (
+          <div className="mt-2 flex items-center gap-1">
+            <ArrowLeftCircle size={14} className="text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">
+              Focused research from: {parentResearch.focus_text || 'General research'}
+            </span>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="h-6 text-xs" 
+              onClick={() => loadSavedResearch(parentResearch)}
+            >
+              View parent
+            </Button>
+          </div>
+        )}
+        
+        {/* Focus Research Input */}
+        {(loadedResearchId || isAnalyzing || results.length > 0) && (
+          <div className="flex flex-col gap-2 mt-2">
+            <div className="flex items-center gap-2">
+              <Input
+                placeholder="Focus research on a specific aspect..."
+                value={focusText}
+                onChange={(e) => setFocusText(e.target.value)}
+                disabled={isLoading}
+              />
+              <Button 
+                variant="secondary" 
+                disabled={isLoading || !focusText.trim()} 
+                onClick={handleFocusedResearch}
+              >
+                Focus
+              </Button>
+            </div>
+            
+            {childResearchList.length > 0 && (
+              <div className="mt-1">
+                <span className="text-xs text-muted-foreground">Related focused research:</span>
+                <div className="flex flex-wrap gap-1 mt-1">
+                  {childResearchList.map(child => (
+                    <Badge 
+                      key={child.id} 
+                      variant="outline" 
+                      className="cursor-pointer hover:bg-accent transition-colors"
+                      onClick={() => loadSavedResearch(child)}
+                    >
+                      {child.focus_text || 'Focused research'}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Progress Display */}
+      {(isLoading || progress.length > 0) && (
+        <div className="mt-4">
+          <ProgressDisplay 
+            messages={progress} 
+            isLoading={isLoading} 
+            currentProgress={currentQueryIndex !== -1 ? (currentQueryIndex + 1) / (currentQueries.length || 1) : 0}
+            currentQuery={currentQueryIndex !== -1 ? currentQueries[currentQueryIndex] : null}
+            queries={currentQueries}
+            currentIteration={currentIteration}
+            maxIterations={maxIterations}
+          />
+        </div>
+      )}
+
+      {/* Error Display */}
+      {error && (
+        <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-md">
+          {error}
+        </div>
+      )}
+
+      {/* Results Display */}
+      {results.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-medium mb-2">Web Sources ({results.length})</h3>
+          <SitePreviewList results={results} />
+        </div>
+      )}
+
+      {/* Analysis Display */}
+      {analysis && (
+        <div className="mt-4">
+          <h3 className="text-sm font-medium mb-2">Analysis</h3>
+          <AnalysisDisplay content={analysis} />
+        </div>
+      )}
+
+      {/* Iterations */}
+      {iterations.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-medium mb-2">Research Iterations</h3>
+          <div className="space-y-2">
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={`iteration-${iteration.iteration}`}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
+                onToggle={() => {
+                  setExpandedIterations(prev => {
+                    const id = `iteration-${iteration.iteration}`;
+                    if (prev.includes(id)) {
+                      return prev.filter(item => item !== id);
+                    } else {
+                      return [...prev, id];
+                    }
+                  });
+                }}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Insights Display */}
+      {streamingState.parsedData && (
+        <div className="mt-4">
+          <h3 className="text-sm font-medium mb-2">Insights</h3>
+          <InsightsDisplay
+            probability={streamingState.parsedData.probability}
+            areasForResearch={streamingState.parsedData.areasForResearch}
+            supportingPoints={streamingState.parsedData.supportingPoints}
+            negativePoints={streamingState.parsedData.negativePoints}
+            reasoning={streamingState.parsedData.reasoning}
+          />
+        </div>
+      )}
+    </Card>
+  )
+}
