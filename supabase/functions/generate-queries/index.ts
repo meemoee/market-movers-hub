@@ -50,47 +50,14 @@ ${previousProbability ? `\nPrevious probability assessment: ${previousProbabilit
 DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
     }
 
-    // Enhanced system prompt for focused research to ensure LLM prioritizes focus text
-    let systemPrompt = 'You are a helpful assistant that generates search queries.';
-    
-    if (focusText) {
-      systemPrompt = `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
-Your task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
-CRITICAL REQUIREMENT: EVERY query MUST explicitly mention "${focusText}" and include additional specific qualifiers or dimensions.
-DO NOT generate generic queries or queries that fail to directly address "${focusText}".`;
-    }
+    // Enhanced system prompt with stricter guidelines
+    const systemPrompt = generateSystemPrompt(focusText, query);
     
     // Log additional debug information
     console.log('Using system prompt:', systemPrompt.substring(0, 100) + '...')
     
-    // Construct a more specific user prompt that emphasizes the focus area
-    let userPrompt = `Generate 5 diverse search queries to gather comprehensive information about: ${focusText || query}
-
-${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
-${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
-${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
-${previousResearchContext}`;
-
-    // Add stronger guidance for focused queries
-    if (focusText) {
-      userPrompt += `\n\nCRITICAL REQUIREMENTS FOR YOUR QUERIES:
-1. EVERY query MUST begin with "${focusText}: " to ensure proper focus
-2. Each query must be detailed and specific about "${focusText}"
-3. Include different aspects and angles for each query
-4. Each query should be 10-20 words long and provide clear search intent
-5. DO NOT repeat or closely resemble previous research queries
-
-EXAMPLE FORMAT for "${focusText}" queries:
-- "${focusText}: detailed statistical analysis from reputable sources 2023-2024"
-- "${focusText}: official statements from White House press releases verified"
-- "${focusText}: contradictory evidence from major news organizations"
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
-    } else {
-      userPrompt += `\n\nGenerate 5 search queries that are diverse, specific, and include different aspects of the topic.
-
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
-    }
+    // Construct a more specific user prompt with explicit formatting requirements
+    const userPrompt = generateUserPrompt(focusText, query, marketQuestion, marketPrice, iteration, previousResearchContext);
     
     try {
       console.log('Sending request to OpenRouter API...');
@@ -136,63 +103,42 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       const content = result.choices[0].message.content.trim();
       console.log('Raw LLM response:', content);
       
+      // Parse the JSON response with more robust error handling
       try {
         // Parse the JSON response directly
         const queriesData = JSON.parse(content);
         
         if (!queriesData.queries || !Array.isArray(queriesData.queries) || queriesData.queries.length === 0) {
           console.error('No valid queries in response:', queriesData);
-          throw new Error('No valid queries in response');
+          console.log('Attempting to extract queries from malformed response...');
+          
+          // Try to extract queries from non-standard response
+          const extractedQueries = extractQueriesFromText(content, focusText || query);
+          if (extractedQueries.length > 0) {
+            console.log('Successfully extracted queries from text:', extractedQueries);
+            return formatSuccessResponse(enhanceQueriesWithFocus(extractedQueries, focusText, query));
+          }
+          
+          throw new Error('No valid queries in response and extraction failed');
         }
         
         // Process and enhance the queries for better focus
-        let enhancedQueries = [...queriesData.queries];
-        
-        // Ensure we have exactly 5 queries
-        if (enhancedQueries.length < 5) {
-          console.log('Less than 5 queries received, filling with generated ones');
-          
-          // Generate additional queries if we don't have enough
-          const generatedQueries = generateFocusedQueries(focusText || query, 5 - enhancedQueries.length, iteration);
-          enhancedQueries = [...enhancedQueries, ...generatedQueries];
-        } else if (enhancedQueries.length > 5) {
-          console.log('More than 5 queries received, trimming to 5');
-          enhancedQueries = enhancedQueries.slice(0, 5);
-        }
-        
-        // Ensure focus text is properly included in each query
-        if (focusText) {
-          enhancedQueries = enhancedQueries.map((query, index) => {
-            // Check if query already includes the focus text
-            if (!query.toLowerCase().includes(focusText.toLowerCase())) {
-              return `${focusText}: ${query}`;
-            }
-            
-            // If query doesn't start with the focus text, prepend it
-            if (!query.toLowerCase().startsWith(focusText.toLowerCase())) {
-              // Remove any occurrence of focus text in the middle of the query to avoid duplication
-              const cleanQuery = query.replace(new RegExp(focusText, 'i'), '').trim();
-              return `${focusText}: ${cleanQuery}`;
-            }
-            
-            return query;
-          });
-        }
+        let enhancedQueries = enhanceQueriesWithFocus(queriesData.queries, focusText, query);
         
         console.log('Final enhanced queries:', enhancedQueries);
         
-        return new Response(
-          JSON.stringify({ queries: enhancedQueries }),
-          { 
-            headers: { 
-              ...corsHeaders,
-              'Content-Type': 'application/json'
-            } 
-          }
-        );
+        return formatSuccessResponse(enhancedQueries);
       } catch (parseError) {
         console.error('Error parsing LLM response:', parseError);
         console.error('Raw content causing error:', content);
+        
+        // Try to extract queries from malformed response
+        const extractedQueries = extractQueriesFromText(content, focusText || query);
+        if (extractedQueries.length > 0) {
+          console.log('Successfully extracted queries despite parse error:', extractedQueries);
+          return formatSuccessResponse(enhanceQueriesWithFocus(extractedQueries, focusText, query));
+        }
+        
         throw parseError;
       }
     } catch (apiError) {
@@ -230,54 +176,196 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
 
 // Helper function to generate focused fallback queries
 function generateFocusedFallbackQueries(focusText: string, count: number, iteration: number): string[] {
+  // Add unique identifier to prevent duplicates
+  const uniqueId = Date.now().toString().slice(-4);
+  
   // For focus text, create specific and diverse queries
   if (focusText) {
-    // Template patterns for focused research
+    // Template patterns for focused research with explicit query requirements
     const templates = [
-      `${focusText}: recent official statements and press releases from authoritative sources`,
-      `${focusText}: detailed factual information with verification from multiple sources`,
-      `${focusText}: comprehensive analysis with supporting evidence iteration ${iteration}`,
-      `${focusText}: specific examples documented in reliable news sources iteration ${iteration}`,
-      `${focusText}: expert opinions and analysis from credible organizations iteration ${iteration}`,
-      `${focusText}: statistical data and evidence with proper attribution iteration ${iteration}`,
-      `${focusText}: historical precedents and comparative analysis iteration ${iteration}`,
-      `${focusText}: documented timeline of events with verification iteration ${iteration}`,
-      `${focusText}: contradictory viewpoints with supporting evidence iteration ${iteration}`,
-      `${focusText}: latest developments reported by major news outlets iteration ${iteration}`
+      `${focusText}: recent verified information from official sources ${uniqueId}-${iteration}`,
+      `${focusText}: detailed factual analysis with supporting evidence ${uniqueId}-${iteration}`,
+      `${focusText}: comprehensive evaluation from multiple perspectives ${uniqueId}-${iteration}`,
+      `${focusText}: specific documented examples from reliable sources ${uniqueId}-${iteration}`,
+      `${focusText}: expert assessments and professional opinions ${uniqueId}-${iteration}`,
+      `${focusText}: statistical data and quantitative measurements ${uniqueId}-${iteration}`,
+      `${focusText}: historical development and progressive changes ${uniqueId}-${iteration}`,
+      `${focusText}: verified timeline of key events and decisions ${uniqueId}-${iteration}`,
+      `${focusText}: contrasting viewpoints with evidential support ${uniqueId}-${iteration}`,
+      `${focusText}: latest developments reported by credible outlets ${uniqueId}-${iteration}`
     ];
     
     // Return unique templates based on the count needed
-    return templates.slice(0, count).map((template, i) => 
-      template + (i > 0 ? ` variant ${i}` : '')
-    );
+    return templates.slice(0, count);
   }
   
   // For general queries without focus
   return [
-    `${query} latest information iteration ${iteration}`,
-    `${query} analysis and trends iteration ${iteration}`,
-    `${query} expert opinions iteration ${iteration}`,
-    `${query} recent developments iteration ${iteration}`,
-    `${query} statistics and data iteration ${iteration}`
+    `${query} latest authoritative information ${uniqueId}-${iteration}`,
+    `${query} detailed analysis from multiple sources ${uniqueId}-${iteration}`,
+    `${query} expert perspectives and specialized knowledge ${uniqueId}-${iteration}`,
+    `${query} recent developments with contextual background ${uniqueId}-${iteration}`,
+    `${query} factual statistics with proper attribution ${uniqueId}-${iteration}`
   ].slice(0, count);
 }
 
-// Helper function to generate additional focused queries if needed
-function generateFocusedQueries(focusText: string, count: number, iteration: number): string[] {
-  const uniqueId = Date.now().toString().slice(-4);
+// Helper function to generate system prompt with appropriate constraints
+function generateSystemPrompt(focusText: string | undefined, query: string): string {
+  if (focusText) {
+    return `You are a specialized research assistant with EXCLUSIVE FOCUS on: "${focusText}".
+Your critical task is to generate highly specific search queries about "${focusText}" that will provide targeted information relevant to the topic.
+
+CRITICAL REQUIREMENTS:
+1. EVERY query MUST explicitly start with "${focusText}: " followed by specific qualifiers
+2. EVERY query MUST be directly about "${focusText}" - this is non-negotiable
+3. Do not generate general or tangential queries that fail to focus specifically on "${focusText}"
+4. If you cannot generate queries about "${focusText}", you MUST still format your response as a JSON object with the 'queries' array`;
+  } else {
+    return 'You are a helpful assistant that generates search queries. Your goal is to provide diverse, specific, and useful queries that will yield informative search results.';
+  }
+}
+
+// Helper function to generate user prompt with explicit guidance
+function generateUserPrompt(
+  focusText: string | undefined, 
+  query: string, 
+  marketQuestion: string | undefined,
+  marketPrice: number | undefined,
+  iteration: number,
+  previousResearchContext: string
+): string {
+  let prompt = `Generate 5 diverse search queries to gather comprehensive information about: ${focusText || query}
+
+${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
+${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
+${previousResearchContext}`;
+
+  // Add stronger guidance for focused queries
+  if (focusText) {
+    prompt += `\n\nABSOLUTE REQUIREMENTS FOR YOUR QUERIES:
+1. EVERY query MUST begin with "${focusText}: " exactly as written
+2. Each query must be 10-20 words long after the "${focusText}: " prefix
+3. Each query must explore a distinct aspect or angle of "${focusText}"
+4. NEVER repeat or paraphrase previous queries
+5. Do not include questions, just search terms
+
+EXAMPLE FORMAT (follow this precisely):
+- "${focusText}: statistical analysis from official government data 2023-2024"
+- "${focusText}: verified statements from authoritative sources with evidence"
+- "${focusText}: documented case studies with supporting evidence"
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
+  } else {
+    prompt += `\n\nGenerate 5 search queries that are diverse, specific, and include different aspects of the topic.
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
+  }
   
-  const templates = [
-    `${focusText}: detailed analysis from multiple credible sources ${uniqueId}-${iteration}`,
-    `${focusText}: verified information with supporting evidence ${uniqueId}-${iteration}`,
-    `${focusText}: comparative assessment with historical context ${uniqueId}-${iteration}`,
-    `${focusText}: expert evaluation with data-driven insights ${uniqueId}-${iteration}`,
-    `${focusText}: quantitative measurements from reliable sources ${uniqueId}-${iteration}`,
-    `${focusText}: timeline of developments with verification ${uniqueId}-${iteration}`,
-    `${focusText}: opposing viewpoints with factual support ${uniqueId}-${iteration}`,
-    `${focusText}: statistical analysis with proper attribution ${uniqueId}-${iteration}`,
-    `${focusText}: case studies demonstrating real-world impact ${uniqueId}-${iteration}`,
-    `${focusText}: academic research findings with citations ${uniqueId}-${iteration}`
-  ];
+  return prompt;
+}
+
+// Helper function to enhance queries with focus text
+function enhanceQueriesWithFocus(
+  queries: string[], 
+  focusText: string | undefined, 
+  query: string
+): string[] {
+  // No enhancements needed if no focus text
+  if (!focusText) return queries.slice(0, 5);
   
-  return templates.slice(0, count);
+  // Process each query to ensure it properly focuses on the topic
+  let enhancedQueries = queries.map(queryText => {
+    // Clean the query of any markdown or other formatting
+    let cleanQuery = queryText.replace(/^[-*•>]+\s*/, '').trim();
+    
+    // If the query doesn't start with the focus text, ensure it does
+    if (!cleanQuery.toLowerCase().startsWith(focusText.toLowerCase())) {
+      // Remove any occurrences of the focus text to avoid duplication
+      const focusTextRegex = new RegExp(focusText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      cleanQuery = cleanQuery.replace(focusTextRegex, '').trim();
+      
+      // Handle punctuation between focus text and the rest of the query
+      cleanQuery = cleanQuery.replace(/^[:\-;,.\s]+/, '').trim();
+      
+      // Combine focus text with the cleaned query
+      return `${focusText}: ${cleanQuery}`;
+    }
+    
+    return cleanQuery;
+  });
+  
+  // Filter out empty or too short queries
+  enhancedQueries = enhancedQueries.filter(q => q.length > focusText.length + 3);
+  
+  // Ensure we have enough queries
+  while (enhancedQueries.length < 5) {
+    const fallbackQuery = generateFocusedFallbackQueries(focusText, 1, Date.now())[0];
+    if (!enhancedQueries.includes(fallbackQuery)) {
+      enhancedQueries.push(fallbackQuery);
+    }
+  }
+  
+  // Return at most 5 queries
+  return enhancedQueries.slice(0, 5);
+}
+
+// Helper function to extract queries from potentially malformed responses
+function extractQueriesFromText(text: string, focusText: string): string[] {
+  const queries: string[] = [];
+  
+  // Try multiple extraction patterns
+  
+  // Pattern 1: Look for numbered lists (1. query text)
+  const numberedRegex = /\d+\.\s*(.+?)(?=\n\d+\.|\n\n|$)/gs;
+  let match;
+  while ((match = numberedRegex.exec(text)) !== null) {
+    if (match[1]?.trim()) queries.push(match[1].trim());
+  }
+  
+  // Pattern 2: Look for bullet points
+  const bulletRegex = /[-*•][ \t]*([^\n]+)/g;
+  while ((match = bulletRegex.exec(text)) !== null) {
+    if (match[1]?.trim()) queries.push(match[1].trim());
+  }
+  
+  // Pattern 3: Look for quoted text
+  const quoteRegex = /"([^"]+)"/g;
+  while ((match = quoteRegex.exec(text)) !== null) {
+    if (match[1]?.trim()) queries.push(match[1].trim());
+  }
+  
+  // Pattern 4: Just split by newlines as a last resort
+  if (queries.length === 0) {
+    const lines = text.split('\n')
+      .map(line => line.trim())
+      .filter(line => 
+        line.length > 10 && 
+        !line.startsWith('{') && 
+        !line.includes('":') &&
+        !line.startsWith('}') && 
+        !line.startsWith('[') && 
+        !line.startsWith(']')
+      );
+    
+    queries.push(...lines);
+  }
+  
+  return queries
+    .map(q => q.replace(/^[-*•>]+\s*/, '').trim())
+    .filter((q, i, arr) => q.length > 5 && arr.indexOf(q) === i)
+    .slice(0, 5);
+}
+
+// Helper function to format the success response
+function formatSuccessResponse(queries: string[]): Response {
+  return new Response(
+    JSON.stringify({ queries }),
+    { 
+      headers: { 
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      } 
+    }
+  );
 }
