@@ -1,4 +1,3 @@
-
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -70,8 +69,16 @@ export function InsightsDisplay({
   // Helper function to find a child research that matches a specific research area
   const findMatchingChildResearch = (area: string): ResearchChild | undefined => {
     if (!childResearches) return undefined;
+    
+    // Use exact match first
+    const exactMatch = childResearches.find(child => 
+      child.focusText.toLowerCase() === area.toLowerCase()
+    );
+    
+    if (exactMatch) return exactMatch;
+    
+    // If no exact match, use looser match criteria
     return childResearches.find(child => 
-      child.focusText.toLowerCase() === area.toLowerCase() ||
       area.toLowerCase().includes(child.focusText.toLowerCase()) ||
       child.focusText.toLowerCase().includes(area.toLowerCase())
     );
