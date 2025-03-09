@@ -434,7 +434,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketDescription: description
       };
 
-      // Use the provided active focus text if available, otherwise fall back to the state
       const actualFocusText = activeFocusText?.trim() || focusText.trim();
       
       if (actualFocusText) {
@@ -939,7 +938,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentIteration(0)
     setIterations([])
     
-    // If a specific focus text is provided, use it immediately
     const actualFocusText = specificFocusText || focusText
     if (specificFocusText) {
       setFocusText(specificFocusText)
@@ -980,15 +978,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
   
-  // Handle clicking on a research area
   const handleResearchArea = (area: string) => {
-    // Set parent research ID to current research if available
     if (loadedResearchId) {
       setParentResearchId(loadedResearchId)
     }
     
-    // Immediate pass the selected area to handleResearch
-    // rather than relying on state update
     handleResearch(area)
   }
 
@@ -1002,11 +996,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText={focusText}
         />
 
-        {/* Progress and Results */}
         <div className="space-y-2">
           {progress.length > 0 && (
             <ProgressDisplay 
-              progress={progress} 
+              messages={progress} 
               currentIteration={currentIteration} 
               maxIterations={maxIterations}
               currentQueryIndex={currentQueryIndex}
@@ -1033,7 +1026,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           )}
         </div>
         
-        {/* Analysis */}
         {analysis && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Analysis</h4>
@@ -1041,18 +1033,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        {/* Insights */}
         {streamingState.parsedData && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Key Insights</h4>
             <InsightsDisplay 
-              data={streamingState.parsedData} 
+              streamingState={streamingState}
               onResearchArea={handleResearchArea}
             />
           </div>
         )}
         
-        {/* Iterations */}
         {iterations.length > 0 && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Research Iterations</h4>
@@ -1062,7 +1052,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   key={`iteration-${iteration.iteration}`}
                   iteration={iteration}
                   isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
-                  onToggle={() => {
+                  onToggleExpand={() => {
                     setExpandedIterations(prev => {
                       const id = `iteration-${iteration.iteration}`
                       if (prev.includes(id)) {
@@ -1072,13 +1062,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       }
                     })
                   }}
+                  isStreaming={isLoading || isAnalyzing}
+                  isCurrentIteration={iteration.iteration === currentIteration}
+                  maxIterations={maxIterations}
                 />
               ))}
             </div>
           </div>
         )}
         
-        {/* Saved Research */}
         {savedResearch && savedResearch.length > 0 && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Research History</h4>
@@ -1133,7 +1125,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        {/* Research Parent-Child Relationship */}
         {(parentResearch || childResearchList.length > 0) && loadedResearchId && (
           <div className="space-y-2">
             <h4 className="text-sm font-medium">Research Context</h4>
@@ -1193,7 +1184,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        {/* Advanced Settings */}
         <div className="pt-2">
           <Popover>
             <PopoverTrigger asChild>

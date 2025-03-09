@@ -22,21 +22,26 @@ interface IterationCardProps {
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
-  isStreaming: boolean;
-  isCurrentIteration: boolean;
-  maxIterations: number;
+  isStreaming?: boolean;
+  isCurrentIteration?: boolean;
+  maxIterations?: number;
+  onToggle?: () => void; // Adding this for backward compatibility
 }
 
 export function IterationCard({
   iteration,
   isExpanded,
   onToggleExpand,
+  onToggle, // For backward compatibility
   isStreaming,
   isCurrentIteration,
-  maxIterations
+  maxIterations = 1
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
+  
+  // Use onToggleExpand for toggle functionality, fall back to onToggle if provided for compatibility
+  const handleToggle = onToggleExpand || onToggle || (() => {});
 
   return (
     <div className={cn(
@@ -49,7 +54,7 @@ export function IterationCard({
           isExpanded ? "bg-accent/10" : "",
           "hover:bg-accent/10 cursor-pointer"
         )}
-        onClick={onToggleExpand}
+        onClick={handleToggle}
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 

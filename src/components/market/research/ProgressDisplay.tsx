@@ -5,9 +5,21 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ProgressDisplayProps {
   messages: string[]
+  currentIteration?: number
+  maxIterations?: number
+  currentQueryIndex?: number
+  queries?: string[]
+  isLoading?: boolean
 }
 
-export function ProgressDisplay({ messages }: ProgressDisplayProps) {
+export function ProgressDisplay({ 
+  messages, 
+  currentIteration, 
+  maxIterations, 
+  currentQueryIndex, 
+  queries,
+  isLoading 
+}: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
