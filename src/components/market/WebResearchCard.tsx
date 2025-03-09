@@ -763,7 +763,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               marketDescription: description,
               areasForResearch: streamingState.parsedData?.areasForResearch || [],
               previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: focusText.trim()
+              focusText: focusText.trim(),
+              marketPrice: marketPrice,
+              previousQueries: previousResearchContext?.queries || []
             })
           })
 
@@ -791,11 +793,23 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         } catch (error) {
           console.error("Error generating refined queries:", error);
           
-          const fallbackQueries = [
-            `${description} latest information`,
-            `${description} expert analysis`,
-            `${description} key details`
-          ]
+          // Create more focused fallback queries if we have a focus
+          let fallbackQueries = [];
+          
+          if (focusText && focusText.trim()) {
+            fallbackQueries = [
+              `${focusText.trim()} latest information ${marketId}`,
+              `${focusText.trim()} expert analysis ${marketId}`,
+              `${focusText.trim()} statistics and data ${marketId}`
+            ];
+            console.log(`Using focused fallback queries for: ${focusText.trim()}`);
+          } else {
+            fallbackQueries = [
+              `${description} latest information`,
+              `${description} expert analysis`,
+              `${description} key details`
+            ];
+          }
           
           setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
           setCurrentQueries(fallbackQueries);
@@ -965,7 +979,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           marketDescription: description,
           question: description,
           iteration: 1,
-          focusText: effectiveFocusText.trim()
+          focusText: effectiveFocusText.trim(),
+          marketPrice: marketPrice
         };
         
         // Always include previous research context when available, especially for focused research
