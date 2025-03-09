@@ -1,3 +1,4 @@
+<lov-code>
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -78,6 +79,14 @@ interface SavedResearch {
   parent_research_id?: string;
 }
 
+interface ResearchInsights {
+  probability: string;
+  areasForResearch: string[];
+  supportingPoints?: string[];
+  negativePoints?: string[];
+  reasoning?: string;
+}
+
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -105,6 +114,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     analyses: string[],
     probability?: string
   } | null>(null)
+  const [isSaving, setIsSaving] = useState(false)
   const { toast } = useToast()
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
@@ -320,7 +330,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const saveResearch = async () => {
+  // Modified saveResearch function to accept insights data directly
+  const saveResearch = async (insightsData?: ResearchInsights) => {
+    if (isSaving) {
+      console.log("Already saving, skipping duplicate save request");
+      return;
+    }
+    
+    setIsSaving(true);
+    
     try {
       const { data: user } = await supabase.auth.getUser()
       if (!user.user) {
@@ -329,18 +347,26 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       if (isLoadingSaved) {
         console.log("Skipping save because research is currently being loaded");
+        setIsSaving(false);
         return;
       }
       
       if (loadedResearchId && savedResearch?.some(r => r.id === loadedResearchId)) {
         console.log(`Skipping save for already existing research with ID: ${loadedResearchId}`);
+        setIsSaving(false);
         return;
       }
 
-      if (!streamingState.parsedData?.areasForResearch) {
-        console.log("Skipping save because areasForResearch is not available yet");
+      // Use insights data passed directly or fall back to state
+      const effectiveInsights = insightsData || streamingState.parsedData;
+      
+      if (!effectiveInsights?.areasForResearch || !Array.isArray(effectiveInsights.areasForResearch)) {
+        console.log("Cannot save: areasForResearch is not available or not an array", effectiveInsights);
+        setIsSaving(false);
         return;
       }
+
+      console.log("Saving research with insights:", effectiveInsights);
 
       const sanitizeJson = (data: any): any => {
         if (data === null || data === undefined) return null;
@@ -368,16 +394,22 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       const sanitizedResults = sanitizeJson(results);
       const sanitizedAnalysis = analysis ? analysis.replace(/\u0000/g, '') : '';
-      const sanitizedAreasForResearch = sanitizeJson(streamingState.parsedData?.areasForResearch) || [];
+      const sanitizedAreasForResearch = sanitizeJson(effectiveInsights.areasForResearch);
       const sanitizedIterations = sanitizeJson(iterations);
       const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
+      
+      // Ensure areasForResearch is a non-empty array
+      if (!Array.isArray(sanitizedAreasForResearch) || sanitizedAreasForResearch.length === 0) {
+        console.log("Cannot save: sanitizedAreasForResearch is not a valid array", sanitizedAreasForResearch);
+        sanitizedAreasForResearch.push("Further research needed");
+      }
       
       const researchPayload = {
         user_id: user.user.id,
         query: description.replace(/\u0000/g, ''),
         sources: sanitizedResults as unknown as Json,
         analysis: sanitizedAnalysis,
-        probability: streamingState.parsedData?.probability?.replace(/\u0000/g, '') || '',
+        probability: effectiveInsights.probability?.replace(/\u0000/g, '') || 'Unknown',
         areas_for_research: sanitizedAreasForResearch as unknown as Json,
         market_id: marketId,
         iterations: sanitizedIterations as unknown as Json,
@@ -385,10 +417,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         parent_research_id: parentResearchId
       };
 
-      console.log("Saving sanitized research data", parentResearchId ? `with parent research: ${parentResearchId}` : "without parent");
+      console.log("Saving research data with payload:", {
+        sources: sanitizedResults.length,
+        analysis_length: sanitizedAnalysis.length,
+        probability: researchPayload.probability,
+        areas_for_research: sanitizedAreasForResearch.length,
+        parent_research_id: parentResearchId || 'none'
+      });
+      
       const { data, error } = await supabase.from('web_research').insert(researchPayload).select('id')
 
-      if (error) throw error
+      if (error) {
+        console.error("Error saving research:", error);
+        throw error;
+      }
 
       if (data && data[0] && data[0].id) {
         setLoadedResearchId(data[0].id);
@@ -408,6 +450,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         description: "Failed to save research automatically. Please try again.",
         variant: "destructive"
       })
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -876,419 +920,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const supportingPoints = Array.isArray(parsedData.supportingPoints) ? parsedData.supportingPoints : [];
           const negativePoints = Array.isArray(parsedData.negativePoints) ? parsedData.negativePoints : [];
           
+          // Create a fresh copy of insights for immediate saving
+          const insightsForSaving: ResearchInsights = {
+            probability,
+            areasForResearch: areasForResearch.length > 0 ? areasForResearch : ["Further research needed"],
+            supportingPoints,
+            negativePoints,
+            reasoning
+          };
+          
           setStreamingState({
-            rawText: JSON.stringify(parsedData, null, 2),
-            parsedData: {
-              probability,
-              areasForResearch,
-              reasoning,
-              supportingPoints,
-              negativePoints
-            }
-          });
-          
-          setProgress(prev => [...prev, `Extracted probability: ${probability}`]);
-          if (reasoning) {
-            setProgress(prev => [...prev, `Reasoning: ${reasoning}`]);
-          }
-          
-          console.log(`Extracted probability: ${probability}`);
-          console.log(`Areas for research: ${areasForResearch.length}`);
-          console.log(`Supporting points: ${supportingPoints.length}`);
-          console.log(`Negative points: ${negativePoints.length}`);
-          
-          await saveResearch();
-        } else {
-          throw new Error("Failed to parse response data");
-        }
-      } catch (e) {
-        console.error('Error processing insights response:', e);
-        
-        setStreamingState({
-          rawText: JSON.stringify(insightsData || {}, null, 2),
-          parsedData: {
-            probability: "Unknown (parsing error)",
-            areasForResearch: ["Could not parse research areas due to format error."],
-            reasoning: "Error parsing model output."
-          }
-        });
-        
-        await saveResearch();
-      }
-    } catch (error) {
-      console.error("Error in extractInsights:", error);
-      setError(`Error extracting insights: ${error.message}`);
-      
-      setStreamingState({
-        rawText: '',
-        parsedData: {
-          probability: "Unknown (error occurred)",
-          areasForResearch: ["Error occurred during analysis"],
-          reasoning: "An error occurred during analysis."
-        }
-      });
-      
-      await saveResearch();
-    }
-  };
-
-  const handleResearch = async (specificFocusText?: string) => {
-    setLoadedResearchId(null);
-    
-    setIsLoading(true)
-    setProgress([])
-    setResults([])
-    setError(null)
-    setAnalysis('')
-    setIsAnalyzing(false)
-    setStreamingState({ 
-      rawText: '',
-      parsedData: {
-        probability: "Initializing...",
-        areasForResearch: ["Preparing research..."],
-        reasoning: "Starting analysis..."
-      }
-    })
-    
-    setCurrentIteration(0)
-    setIterations([])
-    
-    const actualFocusText = specificFocusText || focusText
-    if (specificFocusText) {
-      setFocusText(specificFocusText)
-    }
-    
-    console.log(`Starting research with focus text: "${actualFocusText || 'none'}"`)
-    
-    try {
-      setProgress(prev => [...prev, `Generating initial search queries...`])
-      
-      if (parentResearchId) {
-        const parent = findParentResearch(parentResearchId)
-        if (parent) {
-          setPreviousResearchContext({
-            queries: parent.iterations?.flatMap(iter => iter.queries || []) || [],
-            analyses: parent.iterations?.map(iter => iter.analysis || '') || [],
-            probability: parent.probability
-          })
-          
-          console.log(`Loaded context from parent research: ${parentResearchId}`)
-        }
-      }
-
-      try {
-        const { data: initialQueriesData, error: initialQueriesError } = await supabase.functions.invoke('generate-queries', {
-          body: JSON.stringify({ 
-            query: description,
-            marketQuestion: description,
-            marketId: marketId,
-            marketPrice: marketPrice,
-            focusText: actualFocusText,
-            iteration: 1,
-            previousQueries: previousResearchContext?.queries || [],
-            previousAnalyses: previousResearchContext?.analyses || [],
-            previousProbability: previousResearchContext?.probability
-          })
-        })
-
-        if (initialQueriesError) {
-          console.error("Error from generate-queries for initial queries:", initialQueriesError);
-          throw new Error(`Error generating initial queries: ${initialQueriesError.message}`)
-        }
-
-        if (!initialQueriesData?.queries || !Array.isArray(initialQueriesData.queries)) {
-          console.error("Invalid initial queries response:", initialQueriesData);
-          throw new Error('Invalid initial queries response')
-        }
-
-        console.log(`Generated initial queries:`, initialQueriesData.queries)
-        setProgress(prev => [...prev, `Generated ${initialQueriesData.queries.length} initial search queries`])
-        
-        setCurrentQueries(initialQueriesData.queries);
-        setCurrentQueryIndex(-1);
-        
-        initialQueriesData.queries.forEach((query: string, index: number) => {
-          setProgress(prev => [...prev, `Initial Query ${index + 1}: "${query}"`])
-        })
-
-        await handleWebScrape(initialQueriesData.queries, 1, [], actualFocusText)
-      } catch (error) {
-        console.error("Error generating initial queries:", error);
-        
-        const fallbackQueries = [
-          `${description.substring(0, 150)}`,
-          ...(actualFocusText ? [`${actualFocusText}`, `${actualFocusText} latest information`] : []),
-          `${marketId} recent updates`,
-          `${description.split(' ').slice(0, 10).join(' ')} analysis`
-        ]
-        
-        setProgress(prev => [...prev, `Using fallback queries due to error: ${error.message}`])
-        setCurrentQueries(fallbackQueries);
-        setCurrentQueryIndex(-1);
-        await handleWebScrape(fallbackQueries, 1, [], actualFocusText)
-      }
-      
-      await saveResearch()
-    } catch (error) {
-      console.error("Error starting research:", error)
-      setError(`Error starting research: ${error.message}`)
-      setIsLoading(false)
-    }
-  }
-  
-  const handleResearchArea = (area: string) => {
-    if (loadedResearchId) {
-      setParentResearchId(loadedResearchId)
-    }
-    
-    handleResearch(area)
-  }
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="p-4 space-y-4">
-        <ResearchHeader 
-          isLoading={isLoading} 
-          isAnalyzing={isAnalyzing} 
-          onResearch={() => handleResearch()} 
-          focusText={focusText}
-        />
-
-        <div className="space-y-2">
-          {progress.length > 0 && (
-            <ProgressDisplay 
-              messages={progress} 
-              currentIteration={currentIteration} 
-              maxIterations={maxIterations}
-              currentQueryIndex={currentQueryIndex}
-              queries={currentQueries}
-              isLoading={isLoading || isAnalyzing}
-            />
-          )}
-          
-          {error && (
-            <div className="text-sm p-2 bg-destructive/10 text-destructive rounded">
-              {error}
-            </div>
-          )}
-                  
-          {results.length > 0 && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-medium">Research Results</h4>
-                <span className="text-xs text-muted-foreground">{results.length} sources</span>
-              </div>
-              
-              <SitePreviewList results={results} />
-            </div>
-          )}
-        </div>
-        
-        {analysis && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Analysis</h4>
-            <AnalysisDisplay content={analysis} />
-          </div>
-        )}
-        
-        {streamingState.parsedData && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Key Insights</h4>
-            <InsightsDisplay 
-              streamingState={streamingState}
-              onResearchArea={handleResearchArea}
-            />
-          </div>
-        )}
-        
-        {iterations.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Research Iterations</h4>
-            <div className="space-y-2">
-              {iterations.map(iteration => (
-                <IterationCard
-                  key={`iteration-${iteration.iteration}`}
-                  iteration={iteration}
-                  isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
-                  onToggleExpand={() => {
-                    setExpandedIterations(prev => {
-                      const id = `iteration-${iteration.iteration}`
-                      if (prev.includes(id)) {
-                        return prev.filter(i => i !== id)
-                      } else {
-                        return [...prev, id]
-                      }
-                    })
-                  }}
-                  isStreaming={isLoading || isAnalyzing}
-                  isCurrentIteration={iteration.iteration === currentIteration}
-                  maxIterations={maxIterations}
-                />
-              ))}
-            </div>
-          </div>
-        )}
-        
-        {savedResearch && savedResearch.length > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Research History</h4>
-            <div className="space-y-2">
-              <ScrollArea className="h-[200px]">
-                {savedResearch.map(research => (
-                  <div 
-                    key={research.id} 
-                    className={`
-                      p-2 text-xs rounded flex items-center justify-between cursor-pointer
-                      ${loadedResearchId === research.id ? 'bg-primary/10 border border-primary/20' : 'hover:bg-muted'}
-                    `}
-                    onClick={() => {
-                      if (!isLoading && !isAnalyzing) {
-                        loadSavedResearch(research)
-                      }
-                    }}
-                  >
-                    <div className="flex flex-col">
-                      <div className="font-medium">
-                        {research.focus_text || 'General Research'}
-                        {research.id === loadedResearchId && ' (Current)'}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {format(new Date(research.created_at), 'MMM d, yyyy h:mm a')}
-                      </div>
-                      {research.probability && (
-                        <div className={`
-                          text-xs mt-1 
-                          ${research.probability.includes('high') ? 'text-green-500' : 
-                           research.probability.includes('low') ? 'text-red-500' : 'text-amber-500'}
-                        `}>
-                          {research.probability}
-                        </div>
-                      )}
-                    </div>
-                    {isLoadingSaved && loadedResearchId === research.id ? (
-                      <div className="animate-spin h-3 w-3 border border-primary rounded-full border-t-transparent"></div>
-                    ) : (
-                      <div className="flex gap-1">
-                        {(research.parent_research_id || childResearchList.some(r => r.parent_research_id === research.id)) && (
-                          <Badge variant="outline" className="text-[10px]">
-                            {research.parent_research_id ? 'Child' : 'Parent'}
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </ScrollArea>
-            </div>
-          </div>
-        )}
-        
-        {(parentResearch || childResearchList.length > 0) && loadedResearchId && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">Research Context</h4>
-            
-            {parentResearch && (
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Parent Research:</div>
-                <div 
-                  className="p-2 text-xs rounded flex items-center justify-between cursor-pointer bg-muted hover:bg-muted/80"
-                  onClick={() => {
-                    if (!isLoading && !isAnalyzing) {
-                      loadSavedResearch(parentResearch)
-                    }
-                  }}
-                >
-                  <div className="flex flex-col">
-                    <div className="font-medium">
-                      {parentResearch.focus_text || 'General Research'}
-                    </div>
-                    <div className="text-muted-foreground">
-                      {format(new Date(parentResearch.created_at), 'MMM d, yyyy h:mm a')}
-                    </div>
-                  </div>
-                  <ArrowLeftCircle className="h-4 w-4 text-muted-foreground" />
-                </div>
-              </div>
-            )}
-            
-            {childResearchList.length > 0 && (
-              <div className="space-y-1">
-                <div className="text-xs text-muted-foreground">Child Research:</div>
-                {childResearchList.map(child => (
-                  <div 
-                    key={child.id} 
-                    className="p-2 text-xs rounded flex items-center justify-between cursor-pointer bg-muted hover:bg-muted/80"
-                    onClick={() => {
-                      if (!isLoading && !isAnalyzing) {
-                        loadSavedResearch(child)
-                      }
-                    }}
-                  >
-                    <div className="flex flex-col">
-                      <div className="font-medium">
-                        {child.focus_text || 'General Research'}
-                      </div>
-                      <div className="text-muted-foreground">
-                        {format(new Date(child.created_at), 'MMM d, yyyy h:mm a')}
-                      </div>
-                    </div>
-                    <Badge variant="outline" className="text-[10px]">
-                      Focus: {child.focus_text?.substring(0, 15)}{child.focus_text && child.focus_text.length > 15 ? '...' : ''}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        
-        <div className="pt-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="w-full flex items-center justify-center gap-2">
-                <Settings className="h-4 w-4" />
-                <span>Research Settings</span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-80">
-              <div className="space-y-4">
-                <h4 className="font-medium">Research Settings</h4>
-                
-                <div className="space-y-2">
-                  <label className="text-sm">Max Iterations: {maxIterations}</label>
-                  <Slider
-                    value={[maxIterations]}
-                    min={1}
-                    max={5}
-                    step={1}
-                    onValueChange={(value) => setMaxIterations(value[0])}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <label className="text-sm">Research Focus (Optional)</label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={focusText}
-                      onChange={(e) => setFocusText(e.target.value)}
-                      placeholder="Enter specific focus area..."
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setFocusText('')}
-                      disabled={!focusText}
-                    >
-                      &times;
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
-    </Card>
-  )
-}
+            rawText: JSON.stringify(parsedData, null, 2
