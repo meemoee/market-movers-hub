@@ -754,42 +754,65 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
+          // This is the critical change: construct a complete payload with ALL context
+          // for every iteration, ensuring that focusText and previous context are always included
+          const allQueries = iterations.flatMap(iter => iter.queries || []);
+          const previousAnalyses = iterations.map(iter => iter.analysis || '').filter(a => a);
+          
+          // Enhanced refined queries payload with complete context
+          const refinedQueriesPayload = { 
+            query: description,
+            marketId: marketId,
+            marketDescription: description,
+            marketQuestion: description,
+            iteration: iteration + 1,
+            focusText: focusText.trim(),
+            previousResults: analysisContent,
+            previousQueries: allQueries,
+            previousAnalyses: previousAnalyses,
+            areasForResearch: streamingState.parsedData?.areasForResearch || [],
+            marketPrice: marketPrice
+          };
+          
+          // Log complete payload to verify all data is being sent
+          console.log(`Sending refined queries payload for iteration ${iteration + 1}:`, {
+            ...refinedQueriesPayload,
+            contentLength: refinedQueriesPayload.previousResults?.length || 0,
+            queriesCount: refinedQueriesPayload.previousQueries?.length || 0,
+            analysesCount: refinedQueriesPayload.previousAnalyses?.length || 0,
+            focusTextLength: refinedQueriesPayload.focusText?.length || 0
+          });
+          
+          // If focus text is set, add a progress message about it
+          if (focusText.trim()) {
+            setProgress(prev => [...prev, `Maintaining research focus on: "${focusText.trim()}" for iteration ${iteration + 1}`]);
+          }
+
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-            body: JSON.stringify({ 
-              query: description,
-              previousResults: analysisContent,
-              iteration: iteration,
-              marketId: marketId,
-              marketDescription: description,
-              areasForResearch: streamingState.parsedData?.areasForResearch || [],
-              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: focusText.trim(),
-              marketPrice: marketPrice,
-              previousQueries: previousResearchContext?.queries || []
-            })
-          })
+            body: JSON.stringify(refinedQueriesPayload)
+          });
 
           if (refinedQueriesError) {
             console.error("Error from generate-queries:", refinedQueriesError);
-            throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
+            throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`);
           }
 
           if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
             console.error("Invalid refined queries response:", refinedQueriesData);
-            throw new Error('Invalid refined queries response')
+            throw new Error('Invalid refined queries response');
           }
 
-          console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
-          setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
+          console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries);
+          setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`]);
           
           setCurrentQueries(refinedQueriesData.queries);
           setCurrentQueryIndex(-1);
           
           refinedQueriesData.queries.forEach((query: string, index: number) => {
-            setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
-          })
+            setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`]);
+          });
 
-          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
+          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent]);
         } catch (error) {
           console.error("Error generating refined queries:", error);
           
@@ -811,9 +834,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             ];
           }
           
-          setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
+          setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`]);
           setCurrentQueries(fallbackQueries);
-          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
+          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent]);
         }
       }
 
@@ -823,7 +846,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setError(`Error analyzing content: ${error.message}`);
       setIsAnalyzing(false);
     }
-  }
+  };
 
   const extractInsights = async (allContent: string[], finalAnalysis: string) => {
     setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
