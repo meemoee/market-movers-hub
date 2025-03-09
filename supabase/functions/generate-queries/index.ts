@@ -30,12 +30,11 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    // Enhanced logging, especially for the first iteration
-    console.log(`========== GENERATE QUERIES - ITERATION ${iteration} ==========`)
-    console.log('Focus text:', focusText || 'not provided')
+    console.log('Generating sub-queries for:', query)
     console.log('Market question:', marketQuestion || 'not provided')
-    console.log('Query:', query || 'not provided')
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
+    console.log('Focus text:', focusText || 'not provided')
+    console.log('Iteration:', iteration)
     console.log('Previous queries count:', previousQueries.length)
     console.log('Previous analyses count:', previousAnalyses.length)
     
@@ -48,52 +47,24 @@ ${previousQueries.length > 0 ? `Previous search queries used:\n${previousQueries
 ${previousAnalyses.length > 0 ? `\nPrevious analysis summary:\n${previousAnalyses.slice(-1)[0].substring(0, 800)}${previousAnalyses.slice(-1)[0].length > 800 ? '...' : ''}` : ''}
 ${previousProbability ? `\nPrevious probability assessment: ${previousProbability}` : ''}
 
-DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions.`;
+DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
     }
 
-    // Different prompt strategy for first iteration vs. subsequent iterations
-    const isFirstIteration = iteration <= 1;
-    
-    // For first iteration, give more structure to ensure good foundation
-    const firstIterationPrompt = `You are a professional research assistant with expertise in creating effective search queries for market research.
-
-TASK: Generate 5 well-structured search queries to gather comprehensive information about: "${query}"
-
-RESEARCH CONTEXT:
-${marketQuestion ? `- Market Question: ${marketQuestion}` : `- Topic: ${query}`}
-${marketPrice !== undefined ? `- Current Market Probability: ${marketPrice}%` : ''}
-${focusText ? `- Your focus area: ${focusText}` : ''}
-
-QUERY REQUIREMENTS:
-1. Each query must be specific, detailed, and designed to return high-quality information
-2. Include a diverse mix of factual, analytical, and perspective-seeking queries
-3. Each query should target a different aspect of the topic
-4. Use precise wording, including dates, statistics, or entities when relevant
-5. Format each query as a proper search term, not a question`;
-
-    // For later iterations, focus on filling research gaps
-    const laterIterationPrompt = `You are a specialized research assistant focusing on expanding existing research.
-
-Your task is to generate search queries that explore NEW dimensions of: "${query}"${focusText ? ` with a focus on "${focusText}"` : ''}`;
-
-    // Build a directive prompt prioritizing the focus text if available
+    // Build a more directive prompt for focused research
     const focusedPrompt = focusText ? 
       `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
 Your task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
-CRITICAL REQUIREMENTS: 
-1. EVERY query MUST explicitly contain "${focusText}" verbatim
-2. Each query MUST include additional specific qualifiers beyond just the focus text
-3. Queries should target different aspects, angles, or dimensions of "${focusText}"
-4. Do NOT generate queries about the general topic "${query}" unless they specifically relate to "${focusText}"` 
+IMPORTANT: Do not generate general queries. EVERY query MUST explicitly mention or relate to "${focusText}".
+STRICT REQUIREMENT: Each query MUST contain "${focusText}" AND include additional specific qualifiers, angles, or dimensions.` 
       : 
-      isFirstIteration ? firstIterationPrompt : laterIterationPrompt;
+      "You are a helpful assistant that generates search queries.";
     
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://hunchex.io', // Using a real domain to avoid OpenRouter restrictions
+        'HTTP-Referer': 'http://localhost:5173',
         'X-Title': 'Market Research App',
       },
       body: JSON.stringify({
@@ -110,25 +81,23 @@ CRITICAL REQUIREMENTS:
 ${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
 ${focusText ? `YOUR SEARCH FOCUS MUST BE ON: ${focusText}` : ''}
-${iteration > 1 ? `Current research iteration: ${iteration}` : 'This is the FIRST iteration of research.'}
+${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
 ${previousResearchContext}
 
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
-${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Each query MUST CONTAIN "${focusText}" verbatim.` : ''}
+${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed
+1. Highly specific and detailed about "${focusText}"
 2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
 4. COMPLETELY DIFFERENT from previous research queries
 5. Include specific entities, dates, or details to target precise information
 
-${focusText ? `EXAMPLE FORMAT for focused queries on "${focusText}":
-- "${focusText} detailed statistical analysis on employment rates 2022-2023"
-- "${focusText} case studies in developing countries with quantitative measurements"
-- "${focusText} negative consequences on small businesses documented research"` : ''}
-
-${isFirstIteration ? `Since this is the FIRST iteration, ensure your queries establish a strong foundation for the research by targeting the most important aspects of ${focusText || query}.` : `For this follow-up iteration, focus on areas that might have been missed in earlier research.`}
+EXAMPLE FORMAT for focused queries on "economic impact":
+- "economic impact detailed statistical analysis on employment rates 2022-2023"
+- "economic impact case studies in developing countries with quantitative measurements"
+- "economic impact negative consequences on small businesses documented research"
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings. The format should be {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`
           }
@@ -138,7 +107,6 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     })
 
     if (!response.ok) {
-      console.error(`OpenRouter API error: ${response.status}`)
       throw new Error(`OpenRouter API error: ${response.status}`)
     }
 
@@ -153,7 +121,6 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       // First try parsing the content directly
       try {
         queriesData = JSON.parse(content)
-        console.log('Successfully parsed JSON response')
       } catch (parseError) {
         console.log('Standard JSON parsing failed, attempting alternate parsing methods')
         
@@ -193,29 +160,15 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         
         // Last resort: use fallback queries
         if (!queriesData || !queriesData.queries || !Array.isArray(queriesData.queries) || queriesData.queries.length === 0) {
-          console.log('Using fallback queries for iteration', iteration)
-          
-          // Different fallbacks for first iteration vs subsequent ones
-          if (isFirstIteration) {
-            queriesData = {
-              queries: [
-                `${focusText || query} comprehensive overview`,
-                `${focusText || query} latest developments 2023-2024`,
-                `${focusText || query} analysis and statistics`,
-                `${focusText || query} expert opinions and research papers`,
-                `${focusText || query} critical factors and indicators`
-              ]
-            }
-          } else {
-            queriesData = {
-              queries: [
-                `${focusText || query} latest information iteration ${iteration}`,
-                `${focusText || query} analysis and trends iteration ${iteration}`,
-                `${focusText || query} expert perspectives iteration ${iteration}`,
-                `${focusText || query} recent developments iteration ${iteration}`,
-                `${focusText || query} statistical data iteration ${iteration}`
-              ]
-            }
+          console.log('Using fallback queries')
+          queriesData = {
+            queries: [
+              `${focusText || query} latest information`,
+              `${focusText || query} analysis and trends`,
+              `${focusText || query} expert opinions`,
+              `${focusText || query} recent developments`,
+              `${focusText || query} statistics and data`
+            ]
           }
         }
       }
@@ -248,30 +201,18 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       }
       
       // Validate each query and ensure they contain the focus area if specified
-      if (focusText) {
-        queriesData.queries = queriesData.queries.map((q: any, i: number) => {
-          if (typeof q !== 'string') {
-            return `${focusText} specific information ${i+1}`;
-          }
-          
-          const qLower = q.toLowerCase().trim();
-          const focusLower = focusText.toLowerCase().trim();
-          
-          // If focus text is not in the query, add it
-          if (!qLower.includes(focusLower)) {
-            return `${focusText} in context of: ${q}`;
-          }
-          
-          return q.trim();
-        });
-      } else {
-        queriesData.queries = queriesData.queries.map((q: any, i: number) => {
-          if (typeof q !== 'string' || q.trim().length < 5) {
-            return `${query} specific information ${i+1}`;
-          }
-          return q.trim();
-        });
-      }
+      queriesData.queries = queriesData.queries.map((q: any, i: number) => {
+        if (typeof q !== 'string' || q.trim().length < 5) {
+          return `${focusText || query} specific information ${i+1}`
+        }
+        
+        // If we have a focus text, ensure it's included in the query
+        if (focusText && !q.toLowerCase().includes(focusText.toLowerCase())) {
+          return `${q} specifically regarding ${focusText}`
+        }
+        
+        return q.trim()
+      })
       
       // If we have previous queries, make sure we're not duplicating them
       if (previousQueries.length > 0) {
@@ -360,40 +301,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         }
       }
       
-      // Final validation - ensure EVERY query contains the focus text if one was provided
-      if (focusText) {
-        const focusLower = focusText.toLowerCase().trim();
-        
-        // Log before validation
-        console.log('Pre-validation queries:', queriesData.queries);
-        
-        queriesData.queries = queriesData.queries.map((q: string, i: number) => {
-          if (!q || typeof q !== 'string') {
-            return `${focusText} detailed information ${i+1}`;
-          }
-          
-          if (!q.toLowerCase().includes(focusLower)) {
-            console.log(`Query missing focus text "${focusText}": "${q}"`);
-            return `${focusText}: ${q}`;
-          }
-          return q;
-        });
-        
-        // Log after validation to confirm all queries contain the focus text
-        console.log('Post-validation queries:', queriesData.queries);
-        
-        // Second pass - make sure focus is prominent
-        queriesData.queries = queriesData.queries.map((q: string) => {
-          const qLower = q.toLowerCase();
-          // If focus is buried in the middle, move it to the front
-          if (qLower.includes(focusLower) && !qLower.startsWith(focusLower.substring(0, 10))) {
-            return `${focusText} - ${q.replace(new RegExp(focusText, 'i'), '').trim()}`;
-          }
-          return q;
-        });
-      }
-      
-      console.log(`Final generated queries for iteration ${iteration}:`, queriesData.queries)
+      console.log('Generated queries:', queriesData.queries)
 
       return new Response(
         JSON.stringify({ queries: queriesData.queries }),

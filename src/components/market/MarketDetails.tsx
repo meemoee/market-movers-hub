@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,7 +7,6 @@ import { QADisplay } from './QADisplay';
 import { WebResearchCard } from './WebResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
-import { ResearchMarket } from '@/types';
 
 interface MarketDetailsProps {
   description?: string;
@@ -88,15 +88,12 @@ export function MarketDetails({
     }).format(date);
   };
 
+  // Prevent rendering duplicate QADisplay components
   const shouldShowQADisplay = marketId && question;
-
-  const handleSaveResearch = async (updatedMarket: ResearchMarket) => {
-    console.log("Saving research settings:", updatedMarket);
-    return Promise.resolve();
-  };
 
   return (
     <div className="space-y-4">
+      {/* Price History Section */}
       <div>
         <div className="flex flex-col gap-1">
           <div className="text-sm text-muted-foreground">Price History</div>
@@ -124,6 +121,7 @@ export function MarketDetails({
         )}
       </div>
 
+      {/* Related Markets Section */}
       {eventId && (
         <RelatedMarkets 
           eventId={eventId}
@@ -132,18 +130,15 @@ export function MarketDetails({
         />
       )}
 
+      {/* Web Research Section */}
       {description && (
         <WebResearchCard 
-          market={{
-            id: marketId,
-            question: question,
-            description: description,
-            price: 50
-          }}
-          onSave={handleSaveResearch}
+          description={description} 
+          marketId={marketId}
         />
       )}
 
+      {/* QA Tree Section - Only render if we have required props */}
       {shouldShowQADisplay && (
         <div className="mt-6 border-t border-border pt-4">
           <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
@@ -155,10 +150,12 @@ export function MarketDetails({
         </div>
       )}
 
+      {/* Similar Historical Events Section */}
       <div className="mt-6">
         <SimilarHistoricalEvents />
       </div>
 
+      {/* Market Description Section */}
       {description && (
         <div className="mt-6 border-t border-border pt-4">
           <p className="text-xs text-muted-foreground">
