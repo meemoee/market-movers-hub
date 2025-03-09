@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -167,9 +166,9 @@ function generatePrompts({
   // System prompt - sets the core role and behavior
   const systemPrompt = isFocusedResearch ? 
     `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
-Your task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
-IMPORTANT: Do not generate general queries. EVERY query MUST explicitly mention or relate to "${focusText}".
-STRICT REQUIREMENT: Each query MUST contain "${focusText}" AND include additional specific qualifiers, angles, or dimensions.` 
+Your ONLY task is to generate highly specific search queries about ${focusText} that provide targeted information relevant to ${marketQuestion || query}.
+CRITICAL INSTRUCTION: Every single query you generate MUST explicitly include "${focusText}" AND add additional specific qualifiers, angles, or dimensions.
+You MUST NOT generate any query that doesn't directly and explicitly investigate "${focusText}".` 
     : 
     "You are a helpful assistant that generates search queries."
   
@@ -190,22 +189,35 @@ ${iteration > 1 ? `Current research iteration: ${iteration}` : ''}`
     userPrompt += researchContext.previousResearch
   }
 
+  // Add focused research instructions for all iterations
+  if (focusText) {
+    userPrompt += `
+CRITICAL INSTRUCTIONS FOR FOCUSED RESEARCH:
+1. EVERY SINGLE QUERY must explicitly contain the term "${focusText}"
+2. EVERY QUERY must include specific aspects, angles, or dimensions beyond just the focus term
+3. DO NOT generate any general queries about ${query} that aren't specifically about "${focusText}"
+4. Your queries should investigate different aspects and perspectives about "${focusText}"
+5. Consider causality, impact, evidence, mechanisms, and expert opinions related to "${focusText}"
+
+EXAMPLE FORMAT for focused queries on "${focusText}":
+- "${focusText} detailed statistical analysis on [specific aspect] 2022-2023"
+- "${focusText} case studies in [specific context] with quantitative measurements"
+- "${focusText} negative consequences on [specific area] documented research"
+- "${focusText} causal relationship with [related factor] scientific evidence"
+- "${focusText} expert opinions from [specific field] regarding [aspect]"
+`
+  }
+
   // Add specific generation guidelines
   userPrompt += `
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
-${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
 1. Highly specific and detailed ${focusText ? `about "${focusText}"` : ''}
-2. ${focusText ? `Each query MUST include additional aspects beyond just the focus term itself` : 'Diverse in perspective and approach'}
+2. ${focusText ? `Each query MUST include "${focusText}" AND additional aspects beyond just the focus term itself` : 'Diverse in perspective and approach'}
 3. ${isFirstIteration && isFocusedResearch ? 'Include fundamental/definitional queries, connection queries, and impact assessment queries' : 'Diverse in approach and perspective'}
 4. COMPLETELY DIFFERENT from previous research queries
 5. Include specific entities, dates, or details to target precise information
-
-EXAMPLE FORMAT for focused queries on "economic impact":
-- "economic impact detailed statistical analysis on employment rates 2022-2023"
-- "economic impact case studies in developing countries with quantitative measurements"
-- "economic impact negative consequences on small businesses documented research"
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search query strings. The format should be {"queries": ["query 1", "query 2", "query 3", "query 4", "query 5"]}`
 
@@ -326,12 +338,21 @@ function processQueries({
   processedQueries = processedQueries.map((q, i) => {
     // Validate query format
     if (typeof q !== 'string' || q.trim().length < 5) {
-      return `${focusText || query} specific information ${i+1}`
+      return focusText ? 
+        `${focusText} specific information on ${query} iteration ${iteration}-${i+1}` :
+        `${query} specific information ${i+1}`
     }
     
-    // Ensure focus text is included in focused queries
+    // CRITICAL: Ensure focus text is included in focused queries
     if (focusText && !q.toLowerCase().includes(focusText.toLowerCase())) {
-      return `${q} specifically regarding ${focusText}`
+      // Instead of just appending, integrate the focus text more naturally
+      if (q.toLowerCase().includes(query.toLowerCase())) {
+        // Replace the general topic with focused topic where possible
+        return q.replace(new RegExp(query, 'i'), focusText)
+      } else {
+        // Otherwise create a well-formed query that contains the focus text
+        return `${focusText} in relation to ${q}`
+      }
     }
     
     return q.trim()
@@ -345,16 +366,27 @@ function processQueries({
       if (prevQuerySet.has(q.toLowerCase().trim())) {
         console.log(`Replacing duplicate query: "${q}"`)
         
-        // Generate alternative
-        const alternatives = [
-          `${focusText || query} latest developments iteration ${iteration}-${i}`,
-          `${focusText || query} recent analysis ${iteration}-${i}`,
-          `${focusText || query} expert perspective ${iteration}-${i}`,
-          `${focusText || query} market indicators ${iteration}-${i}`,
-          `${focusText || query} future outlook ${iteration}-${i}`
-        ]
-        
-        return alternatives[i % alternatives.length]
+        // Generate alternative focused queries
+        if (focusText) {
+          const alternatives = [
+            `${focusText} latest developments in context of ${query} iteration ${iteration}-${i}`,
+            `${focusText} recent analysis by experts iteration ${iteration}-${i}`,
+            `${focusText} significant impact on ${query} iteration ${iteration}-${i}`,
+            `${focusText} evidence-based assessment iteration ${iteration}-${i}`,
+            `${focusText} future implications for ${query} iteration ${iteration}-${i}`
+          ]
+          return alternatives[i % alternatives.length]
+        } else {
+          // Fallback alternatives for non-focused research
+          const alternatives = [
+            `${query} latest developments iteration ${iteration}-${i}`,
+            `${query} recent analysis ${iteration}-${i}`,
+            `${query} expert perspective ${iteration}-${i}`,
+            `${query} market indicators ${iteration}-${i}`,
+            `${query} future outlook ${iteration}-${i}`
+          ]
+          return alternatives[i % alternatives.length]
+        }
       }
       return q
     })
@@ -362,7 +394,7 @@ function processQueries({
   
   // Enhanced processing for focused queries
   if (focusText) {
-    processedQueries = enhanceFocusedQueries(processedQueries, focusText, iteration, previousQueries)
+    processedQueries = enhanceFocusedQueries(processedQueries, focusText, query, iteration, previousQueries)
   }
   
   return processedQueries
@@ -370,29 +402,27 @@ function processQueries({
 
 // Generate fallback queries if needed
 function generateFallbackQueries(focusText, query, iteration) {
-  const prefix = focusText || query
-  
   if (focusText) {
     return [
-      `${prefix} latest information related to ${query}`,
-      `${prefix} analysis and trends for ${query}`,
-      `${prefix} expert opinions about ${query}`,
-      `${prefix} recent developments impacting ${query}`,
-      `${prefix} statistics and data regarding ${query}`
+      `${focusText} latest information related to ${query}`,
+      `${focusText} analysis and trends for ${query}`,
+      `${focusText} expert opinions about ${query}`,
+      `${focusText} recent developments impacting ${query}`,
+      `${focusText} statistics and data regarding ${query}`
     ]
   } else {
     return [
-      `${prefix} latest information`,
-      `${prefix} analysis and trends`,
-      `${prefix} expert opinions`,
-      `${prefix} recent developments`,
-      `${prefix} statistics and data`
+      `${query} latest information`,
+      `${query} analysis and trends`,
+      `${query} expert opinions`,
+      `${query} recent developments`,
+      `${query} statistics and data`
     ]
   }
 }
 
 // Enhance focused queries to ensure quality and diversity
-function enhanceFocusedQueries(queries, focusText, iteration, previousQueries) {
+function enhanceFocusedQueries(queries, focusText, query, iteration, previousQueries) {
   const prevQuerySet = previousQueries.length > 0 
     ? new Set(previousQueries.map(q => q.toLowerCase().trim()))
     : new Set()
@@ -407,12 +437,13 @@ function enhanceFocusedQueries(queries, focusText, iteration, previousQueries) {
         (q.toLowerCase().includes(focusText.toLowerCase()) && 
          q.replace(new RegExp(focusText, 'i'), '').trim().length < 10)) {
       
+      // More structured query templates based on query phase
       const specificAngles = [
-        `${focusText} quantitative analysis with statistical trends since 2023`,
-        `${focusText} critical expert assessments in peer-reviewed publications`,
-        `${focusText} comparative case studies with measurable outcomes`,
-        `${focusText} unexpected consequences documented in research papers`,
-        `${focusText} methodological approaches for accurate assessment`
+        `${focusText} quantitative analysis with statistical trends since 2022`,
+        `${focusText} critical expert assessments from leading researchers`,
+        `${focusText} detailed case studies with measurable outcomes`,
+        `${focusText} impact on ${query} according to recent publications`,
+        `${focusText} causal mechanisms and factors based on research`
       ]
       
       // Choose alternative not in previous queries
@@ -424,7 +455,7 @@ function enhanceFocusedQueries(queries, focusText, iteration, previousQueries) {
       return alternative
     }
     
-    // Ensure focus text is included
+    // ALWAYS ensure focus text is included
     if (!lowercaseQ.includes(lowercaseFocus)) {
       return `${focusText} in context of: ${q}`
     }
@@ -450,7 +481,7 @@ function enhanceFocusedQueries(queries, focusText, iteration, previousQueries) {
         const templates = [
           `${focusText} alternative perspectives from ${['economic', 'political', 'social', 'technological', 'environmental'][j % 5]} analysis`,
           `${focusText} contrasting viewpoints based on ${['historical', 'current', 'theoretical', 'practical', 'futuristic'][j % 5]} evidence`,
-          `${focusText} ${['challenges', 'opportunities', 'misconceptions', 'breakthroughs', 'failures'][j % 5]} documented in recent studies`
+          `${focusText} ${['challenges', 'opportunities', 'misconceptions', 'breakthroughs', 'failures'][j % 5]} documented in recent studies related to ${query}`
         ]
         
         enhancedQueries[j] = templates[j % templates.length]

@@ -760,17 +760,39 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
+          const queryGenPayload = { 
+            query: description,
+            previousResults: analysisContent,
+            iteration: iteration,
+            marketId: marketId,
+            marketDescription: description,
+            areasForResearch: streamingState.parsedData?.areasForResearch || [],
+            previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+            previousQueries: iterations.flatMap(iter => iter.queries || []),
+            marketPrice: marketPrice
+          };
+          
+          if (focusText?.trim()) {
+            queryGenPayload.focusText = focusText.trim();
+            setProgress(prev => [...prev, `Ensuring continued focus on: ${focusText.trim()} for query generation`]);
+            
+            if (parentResearchId && previousResearchContext?.parentContext) {
+              queryGenPayload.parentQuery = previousResearchContext.parentContext.parentQuery;
+              queryGenPayload.parentAnalysis = previousResearchContext.parentContext.parentAnalysis;
+              queryGenPayload.parentProbability = previousResearchContext.parentContext.parentProbability;
+              queryGenPayload.supportingPoints = previousResearchContext.parentContext.supportingPoints;
+              queryGenPayload.negativePoints = previousResearchContext.parentContext.negativePoints;
+              
+              setProgress(prev => [...prev, `Maintaining parent research context for focused iteration ${iteration + 1}`]);
+            }
+            
+            if (previousResearchContext?.probability) {
+              queryGenPayload.previousProbability = previousResearchContext.probability;
+            }
+          }
+
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-            body: JSON.stringify({ 
-              query: description,
-              previousResults: analysisContent,
-              iteration: iteration,
-              marketId: marketId,
-              marketDescription: description,
-              areasForResearch: streamingState.parsedData?.areasForResearch || [],
-              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: focusText.trim()
-            })
+            body: JSON.stringify(queryGenPayload)
           })
 
           if (refinedQueriesError) {
@@ -964,8 +986,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketDescription: description,
             marketQuestion: description,
             iteration: 1,
-            focusText: focusText.trim()
+            marketPrice: marketPrice
         };
+        
+        if (focusText?.trim()) {
+          queryPayload.focusText = focusText.trim();
+          setProgress(prev => [...prev, `Ensuring primary focus on: ${focusText.trim()} for all queries`]);
+        }
         
         if (previousResearchContext?.parentContext) {
           Object.assign(queryPayload, {
@@ -1058,6 +1085,28 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
     
     const parentId = currentResearchId;
+    
+    if (streamingState.parsedData) {
+      const parentQueryContext = {
+        parentQuery: description,
+        parentAnalysis: analysis,
+        parentProbability: streamingState.parsedData.probability || '',
+        supportingPoints: streamingState.parsedData.supportingPoints || [],
+        negativePoints: streamingState.parsedData.negativePoints || []
+      };
+      
+      const allQueries = iterations.flatMap(iter => iter.queries || []);
+      const allAnalyses = iterations.map(iter => iter.analysis || '').filter(a => a);
+      
+      setPreviousResearchContext({
+        queries: allQueries,
+        analyses: allAnalyses,
+        probability: streamingState.parsedData.probability,
+        parentContext: parentQueryContext
+      });
+      
+      console.log('Setting parent research context for focused queries:', parentQueryContext);
+    }
     
     setLoadedResearchId(null);
     setParentResearchId(parentId);

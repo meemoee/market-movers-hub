@@ -1,8 +1,7 @@
-
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ArrowUp, ArrowDown } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ArrowUp, ArrowDown, FocusIcon } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -39,12 +38,10 @@ export function InsightsDisplay({
   parentResearch,
   childResearches 
 }: InsightsDisplayProps) {
-  // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
   const { probability, areasForResearch, reasoning, supportingPoints, negativePoints } = streamingState.parsedData;
   
-  // More comprehensive check for error messages in probability
   const hasErrorInProbability = 
     !probability || 
     probability.toLowerCase().includes('error') || 
@@ -55,19 +52,15 @@ export function InsightsDisplay({
     probability === "null" ||
     probability === "undefined";
   
-  // Check if market is resolved (100% or 0%)
   const isResolved = probability === "100%" || probability === "0%";
 
-  // Don't show the component if there's an error in probability and no valid research areas
   if ((hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) || 
-      streamingState.rawText.length < 10) {  // Also don't show if we have barely any raw text (still streaming)
+      streamingState.rawText.length < 10) {
     return null;
   }
 
-  // If there's an error in the probability but we have research areas, only show those
   const showProbabilityCard = probability && !hasErrorInProbability;
   
-  // Helper function to find a child research that matches a specific research area
   const findMatchingChildResearch = (area: string): ResearchChild | undefined => {
     if (!childResearches) return undefined;
     return childResearches.find(child => 
@@ -76,7 +69,7 @@ export function InsightsDisplay({
       child.focusText.toLowerCase().includes(area.toLowerCase())
     );
   };
-  
+
   return (
     <div className="space-y-5">
       {parentResearch && (
@@ -105,9 +98,12 @@ export function InsightsDisplay({
             )}
           </div>
           {parentResearch.focusText && (
-            <div className="mt-3 bg-accent/20 p-2 rounded-md border border-accent/20">
-              <div className="text-sm font-medium mb-1">Research Focus:</div>
-              <div className="text-sm">{parentResearch.focusText}</div>
+            <div className="mt-3 bg-primary/10 p-2 rounded-md border border-primary/20">
+              <div className="text-sm font-medium mb-1 flex items-center">
+                <Target className="h-4 w-4 text-primary mr-1" />
+                Research Focus:
+              </div>
+              <div className="text-sm font-medium text-primary">{parentResearch.focusText}</div>
             </div>
           )}
         </Card>
@@ -135,7 +131,6 @@ export function InsightsDisplay({
             </div>
           </div>
           
-          {/* Supporting Points Section */}
           {supportingPoints && supportingPoints.length > 0 && (
             <div className="mt-4 border-t pt-4 border-accent/20">
               <div className="flex items-center gap-2 mb-2">
@@ -153,7 +148,6 @@ export function InsightsDisplay({
             </div>
           )}
           
-          {/* Negative Points Section */}
           {negativePoints && negativePoints.length > 0 && (
             <div className="mt-4 border-t pt-4 border-accent/20">
               <div className="flex items-center gap-2 mb-2">
@@ -229,14 +223,14 @@ export function InsightsDisplay({
                         <Button 
                           variant="ghost" 
                           size="sm" 
-                          className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
+                          className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1 group"
                           onClick={(e) => {
                             e.stopPropagation();
                             onResearchArea(area);
                           }}
                         >
-                          <ArrowRightCircle className="h-3 w-3" />
-                          Create focused research
+                          <Target className="h-3 w-3 text-primary group-hover:animate-pulse" />
+                          <span>Focus research on this area</span>
                         </Button>
                       ) : null}
                     </div>
