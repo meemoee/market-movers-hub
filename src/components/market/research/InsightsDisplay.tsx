@@ -1,3 +1,4 @@
+
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,12 @@ interface InsightsDisplayProps {
     onView?: () => void;
   };
   childResearches?: ResearchChild[];
+  // Direct properties for passing data directly
+  probability?: string;
+  areasForResearch?: string[];
+  reasoning?: string;
+  supportingPoints?: string[];
+  negativePoints?: string[];
 }
 
 export function InsightsDisplay({ 
@@ -38,13 +45,28 @@ export function InsightsDisplay({
   data,
   onResearchArea, 
   parentResearch,
-  childResearches 
+  childResearches,
+  // Direct properties
+  probability: directProbability,
+  areasForResearch: directAreasForResearch,
+  reasoning: directReasoning,
+  supportingPoints: directSupportingPoints,
+  negativePoints: directNegativePoints 
 }: InsightsDisplayProps) {
-  // Get data either from streamingState or direct data prop
-  const insightsData = data || (streamingState?.parsedData);
+  // Get data either from streamingState, direct data prop, or direct properties
+  const insightsData = data || streamingState?.parsedData || {
+    probability: directProbability,
+    areasForResearch: directAreasForResearch,
+    reasoning: directReasoning,
+    supportingPoints: directSupportingPoints,
+    negativePoints: directNegativePoints
+  };
   
   // Return loading state or null if no parsed data yet
-  if (!insightsData) return null;
+  if (!insightsData || 
+     (!insightsData.probability && !insightsData.areasForResearch?.length)) {
+    return null;
+  }
 
   const { probability, areasForResearch, reasoning, supportingPoints, negativePoints } = insightsData;
   

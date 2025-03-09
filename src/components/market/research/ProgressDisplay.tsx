@@ -10,6 +10,8 @@ interface ProgressDisplayProps {
   currentQueryIndex?: number
   queries?: string[]
   isLoading?: boolean
+  currentProgress?: number
+  currentQuery?: string | null
 }
 
 export function ProgressDisplay({ 
@@ -18,7 +20,9 @@ export function ProgressDisplay({
   maxIterations, 
   currentQueryIndex, 
   queries,
-  isLoading 
+  isLoading,
+  currentProgress,
+  currentQuery
 }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -82,6 +86,22 @@ export function ProgressDisplay({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          
+          {currentProgress !== undefined && currentProgress > 0 && (
+            <div className="mt-2 pt-2 border-t">
+              <div className="w-full bg-accent/20 h-1.5 rounded-full overflow-hidden">
+                <div 
+                  className="bg-primary h-full rounded-full transition-all duration-300 ease-in-out"
+                  style={{ width: `${Math.min(currentProgress * 100, 100)}%` }}
+                />
+              </div>
+              {currentQuery && (
+                <div className="text-xs text-muted-foreground mt-1 italic">
+                  Current search: {currentQuery.length > 60 ? `${currentQuery.substring(0, 60)}...` : currentQuery}
+                </div>
+              )}
             </div>
           )}
         </div>

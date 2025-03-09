@@ -8,9 +8,19 @@ interface ResearchHeaderProps {
   isAnalyzing: boolean
   onResearch: () => void
   focusText?: string
+  description?: string
+  marketId?: string
+  marketPrice?: number
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }: ResearchHeaderProps) {
+export function ResearchHeader({ 
+  isLoading, 
+  isAnalyzing, 
+  onResearch, 
+  focusText, 
+  description,
+  marketPrice 
+}: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
@@ -18,6 +28,11 @@ export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }
         {focusText && (
           <Badge variant="outline" className="text-xs bg-primary/10 border-primary/20">
             Focus: {focusText.length > 25 ? `${focusText.substring(0, 25)}...` : focusText}
+          </Badge>
+        )}
+        {marketPrice !== undefined && (
+          <Badge variant="outline" className="text-xs bg-accent/20 border-accent/30">
+            Current Price: {marketPrice}%
           </Badge>
         )}
       </div>

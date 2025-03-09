@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -330,7 +329,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  // Modified saveResearch function to accept insights data directly
   const saveResearch = async (insightsData?: ResearchInsights) => {
     if (isSaving) {
       console.log("Already saving, skipping duplicate save request");
@@ -357,7 +355,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return;
       }
 
-      // Use insights data passed directly or fall back to state
       const effectiveInsights = insightsData || streamingState.parsedData;
       
       if (!effectiveInsights?.areasForResearch || !Array.isArray(effectiveInsights.areasForResearch)) {
@@ -398,7 +395,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const sanitizedIterations = sanitizeJson(iterations);
       const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
       
-      // Ensure areasForResearch is a non-empty array
       if (!Array.isArray(sanitizedAreasForResearch) || sanitizedAreasForResearch.length === 0) {
         console.log("Cannot save: sanitizedAreasForResearch is not a valid array", sanitizedAreasForResearch);
         sanitizedAreasForResearch.push("Further research needed");
@@ -920,7 +916,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           const supportingPoints = Array.isArray(parsedData.supportingPoints) ? parsedData.supportingPoints : [];
           const negativePoints = Array.isArray(parsedData.negativePoints) ? parsedData.negativePoints : [];
           
-          // Create a fresh copy of insights for immediate saving
           const insightsForSaving: ResearchInsights = {
             probability,
             areasForResearch: areasForResearch.length > 0 ? areasForResearch : ["Further research needed"],
@@ -940,13 +935,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             }
           });
           
-          // Log the extracted data for debugging
           console.log("Extracted probability:", probability);
           console.log("Areas for research:", areasForResearch.length);
           console.log("Supporting points:", supportingPoints.length);
           console.log("Negative points:", negativePoints.length);
           
-          // Save research using the direct insights data rather than waiting for state updates
           await saveResearch(insightsForSaving);
           
           setIsLoading(false);
@@ -956,7 +949,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         console.error("Error processing insights response:", e);
         setError(`Error processing insights: ${e.message}`);
         
-        // Still try to save with whatever data we have
         if (insightsData.probability) {
           await saveResearch({
             probability: insightsData.probability,
@@ -1024,15 +1016,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     })
     setExpandedIterations(['iteration-1'])
     
-    // If we have a loaded research, set it as the parent for this new focused research
     if (loadedResearchId) {
       setParentResearchId(loadedResearchId)
     }
     
-    // Clear the loaded research ID so we can save this as a new research item
     setLoadedResearchId(null)
     
-    // Generate focused queries
     const focusedQueries = [
       focusText.trim(),
       `${focusText.trim()} analysis`,
@@ -1177,12 +1166,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   return (
     <Card className="p-4 w-full relative overflow-hidden">
       <ResearchHeader 
-        description={description} 
+        isLoading={isLoading}
+        isAnalyzing={isAnalyzing}
+        onResearch={handleStartResearch}
+        focusText={focusText}
         marketId={marketId}
         marketPrice={marketPrice}
       />
 
-      {/* Research Actions */}
       <div className="mt-4 space-y-4">
         {renderResearchActions()}
   
@@ -1203,8 +1194,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           </div>
         )}
         
-        {/* Focus Research Input */}
-        {(loadedResearchId || isAnalyzing || results.length > 0) && (
+        {loadedResearchId || isAnalyzing || results.length > 0 && (
           <div className="flex flex-col gap-2 mt-2">
             <div className="flex items-center gap-2">
               <Input
@@ -1243,29 +1233,25 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         )}
       </div>
 
-      {/* Progress Display */}
-      {(isLoading || progress.length > 0) && (
-        <div className="mt-4">
-          <ProgressDisplay 
-            messages={progress} 
-            isLoading={isLoading} 
-            currentProgress={currentQueryIndex !== -1 ? (currentQueryIndex + 1) / (currentQueries.length || 1) : 0}
-            currentQuery={currentQueryIndex !== -1 ? currentQueries[currentQueryIndex] : null}
-            queries={currentQueries}
-            currentIteration={currentIteration}
-            maxIterations={maxIterations}
-          />
-        </div>
-      )}
+      <div className="mt-4">
+        <ProgressDisplay 
+          messages={progress} 
+          isLoading={isLoading} 
+          currentQueryIndex={currentQueryIndex}
+          queries={currentQueries}
+          currentIteration={currentIteration}
+          maxIterations={maxIterations}
+          currentProgress={currentQueryIndex !== -1 ? (currentQueryIndex + 1) / (currentQueries.length || 1) : 0}
+          currentQuery={currentQueryIndex !== -1 ? currentQueries[currentQueryIndex] : null}
+        />
+      </div>
 
-      {/* Error Display */}
       {error && (
         <div className="mt-4 p-3 bg-destructive/10 text-destructive rounded-md">
           {error}
         </div>
       )}
 
-      {/* Results Display */}
       {results.length > 0 && (
         <div className="mt-4">
           <h3 className="text-sm font-medium mb-2">Web Sources ({results.length})</h3>
@@ -1273,7 +1259,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
 
-      {/* Analysis Display */}
       {analysis && (
         <div className="mt-4">
           <h3 className="text-sm font-medium mb-2">Analysis</h3>
@@ -1281,7 +1266,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
 
-      {/* Iterations */}
       {iterations.length > 0 && (
         <div className="mt-4">
           <h3 className="text-sm font-medium mb-2">Research Iterations</h3>
@@ -1291,7 +1275,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 key={`iteration-${iteration.iteration}`}
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
-                onToggle={() => {
+                onToggleExpand={() => {
                   setExpandedIterations(prev => {
                     const id = `iteration-${iteration.iteration}`;
                     if (prev.includes(id)) {
@@ -1307,19 +1291,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
 
-      {/* Insights Display */}
       {streamingState.parsedData && (
         <div className="mt-4">
           <h3 className="text-sm font-medium mb-2">Insights</h3>
           <InsightsDisplay
-            probability={streamingState.parsedData.probability}
-            areasForResearch={streamingState.parsedData.areasForResearch}
-            supportingPoints={streamingState.parsedData.supportingPoints}
-            negativePoints={streamingState.parsedData.negativePoints}
-            reasoning={streamingState.parsedData.reasoning}
+            streamingState={streamingState}
+            probability={streamingState.parsedData?.probability}
+            areasForResearch={streamingState.parsedData?.areasForResearch}
+            supportingPoints={streamingState.parsedData?.supportingPoints}
+            negativePoints={streamingState.parsedData?.negativePoints}
+            reasoning={streamingState.parsedData?.reasoning}
           />
         </div>
       )}
     </Card>
   )
 }
+
