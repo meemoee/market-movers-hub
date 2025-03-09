@@ -30,15 +30,22 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    // Log the inputs to help with debugging
-    console.log('Focus text:', focusText || 'not provided')
-    console.log('Market question:', marketQuestion || 'not provided')
+    // Log the inputs for debugging
+    console.log('--------- GENERATE QUERIES INPUTS ---------')
     console.log('Query:', query || 'not provided')
+    console.log('Market question:', marketQuestion || 'not provided')
+    console.log('Focus text:', focusText || 'not provided')
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Iteration:', iteration)
     console.log('Previous queries count:', previousQueries.length)
     
-    // Create a simpler context from previous research if available
+    // Use different base text for search to ensure query diversity
+    // For first iteration, we want to ensure we get diverse, high-quality queries
+    const baseQueryText = iteration === 1 ? 
+      (marketQuestion || query) : 
+      `${query} - iteration ${iteration} follow-up research`;
+
+    // Create a simpler context from previous research if needed
     let previousResearchContext = '';
     if (previousQueries.length > 0) {
       previousResearchContext = `
@@ -48,25 +55,27 @@ ${previousQueries.slice(-10).map((q, i) => `${i+1}. ${q}`).join('\n')}
 DO NOT REPEAT any of these previous queries. Generate completely new search directions.`;
     }
 
-    // Build a simpler directive prompt
+    // Build a more effective prompt based on iteration
     const focusedPrompt = focusText ? 
       `You are a research assistant focusing on: "${focusText}".
 Your task is to generate search queries that provide information relevant to ${marketQuestion || query}.
 CRITICAL: EVERY query MUST contain "${focusText}" explicitly.` 
       : 
-      "You are a helpful assistant that generates search queries.";
+      "You are a helpful research assistant that generates effective search queries.";
     
     // Set up a timeout for the fetch request
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
     
     try {
+      console.log('Sending request to OpenRouter with timeout');
+      
       const response = await fetch(OPENROUTER_URL, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://market-research-app.com',
+          'HTTP-Referer': 'https://market-research-app.vercel.app',
           'X-Title': 'Market Research App',
         },
         body: JSON.stringify({
@@ -78,13 +87,20 @@ CRITICAL: EVERY query MUST contain "${focusText}" explicitly.`
             },
             {
               role: "user",
-              content: `Generate 5 diverse search queries for research on: ${focusText || query}
+              content: `Generate 5 diverse, specific search queries for research on: ${baseQueryText}
 
-${marketQuestion !== query ? `Topic: ${marketQuestion}` : ''}
+${marketQuestion && marketQuestion !== query ? `Topic context: ${marketQuestion}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
 ${previousResearchContext}
 
 ${focusText ? `IMPORTANT: Every query MUST include the term "${focusText}"` : ''}
+
+Instructions:
+1. Create 5 queries that would yield different, relevant information
+2. Make each query specific enough to return high-quality results
+3. Ensure queries are diverse and cover different aspects
+4. Include key terms that will return actionable information
+${iteration > 1 ? '5. Focus on filling gaps from previous research' : ''}
 
 Format your response as a JSON array of 5 query strings. Example format:
 ["query 1", "query 2", "query 3", "query 4", "query 5"]`
@@ -103,7 +119,7 @@ Format your response as a JSON array of 5 query strings. Example format:
       }
 
       const result = await response.json();
-      console.log('Raw response structure:', Object.keys(result));
+      console.log('Raw response from OpenRouter received');
       
       if (!result.choices || !result.choices[0]) {
         console.error('Unexpected response structure:', result);
@@ -117,13 +133,14 @@ Format your response as a JSON array of 5 query strings. Example format:
         // Parse the response content
         let queriesData;
         
-        // Try simple JSON parsing first
+        // Try direct JSON parsing first
         try {
           queriesData = JSON.parse(content);
+          console.log('Successfully parsed JSON response');
         } catch (e) {
           console.log('Direct JSON parsing failed, trying to extract JSON from response');
           
-          // If direct parsing fails, try to extract JSON from the response
+          // Try to extract JSON from the response
           const jsonMatch = content.match(/\[\s*"[^"]+"\s*(?:,\s*"[^"]+"\s*)*\]/);
           if (jsonMatch) {
             try {
@@ -153,10 +170,10 @@ Format your response as a JSON array of 5 query strings. Example format:
         
         // If we still don't have valid queries, use fallbacks
         if (!queriesData || !queriesData.queries || !Array.isArray(queriesData.queries) || queriesData.queries.length === 0) {
-          console.log('Using fallback queries');
+          console.log('Using fallback queries due to parsing issues');
           
           // Generate basic fallback queries
-          const baseQuery = focusText || query;
+          const baseQuery = focusText || baseQueryText;
           queriesData = {
             queries: [
               `${baseQuery} latest information`,
@@ -170,7 +187,7 @@ Format your response as a JSON array of 5 query strings. Example format:
         
         // Ensure we have exactly 5 queries
         if (queriesData.queries.length < 5) {
-          const baseQuery = focusText || query;
+          const baseQuery = focusText || baseQueryText;
           const additionalQueries = [
             `${baseQuery} latest developments`,
             `${baseQuery} recent research`,
@@ -224,11 +241,11 @@ Format your response as a JSON array of 5 query strings. Example format:
           `${focusText} recent developments`,
           `${focusText} statistics and data`
         ] : [
-          `${query} latest information`,
-          `${query} analysis and trends`,
-          `${query} expert opinions`,
-          `${query} recent developments`,
-          `${query} statistics and data`
+          `${baseQueryText} latest information`,
+          `${baseQueryText} analysis and trends`,
+          `${baseQueryText} expert opinions`,
+          `${baseQueryText} recent developments`,
+          `${baseQueryText} statistics and data`
         ];
         
         return new Response(
@@ -281,8 +298,16 @@ Format your response as a JSON array of 5 query strings. Example format:
   } catch (error) {
     console.error('Error generating queries:', error);
     
-    // Create basic fallback queries based on the input
-    const baseQuery = focusText || query || "information";
+    // Extract query and focus text safely
+    let baseQuery = "information";
+    try {
+      const { query, focusText } = await req.json();
+      baseQuery = focusText || query || "information";
+    } catch (e) {
+      console.error('Could not extract query from request:', e);
+    }
+    
+    // Create basic fallback queries
     const fallbackQueries = [
       `${baseQuery} latest information`,
       `${baseQuery} analysis and insights`,
