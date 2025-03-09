@@ -39,5 +39,3 @@ verify_jwt = false
 [functions.polymarket-ws]
 verify_jwt = false
 
-[functions.analyze-web-content]
-verify_jwt = false

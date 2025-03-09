@@ -38,7 +38,7 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. Extract ONLY factual points directly supported by the provided content. Do not invent, interpolate, or add information not explicitly found in the source material."
+            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. Return ONLY a JSON object with the requested fields."
           },
           {
             role: "user",
@@ -57,18 +57,16 @@ ${marketPrice !== undefined ? `Consider if the current market probability of ${m
 
 Return ONLY a JSON object with these fields:
 1. probability: your estimated probability as a percentage string (e.g., "65%")
-2. areasForResearch: an array of strings describing specific areas needing more research (3-5 areas)
-3. supportingPoints: specific points of evidence supporting the event occurring
-4. negativePoints: specific points of evidence against the event occurring
-5. reasoning: a brief paragraph explaining your probability estimate
-
-Each point must be a direct fact or evidence found in the provided content. Do not create generic points or infer information not explicitly stated. Only include points that have specific evidence in the source material.`
+2. areasForResearch: an array of strings describing specific areas needing more research
+3. supportingPoints: an array of strings with key evidence/arguments supporting the event occurring
+4. negativePoints: an array of strings with key evidence/arguments against the event occurring
+5. reasoning: a brief paragraph explaining your probability estimate`
           }
         ],
         response_format: { type: "json_object" },
         stream: false
       })
-    });
+    })
 
     if (!response.ok) {
       console.error('OpenRouter API error:', response.status, await response.text())
@@ -102,7 +100,7 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         throw new Error(`Unexpected content type: ${typeof content}`)
       }
       
-      // Keep the result simple, use exactly what comes from the API
+      // Validate and ensure all fields exist
       const result = {
         probability: parsed.probability || "Unknown",
         areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
