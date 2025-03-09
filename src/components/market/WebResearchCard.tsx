@@ -954,18 +954,33 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           description, 
           marketId,
           descriptionLength: description ? description.length : 0,
-          focusText: effectiveFocusText.trim() || null
+          focusText: effectiveFocusText.trim() || null,
+          previousResearchContext: previousResearchContext
         });
         
+        const generateQueriesPayload = { 
+          query: description,
+          marketId: marketId,
+          marketDescription: description,
+          question: description,
+          iteration: 1,
+          focusText: effectiveFocusText.trim()
+        };
+        
+        if (previousResearchContext) {
+          Object.assign(generateQueriesPayload, {
+            previousQueries: previousResearchContext.queries,
+            previousAnalyses: previousResearchContext.analyses,
+            probability: previousResearchContext.probability
+          });
+          
+          setProgress(prev => [...prev, 
+            `Using context from ${previousResearchContext.queries.length} previous queries and ${previousResearchContext.analyses.length} analyses for initial query generation.`
+          ]);
+        }
+        
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-          body: JSON.stringify({ 
-            query: description,
-            marketId: marketId,
-            marketDescription: description,
-            question: description,
-            iteration: 1,
-            focusText: effectiveFocusText.trim()
-          })
+          body: JSON.stringify(generateQueriesPayload)
         });
 
         if (queriesError) {
