@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ArrowUp, ArrowDown } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ArrowUp, ArrowDown, Bug } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface StreamingState {
@@ -76,9 +76,63 @@ export function InsightsDisplay({
       child.focusText.toLowerCase().includes(area.toLowerCase())
     );
   };
+
+  // Debug function to print focus information
+  const printDebugInfo = () => {
+    console.log('=== FOCUS AREA DEBUG INFO ===');
+    console.log('Current parent research:', parentResearch);
+    console.log('Parent focus text:', parentResearch?.focusText);
+    console.log('Current research areas:', areasForResearch);
+    console.log('Child researches:', childResearches);
+    console.log('Child focus texts:', childResearches?.map(child => child.focusText));
+    console.log('Current raw text length:', streamingState.rawText.length);
+    console.log('Raw streaming state:', streamingState);
+    
+    // Check if we're in a browser environment
+    if (typeof window !== 'undefined') {
+      // Look for URL parameters that might contain focus info
+      const urlParams = new URLSearchParams(window.location.search);
+      console.log('URL params:', Object.fromEntries(urlParams.entries()));
+      console.log('Focus param:', urlParams.get('focus'));
+      
+      // Check localStorage for any saved research data
+      try {
+        const savedResearches = localStorage.getItem('savedResearches');
+        if (savedResearches) {
+          console.log('Saved researches in localStorage:', JSON.parse(savedResearches));
+        }
+      } catch (e) {
+        console.log('Error parsing localStorage:', e);
+      }
+    }
+  };
   
   return (
     <div className="space-y-5">
+      {/* Debug button - always visible */}
+      <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-red-500/10 to-background border-red-500/30 rounded-xl">
+        <div className="flex items-center gap-3">
+          <div className="bg-red-500/10 p-2 rounded-full">
+            <Bug className="h-5 w-5 text-red-500" />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-base font-semibold">Debug Tools</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Troubleshoot focus area issues
+            </p>
+          </div>
+          <Button 
+            onClick={printDebugInfo}
+            variant="destructive" 
+            size="sm"
+            className="ml-auto"
+          >
+            <Bug className="h-4 w-4 mr-2" />
+            Print Focus Debug Info
+          </Button>
+        </div>
+      </Card>
+
       {parentResearch && (
         <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-blue-500/10 to-background border-blue-500/30 rounded-xl">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent"></div>

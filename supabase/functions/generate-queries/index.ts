@@ -30,14 +30,25 @@ serve(async (req) => {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
+    // ENHANCED DEBUG: Log all input parameters to help diagnose the focus text issue
+    console.log('=== GENERATE QUERIES DEBUG INFO ===');
+    console.log('Raw request body:', await req.text());
+    console.log('Parsed request body:', await req.json());
+    console.log('Query parameter:', query);
+    console.log('Focus text parameter:', focusText);
+    console.log('Market question parameter:', marketQuestion);
+    console.log('Previous queries count:', previousQueries.length);
+    console.log('Iteration:', iteration);
+    console.log('==================================');
+    
     // IMPORTANT FIX: Log the focus text to verify it's being received properly
-    console.log('Generating sub-queries for:', focusText || query)
-    console.log('Market question:', marketQuestion || 'not provided')
-    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
-    console.log('Focus text:', focusText || 'not provided')
-    console.log('Iteration:', iteration)
-    console.log('Previous queries count:', previousQueries.length)
-    console.log('Previous analyses count:', previousAnalyses.length)
+    console.log('Generating sub-queries for:', focusText || query);
+    console.log('Market question:', marketQuestion || 'not provided');
+    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided');
+    console.log('Focus text:', focusText || 'not provided');
+    console.log('Iteration:', iteration);
+    console.log('Previous queries count:', previousQueries.length);
+    console.log('Previous analyses count:', previousAnalyses.length);
     
     // Create context from previous research if available
     let previousResearchContext = '';
@@ -302,7 +313,9 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         }
       }
       
-      console.log('Generated queries:', queriesData.queries)
+      // Final debug log of the generated queries
+      console.log('Generated queries with focusText:', focusText);
+      console.log('Generated queries:', queriesData.queries);
 
       return new Response(
         JSON.stringify({ queries: queriesData.queries }),
