@@ -135,7 +135,6 @@ export function MarketDetails({
         <WebResearchCard 
           description={description} 
           marketId={marketId}
-          marketQuestion={question} // Pass the question here
         />
       )}
 

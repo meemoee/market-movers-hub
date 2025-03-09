@@ -102,15 +102,10 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         throw new Error(`Unexpected content type: ${typeof content}`)
       }
       
-      // ALWAYS ensure areasForResearch is a non-empty array
-      const defaultAreas = ["Additional context and information", "More recent data", "Expert opinions"];
-      const areasForResearch = Array.isArray(parsed.areasForResearch) && parsed.areasForResearch.length > 0 
-        ? parsed.areasForResearch 
-        : defaultAreas;
-      
+      // Keep the result simple, use exactly what comes from the API
       const result = {
         probability: parsed.probability || "Unknown",
-        areasForResearch: areasForResearch,
+        areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
         supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
         negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
         reasoning: parsed.reasoning || "No reasoning provided"
@@ -119,7 +114,6 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
       console.log('Supporting points count:', result.supportingPoints.length)
       console.log('Negative points count:', result.negativePoints.length)
-      console.log('Areas for research count:', result.areasForResearch.length)
       
       // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {
@@ -127,26 +121,15 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       })
     } catch (error) {
       console.error('Error processing OpenRouter response:', error)
-      // Even in error case, we return a valid result with default values to avoid null constraint violations
-      const fallbackResult = {
-        probability: "Unknown",
-        areasForResearch: ["Additional context and information", "More recent data", "Expert opinions"],
-        supportingPoints: [],
-        negativePoints: [],
-        reasoning: "An error occurred while extracting insights."
-      }
-      return new Response(JSON.stringify(fallbackResult), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+      throw error
     }
   } catch (error) {
     console.error('Error in extract-research-insights:', error)
-    // Return fallback values instead of just the error to avoid null constraint violations
     return new Response(
       JSON.stringify({ 
         error: error.message, 
         probability: "Unknown",
-        areasForResearch: ["Additional context and information", "More recent data", "Expert opinions"],
+        areasForResearch: [],
         supportingPoints: [],
         negativePoints: [],
         reasoning: "An error occurred while extracting insights."

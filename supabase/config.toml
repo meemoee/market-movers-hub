@@ -47,7 +47,3 @@ verify_jwt = false
 
 [functions.market-analysis]
 verify_jwt = false
-
-[functions.extract-research-insights]
-verify_jwt = false
-
