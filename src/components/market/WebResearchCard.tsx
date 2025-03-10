@@ -1061,7 +1061,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setFocusText(area);
     console.log('Focus text after setState call:', focusText); // This will likely show the old value due to closure
     
-    // Let's check if we already have a child research with this focus
     const existingChild = childResearchList.find(child => 
       child.focus_text?.toLowerCase() === area.toLowerCase() ||
       (child.focus_text && area.toLowerCase().includes(child.focus_text.toLowerCase())) ||
@@ -1081,7 +1080,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       description: `Starting new research focused on: ${area}`
     });
     
-    // Reset all state for new research
     setIsLoading(true);
     setProgress([]);
     setResults([]);
