@@ -1,4 +1,3 @@
-
 import { Button } from "@/components/ui/button"
 import { Loader2, Search } from "lucide-react"
 
@@ -10,7 +9,7 @@ interface ResearchHeaderProps {
 
 export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
   return (
-    <div className="flex items-center justify-between p-4 border-b border-border/50">
+    <div className="flex items-center justify-between">
       <h3 className="text-lg font-semibold">Web Research</h3>
       <Button 
         onClick={onResearch} 

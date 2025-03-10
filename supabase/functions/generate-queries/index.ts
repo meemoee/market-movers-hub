@@ -15,17 +15,6 @@ serve(async (req) => {
   }
 
   try {
-    // Read the request body ONCE and store it
-    const requestText = await req.text();
-    let requestData;
-    
-    try {
-      requestData = JSON.parse(requestText);
-    } catch (parseError) {
-      console.error('Error parsing request JSON:', parseError);
-      throw new Error(`Invalid JSON in request body: ${parseError.message}`);
-    }
-    
     const { 
       query, 
       marketPrice, 
@@ -35,31 +24,19 @@ serve(async (req) => {
       previousAnalyses = [],
       previousProbability,
       iteration = 1
-    } = requestData;
+    } = await req.json()
 
     if (!OPENROUTER_API_KEY) {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
 
-    // ENHANCED DEBUG: Log all input parameters to help diagnose the focus text issue
-    console.log('=== GENERATE QUERIES DEBUG INFO ===');
-    console.log('Raw request body:', requestText);
-    console.log('Parsed request body:', requestData);
-    console.log('Query parameter:', query);
-    console.log('Focus text parameter:', focusText);
-    console.log('Market question parameter:', marketQuestion);
-    console.log('Previous queries count:', previousQueries.length);
-    console.log('Iteration:', iteration);
-    console.log('==================================');
-    
-    // IMPORTANT FIX: Log the focus text to verify it's being received properly
-    console.log('Generating sub-queries for:', focusText || query);
-    console.log('Market question:', marketQuestion || 'not provided');
-    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided');
-    console.log('Focus text:', focusText || 'not provided');
-    console.log('Iteration:', iteration);
-    console.log('Previous queries count:', previousQueries.length);
-    console.log('Previous analyses count:', previousAnalyses.length);
+    console.log('Generating sub-queries for:', query)
+    console.log('Market question:', marketQuestion || 'not provided')
+    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
+    console.log('Focus text:', focusText || 'not provided')
+    console.log('Iteration:', iteration)
+    console.log('Previous queries count:', previousQueries.length)
+    console.log('Previous analyses count:', previousAnalyses.length)
     
     // Create context from previous research if available
     let previousResearchContext = '';
@@ -111,7 +88,7 @@ ${marketPrice !== undefined ? `Generate search queries to explore both supportin
 ${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed about "${focusText || query}"
+1. Highly specific and detailed about "${focusText}"
 2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
 4. COMPLETELY DIFFERENT from previous research queries
@@ -324,9 +301,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         }
       }
       
-      // Final debug log of the generated queries
-      console.log('Generated queries with focusText:', focusText);
-      console.log('Generated queries:', queriesData.queries);
+      console.log('Generated queries:', queriesData.queries)
 
       return new Response(
         JSON.stringify({ queries: queriesData.queries }),

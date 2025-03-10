@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
@@ -326,18 +325,7 @@ serve(async (req) => {
   }
 
   try {
-    // Read the request body ONCE and store it
-    const requestText = await req.text();
-    let requestData;
-    
-    try {
-      requestData = JSON.parse(requestText);
-    } catch (parseError) {
-      console.error('Error parsing request JSON:', parseError);
-      throw new Error(`Invalid JSON in request body: ${parseError.message}`);
-    }
-    
-    const { query, focusText } = requestData;
+    const { query, focusText } = await req.json()
 
     if (!BING_API_KEY) {
       throw new Error('BING_API_KEY is not configured')
@@ -346,14 +334,6 @@ serve(async (req) => {
     if (!OPENROUTER_API_KEY) {
       throw new Error('OPENROUTER_API_KEY is not configured')
     }
-
-    // Debug logs to help diagnose focus text issues
-    console.log('=== WEB RESEARCH DEBUG INFO ===');
-    console.log('Raw request body:', requestText);
-    console.log('Parsed request data:', requestData);
-    console.log('Query parameter:', query);
-    console.log('Focus text parameter:', focusText);
-    console.log('==============================');
 
     // Create a TransformStream for streaming response
     const { readable, writable } = new TransformStream()
