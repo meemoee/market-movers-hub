@@ -113,6 +113,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   } | null>(null)
   const { toast } = useToast()
 
+  // Add a focusTextRef to track the current focus text value
+  const focusTextRef = useRef<string>('')
+
+  // Update the ref whenever focusText changes
+  useEffect(() => {
+    focusTextRef.current = focusText
+  }, [focusText])
+
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
     queryKey: ['saved-research', marketId],
     queryFn: async () => {
@@ -421,6 +429,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
+      console.log(`Current focus text: ${focusTextRef.current}`)
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -439,9 +448,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketDescription: description
       };
 
-      if (focusText?.trim()) {
-        scrapePayload.focusText = focusText.trim();
-        scrapePayload.researchFocus = focusText.trim();
+      // Use the focusTextRef.current to ensure we always have the latest value
+      if (focusTextRef.current?.trim()) {
+        scrapePayload.focusText = focusTextRef.current.trim();
+        scrapePayload.researchFocus = focusTextRef.current.trim();
+        
+        setProgress(prev => [...prev, `Focusing web research on: ${focusTextRef.current.trim()}`]);
         
         if (previousResearchContext) {
           scrapePayload.previousQueries = previousResearchContext.queries;
@@ -451,8 +463,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             `Using context from ${previousResearchContext.queries.length} previous queries and ${previousResearchContext.analyses.length} analyses for focused research.`
           ]);
         }
-        
-        setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
       }
       
       const response = await supabase.functions.invoke('web-scrape', {
@@ -954,6 +964,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     console.log(`Setting focus text to: "${area}"`);
     setFocusText(area);
+    // Update the ref immediately to ensure the current value is available
+    focusTextRef.current = area;
     
     if (loadedResearchId) {
       console.log(`Setting parent research ID to: ${loadedResearchId}`);
@@ -968,17 +980,27 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       rawText: '',
       parsedData: null
     });
+    
+    // Log that we're about to start the focused research
+    console.log(`Starting focused research with focus text: "${area}"`);
     setProgress([`Starting focused research on: ${area}`]);
     setIsLoading(true);
     setLoadedResearchId(null);
     
+    // Generate queries that specifically include the focus area
     const initialQueries = [
       `${area} ${description}`,
       `${area} analysis ${marketId}`,
       `${area} latest information`
     ];
     
-    handleWebScrape(initialQueries, 1);
+    console.log(`Generated initial queries for focused research:`, initialQueries);
+    
+    // Small delay to ensure state updates have propagated
+    setTimeout(() => {
+      console.log(`Starting web scrape with focus text: "${focusTextRef.current}"`);
+      handleWebScrape(initialQueries, 1);
+    }, 10);
   };
 
   const returnToParent = () => {
