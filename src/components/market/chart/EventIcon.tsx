@@ -1,5 +1,17 @@
 
-import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown, LucideIcon, GitBranch, Search, ArrowRightCircle } from 'lucide-react';
+import { 
+  Info, 
+  AlertCircle, 
+  CheckCircle, 
+  XCircle, 
+  ArrowUp, 
+  ArrowDown, 
+  LucideIcon, 
+  GitBranch, 
+  Search, 
+  ArrowRightCircle,
+  FolderTree
+} from 'lucide-react';
 
 const iconMap: Record<string, LucideIcon> = {
   info: Info,
@@ -10,7 +22,8 @@ const iconMap: Record<string, LucideIcon> = {
   down: ArrowDown,
   branch: GitBranch,
   search: Search,
-  continue: ArrowRightCircle
+  continue: ArrowRightCircle,
+  tree: FolderTree
 };
 
 interface EventIconProps {

@@ -1,4 +1,4 @@
-<lov-code>
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { EventIcon } from "./chart/EventIcon"
 
 interface WebResearchCardProps {
   description: string;
@@ -917,4 +918,240 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           }
           
           console.log(`Extracted probability: ${probability}`);
-          console.log(`Areas for research: ${
+          console.log(`Areas for research: ${areasForResearch.length}`);
+          
+          await saveResearch();
+        }
+      } catch (error) {
+        console.error("Error processing insights data:", error);
+        setProgress(prev => [...prev, `Error processing insights: ${error.message}`]);
+      }
+    } catch (error) {
+      console.error("Error in extractInsights:", error);
+      setProgress(prev => [...prev, `Error extracting insights: ${error.message}`]);
+    }
+    
+    setIsLoading(false);
+    setIsAnalyzing(false);
+  }
+
+  const handleStartResearch = () => {
+    setIsLoading(true)
+    setError(null)
+    setProgress([])
+    setResults([])
+    setAnalysis('')
+    setIterations([])
+    setExpandedIterations(['iteration-1'])
+    setLoadedResearchId(null)
+    setStreamingState({
+      rawText: '',
+      parsedData: null
+    })
+    
+    if (focusText.trim()) {
+      setProgress([`Starting focused research on: ${focusText.trim()}`])
+    } else {
+      setProgress([`Starting web research for: ${description}`])
+    }
+
+    // Initial set of search queries based on the market description
+    const initialQueries = [
+      `${description}`,
+      `${description} probability`,
+      `${description} analysis`
+    ]
+    
+    setCurrentQueries(initialQueries);
+    
+    handleWebScrape(initialQueries, 1, [])
+      .catch(error => {
+        console.error('Error in research process:', error)
+        setError(`Research process failed: ${error.message}`)
+        setIsLoading(false)
+      })
+  }
+
+  const handleContinueResearch = (area: string) => {
+    if (!streamingState.parsedData) return;
+    
+    setFocusText(area);
+    
+    const allQueries = iterations.flatMap(iter => iter.queries);
+    const allAnalyses = iterations.map(iter => iter.analysis);
+    
+    setPreviousResearchContext({
+      queries: allQueries,
+      analyses: allAnalyses,
+      probability: streamingState.parsedData.probability,
+      supportingPoints: streamingState.parsedData.supportingPoints || [],
+      negativePoints: streamingState.parsedData.negativePoints || []
+    });
+    
+    // Create a copy of the current research before starting a new focused one
+    saveResearch().then(() => {
+      if (loadedResearchId) {
+        setParentResearchId(loadedResearchId);
+      }
+      
+      setLoadedResearchId(null);
+      setResults([]);
+      setAnalysis('');
+      setIterations([]);
+      setExpandedIterations(['iteration-1']);
+      setStreamingState({
+        rawText: '',
+        parsedData: null
+      });
+      
+      setIsLoading(true);
+      setError(null);
+      setProgress([
+        `Starting focused research on: ${area}`,
+        `Based on previous research with ${allQueries.length} queries and probability estimate: ${streamingState.parsedData.probability}`
+      ]);
+      
+      const focusedQueries = [
+        `${area} related to ${description}`,
+        `${area} analysis ${marketId}`,
+        `${area} details and updates`
+      ];
+      
+      setCurrentQueries(focusedQueries);
+      
+      handleWebScrape(focusedQueries, 1, [])
+        .catch(error => {
+          console.error('Error in focused research process:', error);
+          setError(`Focused research process failed: ${error.message}`);
+          setIsLoading(false);
+        });
+    });
+  };
+
+  return (
+    <Card className="mt-4">
+      <div className="p-6 space-y-6">
+        <ResearchHeader 
+          description={description} 
+          isLoading={isLoading} 
+          maxIterations={maxIterations} 
+          setMaxIterations={setMaxIterations}
+          handleStartResearch={handleStartResearch}
+          savedResearch={savedResearch}
+          loadSavedResearch={loadSavedResearch}
+          isLoadingSaved={isLoadingSaved}
+          loadedResearchId={loadedResearchId}
+          focusText={focusText}
+          setFocusText={setFocusText}
+          isFocusedResearch={!!parentResearchId}
+          parentResearch={parentResearch}
+        />
+        
+        {parentResearch && (
+          <div className="flex items-center gap-2 p-3 bg-secondary rounded-md mt-2 text-sm">
+            <EventIcon type="branch" className="text-muted-foreground" />
+            <div>
+              <span className="text-muted-foreground">Focused research based on: </span>
+              <Badge variant="outline" className="font-normal ml-1">
+                {parentResearch.focus_text || 'Previous research'}
+              </Badge>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="ml-2 h-7 text-xs"
+                onClick={() => loadSavedResearch(parentResearch)}
+              >
+                <ArrowLeftCircle className="mr-1 h-3 w-3" />
+                Back to parent
+              </Button>
+            </div>
+          </div>
+        )}
+        
+        {childResearchList.length > 0 && (
+          <div className="flex flex-col gap-2 p-3 bg-secondary rounded-md mt-2 text-sm">
+            <div className="flex items-center gap-2">
+              <EventIcon type="branch" className="text-muted-foreground" />
+              <span className="text-muted-foreground">Child research paths ({childResearchList.length}):</span>
+            </div>
+            <ScrollArea className="max-h-32">
+              <div className="flex flex-wrap gap-2 mt-1">
+                {childResearchList.map((child) => (
+                  <Badge 
+                    key={child.id} 
+                    variant="outline" 
+                    className="cursor-pointer hover:bg-accent transition-colors flex items-center gap-1"
+                    onClick={() => loadSavedResearch(child)}
+                  >
+                    <EventIcon type="search" size={12} className="text-muted-foreground" />
+                    {child.focus_text || 'Focused research'}
+                  </Badge>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+        
+        {progress.length > 0 && (
+          <ProgressDisplay 
+            progress={progress} 
+            currentIteration={currentIteration} 
+            maxIterations={maxIterations}
+            currentQueries={currentQueries}
+            currentQueryIndex={currentQueryIndex}
+          />
+        )}
+        
+        {error && (
+          <div className="bg-destructive/10 text-destructive p-4 rounded-md">
+            {error}
+          </div>
+        )}
+        
+        {results.length > 0 && (
+          <SitePreviewList 
+            results={results} 
+            isLoading={isLoading} 
+          />
+        )}
+        
+        {iterations.length > 0 && (
+          <div className="space-y-4">
+            {iterations.map((iter) => (
+              <IterationCard
+                key={`iteration-${iter.iteration}`}
+                iteration={iter}
+                expanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
+                onToggle={() => {
+                  setExpandedIterations(prev => {
+                    const iterKey = `iteration-${iter.iteration}`;
+                    return prev.includes(iterKey)
+                      ? prev.filter(key => key !== iterKey)
+                      : [...prev, iterKey]
+                  })
+                }}
+                isCurrentIteration={currentIteration === iter.iteration && isLoading}
+              />
+            ))}
+          </div>
+        )}
+        
+        {analysis && (
+          <AnalysisDisplay 
+            analysis={analysis} 
+            isAnalyzing={isAnalyzing}
+          />
+        )}
+        
+        {streamingState.parsedData && (
+          <InsightsDisplay 
+            data={streamingState.parsedData} 
+            onResearchAreaClick={handleContinueResearch}
+            focusedText={focusText}
+            parentResearch={parentResearch}
+          />
+        )}
+      </div>
+    </Card>
+  )
+}
