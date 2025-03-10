@@ -81,6 +81,7 @@ interface SavedResearch {
 interface ResearchChild {
   id: string;
   focusText: string;
+  onView: () => void;
 }
 
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
