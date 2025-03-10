@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -927,3 +928,206 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       focusText,
       analysis: analysis?.length || 0,
       resultsCount: results?.length || 0,
+      streamingState: streamingState?.parsedData ? 'has data' : 'empty'
+    });
+    
+    // Check if we already have a child research for this area
+    const matchingChild = childResearchList.find(r => 
+      r.focus_text?.toLowerCase() === area.toLowerCase()
+    );
+    
+    if (matchingChild) {
+      console.log(`Found existing research for area "${area}" with ID: ${matchingChild.id}`);
+      loadSavedResearch(matchingChild);
+      return;
+    }
+    
+    console.log(`Setting focus text to: "${area}"`);
+    setFocusText(area);
+    
+    // Only set parent ID if we have a loaded research
+    if (loadedResearchId) {
+      console.log(`Setting parent research ID to: ${loadedResearchId}`);
+      setParentResearchId(loadedResearchId);
+    }
+    
+    // Reset current state for new research
+    setResults([]);
+    setAnalysis('');
+    setIterations([]);
+    setExpandedIterations(['iteration-1']);
+    setStreamingState({
+      rawText: '',
+      parsedData: null
+    });
+    setProgress([`Starting focused research on: ${area}`]);
+    setIsLoading(true);
+    setLoadedResearchId(null);
+    
+    // Start with a new research iteration focused on this area
+    const initialQueries = [
+      `${area} ${description}`,
+      `${area} analysis ${marketId}`,
+      `${area} latest information`
+    ];
+    
+    handleWebScrape(initialQueries, 1);
+  };
+
+  // Return to parent research if available
+  const returnToParent = () => {
+    if (parentResearch) {
+      console.log(`Returning to parent research: ${parentResearch.id}`);
+      loadSavedResearch(parentResearch);
+    } else if (parentResearchId) {
+      console.log(`Parent research ID exists but research not found: ${parentResearchId}`);
+      // Clear parent ID if the research doesn't exist anymore
+      setParentResearchId(null);
+    }
+  };
+
+  return (
+    <Card className="w-full border-primary/20 mb-8">
+      <ResearchHeader
+        description={description}
+        marketId={marketId}
+        isLoading={isLoading}
+        onSearch={() => {
+          setResults([]);
+          setAnalysis('');
+          setIterations([]);
+          setExpandedIterations(['iteration-1']);
+          setStreamingState({
+            rawText: '',
+            parsedData: null
+          });
+          setProgress([]);
+          setIsLoading(true);
+          setLoadedResearchId(null);
+          setParentResearchId(null);
+          setFocusText('');
+          
+          const initialQueries = [
+            description,
+            `${description} analysis`,
+            `${description} latest news`
+          ];
+          
+          handleWebScrape(initialQueries, 1);
+        }}
+        isSearching={isLoading}
+        resultsCount={results.length}
+        savedResearch={savedResearch || []}
+        onLoadSaved={loadSavedResearch}
+        focusText={focusText}
+      />
+      
+      {parentResearch && (
+        <div className="px-4 py-2 bg-primary/5 flex items-center gap-2 border-b border-border/50">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-8 gap-1 text-xs font-normal" 
+            onClick={returnToParent}
+          >
+            <ArrowLeftCircle size={14} />
+            Return to main research
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Current focus: <span className="font-medium text-foreground">{focusText}</span>
+          </span>
+        </div>
+      )}
+      
+      {(isLoading || progress.length > 0) && (
+        <div className="p-4 border-b border-border/50">
+          <ProgressDisplay progress={progress} isLoading={isLoading} />
+        </div>
+      )}
+      
+      {results.length > 0 && (
+        <div className="p-4 border-b border-border/50">
+          <div className="mb-2 flex justify-between items-center">
+            <h3 className="text-sm font-medium">Results ({results.length})</h3>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-muted-foreground">Max iterations:</label>
+              <Slider
+                className="w-24"
+                value={[maxIterations]}
+                min={1}
+                max={5}
+                step={1}
+                onValueChange={(value) => setMaxIterations(value[0])}
+              />
+              <span className="text-xs font-medium">{maxIterations}</span>
+            </div>
+          </div>
+          <SitePreviewList results={results} />
+        </div>
+      )}
+      
+      {((iterations.length > 0) || isAnalyzing) && (
+        <div className="p-4 border-b border-border/50">
+          <h3 className="text-sm font-medium mb-2">Analysis Iterations</h3>
+          <div className="space-y-2">
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={`iteration-${iteration.iteration}`}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
+                onToggle={() => {
+                  setExpandedIterations(prev => {
+                    const id = `iteration-${iteration.iteration}`;
+                    return prev.includes(id)
+                      ? prev.filter(i => i !== id)
+                      : [...prev, id];
+                  });
+                }}
+                isAnalyzing={isAnalyzing && currentIteration === iteration.iteration}
+                currentQueryIndex={currentQueryIndex}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {analysis && (
+        <div className="p-4 border-b border-border/50">
+          <h3 className="text-sm font-medium mb-2">Analysis</h3>
+          <AnalysisDisplay 
+            content={analysis} 
+            isStreaming={isAnalyzing} 
+            maxHeight="400px" 
+          />
+        </div>
+      )}
+      
+      {streamingState.parsedData && (
+        <div className="p-4">
+          <InsightsDisplay 
+            streamingState={streamingState}
+            childResearches={childResearchList}
+            onResearchArea={handleResearchArea}
+            parentResearchId={parentResearchId}
+            loadedResearchId={loadedResearchId}
+            focusText={focusText}
+          />
+        </div>
+      )}
+      
+      {error && (
+        <div className="p-4 bg-destructive/10 text-destructive">
+          <p className="text-sm">{error}</p>
+        </div>
+      )}
+      
+      {results.length > 0 && !isLoading && streamingState.parsedData && (
+        <div className="flex justify-end p-4 border-t border-border/50">
+          <Button onClick={saveResearch} variant="outline" disabled={isLoadingSaved}>
+            {isLoadingSaved ? "Saving..." : "Save Research"}
+          </Button>
+        </div>
+      )}
+    </Card>
+  )
+}
