@@ -349,13 +349,19 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
 
       const sanitizeJson = (data: any): any => {
-        if (data === null || data === undefined) return null;
+        if (data === null || data === undefined) {
+          if (Array.isArray(data)) {
+            return [];
+          }
+          return null;
+        }
         
         if (typeof data === 'string') {
           return data.replace(/\u0000/g, '').replace(/\\u0000/g, '');
         }
         
         if (Array.isArray(data)) {
+          if (data.length === 0) return [];
           return data.map(item => sanitizeJson(item));
         }
         
@@ -374,9 +380,22 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       const sanitizedResults = sanitizeJson(results);
       const sanitizedAnalysis = analysis ? analysis.replace(/\u0000/g, '') : '';
-      const sanitizedAreasForResearch = sanitizeJson(streamingState.parsedData?.areasForResearch);
+      
+      const areasForResearch = streamingState.parsedData?.areasForResearch || [];
+      const sanitizedAreasForResearch = Array.isArray(areasForResearch) ? 
+        sanitizeJson(areasForResearch) : [];
+      
+      if (sanitizedAreasForResearch === null) {
+        console.warn("areas_for_research would be null, using empty array instead");
+      }
+      
       const sanitizedIterations = sanitizeJson(iterations);
       const sanitizedFocusText = focusText ? focusText.replace(/\u0000/g, '') : null;
+      
+      console.log("Areas for research before insert:", 
+                 typeof sanitizedAreasForResearch, 
+                 Array.isArray(sanitizedAreasForResearch), 
+                 sanitizedAreasForResearch);
       
       const researchPayload = {
         user_id: user.user.id,
@@ -384,7 +403,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         sources: sanitizedResults as unknown as Json,
         analysis: sanitizedAnalysis,
         probability: streamingState.parsedData?.probability?.replace(/\u0000/g, '') || '',
-        areas_for_research: sanitizedAreasForResearch as unknown as Json,
+        areas_for_research: (Array.isArray(sanitizedAreasForResearch) && sanitizedAreasForResearch.length > 0) ? 
+                           sanitizedAreasForResearch as unknown as Json : 
+                           ["Further research needed"] as unknown as Json,
         market_id: marketId,
         iterations: sanitizedIterations as unknown as Json,
         focus_text: sanitizedFocusText,
@@ -392,9 +413,18 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       };
 
       console.log("Saving sanitized research data", parentResearchId ? `with parent research: ${parentResearchId}` : "without parent");
+      
+      console.log("Final areas_for_research value type:", 
+                 typeof researchPayload.areas_for_research,
+                 "isArray:", Array.isArray(researchPayload.areas_for_research),
+                 "value:", researchPayload.areas_for_research);
+      
       const { data, error } = await supabase.from('web_research').insert(researchPayload).select('id')
 
-      if (error) throw error
+      if (error) {
+        console.error("Database error on insert:", error);
+        throw error;
+      }
 
       if (data && data[0] && data[0].id) {
         setLoadedResearchId(data[0].id);

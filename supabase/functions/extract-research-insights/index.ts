@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -115,10 +114,25 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         throw new Error(`Unexpected content type: ${typeof content}`)
       }
       
+      // Ensure areasForResearch is always an array
+      if (!parsed.areasForResearch || !Array.isArray(parsed.areasForResearch)) {
+        console.warn("areasForResearch is missing or not an array, setting default value");
+        parsed.areasForResearch = ["Further research needed"];
+      }
+      
+      // Ensure other array fields are arrays
+      if (!Array.isArray(parsed.supportingPoints)) {
+        parsed.supportingPoints = [];
+      }
+      
+      if (!Array.isArray(parsed.negativePoints)) {
+        parsed.negativePoints = [];
+      }
+      
       // Keep the result simple, use exactly what comes from the API
       const result = {
         probability: parsed.probability || "Unknown",
-        areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
+        areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : ["Further research needed"],
         supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
         negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
         reasoning: parsed.reasoning || "No reasoning provided"
@@ -127,6 +141,7 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
       console.log('Supporting points count:', result.supportingPoints.length)
       console.log('Negative points count:', result.negativePoints.length)
+      console.log('Areas for research count:', result.areasForResearch.length)
       
       // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {
@@ -134,7 +149,17 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       })
     } catch (error) {
       console.error('Error processing OpenRouter response:', error)
-      throw error
+      
+      // Return a fallback response with default values to prevent null fields
+      return new Response(JSON.stringify({
+        probability: "Unknown",
+        areasForResearch: ["Further research needed"],
+        supportingPoints: [],
+        negativePoints: [],
+        reasoning: "An error occurred while extracting insights: " + error.message
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
   } catch (error) {
     console.error('Error in extract-research-insights:', error)
@@ -142,7 +167,7 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       JSON.stringify({ 
         error: error.message, 
         probability: "Unknown",
-        areasForResearch: [],
+        areasForResearch: ["Further research needed"],
         supportingPoints: [],
         negativePoints: [],
         reasoning: "An error occurred while extracting insights."

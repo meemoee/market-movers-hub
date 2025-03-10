@@ -77,64 +77,88 @@ Example format: ["query 1", "query 2", "query 3", "query 4", "query 5"]`
       }
     ]
     
-    // In production, use a streaming approach
-    let queriesText = await openRouter.complete("google/gemini-flash-1.5", messages, 1000, 0.7)
-    
-    console.log("Raw response:", queriesText)
-    
-    // Extract the JSON part if the response is not properly formatted
-    const jsonMatch = queriesText.match(/\[.*\]/s)
-    if (jsonMatch) {
-      queriesText = jsonMatch[0]
-    }
-    
     try {
-      const queries = JSON.parse(queriesText)
+      // In production, use a streaming approach
+      let queriesText = await openRouter.complete("google/gemini-flash-1.5", messages, 1000, 0.7)
       
-      if (!Array.isArray(queries)) {
-        throw new Error("Generated queries are not in array format")
+      console.log("Raw response:", queriesText)
+      
+      // Extract the JSON part if the response is not properly formatted
+      const jsonMatch = queriesText.match(/\[.*\]/s)
+      if (jsonMatch) {
+        queriesText = jsonMatch[0]
       }
       
-      // Ensure we have 5 queries
-      let finalQueries = queries.slice(0, 5)
-      
-      // If we have fewer than 5 queries, add some default ones
-      while (finalQueries.length < 5) {
-        const defaults = [
+      try {
+        const queries = JSON.parse(queriesText)
+        
+        if (!Array.isArray(queries)) {
+          console.error("Generated queries are not in array format")
+          throw new Error("Generated queries are not in array format")
+        }
+        
+        // Ensure we have 5 queries
+        let finalQueries = queries.slice(0, 5)
+        
+        // If we have fewer than 5 queries, add some default ones
+        while (finalQueries.length < 5) {
+          const defaults = [
+            `${description} analysis`,
+            `${description} latest information`,
+            `${description} expert opinion`,
+            `${description} statistics`,
+            `${description} probability`
+          ]
+          finalQueries.push(defaults[finalQueries.length % defaults.length])
+        }
+        
+        // Clean up the queries
+        finalQueries = finalQueries.map((q: string) => {
+          // Remove quotes
+          q = q.replace(/["""'']/g, '')
+          
+          // Remove market ID if it somehow got included
+          if (marketId) {
+            q = q.replace(new RegExp(` ?${marketId}`, 'g'), '')
+          }
+          
+          return q.trim()
+        })
+        
+        console.log("Generated queries:", finalQueries)
+        
+        return new Response(
+          JSON.stringify({ queries: finalQueries }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        )
+      } catch (error) {
+        console.error("Error parsing queries:", error)
+        
+        // Fallback queries
+        const fallbackQueries = [
           `${description} analysis`,
           `${description} latest information`,
           `${description} expert opinion`,
           `${description} statistics`,
           `${description} probability`
         ]
-        finalQueries.push(defaults[finalQueries.length % defaults.length])
+        
+        return new Response(
+          JSON.stringify({ 
+            queries: fallbackQueries,
+            error: "Failed to parse generated queries, using fallbacks"
+          }),
+          { 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        )
       }
-      
-      // Clean up the queries
-      finalQueries = finalQueries.map((q: string) => {
-        // Remove quotes
-        q = q.replace(/["""'']/g, '')
-        
-        // Remove market ID if it somehow got included
-        if (marketId) {
-          q = q.replace(new RegExp(` ?${marketId}`, 'g'), '')
-        }
-        
-        return q.trim()
-      })
-      
-      console.log("Generated queries:", finalQueries)
-      
-      return new Response(
-        JSON.stringify({ queries: finalQueries }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
-      )
     } catch (error) {
-      console.error("Error parsing queries:", error)
+      console.error("Error in OpenRouter request:", error)
       
-      // Fallback queries
+      // Fallback queries if OpenRouter fails
       const fallbackQueries = [
         `${description} analysis`,
         `${description} latest information`,
@@ -146,7 +170,7 @@ Example format: ["query 1", "query 2", "query 3", "query 4", "query 5"]`
       return new Response(
         JSON.stringify({ 
           queries: fallbackQueries,
-          error: "Failed to parse generated queries, using fallbacks"
+          error: `OpenRouter request failed: ${error.message}`
         }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
