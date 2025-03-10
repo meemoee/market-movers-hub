@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -1054,10 +1053,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     console.log('Setting parent ID to:', parentId);
     
     setLoadedResearchId(null);
+    console.log('Cleared loadedResearchId:', loadedResearchId);
     setParentResearchId(parentId);
+    console.log('Set parentResearchId to:', parentId);
     
     console.log('New focus text being set to:', area);
     setFocusText(area);
+    console.log('Focus text after setState call:', focusText); // This will likely show the old value due to closure
     
     // Let's check if we already have a child research with this focus
     const existingChild = childResearchList.find(child => 
@@ -1094,8 +1096,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueryIndex(-1);
     
     console.log('State reset for new research. Starting research with focus:', area);
+    console.log('Current state after reset:', {
+      loadedResearchId,
+      parentResearchId,
+      focusText,
+      isLoading
+    });
     
     setTimeout(() => {
+      console.log('In setTimeout callback - about to start research');
+      console.log('Current focus text in setTimeout:', focusText); // Check if focusText was updated
       console.log('Starting new research with focus:', area);
       console.log('Parent research ID:', parentId);
       handleResearch();
@@ -1347,12 +1357,22 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
       
+      <div className="hidden">
+        {console.log('=== BEFORE RENDERING INSIGHTS DISPLAY ===')}
+        {console.log('handleResearchArea function:', typeof handleResearchArea)}
+        {console.log('Passing onResearchArea prop:', !!handleResearchArea)}
+        {console.log('Current parentResearchId:', parentResearchId)}
+        {console.log('Current loadedResearchId:', loadedResearchId)}
+        {console.log('Current focusText:', focusText)}
+        {console.log('streamingState has parsedData:', !!streamingState?.parsedData)}
+      </div>
+      
       <InsightsDisplay 
         streamingState={streamingState} 
         onResearchArea={handleResearchArea}
         parentResearch={parentResearchId && parentResearch ? {
           id: parentResearch.id,
-          focusText: focusText || undefined,
+          focusText: parentResearch.focus_text || undefined,
           onView: handleViewParentResearch
         } : undefined}
         childResearches={childResearchList.length > 0 ? childResearchList.map(child => ({

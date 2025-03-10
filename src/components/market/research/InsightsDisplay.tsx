@@ -39,6 +39,28 @@ export function InsightsDisplay({
   parentResearch,
   childResearches 
 }: InsightsDisplayProps) {
+  console.log('=== INSIGHTS DISPLAY RENDER DEBUG ===');
+  console.log('onResearchArea function exists:', !!onResearchArea);
+  console.log('Parent research:', parentResearch);
+  console.log('Child researches count:', childResearches?.length || 0);
+  console.log('Areas for research count:', streamingState?.parsedData?.areasForResearch?.length || 0);
+  
+  // Debug function to track click handlers
+  const debugClick = (area: string) => {
+    console.log('=== AREA CLICK HANDLER DEBUG ===');
+    console.log('Area clicked:', area);
+    console.log('onResearchArea function:', onResearchArea?.toString().substring(0, 100) + '...');
+    console.log('Will call onResearchArea:', !!onResearchArea);
+    
+    // If we have the callback, call it
+    if (onResearchArea) {
+      console.log('Calling onResearchArea with:', area);
+      onResearchArea(area);
+    } else {
+      console.error('onResearchArea is not defined, cannot process click');
+    }
+  };
+  
   // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
@@ -264,16 +286,19 @@ export function InsightsDisplay({
           <div className="space-y-4">
             {areasForResearch.map((area, index) => {
               const matchingChild = findMatchingChildResearch(area);
+              console.log(`Area ${index}: "${area}" has matching child:`, !!matchingChild);
               
               return (
                 <div 
                   key={index} 
                   className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
-                  onClick={!matchingChild && onResearchArea ? () => {
-                    // Add the debug area selection log before handling the click
-                    debugAreaSelection(area);
-                    onResearchArea(area);
-                  } : undefined}
+                  onClick={() => {
+                    console.log(`Area div clicked: "${area}"`);
+                    if (!matchingChild && onResearchArea) {
+                      debugAreaSelection(area);
+                      debugClick(area);
+                    }
+                  }}
                 >
                   <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                   <div className="flex-1">
@@ -287,6 +312,7 @@ export function InsightsDisplay({
                           className="h-8 text-xs"
                           onClick={(e) => {
                             e.stopPropagation();
+                            console.log('View derived research button clicked for:', area);
                             matchingChild.onView();
                           }}
                         >
@@ -300,9 +326,9 @@ export function InsightsDisplay({
                           className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Add the debug area selection log before handling the click
+                            console.log('Create focused research button clicked for:', area);
                             debugAreaSelection(area);
-                            onResearchArea(area);
+                            debugClick(area);
                           }}
                         >
                           <ArrowRightCircle className="h-3 w-3" />
@@ -339,7 +365,10 @@ export function InsightsDisplay({
                   <div className="text-sm font-medium">Focus: {child.focusText}</div>
                 </div>
                 <Button 
-                  onClick={child.onView}
+                  onClick={() => {
+                    console.log('View research button clicked for child:', child.focusText);
+                    child.onView();
+                  }}
                   variant="outline" 
                   size="sm"
                 >
