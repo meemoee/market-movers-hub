@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Progress } from "@/components/ui/progress";
-import { InfoCircle, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { Info, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -23,7 +23,7 @@ export function QueryEffectivenessIndicator({
   
   const getIcon = () => {
     if (score >= 7) return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-    if (score >= 4) return <InfoCircle className="h-4 w-4 text-amber-500" />;
+    if (score >= 4) return <Info className="h-4 w-4 text-amber-500" />;
     return <AlertTriangle className="h-4 w-4 text-red-500" />;
   };
 
@@ -48,11 +48,12 @@ export function QueryEffectivenessIndicator({
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <Progress 
-        value={score * 10} 
-        className="h-2 w-20"
-        indicatorClassName={getColorClass()}
-      />
+      <div className="relative w-20">
+        <Progress 
+          value={score * 10} 
+          className={cn("h-2", getColorClass())}
+        />
+      </div>
       <span className="text-xs">{score}/10</span>
     </div>
   );

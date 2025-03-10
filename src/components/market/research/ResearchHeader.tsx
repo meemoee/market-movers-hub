@@ -1,7 +1,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Search, Target, Iterations } from "lucide-react"
+import { Loader2, Search, Target, IterationCw } from "lucide-react"
 
 interface ResearchHeaderProps {
   isLoading: boolean
@@ -30,7 +30,7 @@ export function ResearchHeader({
         )}
         {iteration > 1 && (
           <Badge variant="secondary" className="flex items-center gap-1">
-            <Iterations className="h-3 w-3" />
+            <IterationCw className="h-3 w-3" />
             <span>Iteration {iteration}</span>
           </Badge>
         )}
