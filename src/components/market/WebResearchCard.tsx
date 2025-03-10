@@ -417,6 +417,83 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
+  const handleStartResearch = () => {
+    setIsLoading(true)
+    setError(null)
+    setProgress([])
+    setResults([])
+    setAnalysis('')
+    setIterations([])
+    setExpandedIterations(['iteration-1'])
+    setLoadedResearchId(null)
+    setStreamingState({
+      rawText: '',
+      parsedData: null
+    })
+    
+    if (focusText.trim()) {
+      setProgress([`Starting focused research on: ${focusText.trim()}`])
+    } else {
+      setProgress([`Starting web research for: ${description}`])
+    }
+
+    generateInitialQueries(1)
+      .catch(error => {
+        console.error('Error in research process:', error)
+        setError(`Research process failed: ${error.message}`)
+        setIsLoading(false)
+      })
+  }
+
+  const generateInitialQueries = async (iteration: number) => {
+    try {
+      setProgress(prev => [...prev, `Generating search queries for iteration ${iteration}...`])
+      
+      const queryPayload = {
+        description,
+        marketId,
+        iteration,
+        previousResults: iterations.map(iter => iter.analysis).filter(Boolean)
+      }
+      
+      const { data: queryData, error: queryError } = await supabase.functions.invoke('generate-search-queries', {
+        body: JSON.stringify(queryPayload)
+      })
+      
+      if (queryError) {
+        console.error("Error generating queries:", queryError)
+        throw new Error(`Failed to generate search queries: ${queryError.message}`)
+      }
+      
+      if (!queryData || !queryData.queries || !Array.isArray(queryData.queries) || queryData.queries.length === 0) {
+        throw new Error("Invalid query generation response")
+      }
+      
+      console.log(`Generated queries for iteration ${iteration}:`, queryData.queries)
+      setProgress(prev => [...prev, `Generated ${queryData.queries.length} search queries for iteration ${iteration}`])
+      
+      queryData.queries.forEach((query: string, index: number) => {
+        setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
+      })
+      
+      setCurrentQueries(queryData.queries)
+      await handleWebScrape(queryData.queries, iteration, [])
+      
+    } catch (error) {
+      console.error("Error generating initial queries:", error)
+      
+      const fallbackQueries = [
+        `${description}`,
+        `${description} probability`,
+        `${description} analysis`
+      ]
+      
+      setProgress(prev => [...prev, `Using fallback queries due to query generation error: ${error.message}`])
+      setCurrentQueries(fallbackQueries)
+      await handleWebScrape(fallbackQueries, iteration, [])
+    }
+  }
+
   const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
@@ -783,44 +860,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
-          const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-            body: JSON.stringify({ 
-              query: description,
-              previousResults: analysisContent,
-              iteration: iteration,
-              marketId: marketId,
-              marketDescription: description,
-              areasForResearch: streamingState.parsedData?.areasForResearch || [],
-              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: focusText.trim(),
-              previousQueries: currentQueries,
-              supportingPoints: previousResearchContext?.supportingPoints || [],
-              negativePoints: previousResearchContext?.negativePoints || [],
-              parentResearchId: parentResearchId || undefined
-            })
-          })
-
-          if (refinedQueriesError) {
-            console.error("Error from generate-queries:", refinedQueriesError);
-            throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
-          }
-
-          if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
-            console.error("Invalid refined queries response:", refinedQueriesData);
-            throw new Error('Invalid refined queries response')
-          }
-
-          console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
-          setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
-          
-          setCurrentQueries(refinedQueriesData.queries);
-          setCurrentQueryIndex(-1);
-          
-          refinedQueriesData.queries.forEach((query: string, index: number) => {
-            setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
-          })
-
-          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
+          await generateInitialQueries(iteration + 1);
         } catch (error) {
           console.error("Error generating refined queries:", error);
           
@@ -932,42 +972,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     setIsLoading(false);
     setIsAnalyzing(false);
-  }
-
-  const handleStartResearch = () => {
-    setIsLoading(true)
-    setError(null)
-    setProgress([])
-    setResults([])
-    setAnalysis('')
-    setIterations([])
-    setExpandedIterations(['iteration-1'])
-    setLoadedResearchId(null)
-    setStreamingState({
-      rawText: '',
-      parsedData: null
-    })
-    
-    if (focusText.trim()) {
-      setProgress([`Starting focused research on: ${focusText.trim()}`])
-    } else {
-      setProgress([`Starting web research for: ${description}`])
-    }
-
-    const initialQueries = [
-      `${description}`,
-      `${description} probability`,
-      `${description} analysis`
-    ]
-    
-    setCurrentQueries(initialQueries);
-    
-    handleWebScrape(initialQueries, 1, [])
-      .catch(error => {
-        console.error('Error in research process:', error)
-        setError(`Research process failed: ${error.message}`)
-        setIsLoading(false)
-      })
   }
 
   const handleContinueResearch = (area: string) => {
