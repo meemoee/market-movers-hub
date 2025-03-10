@@ -98,7 +98,10 @@ export function ResearchTreeVisualizer({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant={node.queryEffectiveness >= 7 ? "success" : node.queryEffectiveness >= 4 ? "default" : "destructive"} className="ml-auto">
+                  <Badge 
+                    variant={node.queryEffectiveness >= 7 ? "default" : node.queryEffectiveness >= 4 ? "secondary" : "destructive"} 
+                    className="ml-auto"
+                  >
                     {node.queryEffectiveness}/10
                   </Badge>
                 </TooltipTrigger>
