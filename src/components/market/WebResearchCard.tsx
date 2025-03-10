@@ -1052,15 +1052,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         `Based on previous research with ${allQueries.length} queries and probability estimate: ${streamingState.parsedData.probability}`
       ]);
       
-      const focusedQueries = [
-        `${area} related to ${description}`,
-        `${area} analysis ${marketId}`,
-        `${area} details and updates`
-      ];
-      
-      setCurrentQueries(focusedQueries);
-      
-      handleWebScrape(focusedQueries, 1, [])
+      // IMPORTANT: Use generateInitialQueries instead of hardcoded queries
+      generateInitialQueries(1)
         .catch(error => {
           console.error('Error in focused research process:', error);
           setError(`Focused research process failed: ${error.message}`);
@@ -1193,3 +1186,4 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   )
 }
+
