@@ -1,13 +1,8 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { corsHeaders } from "../_shared/cors.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -26,8 +21,11 @@ serve(async (req) => {
     console.log('Focus text:', focusText || 'not provided')
     console.log('Iterations count:', iterations.length)
     
-    // Track existing research areas for better suggestions
+    // Track existing research areas and analyzed data for better suggestions
     const existingAreas = new Set()
+    const exploredTopics = new Set()
+    const queryEffectiveness = new Map()
+    
     if (iterations && iterations.length > 0) {
       iterations.forEach(iteration => {
         if (iteration.queries) {
@@ -37,11 +35,73 @@ serve(async (req) => {
             if (words.length >= 3) {
               existingAreas.add(words.slice(0, 3).join(' ').toLowerCase())
             }
+            
+            // Track all substantial query parts for diversity check
+            words.filter(w => w.length > 3).forEach(word => {
+              exploredTopics.add(word.toLowerCase())
+            })
+            
+            // Estimate query effectiveness based on result counts
+            // More sophisticated effectiveness tracking could be implemented here
+            if (iteration.results && iteration.results.length > 0) {
+              const resultsForQuery = iteration.results.filter(r => 
+                r.query === query || r.originalQuery === query
+              )
+              
+              if (resultsForQuery.length > 0) {
+                const relevantResultsCount = resultsForQuery.reduce((count, r) => {
+                  // Consider content length and relevance to focus text as effectiveness metrics
+                  const contentLength = r.content ? r.content.length : 0
+                  const relevanceScore = focusText && contentLength > 0 ? 
+                    (r.content.toLowerCase().includes(focusText.toLowerCase()) ? 2 : 1) : 1
+                  return count + relevanceScore
+                }, 0)
+                
+                queryEffectiveness.set(query, relevantResultsCount)
+              }
+            }
           })
         }
       })
     }
+    
     console.log('Tracked existing research areas:', existingAreas.size)
+    console.log('Tracked explored topics:', exploredTopics.size)
+    console.log('Query effectiveness tracking:', 
+      Array.from(queryEffectiveness.entries())
+        .map(([query, score]) => `"${query}": ${score}`)
+        .join(', ')
+    )
+
+    // Extract patterns from effective queries
+    const effectiveQueryPatterns = []
+    if (queryEffectiveness.size > 0) {
+      // Sort queries by effectiveness score
+      const sortedQueries = Array.from(queryEffectiveness.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3) // Take top 3 most effective queries
+        
+      console.log('Top effective queries:', 
+        sortedQueries.map(([query, score]) => `"${query}" (score: ${score})`).join(', ')
+      )
+      
+      // Extract patterns from effective queries for future query generation
+      sortedQueries.forEach(([query]) => {
+        const words = query.split(/\s+/)
+        if (words.length >= 4) {
+          // Extract query templates like "X analysis of Y" or "Z statistics for W"
+          const template = words.map(w => {
+            // Replace specific entities with placeholders but keep structural words
+            return w.length > 5 && /^[A-Z]/.test(w) ? '{entity}' : 
+                   w.length > 7 ? '{term}' : w
+          }).join(' ')
+          
+          effectiveQueryPatterns.push(template)
+        }
+      })
+    }
+    
+    console.log('Extracted query patterns:', effectiveQueryPatterns.join(', '))
 
     // Make request to OpenRouter API
     const response = await fetch(OPENROUTER_URL, {
@@ -62,7 +122,8 @@ serve(async (req) => {
             Do not invent, interpolate, or add information not explicitly found in the source material.
             
             ${focusText ? `CRITICAL: Pay special attention to information related to "${focusText}" when forming your analysis.` : ''}
-            ${existingAreas.size > 0 ? `Avoid suggesting already explored research areas: [${Array.from(existingAreas).join(', ')}]` : ''}`
+            ${existingAreas.size > 0 ? `Avoid suggesting already explored research areas: [${Array.from(existingAreas).join(', ')}]` : ''}
+            ${effectiveQueryPatterns.length > 0 ? `Use these effective query patterns for research suggestions: [${effectiveQueryPatterns.join(', ')}]` : ''}`
           },
           {
             role: "user",
@@ -86,6 +147,7 @@ Return ONLY a JSON object with these fields:
 3. supportingPoints: specific points of evidence supporting the event occurring
 4. negativePoints: specific points of evidence against the event occurring
 5. reasoning: a brief paragraph explaining your probability estimate
+6. queryEffectiveness: a number from 1-10 rating how well the current queries answered key questions
 
 For areasForResearch, provide HIGHLY SPECIFIC and TARGETED research areas that:
 - Are directly relevant to uncertainties in the current analysis
@@ -140,13 +202,15 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : [],
         supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
         negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
-        reasoning: parsed.reasoning || "No reasoning provided"
+        reasoning: parsed.reasoning || "No reasoning provided",
+        queryEffectiveness: parsed.queryEffectiveness || 5
       }
       
       console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
       console.log('Supporting points count:', result.supportingPoints.length)
       console.log('Negative points count:', result.negativePoints.length)
       console.log('Areas for research count:', result.areasForResearch.length)
+      console.log('Query effectiveness score:', result.queryEffectiveness)
       
       // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {
@@ -165,7 +229,8 @@ Each point must be a direct fact or evidence found in the provided content. Do n
         areasForResearch: [],
         supportingPoints: [],
         negativePoints: [],
-        reasoning: "An error occurred while extracting insights."
+        reasoning: "An error occurred while extracting insights.",
+        queryEffectiveness: 0
       }),
       { 
         status: 500,

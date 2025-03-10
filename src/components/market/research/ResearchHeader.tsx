@@ -1,16 +1,23 @@
 
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, Search, Target } from "lucide-react"
+import { Loader2, Search, Target, Iterations } from "lucide-react"
 
 interface ResearchHeaderProps {
   isLoading: boolean
   isAnalyzing: boolean
   onResearch: () => void
   focusText?: string
+  iteration?: number
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }: ResearchHeaderProps) {
+export function ResearchHeader({ 
+  isLoading, 
+  isAnalyzing, 
+  onResearch, 
+  focusText,
+  iteration = 1
+}: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
@@ -19,6 +26,12 @@ export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }
           <Badge variant="outline" className="flex items-center gap-1">
             <Target className="h-3 w-3" />
             <span className="truncate max-w-[200px]">{focusText}</span>
+          </Badge>
+        )}
+        {iteration > 1 && (
+          <Badge variant="secondary" className="flex items-center gap-1">
+            <Iterations className="h-3 w-3" />
+            <span>Iteration {iteration}</span>
           </Badge>
         )}
       </div>
