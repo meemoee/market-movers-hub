@@ -483,8 +483,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         description,
         marketId,
         iteration,
-        previousResults: iterations.map(iter => iter.analysis).filter(Boolean)
+        previousResults: iterations.map(iter => iter.analysis).filter(Boolean),
+        focusText: focusText || undefined
       }
+      
+      console.log('Generating queries with payload:', queryPayload)
       
       const { data: queryData, error: queryError } = await supabase.functions.invoke('generate-search-queries', {
         body: JSON.stringify(queryPayload)
@@ -512,7 +515,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     } catch (error) {
       console.error("Error generating initial queries:", error)
       
-      const fallbackQueries = [
+      // Create focused fallback queries if we have a focus text
+      const fallbackQueries = focusText ? [
+        `${focusText} impact on ${description}`,
+        `${focusText} analysis related to ${description}`,
+        `${focusText} latest developments ${description}`,
+        `${focusText} specific factors ${description}`,
+        `${focusText} detailed examination ${description}`
+      ] : [
         `${description}`,
         `${description} probability`,
         `${description} analysis`
