@@ -7,14 +7,18 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 interface QueryEffectivenessIndicatorProps {
   score: number;
+  showLabel?: boolean;
   className?: string;
 }
 
 export function QueryEffectivenessIndicator({ 
   score, 
+  showLabel = true, 
   className 
 }: QueryEffectivenessIndicatorProps) {
-  // Determine color and icon based on score
+  // Validate score is between 0-10
+  const validScore = Math.min(Math.max(0, score), 10);
+  
   const getColorClass = () => {
     if (score >= 7) return "bg-green-500";
     if (score >= 4) return "bg-amber-500";
@@ -27,24 +31,23 @@ export function QueryEffectivenessIndicator({
     return <AlertTriangle className="h-4 w-4 text-red-500" />;
   };
 
-  const getTooltipText = () => {
-    if (score >= 7) return "Highly effective queries yielding relevant results";
-    if (score >= 4) return "Moderately effective queries with some relevant information";
-    return "Queries need refinement to gather more relevant information";
+  const getMessage = () => {
+    if (score >= 7) return "High quality queries - providing relevant results";
+    if (score >= 4) return "Moderate quality queries - some relevant information found";
+    return "Low quality queries - consider refining search terms";
   };
 
   return (
-    <div className={cn("flex items-center space-x-2", className)}>
+    <div className={cn("flex items-center gap-2", className)}>
       <TooltipProvider>
         <Tooltip>
-          <TooltipTrigger>
-            <div className="flex items-center">
+          <TooltipTrigger asChild>
+            <div className="cursor-help">
               {getIcon()}
-              <span className="ml-1 text-sm font-medium">Query Effectiveness</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{getTooltipText()}</p>
+            <p>{getMessage()}</p>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
