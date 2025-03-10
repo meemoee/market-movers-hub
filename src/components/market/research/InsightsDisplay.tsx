@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, ArrowUp, ArrowDown } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { EventIcon } from "../chart/EventIcon"
 
 interface StreamingState {
   rawText: string;
@@ -16,6 +17,17 @@ interface StreamingState {
   } | null;
 }
 
+export interface ResearchContext {
+  focusText: string;
+  parentId?: string;
+  parentResearchText?: string;
+  previousQueries?: string[];
+  previousAnalyses?: string[];
+  probability?: string;
+  previousSupportingPoints?: string[];
+  previousNegativePoints?: string[];
+}
+
 interface ResearchChild {
   id: string;
   focusText: string;
@@ -24,7 +36,7 @@ interface ResearchChild {
 
 interface InsightsDisplayProps {
   streamingState: StreamingState;
-  onResearchArea?: (area: string) => void;
+  onResearchArea?: (area: string, context?: ResearchContext) => void;
   parentResearch?: {
     id: string;
     focusText?: string;
@@ -76,6 +88,20 @@ export function InsightsDisplay({
       child.focusText.toLowerCase().includes(area.toLowerCase())
     );
   };
+
+  // Create research context for continuing research
+  const createResearchContext = (focusText: string): ResearchContext => {
+    return {
+      focusText,
+      parentId: parentResearch?.id,
+      parentResearchText: parentResearch?.focusText,
+      previousQueries: [],  // This would be populated from the WebResearchCard
+      previousAnalyses: [],  // This would be populated from the WebResearchCard
+      probability,
+      previousSupportingPoints: supportingPoints,
+      previousNegativePoints: negativePoints
+    };
+  };
   
   return (
     <div className="space-y-5">
@@ -84,7 +110,7 @@ export function InsightsDisplay({
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent"></div>
           <div className="flex items-center gap-3">
             <div className="bg-blue-500/10 p-2 rounded-full">
-              <ArrowLeftIcon className="h-5 w-5 text-blue-500" />
+              <EventIcon type="branch" className="h-5 w-5 text-blue-500" />
             </div>
             <div className="flex-1">
               <h3 className="text-base font-semibold">Focused Research</h3>
@@ -205,7 +231,10 @@ export function InsightsDisplay({
                 <div 
                   key={index} 
                   className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
-                  onClick={!matchingChild && onResearchArea ? () => onResearchArea(area) : undefined}
+                  onClick={!matchingChild && onResearchArea ? () => {
+                    const context = createResearchContext(area);
+                    onResearchArea(area, context);
+                  } : undefined}
                 >
                   <Target className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
                   <div className="flex-1">
@@ -222,7 +251,7 @@ export function InsightsDisplay({
                             matchingChild.onView();
                           }}
                         >
-                          <GitBranch className="h-3 w-3 mr-1" />
+                          <EventIcon type="branch" className="h-3 w-3 mr-1" />
                           View derived research
                         </Button>
                       ) : onResearchArea ? (
@@ -232,10 +261,11 @@ export function InsightsDisplay({
                           className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onResearchArea(area);
+                            const context = createResearchContext(area);
+                            onResearchArea(area, context);
                           }}
                         >
-                          <ArrowRightCircle className="h-3 w-3" />
+                          <EventIcon type="continue" className="h-3 w-3" />
                           Create focused research
                         </Button>
                       ) : null}
@@ -253,7 +283,7 @@ export function InsightsDisplay({
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-indigo-500/40 to-transparent"></div>
           <div className="flex items-center gap-3">
             <div className="bg-indigo-500/10 p-2 rounded-full">
-              <GitBranch className="h-5 w-5 text-indigo-500" />
+              <EventIcon type="branch" className="h-5 w-5 text-indigo-500" />
             </div>
             <div className="flex-1">
               <h3 className="text-base font-semibold">All Derived Research</h3>
@@ -273,7 +303,7 @@ export function InsightsDisplay({
                   variant="outline" 
                   size="sm"
                 >
-                  <ArrowRightCircle className="h-4 w-4 mr-2" />
+                  <EventIcon type="continue" className="h-4 w-4 mr-2" />
                   View Research
                 </Button>
               </div>

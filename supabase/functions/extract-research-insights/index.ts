@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { webContent, analysis, marketPrice, marketQuestion } = await req.json()
+    const { webContent, analysis, marketPrice, marketQuestion, parentResearchId, focusArea, previousProbability, iterations } = await req.json()
     
     // Trim content to avoid token limits
     const trimmedContent = webContent.slice(0, 15000)
@@ -23,6 +23,16 @@ serve(async (req) => {
     console.log('Analysis length:', analysis.length)
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Market question:', marketQuestion || 'not provided')
+    console.log('Focus area:', focusArea || 'none')
+    console.log('Parent research ID:', parentResearchId || 'none')
+    console.log('Previous probability:', previousProbability || 'none')
+    console.log('Iterations count:', iterations?.length || 0)
+
+    // Enhanced system message with context awareness
+    const systemMessage = `You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. Extract ONLY factual points directly supported by the provided content. Do not invent, interpolate, or add information not explicitly found in the source material.
+${focusArea ? `This is a focused research specifically about: "${focusArea}"` : ''}
+${parentResearchId ? 'This research is derived from a parent research and should build upon its findings.' : ''}
+${previousProbability ? `The parent research estimated a probability of ${previousProbability}.` : ''}`;
 
     // Make request to OpenRouter API
     const response = await fetch(OPENROUTER_URL, {
@@ -38,14 +48,16 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. Extract ONLY factual points directly supported by the provided content. Do not invent, interpolate, or add information not explicitly found in the source material."
+            content: systemMessage
           },
           {
             role: "user",
             content: `Based on this web research and analysis, provide the probability and insights:
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
+${focusArea ? `Research Focus: ${focusArea}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+${previousProbability ? `Previous Research Probability: ${previousProbability}` : ''}
 
 Web Content:
 ${trimmedContent}
@@ -54,6 +66,7 @@ Analysis:
 ${analysis}
 
 ${marketPrice !== undefined ? `Consider if the current market probability of ${marketPrice}% is accurate based on the available information.` : ''}
+${focusArea ? `Focus specifically on the research area: "${focusArea}" and how it affects the overall probability.` : ''}
 
 Return ONLY a JSON object with these fields:
 1. probability: your estimated probability as a percentage string (e.g., "65%")
