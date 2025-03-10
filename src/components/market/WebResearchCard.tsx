@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -78,9 +79,10 @@ interface SavedResearch {
   parent_research_id?: string;
 }
 
+// Updated to match the interface expected by InsightsDisplay
 interface ResearchChild {
   id: string;
-  focus_text: string;
+  focusText: string;  // Changed from focus_text to focusText
   onView: () => void;
 }
 
@@ -993,7 +995,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const convertToResearchChildren = (savedResearches: SavedResearch[]): ResearchChild[] => {
     return savedResearches.map(research => ({
       id: research.id,
-      focus_text: research.focus_text || '',
+      focusText: research.focus_text || '',  // Map from focus_text to focusText
       onView: () => loadSavedResearch(research)
     }));
   };

@@ -1,4 +1,3 @@
-
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,23 +24,23 @@ interface ResearchChild {
 interface InsightsDisplayProps {
   streamingState: StreamingState;
   onResearchArea?: (area: string) => void;
-  parentResearch?: {
-    id: string;
-    focusText?: string;
-    onView?: () => void;
-  };
+  parentResearchId?: string | null;
+  loadedResearchId?: string | null;
+  focusText?: string;
   childResearches?: ResearchChild[];
 }
 
 export function InsightsDisplay({ 
   streamingState, 
-  onResearchArea, 
-  parentResearch,
+  onResearchArea,
+  parentResearchId,
+  loadedResearchId,
+  focusText,
   childResearches 
 }: InsightsDisplayProps) {
   console.log('=== INSIGHTS DISPLAY RENDER DEBUG ===');
   console.log('onResearchArea function exists:', !!onResearchArea);
-  console.log('Parent research:', parentResearch);
+  console.log('Parent research:', parentResearchId);
   console.log('Child researches count:', childResearches?.length || 0);
   console.log('Areas for research count:', streamingState?.parsedData?.areasForResearch?.length || 0);
   
@@ -108,8 +107,8 @@ export function InsightsDisplay({
   // Debug function to print focus information
   const printDebugInfo = () => {
     console.log('=== FOCUS AREA DEBUG INFO ===');
-    console.log('Current parent research:', parentResearch);
-    console.log('Parent focus text:', parentResearch?.focusText);
+    console.log('Current parent research:', parentResearchId);
+    console.log('Parent focus text:', focusText);
     console.log('Current research areas:', areasForResearch);
     console.log('Child researches:', childResearches);
     console.log('Child focus texts:', childResearches?.map(child => child.focusText));
@@ -139,8 +138,8 @@ export function InsightsDisplay({
   const debugAreaSelection = (area: string) => {
     console.log('=== FOCUS AREA SELECTION DEBUG ===');
     console.log('Selected research area:', area);
-    console.log('Parent research ID:', parentResearch?.id);
-    console.log('Parent research focus text:', parentResearch?.focusText);
+    console.log('Parent research ID:', parentResearchId);
+    console.log('Parent research focus text:', focusText);
     console.log('This is what will be used for the new research focus');
     console.log('================================');
   };
@@ -171,7 +170,7 @@ export function InsightsDisplay({
         </div>
       </Card>
 
-      {parentResearch && (
+      {parentResearchId && (
         <Card className="p-4 overflow-hidden relative border-2 shadow-md bg-gradient-to-br from-blue-500/10 to-background border-blue-500/30 rounded-xl">
           <div className="absolute top-0 right-0 left-0 h-1 bg-gradient-to-r from-transparent via-blue-500/40 to-transparent"></div>
           <div className="flex items-center gap-3">
@@ -184,22 +183,11 @@ export function InsightsDisplay({
                 This is a focused deep-dive from a parent research
               </p>
             </div>
-            {parentResearch.onView && (
-              <Button 
-                onClick={parentResearch.onView}
-                variant="outline" 
-                size="sm"
-                className="ml-auto"
-              >
-                <ArrowLeftIcon className="h-4 w-4 mr-2" />
-                View Parent Research
-              </Button>
-            )}
           </div>
-          {parentResearch.focusText && (
+          {focusText && (
             <div className="mt-3 bg-accent/20 p-2 rounded-md border border-accent/20">
               <div className="text-sm font-medium mb-1">Research Focus:</div>
-              <div className="text-sm">{parentResearch.focusText}</div>
+              <div className="text-sm">{focusText}</div>
             </div>
           )}
         </Card>
