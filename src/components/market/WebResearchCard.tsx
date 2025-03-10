@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,7 +18,7 @@ import { ResearchHeader } from "./research/ResearchHeader"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
-import { InsightsDisplay, ResearchContext } from "./research/InsightsDisplay"
+import { InsightsDisplay } from "./research/InsightsDisplay"
 import { IterationCard } from "./research/IterationCard"
 import { ChevronDown, Settings, Search, ArrowLeftCircle } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -955,7 +954,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress([`Starting web research for: ${description}`])
     }
 
-    // Initial set of search queries based on the market description
     const initialQueries = [
       `${description}`,
       `${description} probability`,
@@ -988,7 +986,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       negativePoints: streamingState.parsedData.negativePoints || []
     });
     
-    // Create a copy of the current research before starting a new focused one
     saveResearch().then(() => {
       if (loadedResearchId) {
         setParentResearchId(loadedResearchId);
@@ -1032,19 +1029,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     <Card className="mt-4">
       <div className="p-6 space-y-6">
         <ResearchHeader 
-          description={description} 
           isLoading={isLoading} 
-          maxIterations={maxIterations} 
-          setMaxIterations={setMaxIterations}
-          handleStartResearch={handleStartResearch}
-          savedResearch={savedResearch}
-          loadSavedResearch={loadSavedResearch}
-          isLoadingSaved={isLoadingSaved}
-          loadedResearchId={loadedResearchId}
+          isAnalyzing={isAnalyzing} 
+          onResearch={handleStartResearch}
           focusText={focusText}
-          setFocusText={setFocusText}
-          isFocusedResearch={!!parentResearchId}
-          parentResearch={parentResearch}
+          inFocusedMode={!!parentResearchId}
         />
         
         {parentResearch && (
@@ -1094,11 +1083,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         {progress.length > 0 && (
           <ProgressDisplay 
-            progress={progress} 
-            currentIteration={currentIteration} 
-            maxIterations={maxIterations}
-            currentQueries={currentQueries}
-            currentQueryIndex={currentQueryIndex}
+            messages={progress} 
           />
         )}
         
@@ -1111,7 +1096,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         {results.length > 0 && (
           <SitePreviewList 
             results={results} 
-            isLoading={isLoading} 
           />
         )}
         
@@ -1121,8 +1105,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               <IterationCard
                 key={`iteration-${iter.iteration}`}
                 iteration={iter}
-                expanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
-                onToggle={() => {
+                isExpanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
+                onToggleExpand={() => {
                   setExpandedIterations(prev => {
                     const iterKey = `iteration-${iter.iteration}`;
                     return prev.includes(iterKey)
@@ -1130,7 +1114,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       : [...prev, iterKey]
                   })
                 }}
-                isCurrentIteration={currentIteration === iter.iteration && isLoading}
+                isStreaming={isLoading && currentIteration === iter.iteration}
+                isCurrentIteration={currentIteration === iter.iteration}
+                maxIterations={maxIterations}
               />
             ))}
           </div>
@@ -1138,17 +1124,25 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         {analysis && (
           <AnalysisDisplay 
-            analysis={analysis} 
-            isAnalyzing={isAnalyzing}
+            content={analysis} 
+            isStreaming={isAnalyzing}
           />
         )}
         
         {streamingState.parsedData && (
           <InsightsDisplay 
-            data={streamingState.parsedData} 
-            onResearchAreaClick={handleContinueResearch}
-            focusedText={focusText}
-            parentResearch={parentResearch}
+            streamingState={streamingState} 
+            onResearchArea={handleContinueResearch}
+            parentResearch={parentResearch ? {
+              id: parentResearch.id,
+              focusText: parentResearch.focus_text,
+              onView: () => loadSavedResearch(parentResearch)
+            } : undefined}
+            childResearches={childResearchList.length > 0 ? childResearchList.map(child => ({
+              id: child.id,
+              focusText: child.focus_text || 'Focused Research',
+              onView: () => loadSavedResearch(child)
+            })) : undefined}
           />
         )}
       </div>
