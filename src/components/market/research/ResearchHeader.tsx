@@ -1,16 +1,27 @@
+
 import { Button } from "@/components/ui/button"
-import { Loader2, Search } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Loader2, Search, Target } from "lucide-react"
 
 interface ResearchHeaderProps {
   isLoading: boolean
   isAnalyzing: boolean
   onResearch: () => void
+  focusText?: string
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch, focusText }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
-      <h3 className="text-lg font-semibold">Web Research</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-lg font-semibold">Web Research</h3>
+        {focusText && (
+          <Badge variant="outline" className="flex items-center gap-1">
+            <Target className="h-3 w-3" />
+            <span className="truncate max-w-[200px]">{focusText}</span>
+          </Badge>
+        )}
+      </div>
       <Button 
         onClick={onResearch} 
         disabled={isLoading || isAnalyzing}

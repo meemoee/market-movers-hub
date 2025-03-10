@@ -15,7 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const { webContent, analysis, marketPrice, marketQuestion } = await req.json()
+    const { webContent, analysis, marketPrice, marketQuestion, focusText, iterations = [] } = await req.json()
     
     // Trim content to avoid token limits
     const trimmedContent = webContent.slice(0, 15000)
@@ -23,6 +23,25 @@ serve(async (req) => {
     console.log('Analysis length:', analysis.length)
     console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
     console.log('Market question:', marketQuestion || 'not provided')
+    console.log('Focus text:', focusText || 'not provided')
+    console.log('Iterations count:', iterations.length)
+    
+    // Track existing research areas for better suggestions
+    const existingAreas = new Set()
+    if (iterations && iterations.length > 0) {
+      iterations.forEach(iteration => {
+        if (iteration.queries) {
+          iteration.queries.forEach(query => {
+            // Extract potential research areas from queries
+            const words = query.split(/\s+/)
+            if (words.length >= 3) {
+              existingAreas.add(words.slice(0, 3).join(' ').toLowerCase())
+            }
+          })
+        }
+      })
+    }
+    console.log('Tracked existing research areas:', existingAreas.size)
 
     // Make request to OpenRouter API
     const response = await fetch(OPENROUTER_URL, {
@@ -38,7 +57,12 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: "You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. Extract ONLY factual points directly supported by the provided content. Do not invent, interpolate, or add information not explicitly found in the source material."
+            content: `You are a helpful market research analyst. Extract key insights from the provided web research and analysis. 
+            You must return ONLY a JSON object with the requested fields. Extract ONLY factual points directly supported by the provided content. 
+            Do not invent, interpolate, or add information not explicitly found in the source material.
+            
+            ${focusText ? `CRITICAL: Pay special attention to information related to "${focusText}" when forming your analysis.` : ''}
+            ${existingAreas.size > 0 ? `Avoid suggesting already explored research areas: [${Array.from(existingAreas).join(', ')}]` : ''}`
           },
           {
             role: "user",
@@ -46,6 +70,7 @@ serve(async (req) => {
 
 ${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
+${focusText ? `Research Focus: ${focusText}` : ''}
 
 Web Content:
 ${trimmedContent}
@@ -61,6 +86,13 @@ Return ONLY a JSON object with these fields:
 3. supportingPoints: specific points of evidence supporting the event occurring
 4. negativePoints: specific points of evidence against the event occurring
 5. reasoning: a brief paragraph explaining your probability estimate
+
+For areasForResearch, provide HIGHLY SPECIFIC and TARGETED research areas that:
+- Are directly relevant to uncertainties in the current analysis
+- Have clear, concrete phrasing (not vague topics)
+- ${focusText ? `Build upon the current focus "${focusText}" with new angles` : 'Address the most critical knowledge gaps'}
+- Would yield actionable insights if researched further
+- Include specific entities, time periods, or contexts to investigate
 
 Each point must be a direct fact or evidence found in the provided content. Do not create generic points or infer information not explicitly stated. Only include points that have specific evidence in the source material.`
           }
@@ -114,6 +146,7 @@ Each point must be a direct fact or evidence found in the provided content. Do n
       console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
       console.log('Supporting points count:', result.supportingPoints.length)
       console.log('Negative points count:', result.negativePoints.length)
+      console.log('Areas for research count:', result.areasForResearch.length)
       
       // Return a direct Response with the result JSON instead of a stream
       return new Response(JSON.stringify(result), {

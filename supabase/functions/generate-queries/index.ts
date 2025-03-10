@@ -9,6 +9,62 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Enhanced query templates by category
+const QUERY_TEMPLATES = {
+  factual: [
+    "{focus} official statistics {timeframe}",
+    "{focus} verified data from {source_type}",
+    "{focus} quantitative analysis {timeframe}",
+    "{focus} measured impact on {related_entity}"
+  ],
+  analytical: [
+    "{focus} expert assessment by {expert_type}",
+    "{focus} comparative analysis with {related_event}",
+    "{focus} critical factors determining {outcome}",
+    "{focus} methodology for evaluating {criteria}"
+  ],
+  temporal: [
+    "{focus} developments since {timeframe}",
+    "{focus} historical precedents before {timeframe}",
+    "{focus} projected timeline for {outcome}",
+    "{focus} scheduling factors affecting {outcome}"
+  ],
+  contextual: [
+    "{focus} in relation to {related_entity}",
+    "{focus} geographical constraints affecting {outcome}",
+    "{focus} political considerations for {stakeholder}",
+    "{focus} economic implications for {sector}"
+  ],
+  counterfactual: [
+    "{focus} potential obstacles preventing {outcome}",
+    "{focus} alternative scenarios if {condition}",
+    "{focus} contradictory evidence regarding {assumption}",
+    "{focus} skeptical perspective from {stakeholder}"
+  ]
+};
+
+function generateQueryFromTemplate(template, vars, iteration) {
+  let query = template;
+  for (const [key, options] of Object.entries(vars)) {
+    const placeholder = `{${key}}`;
+    if (query.includes(placeholder)) {
+      // Choose a random option from the array
+      const option = options[Math.floor(Math.random() * options.length)];
+      query = query.replace(placeholder, option);
+    }
+  }
+  
+  // Replace any remaining placeholders with generic terms
+  query = query.replace(/{[a-z_]+}/g, "");
+  
+  // Add iteration marker to avoid duplication
+  if (iteration > 1) {
+    query += ` (iteration ${iteration})`;
+  }
+  
+  return query.trim().replace(/\s+/g, ' ');
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -23,7 +79,8 @@ serve(async (req) => {
       previousQueries = [],
       previousAnalyses = [],
       previousProbability,
-      iteration = 1
+      iteration = 1,
+      areasForResearch = []
     } = await req.json()
 
     if (!OPENROUTER_API_KEY) {
@@ -37,6 +94,18 @@ serve(async (req) => {
     console.log('Iteration:', iteration)
     console.log('Previous queries count:', previousQueries.length)
     console.log('Previous analyses count:', previousAnalyses.length)
+    console.log('Areas for research:', areasForResearch)
+    
+    // If we have suggested areas for research, use them to inform query generation
+    let suggestedQueryContext = '';
+    if (areasForResearch && areasForResearch.length > 0) {
+      suggestedQueryContext = `
+Prioritize these research areas that need further investigation:
+${areasForResearch.map((area, i) => `${i+1}. ${area}`).join('\n')}
+
+Generate queries that SPECIFICALLY target these research areas with precision and depth.
+`;
+    }
     
     // Create context from previous research if available
     let previousResearchContext = '';
@@ -50,6 +119,68 @@ ${previousProbability ? `\nPrevious probability assessment: ${previousProbabilit
 DO NOT REPEAT OR CLOSELY RESEMBLE any of the previous queries listed above. Generate entirely new search directions SPECIFICALLY focused on "${focusText || query}".`;
     }
 
+    // Try to use fallback templated queries if we're in later iterations or have areas for research
+    const shouldUseTemplatedQueries = iteration > 1 || (areasForResearch && areasForResearch.length > 0);
+    
+    if (shouldUseTemplatedQueries) {
+      try {
+        console.log('Using templated query generation');
+        
+        const focus = focusText || query;
+        const templates = [];
+        
+        // Select templates from different categories
+        const categories = Object.keys(QUERY_TEMPLATES);
+        for (let i = 0; i < 5; i++) {
+          const category = categories[i % categories.length];
+          const categoryTemplates = QUERY_TEMPLATES[category];
+          const template = categoryTemplates[Math.floor(Math.random() * categoryTemplates.length)];
+          templates.push(template);
+        }
+        
+        // Variables to fill templates
+        const templateVars = {
+          focus: [focus],
+          timeframe: ["2023-2024", "last 6 months", "recent", "past decade"],
+          source_type: ["government reports", "academic studies", "industry analyses", "independent research"],
+          related_entity: ["global markets", "regulatory bodies", "key stakeholders", "international relations"],
+          expert_type: ["economists", "political analysts", "technical specialists", "industry insiders"],
+          related_event: ["similar historical cases", "parallel market events", "comparable situations"],
+          outcome: ["success", "failure", "implementation", "deadline"],
+          criteria: ["accuracy", "feasibility", "likelihood", "timing"],
+          stakeholder: ["governments", "corporations", "citizens", "investors"],
+          sector: ["technology", "finance", "manufacturing", "politics"],
+          condition: ["delayed", "accelerated", "modified", "cancelled"],
+          assumption: ["feasibility", "timeline", "motivation", "capability"]
+        };
+        
+        // Generate 5 queries from templates
+        const templatedQueries = templates.map(template => 
+          generateQueryFromTemplate(template, templateVars, iteration)
+        );
+        
+        // If we have areas for research, incorporate them
+        if (areasForResearch && areasForResearch.length > 0) {
+          return new Response(
+            JSON.stringify({ 
+              queries: areasForResearch.slice(0, 5).map(area => 
+                `${area} in context of ${focus} detailed analysis`
+              )
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        return new Response(
+          JSON.stringify({ queries: templatedQueries }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (templateError) {
+        console.error('Error generating templated queries:', templateError);
+        // Continue with API-based query generation
+      }
+    }
+    
     // Build a more directive prompt for focused research
     const focusedPrompt = focusText ? 
       `You are a specialized research assistant focusing EXCLUSIVELY on: "${focusText}".
@@ -82,13 +213,14 @@ ${marketQuestion ? `Market Question: ${marketQuestion}` : `Topic: ${query}`}
 ${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
 ${focusText ? `YOUR SEARCH FOCUS MUST BE ON: ${focusText}` : ''}
 ${iteration > 1 ? `Current research iteration: ${iteration}` : ''}
+${suggestedQueryContext}
 ${previousResearchContext}
 
 ${marketPrice !== undefined ? `Generate search queries to explore both supporting and contradicting evidence for this probability.` : ''}
 ${focusText ? `CRITICAL: EVERY query MUST specifically target information about: ${focusText}. Do not generate generic queries that fail to directly address this focus area.` : ''}
 
 Generate 5 search queries that are:
-1. Highly specific and detailed about "${focusText}"
+1. Highly specific and detailed about "${focusText || query}"
 2. Each query MUST include additional aspects beyond just the focus term itself
 3. Diverse in approach and perspective
 4. COMPLETELY DIFFERENT from previous research queries
