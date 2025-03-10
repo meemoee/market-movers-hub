@@ -45,17 +45,23 @@ export function InsightsDisplay({
   console.log('Child researches count:', childResearches?.length || 0);
   console.log('Areas for research count:', streamingState?.parsedData?.areasForResearch?.length || 0);
   
-  // Debug function to track click handlers
+  // Enhanced debug function that tracks click handlers
   const debugClick = (area: string) => {
     console.log('=== AREA CLICK HANDLER DEBUG ===');
     console.log('Area clicked:', area);
+    console.log('onResearchArea function type:', typeof onResearchArea);
     console.log('onResearchArea function:', onResearchArea?.toString().substring(0, 100) + '...');
     console.log('Will call onResearchArea:', !!onResearchArea);
     
     // If we have the callback, call it
     if (onResearchArea) {
       console.log('Calling onResearchArea with:', area);
-      onResearchArea(area);
+      try {
+        onResearchArea(area);
+        console.log('onResearchArea call completed');
+      } catch (error) {
+        console.error('Error calling onResearchArea:', error);
+      }
     } else {
       console.error('onResearchArea is not defined, cannot process click');
     }
@@ -293,7 +299,12 @@ export function InsightsDisplay({
                   key={index} 
                   className={`flex gap-3 p-2 rounded-lg transition-colors ${matchingChild ? 'bg-accent/10' : onResearchArea ? 'hover:bg-accent/10 cursor-pointer' : ''}`}
                   onClick={() => {
+                    console.log(`=== AREA DIV CLICK DEBUG ===`);
                     console.log(`Area div clicked: "${area}"`);
+                    console.log('matchingChild exists:', !!matchingChild);
+                    console.log('onResearchArea exists:', !!onResearchArea);
+                    console.log('Will process click:', !matchingChild && !!onResearchArea);
+                    
                     if (!matchingChild && onResearchArea) {
                       debugAreaSelection(area);
                       debugClick(area);
@@ -312,7 +323,9 @@ export function InsightsDisplay({
                           className="h-8 text-xs"
                           onClick={(e) => {
                             e.stopPropagation();
+                            console.log('=== VIEW CHILD RESEARCH BUTTON CLICK ===');
                             console.log('View derived research button clicked for:', area);
+                            console.log('Will call matchingChild.onView()');
                             matchingChild.onView();
                           }}
                         >
@@ -326,7 +339,9 @@ export function InsightsDisplay({
                           className="h-8 text-xs text-primary hover:bg-primary/10 flex items-center gap-1"
                           onClick={(e) => {
                             e.stopPropagation();
+                            console.log('=== CREATE FOCUSED RESEARCH BUTTON CLICK ===');
                             console.log('Create focused research button clicked for:', area);
+                            console.log('Will call debugAreaSelection and debugClick');
                             debugAreaSelection(area);
                             debugClick(area);
                           }}
@@ -366,7 +381,9 @@ export function InsightsDisplay({
                 </div>
                 <Button 
                   onClick={() => {
+                    console.log('=== VIEW RESEARCH BUTTON CLICK ===');
                     console.log('View research button clicked for child:', child.focusText);
+                    console.log('Will call child.onView()');
                     child.onView();
                   }}
                   variant="outline" 

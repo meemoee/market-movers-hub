@@ -21,6 +21,11 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
+  // Debug log for content updates
+  useEffect(() => {
+    console.log(`AnalysisDisplay content updated: ${content?.length || 0} chars, streaming: ${isStreaming}`);
+  }, [content, isStreaming]);
+  
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
@@ -33,6 +38,7 @@ export function AnalysisDisplay({
       requestAnimationFrame(() => {
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
+          console.log(`Auto-scrolled to bottom, content length: ${currentContentLength}`);
         }
         setLastUpdateTime(Date.now())
       })
@@ -58,7 +64,10 @@ export function AnalysisDisplay({
         scrollContainer.scrollTop
       ) < 30 // Small threshold for "close enough" to bottom
       
-      setShouldAutoScroll(isAtBottom)
+      if (shouldAutoScroll !== isAtBottom) {
+        console.log(`Auto-scroll ${isAtBottom ? 'enabled' : 'disabled'} due to user scroll`);
+        setShouldAutoScroll(isAtBottom)
+      }
     }
     
     scrollContainer.addEventListener('scroll', handleScroll)
@@ -154,6 +163,7 @@ export function AnalysisDisplay({
             setShouldAutoScroll(true);
             if (scrollRef.current) {
               scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+              console.log('Manually resumed auto-scroll');
             }
           }}
           className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
