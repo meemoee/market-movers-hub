@@ -2,7 +2,6 @@
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
-import { cn } from "@/lib/utils"
 
 interface AnalysisDisplayProps {
   content: string
@@ -74,7 +73,7 @@ export function AnalysisDisplay({
     
     const interval = setInterval(() => {
       const timeSinceUpdate = Date.now() - lastUpdateTime
-      if (timeSinceUpdate > 1500) {
+      if (timeSinceUpdate > 1500) { // Reduced from 2000ms to 1500ms
         setStreamStatus('waiting')
       } else if (streamStatus !== 'streaming') {
         setStreamStatus('streaming')
@@ -102,9 +101,6 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
-  // Simplified content processing - preserves newlines but reduces excessive spacing
-  const processedContent = content || '';
-
   if (!content) return null
 
   return (
@@ -115,20 +111,8 @@ export function AnalysisDisplay({
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
-          <ReactMarkdown 
-            className={cn(
-              "text-sm prose prose-invert prose-sm break-words max-w-full",
-              "prose-headings:font-semibold prose-headings:mt-4 prose-headings:mb-2", 
-              "prose-h1:text-2xl prose-h2:text-xl prose-h3:text-lg",
-              "prose-p:my-1.5 prose-p:leading-relaxed",
-              "prose-li:my-0.5",
-              "prose-strong:text-primary/90 prose-strong:font-semibold",
-              "prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:rounded-sm prose-code:text-xs",
-              "prose-blockquote:border-l-2 prose-blockquote:border-muted-foreground/40 prose-blockquote:pl-4 prose-blockquote:italic",
-              "whitespace-pre-line"
-            )}
-          >
-            {processedContent}
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+            {content}
           </ReactMarkdown>
         </div>
       </ScrollArea>

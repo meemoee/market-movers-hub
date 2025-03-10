@@ -1,34 +1,16 @@
-
 import { Button } from "@/components/ui/button"
-import { Loader2, Search, GitBranch } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Loader2, Search } from "lucide-react"
 
 interface ResearchHeaderProps {
   isLoading: boolean
   isAnalyzing: boolean
   onResearch: () => void
-  focusText?: string
-  inFocusedMode?: boolean
 }
 
-export function ResearchHeader({ 
-  isLoading, 
-  isAnalyzing, 
-  onResearch,
-  focusText,
-  inFocusedMode
-}: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
   return (
     <div className="flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <h3 className="text-lg font-semibold">Web Research</h3>
-        {inFocusedMode && (
-          <Badge variant="outline" className="flex items-center gap-1">
-            <GitBranch className="h-3 w-3" />
-            <span>Focused Research</span>
-          </Badge>
-        )}
-      </div>
+      <h3 className="text-lg font-semibold">Web Research</h3>
       <Button 
         onClick={onResearch} 
         disabled={isLoading || isAnalyzing}

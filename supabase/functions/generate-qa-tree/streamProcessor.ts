@@ -1,4 +1,3 @@
-
 interface StreamingState {
   buffer: string;
   sentenceBuffer: string;
@@ -13,7 +12,6 @@ export class StreamProcessor {
   private state: StreamingState;
   private readonly sentenceEndings = new Set(['.', '!', '?']);
   private readonly listMarkerPattern = /^\d+\.\s/;
-  private readonly headerPattern = /^#{1,6}\s/;
   private readonly markdownTokens = new Set(['**', '_', '`', '[']);
 
   constructor() {
@@ -29,20 +27,8 @@ export class StreamProcessor {
   }
 
   processChunk(text: string): string {
-    // Add new text to buffer
+    // Add new text to buffers
     this.state.buffer += text;
-    let output = '';
-    
-    // Process buffer character by character for better control
-    const processedText = this.processBufferCharacters();
-    if (processedText) {
-      output += processedText;
-    }
-    
-    return output;
-  }
-  
-  private processBufferCharacters(): string {
     let output = '';
     
     // Process buffer character by character
@@ -55,24 +41,23 @@ export class StreamProcessor {
         const word = this.state.sentenceBuffer.trim();
         
         if (word.length > 0) {
-          // Handle headers (# Header)
-          if (this.headerPattern.test(word)) {
-            const headerLevel = word.match(/^(#+)/)?.[0].length || 1;
-            const headerContent = word.replace(/^#+\s+/, '');
-            output += (output ? '\n\n' : '') + '#'.repeat(headerLevel) + ' ' + headerContent;
-          }
           // Handle list markers
-          else if (this.listMarkerPattern.test(word)) {
+          if (this.listMarkerPattern.test(word)) {
             const number = parseInt(word);
             if (number === this.state.currentListNumber + 1) {
               this.state.currentListNumber = number;
               this.state.isInList = true;
-              output += '\n' + word;
+              output += '\n\n' + word;
             }
           } 
+          // Handle markdown tokens
+          else if (this.isMarkdownToken(word)) {
+            this.state.isInMarkdown = !this.state.isInMarkdown;
+            output += word;
+          }
           // Handle normal words
           else {
-            output += (output && !output.endsWith('\n') ? ' ' : '') + word;
+            output += (output && !output.endsWith('\n\n') ? ' ' : '') + word;
           }
         }
         
@@ -82,16 +67,11 @@ export class StreamProcessor {
         // Add the boundary character
         if (this.sentenceEndings.has(char)) {
           output += char + ' ';
-        } else if (char === ':') {
-          output += char + '\n';
-        } else if (char === '\n') {
-          // Handle explicit newlines in the text
-          if (this.state.lastChar === '\n') {
-            // Double newline, create paragraph break
-            output += '\n\n';
-          } else {
+          if (this.state.isInList) {
             output += '\n';
           }
+        } else if (char === ':') {
+          output += char + '\n\n';
         } else if (char !== ' ') {
           this.state.sentenceBuffer += char;
         }
@@ -106,19 +86,22 @@ export class StreamProcessor {
   }
 
   private isWordBoundary(char: string): boolean {
-    return /[\s.,!?:;\-\n]/.test(char);
+    return /[\s.,!?:;\-]/.test(char);
   }
 
   private isMarkdownToken(text: string): boolean {
     return this.markdownTokens.has(text);
   }
 
-  flush(): string {
-    const remaining = this.formatText(
-      this.state.buffer + this.state.sentenceBuffer
-    );
-    this.clear();
-    return remaining;
+  private isCompleteSentence(text: string): boolean {
+    if (text.length === 0) return false;
+    const lastChar = text[text.length - 1];
+    return this.sentenceEndings.has(lastChar) && 
+           (text.length === 1 || text[text.length - 2] !== '.');
+  }
+
+  private shouldStartNewLine(word: string): boolean {
+    return this.listMarkerPattern.test(word) || word === '-';
   }
 
   private formatText(text: string): string {
@@ -128,6 +111,14 @@ export class StreamProcessor {
       .replace(/\s+/g, ' ')
       .replace(/\s*([.,!?:])\s*/g, '$1 ')
       .trim();
+  }
+
+  flush(): string {
+    const remaining = this.formatText(
+      this.state.buffer + this.state.sentenceBuffer
+    );
+    this.clear();
+    return remaining;
   }
 
   clear(): void {

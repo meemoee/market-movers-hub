@@ -1,181 +1,213 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
-const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+interface InsightsRequest {
+  webContent: string;
+  analysis: string;
+  marketId?: string; 
+  marketQuestion?: string;
+  previousAnalyses?: string[];
+  iterations?: any[];
+  queries?: string[];
+  areasForResearch?: string[];
+  focusText?: string;
+  marketPrice?: number;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { webContent, analysis, marketPrice, marketQuestion, parentResearchId, focusArea, previousProbability, iterations } = await req.json()
+    const { 
+      webContent, 
+      analysis, 
+      marketId, 
+      marketQuestion,
+      previousAnalyses,
+      iterations,
+      queries,
+      areasForResearch,
+      focusText,
+      marketPrice
+    } = await req.json() as InsightsRequest;
     
-    // Trim content to avoid token limits
-    const trimmedContent = webContent.slice(0, 15000)
-    console.log('Web content length:', trimmedContent.length)
-    console.log('Analysis length:', analysis.length)
-    console.log('Current market price:', marketPrice !== undefined ? marketPrice + '%' : 'not provided')
-    console.log('Market question:', marketQuestion || 'not provided')
-    console.log('Focus area:', focusArea || 'none')
-    console.log('Parent research ID:', parentResearchId || 'none')
-    console.log('Previous probability:', previousProbability || 'none')
-    console.log('Iterations count:', iterations?.length || 0)
+    // Log request info for debugging
+    console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
+      webContentLength: webContent?.length || 0,
+      analysisLength: analysis?.length || 0,
+      marketQuestion: marketQuestion?.substring(0, 100) || 'Not provided',
+      previousAnalysesCount: previousAnalyses?.length || 0,
+      iterationsCount: iterations?.length || 0,
+      queriesCount: queries?.length || 0,
+      areasForResearchCount: areasForResearch?.length || 0,
+      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
+      marketPrice: marketPrice || 'Not provided'
+    });
 
-    // Enhanced system message with context awareness
-    const systemMessage = `You are a helpful market research analyst. Extract key insights from the provided web research and analysis. You must return ONLY a JSON object with the requested fields. Extract ONLY factual points directly supported by the provided content. Do not invent, interpolate, or add information not explicitly found in the source material.
-${focusArea ? `This is a focused research specifically about: "${focusArea}"` : ''}
-${parentResearchId ? 'This research is derived from a parent research and should build upon its findings.' : ''}
-${previousProbability ? `The parent research estimated a probability of ${previousProbability}.` : ''}`;
+    // Get OpenRouter API key
+    const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+    
+    if (!openRouterKey) {
+      throw new Error('No API key configured for OpenRouter');
+    }
 
-    // Make request to OpenRouter API
-    const response = await fetch(OPENROUTER_URL, {
+    // Set up content limiter to prevent tokens from being exceeded
+    const contentLimit = 70000; // Arbitrary limit to prevent token overages
+    const truncatedContent = webContent.length > contentLimit 
+      ? webContent.substring(0, contentLimit) + "... [content truncated]" 
+      : webContent;
+    
+    const truncatedAnalysis = analysis.length > 10000 
+      ? analysis.substring(0, 10000) + "... [analysis truncated]" 
+      : analysis;
+
+    // Prepare previous analyses for context
+    const previousAnalysesContext = previousAnalyses && previousAnalyses.length > 0
+      ? `Previous iteration analyses:
+${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.length > 2000 ? '...[truncated]' : ''}`).join('\n\n')}`
+      : '';
+    
+    // Prepare queries context
+    const queriesContext = queries && queries.length > 0
+      ? `Search queries used: ${queries.join(', ')}`
+      : '';
+    
+    // Prepare previous research areas
+    const previousResearchAreas = areasForResearch && areasForResearch.length > 0
+      ? `Previously identified research areas: ${areasForResearch.join(', ')}`
+      : '';
+
+    // Check if market is already resolved (price is 0% or 100%)
+    const isMarketResolved = marketPrice === 0 || marketPrice === 100;
+    
+    // Add market price context with special handling for resolved markets
+    let marketPriceContext = '';
+    if (marketPrice !== undefined) {
+      if (isMarketResolved) {
+        marketPriceContext = `\nIMPORTANT: The current market price for this event is ${marketPrice}%. This indicates the market considers this event as ${marketPrice === 100 ? 'already happened/resolved YES' : 'definitely not happening/resolved NO'}. Focus your analysis on explaining why this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than predicting probability.`;
+      } else {
+        marketPriceContext = `\nIMPORTANT: The current market price for this event is ${marketPrice}%. In prediction markets, this price reflects the market's current assessment of the probability that this event will occur. Consider how your evidence-based analysis compares to this market price.`;
+      }
+    }
+
+    // Create a system prompt that emphasizes the specific market context
+    const marketContext = marketId && marketQuestion
+      ? `\nYou are analyzing market ID: ${marketId} with the question: "${marketQuestion}"\n`
+      : '';
+
+    const focusContext = focusText
+      ? `\nThe research particularly focused on: "${focusText}"\n`
+      : '';
+
+    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
+Your task is to analyze web research content and provide precise insights about prediction market outcomes.
+${previousResearchAreas}
+${queriesContext}
+${marketPriceContext}
+
+${isMarketResolved ? `Since the market price is ${marketPrice}%, this market has likely resolved. You should explain the evidence for WHY this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than providing a probability estimate.` : 'Based on your comprehensive analysis, provide a specific probability estimate (a percentage) for the market outcome.'}
+
+Format your answer as a JSON object with the following structure:
+{
+  ${isMarketResolved ? 
+    `"probability": "${marketPrice}%",` : 
+    `"probability": "X%" (numerical percentage with % sign),`
+  }
+  "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
+  "reasoning": "brief explanation of ${isMarketResolved ? 'why this event occurred or did not occur' : 'your reasoning behind the probability estimate'}"
+}`;
+
+    // Create a longer version of the prompt for a more nuanced response
+    const prompt = `Here is the web content I've collected during research:
+---
+${truncatedContent}
+---
+
+And here is my analysis of this content:
+---
+${truncatedAnalysis}
+---
+
+${previousAnalysesContext}
+
+Based on all this information:
+${isMarketResolved ?
+  `1. The market price is ${marketPrice}%, indicating this event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}. Explain the key evidence supporting this outcome.` :
+  `1. What is your best estimate of the probability this market event will occur? Give a specific percentage.`
+}
+2. What are the most important areas where more research is needed to improve prediction accuracy?
+3. Summarize the key evidence and reasoning behind your ${isMarketResolved ? 'explanation' : 'probability estimate'} in 2-3 sentences.
+
+${marketPrice !== undefined ? 
+  isMarketResolved ?
+    `Remember that the current market price is ${marketPrice}%, which means the market considers this event as ${marketPrice === 100 ? 'resolved YES' : 'resolved NO'}. Your task is to explain WHY based on the evidence.` :
+    `Remember that the current market price is ${marketPrice}%, which represents the market's assessment of probability. Consider how your evidence-based analysis compares to this assessment.` 
+  : ''}
+
+Remember to respond with a valid JSON object with "probability", "areasForResearch", and "reasoning" properties.`;
+
+    // Make the streaming request with Gemini model
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${openRouterKey}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Research App',
+        'HTTP-Referer': 'https://hunchex.com',
+        'X-Title': 'Hunchex Analysis'
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "google/gemini-2.0-flash-lite-001",
         messages: [
-          {
-            role: "system",
-            content: systemMessage
-          },
-          {
-            role: "user",
-            content: `Based on this web research and analysis, provide the probability and insights:
-
-${marketQuestion ? `Market Question: ${marketQuestion}` : ''}
-${focusArea ? `Research Focus: ${focusArea}` : ''}
-${marketPrice !== undefined ? `Current Market Probability: ${marketPrice}%` : ''}
-${previousProbability ? `Previous Research Probability: ${previousProbability}` : ''}
-
-Web Content:
-${trimmedContent}
-
-Analysis:
-${analysis}
-
-${marketPrice !== undefined ? `Consider if the current market probability of ${marketPrice}% is accurate based on the available information.` : ''}
-${focusArea ? `Focus specifically on the research area: "${focusArea}" and how it affects the overall probability.` : ''}
-
-Return ONLY a JSON object with these fields:
-1. probability: your estimated probability as a percentage string (e.g., "65%")
-2. areasForResearch: an array of strings describing specific areas needing more research (3-5 areas)
-3. supportingPoints: specific points of evidence supporting the event occurring
-4. negativePoints: specific points of evidence against the event occurring
-5. reasoning: a brief paragraph explaining your probability estimate
-
-Each point must be a direct fact or evidence found in the provided content. Do not create generic points or infer information not explicitly stated. Only include points that have specific evidence in the source material.`
-          }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
         ],
-        response_format: { type: "json_object" },
-        stream: false
-      })
+        stream: true,
+        temperature: 0.2,
+        response_format: { type: "json_object" }
+      }),
     });
 
     if (!response.ok) {
-      console.error('OpenRouter API error:', response.status, await response.text())
-      throw new Error('Failed to get insights from OpenRouter')
+      const errorText = await response.text();
+      console.error(`API error: ${response.status} ${errorText}`);
+      throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    const data = await response.json()
-    console.log('Got response from OpenRouter:', !!data)
-    
-    try {
-      const content = data.choices?.[0]?.message?.content
-      if (!content) {
-        throw new Error('No content in OpenRouter response')
+    // Return the streaming response directly
+    return new Response(response.body, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Connection': 'keep-alive',
       }
-      
-      console.log('Content type:', typeof content)
-      
-      // Parse JSON content if it's a string, or use it directly if it's already an object
-      let parsed
-      if (typeof content === 'string') {
-        try {
-          parsed = JSON.parse(content)
-        } catch (err) {
-          console.error('Error parsing JSON:', err)
-          console.log('Raw content:', content)
-          throw new Error('Failed to parse OpenRouter response as JSON')
-        }
-      } else if (typeof content === 'object') {
-        parsed = content
-      } else {
-        throw new Error(`Unexpected content type: ${typeof content}`)
-      }
-      
-      // Ensure areasForResearch is always an array
-      if (!parsed.areasForResearch || !Array.isArray(parsed.areasForResearch)) {
-        console.warn("areasForResearch is missing or not an array, setting default value");
-        parsed.areasForResearch = ["Further research needed"];
-      }
-      
-      // Ensure other array fields are arrays
-      if (!Array.isArray(parsed.supportingPoints)) {
-        parsed.supportingPoints = [];
-      }
-      
-      if (!Array.isArray(parsed.negativePoints)) {
-        parsed.negativePoints = [];
-      }
-      
-      // Keep the result simple, use exactly what comes from the API
-      const result = {
-        probability: parsed.probability || "Unknown",
-        areasForResearch: Array.isArray(parsed.areasForResearch) ? parsed.areasForResearch : ["Further research needed"],
-        supportingPoints: Array.isArray(parsed.supportingPoints) ? parsed.supportingPoints : [],
-        negativePoints: Array.isArray(parsed.negativePoints) ? parsed.negativePoints : [],
-        reasoning: parsed.reasoning || "No reasoning provided"
-      }
-      
-      console.log('Returning formatted result with fields:', Object.keys(result).join(', '))
-      console.log('Supporting points count:', result.supportingPoints.length)
-      console.log('Negative points count:', result.negativePoints.length)
-      console.log('Areas for research count:', result.areasForResearch.length)
-      
-      // Return a direct Response with the result JSON instead of a stream
-      return new Response(JSON.stringify(result), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    } catch (error) {
-      console.error('Error processing OpenRouter response:', error)
-      
-      // Return a fallback response with default values to prevent null fields
-      return new Response(JSON.stringify({
-        probability: "Unknown",
-        areasForResearch: ["Further research needed"],
-        supportingPoints: [],
-        negativePoints: [],
-        reasoning: "An error occurred while extracting insights: " + error.message
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
+    });
   } catch (error) {
-    console.error('Error in extract-research-insights:', error)
+    console.error('Error in extract-research-insights:', error);
+    
+    // Return a structured error format that won't cause parsing flashes
     return new Response(
       JSON.stringify({ 
-        error: error.message, 
-        probability: "Unknown",
-        areasForResearch: ["Further research needed"],
-        supportingPoints: [],
-        negativePoints: [],
-        reasoning: "An error occurred while extracting insights."
+        error: error.message || 'Unknown error',
+        probability: "Error: Could not analyze",
+        areasForResearch: [],
+        reasoning: "Could not analyze due to technical error"
       }),
-      { 
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       }
-    )
+    );
   }
-})
+});

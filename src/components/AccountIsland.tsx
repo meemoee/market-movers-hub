@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
@@ -99,9 +100,9 @@ export default function AccountIsland() {
         <div className={`space-y-6 ${isMobile ? 'p-4' : ''}`}>
           <div className="flex items-start gap-4">
             <AccountAvatar email={session.user.email} />
-            <div className="flex-1">
+            <div className="flex-1 min-w-0">
               <h2 className="text-xl font-bold mb-1">Account</h2>
-              <p className="text-sm text-muted-foreground">{session.user.email}</p>
+              <p className="text-sm text-muted-foreground truncate overflow-hidden">{session.user.email}</p>
             </div>
           </div>
           

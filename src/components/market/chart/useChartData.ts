@@ -1,4 +1,3 @@
-
 import { useMemo } from 'react';
 import { PriceData, FillSegment } from './types';
 
