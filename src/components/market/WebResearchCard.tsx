@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -79,11 +78,9 @@ interface SavedResearch {
   parent_research_id?: string;
 }
 
-// Updated to match the interface expected by InsightsDisplay
 interface ResearchChild {
   id: string;
-  focusText: string;  // Changed from focus_text to focusText
-  onView: () => void;
+  focusText: string;
 }
 
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
@@ -817,6 +814,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.error("Error in processQueryResults:", error);
       setError(`Error analyzing content: ${error.message}`);
       setIsAnalyzing(false);
+    } finally {
+      if (iteration === maxIterations) {
+        setIsAnalyzing(false);
+      }
     }
   }
 
@@ -923,6 +924,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           reasoning: "An error occurred during analysis."
         }
       });
+      
+      setIsAnalyzing(false);
     }
   };
 
@@ -938,7 +941,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       streamingState: streamingState?.parsedData ? 'has data' : 'empty'
     });
     
-    // Check if we already have a child research for this area
     const matchingChild = childResearchList.find(r => 
       r.focus_text?.toLowerCase() === area.toLowerCase()
     );
@@ -952,13 +954,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     console.log(`Setting focus text to: "${area}"`);
     setFocusText(area);
     
-    // Only set parent ID if we have a loaded research
     if (loadedResearchId) {
       console.log(`Setting parent research ID to: ${loadedResearchId}`);
       setParentResearchId(loadedResearchId);
     }
     
-    // Reset current state for new research
     setResults([]);
     setAnalysis('');
     setIterations([]);
@@ -971,7 +971,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setIsLoading(true);
     setLoadedResearchId(null);
     
-    // Start with a new research iteration focused on this area
     const initialQueries = [
       `${area} ${description}`,
       `${area} analysis ${marketId}`,
@@ -987,7 +986,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       loadSavedResearch(parentResearch);
     } else if (parentResearchId) {
       console.log(`Parent research ID exists but research not found: ${parentResearchId}`);
-      // Clear parent ID if the research doesn't exist anymore
       setParentResearchId(null);
     }
   };
@@ -995,7 +993,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const convertToResearchChildren = (savedResearches: SavedResearch[]): ResearchChild[] => {
     return savedResearches.map(research => ({
       id: research.id,
-      focusText: research.focus_text || '',  // Map from focus_text to focusText
+      focusText: research.focus_text || '',
       onView: () => loadSavedResearch(research)
     }));
   };
