@@ -1,6 +1,6 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { corsHeaders } from "../_shared/cors.ts"
-import { OpenRouter } from "./openRouter.ts"
+
+import { corsHeaders } from '../_shared/cors.ts';
+import { OpenRouter } from './openRouter.ts';
 
 interface ResearchReport {
   title: string;
@@ -8,27 +8,11 @@ interface ResearchReport {
   keyFindings: string[];
   analysis: string;
   conclusion: string;
-  queryEffectiveness: number;
-  focusAreaSuggestions: string[];
-  patternAnalysis: {
-    effectivePatterns: string[];
-    ineffectivePatterns: string[];
-  };
 }
 
 interface ResearchStep {
   query: string;
   results: string;
-  effectiveness?: number;
-  timestamp?: string;
-  focusArea?: string;
-}
-
-interface QueryPattern {
-  template: string;
-  effectiveness: number;
-  occurrences: number;
-  examples: string[];
 }
 
 // Default model to use
@@ -43,7 +27,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { description, marketId, iterations = 3, focusText, previousResearch } = await req.json();
+    const { description, marketId, iterations = 3 } = await req.json();
     
     if (!description) {
       return new Response(
@@ -61,8 +45,6 @@ Deno.serve(async (req) => {
     console.log(`Starting deep research for market ${marketId}`);
     console.log(`Description: ${description.substring(0, 100)}...`);
     console.log(`Iterations: ${iterations}`);
-    console.log(`Focus text: ${focusText || 'None provided'}`);
-    console.log(`Previous research: ${previousResearch ? 'Provided' : 'Not provided'}`);
 
     const openRouter = new OpenRouter(Deno.env.get("OPENROUTER_API_KEY") || "");
     const model = DEFAULT_MODEL;
@@ -71,45 +53,23 @@ Deno.serve(async (req) => {
     const researchState = {
       intent: description,
       model,
-      focusArea: focusText || null,
       totalIterations: iterations,
       iteration: 1,
       findings: [],
       previousQueries: [],
-      ineffectiveQueries: [],
-      steps: [] as ResearchStep[],
-      queryPatterns: [] as QueryPattern[],
-      previousResearchContext: previousResearch || null,
-      contextVector: null as number[] | null
+      steps: [] as ResearchStep[]
     };
     
-    // If we have focus text, generate an embedding for contextual similarity tracking
-    if (focusText) {
-      try {
-        researchState.contextVector = await openRouter.generateEmbedding(focusText);
-        console.log(`Generated context vector for focus: ${focusText}`);
-      } catch (err) {
-        console.warn("Could not generate embedding:", err.message);
-      }
-    }
-    
     // Formulate initial strategic query
-    const initialQuery = await formInitialQuery(description, focusText, model, openRouter);
+    const initialQuery = await formInitialQuery(description, model, openRouter);
     let currentQuery = initialQuery;
     
     researchState.steps.push({
       query: initialQuery,
-      results: "Initial query formulated. Starting research...",
-      focusArea: focusText
+      results: "Initial query formulated. Starting research..."
     });
     
     console.log(`Initial query: ${initialQuery}`);
-    
-    // Extract query patterns from previous research if available
-    if (previousResearch && previousResearch.queryPatterns) {
-      researchState.queryPatterns = previousResearch.queryPatterns;
-      console.log(`Loaded ${researchState.queryPatterns.length} query patterns from previous research`);
-    }
     
     // Main research loop
     while (researchState.iteration <= iterations) {
@@ -118,25 +78,13 @@ Deno.serve(async (req) => {
       // Perform research
       const result = await performResearch(currentQuery, researchState, openRouter);
       
-      // Store results and update effectiveness tracking
+      // Store results
       researchState.findings.push(result);
-      researchState.previousQueries.push({
-        query: currentQuery,
-        effectiveness: result.effectiveness || 0
-      });
-      
-      if (result.effectiveness && result.effectiveness < 4) {
-        researchState.ineffectiveQueries.push(currentQuery);
-      }
-      
-      // Update query patterns
-      updateQueryPatterns(currentQuery, result.effectiveness || 5, researchState.queryPatterns);
+      researchState.previousQueries.push(currentQuery);
       
       researchState.steps.push({
         query: currentQuery,
-        results: `Research completed. Found ${result.keyFindings.length} key findings.`,
-        effectiveness: result.effectiveness,
-        timestamp: new Date().toISOString()
+        results: `Research completed. Found ${result.keyFindings.length} key findings.`
       });
       
       // Check if research should continue
@@ -150,15 +98,12 @@ Deno.serve(async (req) => {
         researchState.previousQueries, 
         result.keyFindings, 
         model,
-        openRouter,
-        focusText,
-        researchState.ineffectiveQueries
+        openRouter
       );
       
       researchState.steps.push({
         query: currentQuery,
-        results: "Generated follow-up query based on findings.",
-        focusArea: focusText
+        results: "Generated follow-up query based on findings."
       });
       
       // Increment iteration counter
@@ -171,8 +116,7 @@ Deno.serve(async (req) => {
     
     researchState.steps.push({
       query: "Final synthesis",
-      results: "Generating comprehensive research report.",
-      timestamp: new Date().toISOString()
+      results: "Generating comprehensive research report."
     });
     
     console.log("Research completed successfully");
@@ -181,9 +125,7 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         report: finalReport,
-        steps: researchState.steps,
-        queryPatterns: researchState.queryPatterns,
-        focusArea: focusText
+        steps: researchState.steps
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -207,62 +149,9 @@ Deno.serve(async (req) => {
 });
 
 /**
- * Update query patterns based on a new query and its effectiveness
- */
-function updateQueryPatterns(
-  query: string,
-  effectiveness: number, 
-  queryPatterns: QueryPattern[]
-): void {
-  // Extract a template pattern from the query
-  const words = query.split(/\s+/);
-  let template = "";
-  
-  if (words.length >= 4) {
-    // Create a template by replacing specific terms with placeholders
-    template = words.map(w => {
-      // Replace specific entities with placeholders but keep structural words
-      return w.length > 5 && /^[A-Z]/.test(w) ? '{ENTITY}' : 
-             w.length > 7 ? '{TERM}' : w;
-    }).join(' ');
-  } else {
-    // For short queries, use the whole query as template
-    template = query;
-  }
-  
-  // Find if we already have this pattern
-  const existingPatternIndex = queryPatterns.findIndex(p => p.template === template);
-  
-  if (existingPatternIndex >= 0) {
-    // Update existing pattern
-    const pattern = queryPatterns[existingPatternIndex];
-    pattern.occurrences += 1;
-    pattern.effectiveness = (pattern.effectiveness * pattern.occurrences + effectiveness) / (pattern.occurrences + 1);
-    
-    // Add this query as an example if we don't have too many
-    if (pattern.examples.length < 5 && !pattern.examples.includes(query)) {
-      pattern.examples.push(query);
-    }
-  } else {
-    // Add new pattern
-    queryPatterns.push({
-      template,
-      effectiveness,
-      occurrences: 1,
-      examples: [query]
-    });
-  }
-}
-
-/**
  * Formulate an optimal initial query based on research intent
  */
-async function formInitialQuery(
-  intent: string, 
-  focusText: string | null, 
-  model: string, 
-  openRouter: OpenRouter
-): Promise<string> {
+async function formInitialQuery(intent: string, model: string, openRouter: OpenRouter): Promise<string> {
   console.log(`Formulating strategic initial query...`);
   
   try {
@@ -270,17 +159,12 @@ async function formInitialQuery(
 1. Target the most essential information about the topic
 2. Be specific enough to find relevant results
 3. Use 5-10 words maximum with precise terminology
-${focusText ? `4. Focus specifically on the aspect: "${focusText}"` : ''}
 
 Return ONLY the query text with no explanations or formatting.`;
 
-    const userPrompt = `Create the best initial search query for: "${intent}"${
-      focusText ? `\nWith specific focus on: "${focusText}"` : ''
-    }`;
-
     const response = await openRouter.complete(model, [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
+      { role: 'user', content: `Create the best initial search query for: "${intent}"` }
     ], 60, 0.3);
 
     const initialQuery = response.replace(/^["']|["']$/g, '') // Remove quotes
@@ -290,7 +174,7 @@ Return ONLY the query text with no explanations or formatting.`;
     return initialQuery;
   } catch (error) {
     console.error(`Failed to formulate initial query: ${error.message}`);
-    return focusText ? `${intent} ${focusText}` : intent; // Fall back to original intent
+    return intent; // Fall back to original intent
   }
 }
 
@@ -299,12 +183,10 @@ Return ONLY the query text with no explanations or formatting.`;
  */
 async function generateNextQuery(
   intent: string, 
-  previousQueries: { query: string; effectiveness: number }[], 
+  previousQueries: string[], 
   keyFindings: string[], 
   model: string,
-  openRouter: OpenRouter,
-  focusText: string | null = null,
-  ineffectiveQueries: string[] = []
+  openRouter: OpenRouter
 ): Promise<string> {
   console.log(`Generating strategic follow-up query...`);
   
@@ -315,23 +197,17 @@ async function generateNextQuery(
     
   const previousQueriesText = previousQueries
     .slice(-3)
-    .map((q, i) => `${i+1}. "${q.query}" (effectiveness: ${q.effectiveness}/10)`)
+    .map((q, i) => `${i+1}. "${q}"`)
     .join('\n');
-    
-  const ineffectiveQueriesText = ineffectiveQueries.length > 0 
-    ? `\n\nINEFFECTIVE QUERIES TO AVOID PATTERNS FROM:\n${ineffectiveQueries.slice(-2).map(q => `- ${q}`).join('\n')}`
-    : '';
   
   try {
     const systemPrompt = `You generate strategic follow-up search queries for research. 
 RESPOND WITH ONLY THE QUERY TEXT - NO EXPLANATIONS OR QUOTES.`;
 
     const userPrompt = `RESEARCH QUESTION: "${intent}"
-${focusText ? `FOCUS AREA: "${focusText}"` : ''}
 
 PREVIOUS QUERIES:
 ${previousQueriesText}
-${ineffectiveQueriesText}
 
 RECENT FINDINGS:
 ${recentFindings}
@@ -343,7 +219,6 @@ Based on what we've learned, create the MOST EFFECTIVE follow-up search query th
 3. Use precise language that would appear in relevant sources
 4. Contain 5-10 words maximum
 5. Help directly answer the original research question
-${focusText ? `6. Maintain specific focus on the area: "${focusText}"` : ''}
 
 Return only the query text with no explanations.`;
 
@@ -360,9 +235,6 @@ Return only the query text with no explanations.`;
   } catch (error) {
     console.error(`Query generation failed: ${error.message}`);
     // Simple fallback strategy
-    if (focusText) {
-      return `${intent.split(' ').slice(0, 3).join(' ')} ${focusText} additional information`;
-    }
     return `${intent.split(' ').slice(0, 3).join(' ')} additional information`;
   }
 }
@@ -388,16 +260,12 @@ async function performResearch(query: string, researchState: any, openRouter: Op
     }
   }
   
-  // Add focus area context if available
-  const focusContext = researchState.focusArea 
-    ? `\nFOCUS AREA: "${researchState.focusArea}"\nKeep research tightly focused on this specific aspect.`
-    : '';
-  
   // System prompt
   const systemPrompt = `You are a precise research assistant investigating: "${researchState.intent}"
 
 Current iteration: ${researchState.iteration} of ${researchState.totalIterations}
-Current query: "${query}"${focusContext}${researchContext}
+Current query: "${query}"
+${researchContext}
 
 Your task is to:
 1. Search for and analyze information relevant to the query
@@ -405,13 +273,11 @@ Your task is to:
 3. Focus on directly answering the original research question
 4. Provide specific, detailed, factual information
 5. CITE SOURCES using markdown links [title](url) whenever possible
-6. ASSIGN AN EFFECTIVENESS SCORE (1-10) for how well this query answered important questions
 
 RESPOND IN THIS FORMAT:
 1. First, provide a DETAILED ANALYSIS of the search results (1-2 paragraphs)
 2. Then, list KEY FINDINGS as numbered points (precise, specific facts)
-3. ${researchState.iteration < researchState.totalIterations ? 'Next, state the most important unanswered question based on these findings' : 'Next, provide a comprehensive SUMMARY of all findings related to the original question'}
-4. Finally, score this query's EFFECTIVENESS (1-10) with brief explanation
+3. ${researchState.iteration < researchState.totalIterations ? 'Finally, state the most important unanswered question based on these findings' : 'Finally, provide a comprehensive SUMMARY of all findings related to the original question'}
 
 IMPORTANT:
 - Focus on NEW information in each iteration
@@ -458,7 +324,6 @@ IMPORTANT:
         importantQuestion: '',
         finalSummary: '',
         sources: [],
-        effectiveness: 1,
         error: true
       };
     }
@@ -477,7 +342,6 @@ function processContent(content: string, query: string) {
     importantQuestion: '',
     finalSummary: '',
     sources: [] as {url: string, label: string}[],
-    effectiveness: 0,
     error: false
   };
   
@@ -492,7 +356,7 @@ function processContent(content: string, query: string) {
     }
     
     // Extract key findings
-    const findingRegex = /\d+\.\s+(.+?)(?=\d+\.|IMPORTANT QUESTION|UNANSWERED QUESTION|SUMMARY|EFFECTIVENESS|$)/gs;
+    const findingRegex = /\d+\.\s+(.+?)(?=\d+\.|IMPORTANT QUESTION|SUMMARY|$)/gs;
     let restContent = analysisSplit.slice(1).join('KEY FINDINGS');
     let findingMatch;
     
@@ -504,20 +368,14 @@ function processContent(content: string, query: string) {
     }
     
     // Extract important question or final summary
-    const questionMatch = content.match(/(?:IMPORTANT|UNANSWERED) QUESTION[:\s]*([^\n]+)/i);
+    const questionMatch = content.match(/IMPORTANT QUESTION[:\s]*([^\n]+)/i);
     if (questionMatch && questionMatch[1]) {
       result.importantQuestion = questionMatch[1].trim();
     }
     
-    const summaryMatch = content.match(/SUMMARY[:\s]*([\s\S]+?)(?=EFFECTIVENESS|$)/i);
+    const summaryMatch = content.match(/SUMMARY[:\s]*([\s\S]+)/i);
     if (summaryMatch && summaryMatch[1]) {
       result.finalSummary = summaryMatch[1].trim();
-    }
-    
-    // Extract effectiveness score
-    const effectivenessMatch = content.match(/EFFECTIVENESS[:\s]*(\d+)/i);
-    if (effectivenessMatch && effectivenessMatch[1]) {
-      result.effectiveness = parseFloat(effectivenessMatch[1]);
     }
     
     // Extract sources from markdown links
@@ -559,188 +417,120 @@ function isValidUrl(url: string): boolean {
  * Generate final research report
  */
 async function generateFinalReport(researchState: any, openRouter: OpenRouter): Promise<ResearchReport> {
-  console.log('Generating final research report...');
+  console.log('Generating final research synthesis...');
   
+  // Prepare findings summary
+  const allFindings = researchState.findings
+    .flatMap((f: any) => f.keyFindings)
+    .map((f: string, i: number) => `${i+1}. ${f}`)
+    .join('\n');
+  
+  // Generate final report
   try {
-    // Combine all findings for the synthesis
-    const allFindings = researchState.findings
-      .reduce((acc: string[], result: any) => [
-        ...acc, 
-        ...(result.keyFindings || [])
-      ], []);
+    const systemPrompt = `You are a research synthesis expert creating a comprehensive final report.`;
     
-    // Get all analyses
-    const allAnalyses = researchState.findings
-      .map((result: any) => result.analysis || '')
-      .filter((a: string) => a.length > 0)
-      .join('\n\n');
-    
-    // Create a consolidated analysis for the report
-    const focusText = researchState.focusArea ? 
-      `\nFOCUS AREA: "${researchState.focusArea}"\n` : '';
-      
-    const systemPrompt = `You are a research analyst synthesizing findings into a comprehensive report. 
-Create a well-structured research report with these sections:
-1. TITLE - A concise descriptive title for the research
-2. EXECUTIVE SUMMARY - A brief overview of the key conclusions (2-3 sentences)
-3. KEY FINDINGS - The 5-7 most important facts and insights, listed as numbered points
-4. ANALYSIS - A thorough analysis of all information (2-3 paragraphs)
-5. CONCLUSION - Final conclusions on probability and confidence (1 paragraph)
-6. QUERY EFFECTIVENESS - Score from 1-10 how well the queries answered the research question
-7. FOCUS AREA SUGGESTIONS - 3-5 specific aspects worth investigating further
-8. PATTERN ANALYSIS - Identify which query approaches worked or didn't work
+    const userPrompt = `RESEARCH QUESTION: "${researchState.intent}"
 
-Your report should be objective, factual, and focused on directly addressing: "${researchState.intent}"
-${focusText}`;
+FINDINGS FROM ALL ITERATIONS:
+${allFindings}
 
-    const userPrompt = `
-Here's all the research data to synthesize:
+Create a comprehensive research report with these sections:
+1. TITLE - Clear, informative title for the report
+2. EXECUTIVE SUMMARY - Brief overview of key conclusions (1-2 paragraphs)
+3. KEY FINDINGS - 5-7 most important findings (numbered list)
+4. DETAILED ANALYSIS - Comprehensive analysis of findings (2 paragraphs)
+5. CONCLUSION - Final answer to the research question (1 paragraph)
 
-ANALYSES:
-${allAnalyses}
+Make the report clear, factual, and directly answer the original research question.`;
 
-KEY FINDINGS:
-${allFindings.map((f: string, i: number) => `${i+1}. ${f}`).join('\n')}
-
-Format your report with clear section headings and concise, focused content.`;
-
-    const reportContent = await openRouter.complete(researchState.model, [
+    const fullReport = await openRouter.complete(researchState.model, [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
     ], 1500, 0.3);
     
-    // Extract sections from the report
-    const report = parseReportSections(reportContent, researchState.intent);
-    return report;
-  } catch (error) {
-    console.error('Error generating final report:', error);
+    console.log("Final report generated");
     
-    // Create a minimal report in case of error
+    // Parse the report into sections
+    return parseReportToStructure(fullReport);
+  } catch (error) {
+    console.error(`Final report generation failed: ${error.message}`);
+    
+    // Return a basic error report
     return {
-      title: `Research on ${researchState.intent}`,
-      executiveSummary: "An error occurred while generating the final report.",
-      keyFindings: ["Error in report generation"],
-      analysis: `Error occurred during final report generation: ${error.message}`,
-      conclusion: "Unable to complete research synthesis due to technical error.",
-      queryEffectiveness: 0,
-      focusAreaSuggestions: [],
-      patternAnalysis: {
-        effectivePatterns: [],
-        ineffectivePatterns: []
-      }
+      title: "Research Synthesis Error",
+      executiveSummary: `Error generating final report: ${error.message}`,
+      keyFindings: ["Error occurred during research synthesis"],
+      analysis: "Unable to complete research analysis due to an error.",
+      conclusion: "Research synthesis failed to complete."
     };
   }
 }
 
 /**
- * Parse report content into structured sections
+ * Parse the full report text into a structured report object
  */
-function parseReportSections(content: string, fallbackTitle: string): ResearchReport {
-  const report: ResearchReport = {
-    title: '',
-    executiveSummary: '',
-    keyFindings: [],
-    analysis: '',
-    conclusion: '',
-    queryEffectiveness: 0,
-    focusAreaSuggestions: [],
-    patternAnalysis: {
-      effectivePatterns: [],
-      ineffectivePatterns: []
-    }
-  };
-  
+function parseReportToStructure(reportText: string): ResearchReport {
   try {
     // Extract title
-    const titleMatch = content.match(/TITLE[:\s]*(.*?)(?=\n|EXECUTIVE SUMMARY)/is);
-    report.title = titleMatch?.[1]?.trim() || `Research on ${fallbackTitle}`;
+    const titleMatch = reportText.match(/^#?\s*(.*?)(?:\n|$)/);
+    const title = titleMatch ? titleMatch[1].trim() : "Research Report";
     
     // Extract executive summary
-    const summaryMatch = content.match(/EXECUTIVE SUMMARY[:\s]*([\s\S]*?)(?=\n\s*KEY FINDINGS|\n\s*\d+\.)/is);
-    report.executiveSummary = summaryMatch?.[1]?.trim() || '';
+    const execSummaryMatch = reportText.match(/EXECUTIVE SUMMARY:?([\s\S]*?)(?=KEY FINDINGS|$)/i);
+    const executiveSummary = execSummaryMatch ? execSummaryMatch[1].trim() : "";
     
     // Extract key findings
-    const findingsSection = content.match(/KEY FINDINGS[:\s]*([\s\S]*?)(?=\n\s*ANALYSIS|\n\s*CONCLUSION)/is);
-    if (findingsSection && findingsSection[1]) {
-      const findingMatches = findingsSection[1].match(/\d+\.\s*(.*?)(?=\n\s*\d+\.|\n\s*ANALYSIS|\n\s*CONCLUSION|$)/gs);
-      report.keyFindings = findingMatches 
-        ? findingMatches.map(f => f.replace(/^\d+\.\s*/, '').trim())
-        : [];
+    const keyFindingsMatch = reportText.match(/KEY FINDINGS:?([\s\S]*?)(?=DETAILED ANALYSIS|ANALYSIS|$)/i);
+    let keyFindings: string[] = [];
+    
+    if (keyFindingsMatch && keyFindingsMatch[1]) {
+      const findingsText = keyFindingsMatch[1].trim();
+      const findingRegex = /\d+\.\s+(.+?)(?=\d+\.|$)/gs;
+      let findingMatch;
+      
+      while ((findingMatch = findingRegex.exec(findingsText)) !== null) {
+        keyFindings.push(findingMatch[1].trim());
+      }
     }
     
     // Extract analysis
-    const analysisMatch = content.match(/ANALYSIS[:\s]*([\s\S]*?)(?=\n\s*CONCLUSION)/is);
-    report.analysis = analysisMatch?.[1]?.trim() || '';
+    const analysisMatch = reportText.match(/(?:DETAILED ANALYSIS|ANALYSIS):?([\s\S]*?)(?=CONCLUSION|$)/i);
+    const analysis = analysisMatch ? analysisMatch[1].trim() : "";
     
     // Extract conclusion
-    const conclusionMatch = content.match(/CONCLUSION[:\s]*([\s\S]*?)(?=\n\s*QUERY EFFECTIVENESS|\n\s*FOCUS AREA|$)/is);
-    report.conclusion = conclusionMatch?.[1]?.trim() || '';
+    const conclusionMatch = reportText.match(/CONCLUSION:?([\s\S]*?)(?=LIMITATIONS|FURTHER RESEARCH|$)/i);
+    const conclusion = conclusionMatch ? conclusionMatch[1].trim() : "";
     
-    // Extract query effectiveness
-    const effectivenessMatch = content.match(/QUERY EFFECTIVENESS[:\s]*(\d+)/i);
-    report.queryEffectiveness = effectivenessMatch?.[1] ? parseInt(effectivenessMatch[1]) : 0;
-    
-    // Extract focus area suggestions
-    const focusAreaSection = content.match(/FOCUS AREA SUGGESTIONS[:\s]*([\s\S]*?)(?=\n\s*PATTERN ANALYSIS|$)/is);
-    if (focusAreaSection && focusAreaSection[1]) {
-      const focusMatches = focusAreaSection[1].match(/(?:\d+\.|[-•])\s*(.*?)(?=\n\s*(?:\d+\.|[-•])|\n\s*PATTERN ANALYSIS|$)/gs);
-      report.focusAreaSuggestions = focusMatches 
-        ? focusMatches.map(f => f.replace(/^(?:\d+\.|[-•])\s*/, '').trim())
-        : [];
-    }
-    
-    // Extract pattern analysis
-    const patternSection = content.match(/PATTERN ANALYSIS[:\s]*([\s\S]*?)$/is);
-    if (patternSection && patternSection[1]) {
-      // Try to find effective and ineffective pattern sections
-      const effectivePatterns: string[] = [];
-      const ineffectivePatterns: string[] = [];
+    // If we couldn't parse the sections properly, use a simpler approach
+    if (!executiveSummary && !analysis && !conclusion) {
+      const parts = reportText.split('\n\n');
       
-      const effectiveMatch = patternSection[1].match(/(?:EFFECTIVE|WORKED)[:\s]*([\s\S]*?)(?=\n\s*(?:INEFFECTIVE|DIDN'T WORK)|$)/is);
-      if (effectiveMatch && effectiveMatch[1]) {
-        const patterns = effectiveMatch[1].match(/(?:\d+\.|[-•])\s*(.*?)(?=\n\s*(?:\d+\.|[-•])|$)/gs);
-        if (patterns) {
-          patterns.forEach(p => {
-            const clean = p.replace(/^(?:\d+\.|[-•])\s*/, '').trim();
-            if (clean) effectivePatterns.push(clean);
-          });
-        }
-      }
-      
-      const ineffectiveMatch = patternSection[1].match(/(?:INEFFECTIVE|DIDN'T WORK)[:\s]*([\s\S]*?)$/is);
-      if (ineffectiveMatch && ineffectiveMatch[1]) {
-        const patterns = ineffectiveMatch[1].match(/(?:\d+\.|[-•])\s*(.*?)(?=\n\s*(?:\d+\.|[-•])|$)/gs);
-        if (patterns) {
-          patterns.forEach(p => {
-            const clean = p.replace(/^(?:\d+\.|[-•])\s*/, '').trim();
-            if (clean) ineffectivePatterns.push(clean);
-          });
-        }
-      }
-      
-      report.patternAnalysis = {
-        effectivePatterns,
-        ineffectivePatterns
+      return {
+        title: title,
+        executiveSummary: parts[0] || "Research completed.",
+        keyFindings: keyFindings.length > 0 ? keyFindings : ["No specific findings extracted"],
+        analysis: parts.length > 1 ? parts[1] : "Analysis not available.",
+        conclusion: parts.length > 2 ? parts[2] : "See executive summary."
       };
     }
     
-    return report;
-  } catch (error) {
-    console.error('Error parsing report sections:', error);
-    
-    // Return minimal report with the content as analysis
     return {
-      title: `Research on ${fallbackTitle}`,
-      executiveSummary: "Error parsing report sections.",
-      keyFindings: [],
-      analysis: content,
-      conclusion: "",
-      queryEffectiveness: 0,
-      focusAreaSuggestions: [],
-      patternAnalysis: {
-        effectivePatterns: [],
-        ineffectivePatterns: []
-      }
+      title,
+      executiveSummary,
+      keyFindings: keyFindings.length > 0 ? keyFindings : ["No structured findings available"],
+      analysis,
+      conclusion
+    };
+  } catch (error) {
+    console.error(`Error parsing report structure: ${error.message}`);
+    
+    // Return a basic structure if parsing fails
+    return {
+      title: "Research Synthesis",
+      executiveSummary: "A synthesis of the research findings.",
+      keyFindings: ["Error parsing structured findings"],
+      analysis: "Error parsing analysis section.",
+      conclusion: "See executive summary."
     };
   }
 }
