@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -77,6 +76,12 @@ interface SavedResearch {
   iterations?: ResearchIteration[];
   focus_text?: string;
   parent_research_id?: string;
+}
+
+interface ResearchChild {
+  id: string;
+  focus_text: string;
+  onView: () => void;
 }
 
 export function WebResearchCard({ description, marketId }: WebResearchCardProps) {
@@ -974,7 +979,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     handleWebScrape(initialQueries, 1);
   };
 
-  // Return to parent research if available
   const returnToParent = () => {
     if (parentResearch) {
       console.log(`Returning to parent research: ${parentResearch.id}`);
@@ -986,13 +990,20 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
+  const convertToResearchChildren = (savedResearches: SavedResearch[]): ResearchChild[] => {
+    return savedResearches.map(research => ({
+      id: research.id,
+      focus_text: research.focus_text || '',
+      onView: () => loadSavedResearch(research)
+    }));
+  };
+
   return (
     <Card className="w-full border-primary/20 mb-8">
       <ResearchHeader
-        description={description}
-        marketId={marketId}
         isLoading={isLoading}
-        onSearch={() => {
+        isAnalyzing={isAnalyzing}
+        onResearch={() => {
           setResults([]);
           setAnalysis('');
           setIterations([]);
@@ -1015,11 +1026,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           
           handleWebScrape(initialQueries, 1);
         }}
-        isSearching={isLoading}
-        resultsCount={results.length}
-        savedResearch={savedResearch || []}
-        onLoadSaved={loadSavedResearch}
-        focusText={focusText}
       />
       
       {parentResearch && (
@@ -1041,7 +1047,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       {(isLoading || progress.length > 0) && (
         <div className="p-4 border-b border-border/50">
-          <ProgressDisplay progress={progress} isLoading={isLoading} />
+          <ProgressDisplay
+            messages={progress} 
+          />
         </div>
       )}
       
@@ -1075,7 +1083,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 key={`iteration-${iteration.iteration}`}
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
-                onToggle={() => {
+                onToggleExpand={() => {
                   setExpandedIterations(prev => {
                     const id = `iteration-${iteration.iteration}`;
                     return prev.includes(id)
@@ -1083,8 +1091,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                       : [...prev, id];
                   });
                 }}
-                isAnalyzing={isAnalyzing && currentIteration === iteration.iteration}
-                currentQueryIndex={currentQueryIndex}
+                isStreaming={isAnalyzing && currentIteration === iteration.iteration}
+                isCurrentIteration={currentIteration === iteration.iteration}
+                maxIterations={maxIterations}
               />
             ))}
           </div>
@@ -1106,7 +1115,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         <div className="p-4">
           <InsightsDisplay 
             streamingState={streamingState}
-            childResearches={childResearchList}
+            childResearches={convertToResearchChildren(childResearchList)}
             onResearchArea={handleResearchArea}
             parentResearchId={parentResearchId}
             loadedResearchId={loadedResearchId}
