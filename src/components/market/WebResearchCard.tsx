@@ -1198,6 +1198,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     );
   };
 
+  useEffect(() => {
+    console.log('=== INSIGHTS DISPLAY DEBUG INFO ===');
+    console.log('handleResearchArea function:', typeof handleResearchArea);
+    console.log('Passing onResearchArea prop:', !!handleResearchArea);
+    console.log('Current parentResearchId:', parentResearchId);
+    console.log('Current loadedResearchId:', loadedResearchId);
+    console.log('Current focusText:', focusText);
+    console.log('streamingState has parsedData:', !!streamingState?.parsedData);
+  }, [handleResearchArea, parentResearchId, loadedResearchId, focusText, streamingState]);
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       {parentResearch && (
@@ -1355,16 +1365,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
       
-      <div className="hidden">
-        {console.log('=== BEFORE RENDERING INSIGHTS DISPLAY ===')}
-        {console.log('handleResearchArea function:', typeof handleResearchArea)}
-        {console.log('Passing onResearchArea prop:', !!handleResearchArea)}
-        {console.log('Current parentResearchId:', parentResearchId)}
-        {console.log('Current loadedResearchId:', loadedResearchId)}
-        {console.log('Current focusText:', focusText)}
-        {console.log('streamingState has parsedData:', !!streamingState?.parsedData)}
-      </div>
-      
       <InsightsDisplay 
         streamingState={streamingState} 
         onResearchArea={handleResearchArea}
@@ -1398,4 +1398,3 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
-
