@@ -13,19 +13,19 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // Different WebSocket URL formats to try
 const WS_URL_FORMATS = [
-  // Direct domain with project id, no API key (relying on authorization header)
+  // Standard format with API key in URL
   (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}`,
+    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}`,
     
-  // Standard URL with API key as query param
-  (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}`,
-    
-  // With explicit protocol specified
+  // Format with explicit protocol
   (baseUrl: string, tokenId: string) => 
     `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&protocol=ws`,
     
-  // Direct HTTP fetch and process response (non-WebSocket fallback)
+  // Basic format with auth header (handled by Edge Function)
+  (baseUrl: string, tokenId: string) => 
+    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}`,
+    
+  // Direct HTTP fetch fallback
   (baseUrl: string, tokenId: string) => 
     `https://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&x-client-info=debug`,
 ];
@@ -306,25 +306,13 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         return;
       }
       
-      setRawData(prev => [...prev, `🔌 Connecting to WebSocket (attempt #${reconnectAttemptRef.current}, format #${urlFormatIndex + 1}): ${wsUrl}`]);
-      
       try {
         // Create WebSocket with detailed logging
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(wsUrl, ['websocket']);
         wsRef.current = ws;
         
-        // Add authorization header if supported by browser
-        try {
-          // Note: This is a newer API and may not be supported in all browsers
-          if ('setRequestHeader' in ws) {
-            // @ts-ignore - TypeScript doesn't know about this API
-            ws.setRequestHeader('Authorization', `Bearer ${SUPABASE_ANON_KEY}`);
-            ws.setRequestHeader('apikey', SUPABASE_ANON_KEY);
-            setRawData(prev => [...prev, `✅ Added authorization headers to WebSocket`]);
-          }
-        } catch (err) {
-          setRawData(prev => [...prev, `ℹ️ Could not set WebSocket headers: ${(err as Error).message}`]);
-        }
+        // Log connection attempt
+        setRawData(prev => [...prev, `🔌 Attempting connection with format #${urlFormatIndex + 1}`]);
         
         // Set connection timeout
         if (timeoutRef.current) {
