@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -60,11 +59,10 @@ export function TransactionDialog({
   const [isClosing, setIsClosing] = useState(false);
   const [userBalance, setUserBalance] = useState<number | null>(null);
 
-  // Fetch user balance when dialog opens
   useEffect(() => {
+    if (!selectedMarket) return;
+    
     const fetchUserBalance = async () => {
-      if (!selectedMarket) return;
-      
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user) {
@@ -104,12 +102,6 @@ export function TransactionDialog({
     }, 100);
   };
 
-  // Get the WebSocket URL for display
-  const getWebSocketUrl = (tokenId?: string) => {
-    if (!tokenId) return "";
-    return `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${tokenId}`;
-  };
-
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
@@ -127,7 +119,7 @@ export function TransactionDialog({
                 />
                 <div className="flex-1 min-w-0">
                   <AlertDialogTitle className="text-lg font-semibold mb-1">
-                    Polymarket WebSocket Debug: {selectedMarket?.selectedOutcome}
+                    Polymarket Data Feed: {selectedMarket?.selectedOutcome}
                   </AlertDialogTitle>
                   <AlertDialogDescription className="text-sm line-clamp-2">
                     {topMover.question}
@@ -139,7 +131,7 @@ export function TransactionDialog({
           
           <div className="space-y-4">
             <div className="text-sm space-y-2">
-              <div className="font-medium">WebSocket Debug Information</div>
+              <div className="font-medium">Market Information</div>
               <div className="grid grid-cols-2 gap-2 text-xs bg-muted/50 p-2 rounded">
                 <div>Token ID:</div>
                 <div className="font-mono break-all">{selectedMarket?.clobTokenId}</div>
@@ -147,15 +139,11 @@ export function TransactionDialog({
                 <div className="font-mono break-all">{topMover?.market_id}</div>
                 <div>User Balance:</div>
                 <div>{userBalance !== null ? `$${userBalance}` : 'Loading...'}</div>
-                <div>WebSocket URL:</div>
-                <div className="font-mono break-all text-[10px]">
-                  {getWebSocketUrl(selectedMarket?.clobTokenId)}
-                </div>
               </div>
             </div>
             
             <div className="text-sm font-medium">
-              Basic WebSocket Test
+              Order Book Data Feed
             </div>
             
             <RawOrderBookData 
@@ -164,9 +152,9 @@ export function TransactionDialog({
             />
             
             <div className="text-xs text-muted-foreground mt-4">
-              This is a basic WebSocket test showing raw connection data.
+              This data feed polls the Polymarket API every 3 seconds.
               <br />
-              All received messages will be displayed above.
+              All received data will be displayed above.
             </div>
           </div>
         </AlertDialogHeader>

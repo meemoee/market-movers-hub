@@ -11,88 +11,61 @@ interface RawOrderBookProps {
 export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) {
   const [status, setStatus] = useState<string>("disconnected");
   const [messages, setMessages] = useState<string[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
+  const pollingRef = useRef<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
     if (isClosing || !clobTokenId) return;
     
-    // Clean up previous connection
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
+    // Clear previous polling
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
     }
     
-    const connectWebSocket = async () => {
+    const fetchOrderBookData = async () => {
       try {
-        setMessages(prev => [...prev, `Attempting connection at ${new Date().toISOString()}`]);
         setStatus("connecting");
+        const timestamp = new Date().toISOString();
+        setMessages(prev => [...prev, `Fetching data at ${timestamp}`]);
         
-        // Get the authentication headers - Use the constant from client.ts
-        const { data: { session } } = await supabase.auth.getSession();
+        // Call the Supabase function to get orderbook data
+        const { data, error } = await supabase.functions.invoke('get-orderbook', {
+          body: { tokenId: clobTokenId }
+        });
         
-        // Get the anon key from Supabase URL
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
-        
-        const headers = {
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`,
-        };
-        
-        // Create WebSocket URL with authentication
-        const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}`;
-        setMessages(prev => [...prev, `WebSocket URL: ${wsUrl}`]);
-        
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-        
-        // Connection opened
-        ws.onopen = () => {
-          setMessages(prev => [...prev, `🟢 Connection opened at ${new Date().toISOString()}`]);
-          setStatus("connected");
-          setError(null);
-          
-          // Send a test message
-          const testMessage = JSON.stringify({ type: "ping", timestamp: new Date().toISOString() });
-          ws.send(testMessage);
-          setMessages(prev => [...prev, `SENT: ${testMessage}`]);
-        };
-        
-        // Listen for messages
-        ws.onmessage = (event) => {
-          setMessages(prev => {
-            const newMessages = [...prev, `RECEIVED: ${event.data}`];
-            return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
-          });
-        };
-        
-        // Listen for errors
-        ws.onerror = (event) => {
-          setMessages(prev => [...prev, `🔴 WebSocket error at ${new Date().toISOString()}`]);
+        if (error) {
+          setMessages(prev => [...prev, `🔴 Error fetching data: ${error.message}`]);
           setStatus("error");
-          setError("Connection error");
-          console.error("WebSocket error:", event);
-        };
+          setError(error.message);
+          return;
+        }
         
-        // Connection closed
-        ws.onclose = (event) => {
-          setMessages(prev => [...prev, `🔴 Connection closed: code=${event.code}, reason=${event.reason || "No reason provided"}`]);
-          setStatus("disconnected");
-          wsRef.current = null;
-        };
+        // Process the received data
+        setStatus("connected");
+        setError(null);
+        setMessages(prev => {
+          const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
+          return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
+        });
       } catch (err) {
-        setMessages(prev => [...prev, `🔴 Error creating WebSocket: ${(err as Error).message}`]);
+        setMessages(prev => [...prev, `🔴 Error: ${(err as Error).message}`]);
         setStatus("error");
-        setError(`Failed to create connection: ${(err as Error).message}`);
+        setError(`Failed to fetch data: ${(err as Error).message}`);
       }
     };
     
-    connectWebSocket();
+    // Initial fetch
+    fetchOrderBookData();
+    
+    // Set up polling every 3 seconds
+    pollingRef.current = window.setInterval(fetchOrderBookData, 3000);
     
     // Cleanup function
     return () => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.close();
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
     };
   }, [clobTokenId, isClosing]);
@@ -102,7 +75,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     return (
       <div className="flex items-center justify-center p-4">
         <Loader2 className="w-6 h-6 animate-spin mr-2" />
-        <span>Connecting to WebSocket...</span>
+        <span>Fetching data...</span>
       </div>
     );
   }
@@ -125,36 +98,46 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
               <button 
                 onClick={() => {
                   if (clobTokenId) {
-                    if (wsRef.current) {
-                      wsRef.current.close();
-                      wsRef.current = null;
-                    }
                     setStatus("connecting");
                     setMessages([]);
                   }
                 }}
                 className="px-2 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-xs"
               >
-                Reconnect
+                Retry
               </button>
             )}
             
             {status === "connected" && (
               <button 
                 onClick={() => {
-                  if (wsRef.current?.readyState === WebSocket.OPEN) {
-                    const testMessage = JSON.stringify({ 
-                      type: "test", 
-                      message: "This is a test message",
-                      timestamp: new Date().toISOString() 
-                    });
-                    wsRef.current.send(testMessage);
-                    setMessages(prev => [...prev, `SENT: ${testMessage}`]);
+                  setMessages(prev => [...prev, `Manual refresh at ${new Date().toISOString()}`]);
+                  // Force an immediate refresh
+                  if (pollingRef.current) {
+                    clearInterval(pollingRef.current);
                   }
+                  supabase.functions.invoke('get-orderbook', {
+                    body: { tokenId: clobTokenId }
+                  }).then(({ data, error }) => {
+                    if (error) {
+                      setMessages(prev => [...prev, `🔴 Error fetching data: ${error.message}`]);
+                      return;
+                    }
+                    setMessages(prev => {
+                      const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
+                      return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
+                    });
+                    // Restart the polling
+                    pollingRef.current = window.setInterval(() => {
+                      supabase.functions.invoke('get-orderbook', {
+                        body: { tokenId: clobTokenId }
+                      });
+                    }, 3000);
+                  });
                 }}
                 className="px-2 py-1 bg-green-500/10 hover:bg-green-500/20 rounded-md text-xs"
               >
-                Send Test
+                Refresh Now
               </button>
             )}
           </div>
