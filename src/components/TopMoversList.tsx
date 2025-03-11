@@ -11,6 +11,7 @@ import { InsightPostBox } from './market/InsightPostBox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
+import { OrderBookData } from '@/services/PolymarketService';
 
 interface TimeInterval {
   label: string;
@@ -70,15 +71,6 @@ interface TopMoversListProps {
   onIntervalChange: (interval: string) => void;
   openMarketsOnly: boolean;
   onOpenMarketsChange: (value: boolean) => void;
-}
-
-interface OrderBookData {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number | null;
-  best_ask: number | null;
-  spread: string | null;
-  timestamp: string | null;
 }
 
 export default function TopMoversList({

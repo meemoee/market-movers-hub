@@ -14,15 +14,7 @@ import { RawOrderBookData } from './RawOrderBookData';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { Button } from "@/components/ui/button";
-
-interface OrderBookData {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number | null;
-  best_ask: number | null;
-  spread: string | null;
-  timestamp?: string;
-}
+import { OrderBookData } from '@/services/PolymarketService';
 
 interface TopMover {
   market_id: string;

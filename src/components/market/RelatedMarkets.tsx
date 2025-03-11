@@ -19,15 +19,6 @@ interface RelatedMarketsProps {
   selectedInterval: string;
 }
 
-interface OrderBookData {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number | null;
-  best_ask: number | null;
-  spread: string | null;
-  timestamp: string | null;
-}
-
 // Helper function to clean text fields
 function cleanTextFields(market: any) {
   const fieldsToClean = ['question', 'subtitle', 'yes_sub_title', 'no_sub_title', 'description'];
