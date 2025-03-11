@@ -7,10 +7,11 @@ interface MarketSearchResponse {
   data: TopMover[];
   hasMore: boolean;
   total?: number;
+  nextPage?: number;
 }
 
 export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number) {
-  return useQuery({
+  return useQuery<MarketSearchResponse>({
     queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax],
     queryFn: async () => {
       console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax });
@@ -44,11 +45,7 @@ export function useMarketSearch(searchQuery: string = '', page: number = 1, prob
         });
       }
       
-      return {
-        data: data?.data || [],
-        hasMore: data?.hasMore || false,
-        total: data?.total
-      };
+      return data || { data: [], hasMore: false };
     },
     enabled: true,
     staleTime: 0,

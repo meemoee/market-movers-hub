@@ -160,8 +160,14 @@ export default function TopMoversList({
 
   const isSearching = debouncedSearch.length > 0 && !marketId;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
-  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
-  const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
+  
+  const displayedMarkets = (isSearching ? 
+    marketSearchQuery.data?.data : 
+    topMoversQuery.data?.pages?.flatMap(page => page.data)) || [];
+    
+  const hasMore = isSearching ? 
+    !!marketSearchQuery.data?.hasMore : 
+    (!marketId && topMoversQuery.hasNextPage);
 
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;
