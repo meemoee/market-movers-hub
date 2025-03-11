@@ -1,3 +1,4 @@
+
 import { Button } from "@/components/ui/button"
 import { Loader2, Search } from "lucide-react"
 
@@ -8,11 +9,16 @@ interface ResearchHeaderProps {
 }
 
 export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
+  // Ensure we call onResearch without any parameters to prevent passing the event object
+  const handleResearchClick = () => {
+    onResearch();
+  };
+
   return (
     <div className="flex items-center justify-between">
       <h3 className="text-lg font-semibold">Web Research</h3>
       <Button 
-        onClick={onResearch} 
+        onClick={handleResearchClick} 
         disabled={isLoading || isAnalyzing}
         variant="outline"
         size="sm"
