@@ -1,9 +1,17 @@
 
-import { useState, useEffect } from 'react';
-import { Card } from "@/components/ui/card";
-import { ResearchResult, SitePreviewList } from "./SitePreviewList";
-import { AnalysisDisplay } from "./AnalysisDisplay";
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react'
+import { Badge } from "@/components/ui/badge"
+import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { AnalysisDisplay } from "./AnalysisDisplay"
+import { cn } from "@/lib/utils"
+
+interface ResearchResult {
+  url: string;
+  content: string;
+  title?: string;
+}
 
 interface IterationCardProps {
   iteration: {
@@ -19,96 +27,133 @@ interface IterationCardProps {
   maxIterations: number;
 }
 
-export function IterationCard({ 
-  iteration, 
-  isExpanded, 
+export function IterationCard({
+  iteration,
+  isExpanded,
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
   maxIterations
 }: IterationCardProps) {
-  const [analysisComplete, setAnalysisComplete] = useState(false);
-  const [previousAnalysis, setPreviousAnalysis] = useState('');
+  const [activeTab, setActiveTab] = useState<string>("analysis")
+  const isFinalIteration = iteration.iteration === maxIterations
   
-  // Monitor changes in analysis to detect when streaming is complete
+  // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
-    // If this isn't the current iteration being processed, skip
-    if (!isCurrentIteration) return;
-    
-    // If the analysis hasn't changed in a while, it's likely complete
-    if (iteration.analysis && iteration.analysis.length > 0) {
-      if (previousAnalysis === iteration.analysis) {
-        if (!analysisComplete) {
-          setAnalysisComplete(true);
-          
-          // Auto-collapse this iteration after a delay, unless it's the final iteration
-          const isFinalIteration = iteration.iteration === maxIterations;
-          if (!isFinalIteration) {
-            const timer = setTimeout(() => {
-              onToggleExpand();
-            }, 1500); // 1.5 second delay before collapsing
-            
-            return () => clearTimeout(timer);
-          }
-        }
-      } else {
-        // Analysis is still being updated
-        setPreviousAnalysis(iteration.analysis);
-        setAnalysisComplete(false);
-      }
+    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
+      // Add a small delay to let the user see the completed results before collapsing
+      const timer = setTimeout(() => {
+        onToggleExpand();
+      }, 1500);
+      
+      return () => clearTimeout(timer);
     }
-  }, [iteration.analysis, previousAnalysis, isCurrentIteration, analysisComplete, onToggleExpand, iteration.iteration, maxIterations]);
-  
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+
   return (
-    <Card className={`border-l-4 ${isCurrentIteration && isStreaming ? 'border-l-primary' : 'border-l-muted'} overflow-hidden`}>
+    <div className={cn(
+      "iteration-card border rounded-md overflow-hidden w-full max-w-full",
+      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
+    )}>
       <div 
-        className={`flex items-center justify-between p-3 cursor-pointer hover:bg-accent/20 ${isExpanded ? 'bg-accent/10' : ''}`}
+        className={cn(
+          "iteration-card-header flex items-center justify-between p-3 w-full",
+          isExpanded ? "bg-accent/10" : "",
+          "hover:bg-accent/10 cursor-pointer"
+        )}
         onClick={onToggleExpand}
       >
-        <div className="flex items-center gap-2">
-          {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-          <h3 className="text-sm font-medium">
-            Iteration {iteration.iteration} 
-            {isCurrentIteration && isStreaming && <span className="ml-2 text-primary animate-pulse">processing...</span>}
-          </h3>
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {iteration.queries.length} queries • {iteration.results.length} results
+        <div className="flex items-center gap-2 overflow-hidden">
+          <Badge variant={isFinalIteration ? "default" : "outline"} 
+            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
+            Iteration {iteration.iteration}
+            {isStreaming && isCurrentIteration && " (Streaming...)"}
+          </Badge>
+          <span className="text-sm truncate">
+            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
         </div>
+        {isExpanded ? 
+          <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 
+          <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+        }
       </div>
       
       {isExpanded && (
-        <div className="p-3 border-t space-y-4">
-          <div>
-            <h4 className="text-sm font-medium mb-2">Search Queries:</h4>
-            <ul className="space-y-1 text-sm text-muted-foreground">
-              {iteration.queries.map((query, index) => (
-                <li key={index} className="flex items-start gap-2">
-                  <span className="text-xs bg-accent/30 rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0 mt-0.5">{index + 1}</span>
-                  <span>{query}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-          
-          {iteration.results.length > 0 && (
-            <div>
-              <h4 className="text-sm font-medium mb-2">Results:</h4>
-              <SitePreviewList results={iteration.results} />
-            </div>
-          )}
-          
-          {iteration.analysis && (
-            <div>
-              <h4 className="text-sm font-medium mb-2">Analysis:</h4>
-              <AnalysisDisplay content={iteration.analysis} />
-            </div>
-          )}
+        <div className="p-3 w-full max-w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
+            <TabsList className="w-full grid grid-cols-3 mb-3">
+              <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
+              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
+              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="analysis" className="w-full max-w-full">
+              <AnalysisDisplay 
+                content={iteration.analysis || "Analysis in progress..."} 
+                isStreaming={isStreaming && isCurrentIteration}
+                maxHeight={isFinalIteration ? "300px" : "200px"}
+              />
+            </TabsContent>
+            
+            <TabsContent value="sources" className="w-full max-w-full">
+              <ScrollArea className="h-[200px] rounded-md border p-3 w-full max-w-full">
+                <div className="space-y-2 w-full">
+                  {iteration.results.map((result, idx) => (
+                    <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3 w-3 flex-shrink-0" />
+                        <span className="source-title text-sm">
+                          {result.title || new URL(result.url).hostname}
+                        </span>
+                      </div>
+                      <a 
+                        href={result.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="source-url flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                        {result.url}
+                      </a>
+                      {result.content && (
+                        <div className="source-content text-muted-foreground">
+                          {result.content.substring(0, 120)}...
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  {iteration.results.length === 0 && (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No sources found for this iteration.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+            
+            <TabsContent value="queries" className="w-full max-w-full overflow-x-hidden">
+              <ScrollArea className="h-[150px] rounded-md border p-3 w-full">
+                <div className="flex flex-wrap gap-2 w-full">
+                  {iteration.queries.map((query, idx) => (
+                    <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 w-fit max-w-full">
+                      <Search className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate text-xs max-w-[280px] sm:max-w-[360px] md:max-w-[400px]">{query}</span>
+                    </div>
+                  ))}
+                  
+                  {iteration.queries.length === 0 && (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No queries for this iteration.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+          </Tabs>
         </div>
       )}
-    </Card>
+    </div>
   );
 }
