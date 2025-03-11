@@ -174,3 +174,16 @@ p, h1, h2, h3, h4, h5, h6, span, div {
 [role="tablist"] {
   background-color: hsl(var(--accent));
 }
+
+/* Fix for consistent tab content height */
+.tab-content-container {
+  position: relative;
+  width: 100%;
+  min-height: 200px;
+}
+
+.tab-content-container > [role="tabpanel"] {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
