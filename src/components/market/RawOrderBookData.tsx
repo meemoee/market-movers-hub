@@ -25,10 +25,13 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         const baseUrl = "https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws";
         setRawData(prev => [...prev, `Testing connection to: ${baseUrl}?test=true`]);
         
-        // Call the edge function directly using invoke without query parameters
-        // We'll use the function name with the test parameter included
-        const { data, error } = await supabase.functions.invoke('polymarket-ws?test=true', {
-          method: 'GET'
+        // Call the edge function by appending the query parameter to the function name
+        const { data, error } = await supabase.functions.invoke('polymarket-ws', {
+          method: 'GET',
+          headers: { 
+            'Content-Type': 'application/json',
+            'test': 'true'
+          }
         });
 
         if (error) {

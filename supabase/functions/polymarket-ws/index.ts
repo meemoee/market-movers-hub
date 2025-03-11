@@ -1,7 +1,8 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("Polymarket WebSocket Function v1.3 - Enhanced CORS Handling");
+console.log("Polymarket WebSocket Function v1.4 - Updated Headers Support");
 
 serve(async (req) => {
   console.log(`Request received: ${req.method} ${req.url}`);
@@ -20,8 +21,11 @@ serve(async (req) => {
   const assetId = url.searchParams.get('assetId');
   console.log(`URL parameters: assetId=${assetId}`);
   
+  // Check for test parameter in URL or headers
+  const isTest = url.searchParams.has('test') || req.headers.get('test') === 'true';
+  
   // If this is a test request, return success without authentication check
-  if (url.searchParams.has('test')) {
+  if (isTest) {
     console.log('Test request detected, returning success response');
     return new Response(JSON.stringify({ 
       status: "ready",
