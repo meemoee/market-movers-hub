@@ -111,27 +111,53 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
-      // Build the WS URL with the correct parameter name (assetId) - ensuring it's correct
-      const wsUrl = `${window.location.protocol.replace('http', 'ws')}//${window.location.host}/api/v1/polymarket-ws?assetId=${tokenId}`;
+      // Determine WebSocket URL based on environment
+      // Try to use the Supabase functions URL directly
+      const baseUrl = import.meta.env.VITE_SUPABASE_URL || "https://lfmkoismabbhujycnqpn.supabase.co";
+      const wsUrl = `${baseUrl.replace('https://', 'wss://')}/functions/v1/polymarket-ws?assetId=${tokenId}`;
+      
       console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
       
-      // Directly test if endpoint is reachable
-      fetch(`${window.location.protocol}//${window.location.host}/api/v1/polymarket-ws`, {
+      // Test endpoint accessibility
+      fetch(`${baseUrl}/functions/v1/polymarket-ws`, {
         method: 'OPTIONS',
         headers: {
           'Content-Type': 'application/json'
         }
       }).then(response => {
         console.log('[LiveOrderBook] Endpoint test response:', response);
+        if (!response.ok) {
+          console.error('[LiveOrderBook] Endpoint test failed with status:', response.status);
+          if (mountedRef.current) {
+            setError(`Orderbook service responded with status ${response.status}`);
+          }
+        }
       }).catch(err => {
         console.error('[LiveOrderBook] Endpoint test failed:', err);
+        if (mountedRef.current) {
+          setError('Failed to reach orderbook service - network error');
+        }
       });
       
+      // Create WebSocket connection
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       initialConnectRef.current = true;
 
+      // Set timeout for initial connection
+      const connectionTimeout = setTimeout(() => {
+        if (wsRef.current && wsRef.current.readyState !== WebSocket.OPEN) {
+          console.error('[LiveOrderBook] Connection timeout - WebSocket did not open within 10 seconds');
+          if (mountedRef.current) {
+            setError('Connection timeout - Could not establish WebSocket connection');
+          }
+          ws.close();
+        }
+      }, 10000);
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
+        
         if (mountedRef.current) {
           console.log('[LiveOrderBook] WebSocket connected successfully');
           setConnectionStatus("connected");
@@ -203,6 +229,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       };
 
       ws.onerror = (event) => {
+        clearTimeout(connectionTimeout);
         console.error('[LiveOrderBook] WebSocket error:', event);
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
@@ -213,6 +240,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       };
 
       ws.onclose = (event) => {
+        clearTimeout(connectionTimeout);
         console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
         
         // Only attempt reconnect if mounted and not intentionally closing

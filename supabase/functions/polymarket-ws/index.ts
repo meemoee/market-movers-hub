@@ -1,31 +1,47 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-console.log("polymarket-ws function loaded");
+console.log("polymarket-ws function loaded - v1.0.1");
 
 serve(async (req) => {
-  console.log("polymarket-ws function received request:", req.url);
-
+  const requestUrl = new URL(req.url);
+  const upgradeHeader = req.headers.get("upgrade") || "";
+  
+  console.log(`polymarket-ws received ${req.method} request to ${requestUrl.pathname}${requestUrl.search}`);
+  console.log(`Headers: ${JSON.stringify(Object.fromEntries([...req.headers.entries()]))}`);
+  
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     console.log("Handling CORS preflight request");
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { 
+      headers: { 
+        ...corsHeaders,
+        'Content-Type': 'application/json'
+      }
+    });
   }
 
   // Get asset ID from URL parameters
-  const url = new URL(req.url);
-  const assetId = url.searchParams.get('assetId');
+  const assetId = requestUrl.searchParams.get('assetId');
 
   if (!assetId) {
     console.error("Missing assetId parameter");
     return new Response(JSON.stringify({ status: "error", message: "Asset ID is required" }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,
+    });
+  }
+
+  // Check if this is a WebSocket upgrade request
+  if (upgradeHeader.toLowerCase() !== "websocket") {
+    console.log("Request is not a WebSocket upgrade request");
+    return new Response(JSON.stringify({ 
+      status: "info", 
+      message: "Polymarket WebSocket endpoint is active. Connect with a WebSocket client."
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 200,
     });
   }
 
