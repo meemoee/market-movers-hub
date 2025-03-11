@@ -24,10 +24,10 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         const baseUrl = "https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws";
         setRawData(prev => [...prev, `Testing connection to: ${baseUrl}?test=true`]);
         
-        // Update the invoke options to use params instead of query
+        // Use queryParams for GET request parameters
         const { data, error } = await supabase.functions.invoke('polymarket-ws', {
           method: 'GET',
-          params: { test: 'true' }
+          queryParams: { test: 'true' }
         });
 
         if (error) {
