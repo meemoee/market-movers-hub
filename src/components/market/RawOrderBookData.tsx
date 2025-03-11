@@ -22,27 +22,23 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   useEffect(() => {
     const testEndpoint = async () => {
       try {
-        // Add authentication header to the test request
-        const response = await fetch(
-          `https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?test=true`, 
-          {
-            headers: {
-              'apikey': SUPABASE_ANON_KEY,
-            }
-          }
-        );
+        const baseUrl = "https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws";
+        setRawData(prev => [...prev, `Testing connection to: ${baseUrl}?test=true`]);
         
-        const responseText = await response.text();
-        setRawData(prev => [...prev, `HTTP test status: ${response.status}`]);
-        setRawData(prev => [...prev, `HTTP test response: ${responseText}`]);
-        
-        // Only attempt WebSocket if the endpoint is available
-        if (response.ok) {
-          setRawData(prev => [...prev, `✅ Edge Function is accessible`]);
-        } else {
-          setRawData(prev => [...prev, `❌ Edge Function returned error: ${response.status}`]);
-          setError(`Edge Function error: ${response.status}`);
+        // Use the Supabase client to make the test request
+        const { data, error } = await supabase.functions.invoke('polymarket-ws', {
+          method: 'GET',
+          query: { test: 'true' }
+        });
+
+        if (error) {
+          setRawData(prev => [...prev, `❌ Edge Function error: ${error.message}`]);
+          setError(`Edge Function error: ${error.message}`);
+          return;
         }
+        
+        setRawData(prev => [...prev, `✅ Edge Function response: ${JSON.stringify(data)}`]);
+        setRawData(prev => [...prev, `✅ Edge Function is accessible`]);
       } catch (err) {
         setRawData(prev => [...prev, `❌ Could not access Edge Function: ${(err as Error).message}`]);
         setError(`Network error: ${(err as Error).message}`);
@@ -88,11 +84,8 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     setRawData(prev => [...prev, `Attempting to connect to: ${wsUrl}`]);
     
     try {
-      // Create WebSocket with authentication headers in the WebSocket protocol
-      // Since browsers don't allow adding headers to WebSocket connections,
-      // we use a trick by adding the auth token as a protocol
-      const authProtocol = `apikey-${SUPABASE_ANON_KEY}`;
-      const ws = new WebSocket(wsUrl, [authProtocol]);
+      // Simple WebSocket connection - no need for protocol or custom headers
+      const ws = new WebSocket(wsUrl);
       
       wsRef.current = ws;
       

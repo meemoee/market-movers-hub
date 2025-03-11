@@ -1,43 +1,26 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("Polymarket WebSocket Function v1.2 - Authentication Debug Mode");
+console.log("Polymarket WebSocket Function v1.3 - Enhanced CORS Handling");
 
 serve(async (req) => {
-  // Log the request with full details for debugging
   console.log(`Request received: ${req.method} ${req.url}`);
-  console.log(`Headers: ${JSON.stringify(Object.fromEntries(req.headers.entries()))}`);
   
-  // Check for API key in headers (required by Supabase)
-  const apiKey = req.headers.get('apikey') || req.headers.get('authorization');
-  if (!apiKey) {
-    console.log('ERROR: No apikey or authorization header provided');
-    return new Response(JSON.stringify({ 
-      status: "error",
-      message: "Authentication required. Please provide apikey header.",
-      timestamp: new Date().toISOString()
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 401,
-    });
-  }
-  
-  // Log authentication success
-  console.log('Authentication header found');
-  
-  // Handle CORS preflight requests
+  // Always return proper CORS headers for preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    console.log('Handling CORS preflight request');
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders
+    });
   }
   
   // Get URL parameters
   const url = new URL(req.url);
   const assetId = url.searchParams.get('assetId');
-  
-  // Log URL parameters
   console.log(`URL parameters: assetId=${assetId}`);
   
-  // If this is a test request, return success
+  // If this is a test request, return success without authentication check
   if (url.searchParams.has('test')) {
     console.log('Test request detected, returning success response');
     return new Response(JSON.stringify({ 
@@ -70,6 +53,12 @@ serve(async (req) => {
     console.log('Attempting WebSocket upgrade');
     // Upgrade to WebSocket
     const { socket, response } = Deno.upgradeWebSocket(req);
+    
+    // Add CORS headers to WebSocket response
+    const responseHeaders = new Headers(response.headers);
+    Object.entries(corsHeaders).forEach(([key, value]) => {
+      responseHeaders.set(key, value);
+    });
     
     // Set up event handlers
     socket.onopen = () => {
@@ -132,7 +121,12 @@ serve(async (req) => {
       console.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
     };
     
-    return response;
+    // Create a new response with CORS headers
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders
+    });
   } catch (err) {
     console.error(`WebSocket upgrade error: ${err.message}`);
     return new Response(JSON.stringify({ 
