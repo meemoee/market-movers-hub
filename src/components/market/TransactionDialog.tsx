@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Loader2, Check, AlertCircle, DollarSign } from 'lucide-react';
 import {
@@ -19,9 +18,10 @@ import { Button } from "@/components/ui/button";
 interface OrderBookData {
   bids: Record<string, number>;
   asks: Record<string, number>;
-  best_bid: number;
-  best_ask: number;
-  spread: number;
+  best_bid: number | null;
+  best_ask: number | null;
+  spread: string | null;
+  timestamp?: string;
 }
 
 interface TopMover {
@@ -138,7 +138,6 @@ export function TransactionDialog({
     }, 1500);
   };
 
-  // Calculate the estimated cost of the transaction
   const getEstimatedCost = () => {
     if (!orderBookData || !selectedMarket) return 0;
     
@@ -146,10 +145,9 @@ export function TransactionDialog({
       ? orderBookData.best_ask 
       : orderBookData.best_bid;
       
-    return price * quantity;
+    return price !== null ? price * quantity : 0;
   };
 
-  // Check if the user has enough balance
   const hasEnoughBalance = () => {
     if (userBalance === null) return false;
     return userBalance >= getEstimatedCost();
@@ -217,7 +215,6 @@ export function TransactionDialog({
                 </div>
               </div>
               
-              {/* Transaction Parameters */}
               <div className="space-y-2">
                 <div className="font-medium text-sm">Transaction Details</div>
                 <div className="bg-muted/50 p-3 rounded space-y-3">
@@ -250,7 +247,7 @@ export function TransactionDialog({
                       {orderBookData ? 
                         `$${(selectedMarket?.action === 'buy' ? 
                           orderBookData.best_ask : 
-                          orderBookData.best_bid).toFixed(3)}` : 
+                          orderBookData.best_bid)?.toFixed(3) || 'N/A'}` : 
                         'Loading...'}
                     </span>
                   </div>
