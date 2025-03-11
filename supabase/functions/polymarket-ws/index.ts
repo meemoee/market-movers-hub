@@ -1,140 +1,192 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeaders, wsHeaders } from "../_shared/cors.ts";
 
-// Enhanced CORS headers specifically for WebSocket connections
-const enhancedCorsHeaders = {
-  ...corsHeaders,
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, Sec-WebSocket-Protocol, Sec-WebSocket-Key, Sec-WebSocket-Version, Sec-WebSocket-Extensions',
-  'Access-Control-Allow-Private-Network': 'true',
-  'Access-Control-Max-Age': '86400'
-};
+console.log("Polymarket WebSocket Function v3.0.0 - Enhanced debugging and multiple connection methods");
 
-console.log("Polymarket WebSocket Function v2.1.0 - Enhanced CORS and WebSocket protocol support");
+function logHeaders(headers: Headers, prefix: string = ""): void {
+  console.log(`${prefix} Headers:`);
+  for (const [key, value] of headers.entries()) {
+    console.log(`${prefix} ${key}: ${value}`);
+  }
+}
+
+function debugRequest(req: Request): void {
+  console.log("\n=== Request Debug Info ===");
+  console.log("Method:", req.method);
+  console.log("URL:", req.url);
+  logHeaders(req.headers, "→");
+}
 
 serve(async (req) => {
-  console.log(`Request received: ${req.method} ${req.url}`);
-  console.log("Headers:", JSON.stringify(Object.fromEntries([...req.headers])));
-  
-  // Handle CORS preflight requests properly
+  console.log("\n🔄 New request received:", new Date().toISOString());
+  debugRequest(req);
+
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    console.log('Handling CORS preflight request');
+    console.log('📝 Handling CORS preflight request');
     return new Response(null, {
       status: 204,
-      headers: enhancedCorsHeaders
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Headers': req.headers.get('Access-Control-Request-Headers') || '*'
+      }
     });
   }
-  
+
   const url = new URL(req.url);
   const assetId = url.searchParams.get('assetId');
-  console.log(`URL parameters: assetId=${assetId}`);
-  
-  // Check for test mode via client info header
-  const clientInfo = req.headers.get('x-client-info') || '';
-  const isTest = clientInfo.includes('test-mode') || url.searchParams.get('x-client-info') === 'debug';
-  
+  console.log(`📦 Asset ID: ${assetId}`);
+
+  // Test mode via header or URL param
+  const isTest = req.headers.get('x-client-info')?.includes('test-mode') || 
+                 url.searchParams.get('test') === 'true';
+
   if (isTest) {
-    console.log('Test request detected via header or URL param');
-    return new Response(JSON.stringify({ 
+    console.log('🧪 Test request detected');
+    return new Response(JSON.stringify({
       status: "ready",
       message: "Polymarket WebSocket endpoint is active.",
       timestamp: new Date().toISOString(),
-      headers: Object.fromEntries([...req.headers]),
-      url: req.url
+      requestInfo: {
+        method: req.method,
+        url: req.url,
+        headers: Object.fromEntries([...req.headers]),
+        upgradeHeader: req.headers.get("upgrade"),
+        secWebSocketKey: req.headers.get("Sec-WebSocket-Key"),
+        secWebSocketProtocol: req.headers.get("Sec-WebSocket-Protocol"),
+        secWebSocketVersion: req.headers.get("Sec-WebSocket-Version")
+      }
     }), {
-      headers: { ...enhancedCorsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
-  
-  // Check if this is a WebSocket upgrade request
+
+  // Check for WebSocket upgrade
   const upgradeHeader = req.headers.get("upgrade") || "";
+  console.log("🔍 Upgrade header:", upgradeHeader);
+
   if (upgradeHeader.toLowerCase() !== "websocket") {
-    console.log('Non-WebSocket request detected - returning HTTP response');
-    return new Response(JSON.stringify({ 
+    console.log('📨 Non-WebSocket request - returning HTTP response');
+    return new Response(JSON.stringify({
       status: "ready",
       message: "This endpoint requires a WebSocket connection.",
       timestamp: new Date().toISOString(),
-      headers: Object.fromEntries([...req.headers])
+      requestInfo: {
+        method: req.method,
+        url: req.url,
+        headers: Object.fromEntries([...req.headers])
+      }
     }), {
-      headers: { ...enhancedCorsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
-  
+
   try {
-    console.log('Attempting WebSocket upgrade for assetId:', assetId);
-    
+    console.log('🔌 Attempting WebSocket upgrade for assetId:', assetId);
+    console.log('WebSocket Headers:', Object.fromEntries([...req.headers]));
+
     let socket, response;
-    
-    // Try with different WebSocket upgrade approaches
-    try {
-      console.log("Using standard WebSocket upgrade");
-      ({ socket, response } = Deno.upgradeWebSocket(req));
-    } catch (err) {
-      console.error(`Standard upgrade failed: ${err.message}`);
-      
-      // Try with explicit options if standard approach fails
-      console.log("Trying WebSocket upgrade with explicit options");
-      ({ socket, response } = Deno.upgradeWebSocket(req, {
-        idleTimeout: 60,
-        compress: false
-      }));
+    const upgradeAttempts = [
+      // Attempt 1: Standard upgrade
+      () => {
+        console.log("📡 Attempt 1: Standard WebSocket upgrade");
+        return Deno.upgradeWebSocket(req);
+      },
+      // Attempt 2: With explicit options
+      () => {
+        console.log("📡 Attempt 2: WebSocket upgrade with explicit options");
+        return Deno.upgradeWebSocket(req, {
+          protocol: "websocket",
+          idleTimeout: 60,
+          compress: false
+        });
+      },
+      // Attempt 3: With all headers
+      () => {
+        console.log("📡 Attempt 3: WebSocket upgrade with all headers");
+        const headers = new Headers(req.headers);
+        headers.set('Upgrade', 'websocket');
+        headers.set('Connection', 'Upgrade');
+        headers.set('Sec-WebSocket-Protocol', 'websocket');
+        const upgradedReq = new Request(req.url, {
+          method: req.method,
+          headers
+        });
+        return Deno.upgradeWebSocket(upgradedReq);
+      }
+    ];
+
+    let lastError;
+    for (let i = 0; i < upgradeAttempts.length; i++) {
+      try {
+        ({ socket, response } = upgradeAttempts[i]());
+        console.log(`✅ Upgrade successful on attempt ${i + 1}`);
+        break;
+      } catch (err) {
+        lastError = err;
+        console.error(`❌ Attempt ${i + 1} failed:`, err);
+        if (i === upgradeAttempts.length - 1) {
+          throw err;
+        }
+      }
     }
-    
+
+    if (!socket || !response) {
+      throw new Error("Failed to upgrade WebSocket connection after all attempts");
+    }
+
     socket.onopen = () => {
-      console.log("Client WebSocket connection established");
+      console.log("🎉 WebSocket connection established");
       try {
         socket.send(JSON.stringify({
           type: "connected",
-          message: `WebSocket connection established for asset ID: ${assetId || 'not specified'}`,
-          timestamp: new Date().toISOString()
-        }));
-        
-        socket.send(JSON.stringify({
-          type: "heartbeat",
+          message: `WebSocket connection established for asset ID: ${assetId}`,
           timestamp: new Date().toISOString()
         }));
       } catch (err) {
-        console.error(`Error in onopen: ${err.message}`);
+        console.error(`❌ Error in onopen:`, err);
       }
     };
-    
-    // Set up heartbeat interval to keep connection alive
+
+    // Enhanced heartbeat with timestamp and connection info
     const heartbeatInterval = setInterval(() => {
       try {
         if (socket.readyState === 1) {
           socket.send(JSON.stringify({
             type: "heartbeat",
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            connectionInfo: {
+              readyState: socket.readyState,
+              protocol: socket.protocol,
+              extensions: socket.extensions
+            }
           }));
-          console.log("Heartbeat sent");
+          console.log("💓 Heartbeat sent");
         }
       } catch (err) {
-        console.error(`Heartbeat error: ${err.message}`);
+        console.error(`❌ Heartbeat error:`, err);
         clearInterval(heartbeatInterval);
       }
     }, 15000);
-    
+
     socket.onmessage = (event) => {
-      console.log(`Message received: ${event.data}`);
+      console.log(`📥 Message received:`, event.data);
       try {
         const data = JSON.parse(event.data);
-        
         socket.send(JSON.stringify({
           type: "echo",
           received: data,
           assetId: assetId,
           timestamp: new Date().toISOString(),
-          serverInfo: {
-            denoVersion: Deno.version.deno,
-            v8Version: Deno.version.v8,
-            tsVersion: Deno.version.typescript,
+          connectionInfo: {
+            readyState: socket.readyState,
+            protocol: socket.protocol,
+            extensions: socket.extensions
           }
         }));
       } catch (err) {
-        console.error(`Error processing message: ${err.message}`);
+        console.error(`❌ Error processing message:`, err);
         socket.send(JSON.stringify({
           type: "error",
           message: `Error processing message: ${err.message}`,
@@ -143,51 +195,63 @@ serve(async (req) => {
         }));
       }
     };
-    
+
     socket.onerror = (event) => {
-      console.error("WebSocket error:", event);
+      console.error("❌ WebSocket error:", event);
       try {
         if (socket.readyState === 1) {
           socket.send(JSON.stringify({
             type: "error_event",
             message: "An error occurred with the WebSocket connection",
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            connectionInfo: {
+              readyState: socket.readyState,
+              protocol: socket.protocol,
+              extensions: socket.extensions
+            }
           }));
         }
       } catch (e) {
-        console.error("Could not send error message:", e);
+        console.error("❌ Could not send error message:", e);
       }
-      
       clearInterval(heartbeatInterval);
     };
-    
+
     socket.onclose = (event) => {
-      console.log(`WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`);
+      console.log(`👋 WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`);
       clearInterval(heartbeatInterval);
     };
-    
-    // Add all CORS headers to the WebSocket response
+
+    // Add all headers to the WebSocket response
     const headers = new Headers(response.headers);
-    Object.entries(enhancedCorsHeaders).forEach(([key, value]) => {
+    Object.entries(wsHeaders).forEach(([key, value]) => {
       headers.set(key, value);
     });
-    
-    console.log("WebSocket upgrade successful, returning response");
+
+    console.log('📤 Returning WebSocket response with headers:');
+    logHeaders(headers, "←");
+
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
       headers
     });
   } catch (err) {
-    console.error(`WebSocket upgrade error: ${err.message}, stack: ${err.stack}`);
-    return new Response(JSON.stringify({ 
-      status: "error", 
+    console.error(`❌ WebSocket upgrade error:`, err);
+    return new Response(JSON.stringify({
+      status: "error",
       message: `WebSocket upgrade failed: ${err.message}`,
+      timestamp: new Date().toISOString(),
       stack: err.stack,
-      timestamp: new Date().toISOString()
+      requestInfo: {
+        method: req.method,
+        url: req.url,
+        headers: Object.fromEntries([...req.headers])
+      }
     }), {
-      headers: { ...enhancedCorsHeaders, 'Content-Type': 'application/json' },
-      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500
     });
   }
 });
+
