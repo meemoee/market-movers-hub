@@ -276,6 +276,7 @@ export function TransactionDialog({
               <RawOrderBookData 
                 clobTokenId={selectedMarket?.clobTokenId}
                 isClosing={isClosing}
+                onOrderBookData={onOrderBookData}
               />
               
               <div className="text-xs text-muted-foreground mt-4">

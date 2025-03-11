@@ -21,3 +21,6 @@ verify_jwt = false
 
 [functions.extract-research-insights]
 verify_jwt = false
+
+[functions.orderbook-stream]
+verify_jwt = false
