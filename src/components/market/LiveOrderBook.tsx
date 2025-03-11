@@ -27,6 +27,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const reconnectCountRef = useRef<number>(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
   const wsUrlRef = useRef<string>("");
+  const connectionAttemptedRef = useRef<boolean>(false);
 
   useEffect(() => {
     // Set mounted flag to true when component mounts
@@ -39,6 +40,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   }, []);
 
   useEffect(() => {
+    console.log(`[LiveOrderBook] Component mounted/updated with clobTokenId: ${clobTokenId}, isClosing: ${isClosing}`);
+    
     // Clear any existing error when closing
     if (isClosing) {
       console.log('[LiveOrderBook] Dialog is closing, clearing error state');
@@ -48,7 +51,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
     // Don't connect if we don't have a token ID
     if (!clobTokenId) {
-      console.log('[LiveOrderBook] No CLOB token ID provided, not connecting to WebSocket');
+      console.warn('[LiveOrderBook] No CLOB token ID provided, not connecting to WebSocket');
+      setError("Missing token ID for orderbook connection");
       return;
     }
 
@@ -56,10 +60,13 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     cleanupExistingConnection();
 
     // Create a new WebSocket connection
+    console.log('[LiveOrderBook] Attempting to connect to orderbook with token:', clobTokenId);
+    connectionAttemptedRef.current = true;
     connectToOrderbook(clobTokenId);
 
     // Cleanup function
     return () => {
+      console.log('[LiveOrderBook] Component unmounting or token/closing changed, cleaning up');
       cleanupExistingConnection();
       
       // Set mounted ref to false to prevent any further state updates
@@ -142,6 +149,10 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           
           // Start ping interval to keep connection alive
           startPingInterval();
+          
+          // Log the readyState
+          console.log('[LiveOrderBook] WebSocket readyState:', ws.readyState, 
+                     '(0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)');
         }
       };
 
@@ -187,7 +198,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             
             // Handle orderbook data
             if (data.orderbook) {
-              console.log('[LiveOrderBook] Valid orderbook data received:', data.orderbook);
+              console.log('[LiveOrderBook] Valid orderbook data received. Passing to parent');
               onOrderBookData(data.orderbook);
               setError(null);
             } else {
@@ -323,5 +334,20 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     );
   }
 
-  return null;
+  // Connection status indicator that doesn't block rendering
+  return (
+    <div className="text-xs text-muted-foreground text-right mb-1">
+      {connectionStatus === "connected" ? (
+        <span className="text-green-500">Connected to orderbook</span>
+      ) : connectionStatus === "connecting" ? (
+        <span className="text-yellow-500">Connecting to orderbook...</span>
+      ) : connectionStatus === "reconnecting" ? (
+        <span className="text-yellow-500">Reconnecting to orderbook...</span>
+      ) : connectionStatus === "error" ? (
+        <span className="text-red-500">Error connecting to orderbook</span>
+      ) : (
+        <span className="text-muted-foreground">Disconnected from orderbook</span>
+      )}
+    </div>
+  );
 }
