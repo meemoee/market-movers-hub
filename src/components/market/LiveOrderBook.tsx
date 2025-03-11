@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 
@@ -110,6 +111,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
+      // Fix parameter name from tokenId to assetId to match what the edge function expects
       const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}`;
       console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
       
