@@ -45,3 +45,7 @@ verify_jwt = false
 [[functions]]
 name = "execute-market-order"
 verify_jwt = false
+
+[[functions]]
+name = "get-orderbook"
+verify_jwt = false

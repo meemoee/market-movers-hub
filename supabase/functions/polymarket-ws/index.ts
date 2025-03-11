@@ -1,43 +1,39 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("polymarket-ws function loaded - v2.0.0");
+console.log("polymarket-ws function loaded - v3.0.0 (simplified)");
 
 serve(async (req) => {
-  const requestUrl = new URL(req.url);
-  const upgradeHeader = req.headers.get("upgrade") || "";
-  
-  console.log(`polymarket-ws received ${req.method} request to ${requestUrl.pathname}${requestUrl.search}`);
+  // Log all request details for debugging
+  console.log(`Request received: ${req.method} ${req.url}`);
   console.log(`Headers: ${JSON.stringify(Object.fromEntries([...req.headers.entries()]))}`);
   
-  // Handle CORS preflight requests
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     console.log("Handling CORS preflight request");
-    return new Response(null, { 
-      headers: { 
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
+    return new Response(null, { headers: corsHeaders });
   }
 
-  // Get asset ID from URL parameters
+  // Get request URL and check for WebSocket upgrade
+  const requestUrl = new URL(req.url);
+  const upgradeHeader = req.headers.get("upgrade") || "";
   const assetId = requestUrl.searchParams.get('assetId');
+  
+  console.log(`Asset ID: ${assetId}`);
+  console.log(`Upgrade header: ${upgradeHeader}`);
 
-  if (!assetId) {
-    console.error("Missing assetId parameter");
-    return new Response(JSON.stringify({ status: "error", message: "Asset ID is required" }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 400,
-    });
-  }
-
-  // Check if this is a WebSocket upgrade request
+  // Handle HTTP requests (not WebSocket)
   if (upgradeHeader.toLowerCase() !== "websocket") {
-    console.log("Request is not a WebSocket upgrade request");
+    console.log("Non-WebSocket request received, returning status info");
     return new Response(JSON.stringify({ 
-      status: "info", 
-      message: "Polymarket WebSocket endpoint is active. Connect with a WebSocket client.",
+      status: "ready",
+      message: "Polymarket WebSocket endpoint is active.",
+      debug_info: {
+        url: req.url,
+        method: req.method,
+        headers: Object.fromEntries([...req.headers.entries()]),
+        asset_id: assetId,
+      },
       timestamp: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -45,170 +41,173 @@ serve(async (req) => {
     });
   }
 
-  console.log(`Attempting WebSocket upgrade for asset ID: ${assetId}`);
-
   try {
-    // Attempt client WebSocket connection upgrade
+    console.log("Attempting WebSocket upgrade");
+
+    // Upgrade the connection to WebSocket
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
     console.log("WebSocket upgrade successful");
     
     let polySocket: WebSocket | null = null;
     let pingInterval: number | null = null;
-    let connected = false;
+    let connectionAttempts = 0;
     
     // Handle client socket events
     clientSocket.onopen = () => {
-      console.log("Client WebSocket connected");
-      clientSocket.send(JSON.stringify({ 
-        status: "connected", 
-        message: "Connected to polymarket-ws edge function",
+      console.log("Client connection established");
+      clientSocket.send(JSON.stringify({
+        type: "status",
+        status: "connected",
+        message: "Client WebSocket connected",
         timestamp: new Date().toISOString()
       }));
       
-      // Connect to Polymarket
+      // Attempt to connect to Polymarket
       connectToPolymarket();
     };
     
     clientSocket.onclose = (event) => {
-      console.log(`Client WebSocket closed with code ${event.code}, reason: ${event.reason}`);
+      console.log(`Client connection closed: code=${event.code}, reason=${event.reason}`);
       cleanup();
     };
     
     clientSocket.onerror = (event) => {
-      console.error("Client WebSocket error:", event);
-      cleanup();
+      console.error("Client connection error", event);
+      clientSocket.send(JSON.stringify({
+        type: "error",
+        message: "WebSocket error occurred",
+        timestamp: new Date().toISOString()
+      }));
     };
     
     clientSocket.onmessage = (event) => {
+      // Echo any received messages back with timestamp for debugging
+      console.log(`Message from client: ${event.data}`);
+      
       try {
         const data = JSON.parse(event.data);
-        console.log("Received message from client:", data);
         
         // Handle ping messages
         if (data.ping) {
-          clientSocket.send(JSON.stringify({ 
-            pong: new Date().toISOString(),
-            originalPing: data.ping
+          clientSocket.send(JSON.stringify({
+            type: "pong",
+            message: "Pong response",
+            received_at: new Date().toISOString(),
+            original_ping: data.ping
           }));
         }
       } catch (err) {
-        console.error("Error handling client message:", err);
+        console.log(`Error parsing client message: ${err.message}`);
+        clientSocket.send(JSON.stringify({
+          type: "error",
+          message: `Could not parse message: ${err.message}`,
+          raw_data: event.data,
+          timestamp: new Date().toISOString()
+        }));
       }
     };
     
-    // Function to connect to Polymarket WebSocket
+    // Connect to Polymarket WebSocket
     const connectToPolymarket = () => {
+      connectionAttempts++;
+      console.log(`Connecting to Polymarket WebSocket (attempt ${connectionAttempts})`);
+      
       try {
-        console.log("Connecting to Polymarket WebSocket...");
-        
-        // Connect to Polymarket WebSocket
+        // Connect to Polymarket
         polySocket = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
         
         polySocket.onopen = () => {
-          console.log("Polymarket WebSocket connected successfully");
-          connected = true;
+          console.log("Polymarket connection opened successfully");
           
-          // Subscribe to market data
-          const subscription = {
-            type: "Market",
-            assets_ids: [assetId]
-          };
+          clientSocket.send(JSON.stringify({
+            type: "status",
+            status: "polymarket_connected",
+            message: "Connected to Polymarket successfully",
+            timestamp: new Date().toISOString()
+          }));
           
-          polySocket.send(JSON.stringify(subscription));
-          console.log("Sent subscription:", subscription);
+          // Send subscription message
+          if (assetId) {
+            const subscriptionMsg = JSON.stringify({
+              type: "Market",
+              assets_ids: [assetId]
+            });
+            
+            console.log(`Sending subscription: ${subscriptionMsg}`);
+            polySocket?.send(subscriptionMsg);
+            
+            // Also request initial snapshot
+            const snapshotMsg = JSON.stringify({
+              type: "GetMarketSnapshot",
+              asset_id: assetId
+            });
+            
+            console.log(`Sending snapshot request: ${snapshotMsg}`);
+            polySocket?.send(snapshotMsg);
+          }
           
-          // Request initial snapshot
-          const snapshotRequest = {
-            type: "GetMarketSnapshot",
-            asset_id: assetId
-          };
-          
-          polySocket.send(JSON.stringify(snapshotRequest));
-          console.log("Sent snapshot request:", snapshotRequest);
-          
-          // Setup ping interval to keep connection alive
+          // Setup keep-alive ping
           pingInterval = setInterval(() => {
             if (polySocket && polySocket.readyState === WebSocket.OPEN) {
               polySocket.send("PING");
               console.log("Sent PING to Polymarket");
             }
           }, 30000);
+        };
+        
+        polySocket.onmessage = (event) => {
+          console.log(`Raw Polymarket data received: ${event.data}`);
           
-          // Send connection status to client
-          clientSocket.send(JSON.stringify({ 
-            status: "polymarket_connected",
-            message: "Connected to Polymarket WebSocket",
+          // Forward all raw data to client with timestamp
+          clientSocket.send(JSON.stringify({
+            type: "polymarket_data",
+            raw_data: event.data,
             timestamp: new Date().toISOString()
           }));
         };
         
-        polySocket.onmessage = (event) => {
-          const rawData = event.data.toString();
-          console.log("Raw data from Polymarket:", rawData);
-          
-          try {
-            // Handle Polymarket's PONG response
-            if (rawData === "PONG") {
-              console.log("Received PONG from Polymarket");
-              return;
-            }
-            
-            // Forward raw data to client
-            clientSocket.send(JSON.stringify({
-              raw_data: rawData,
-              timestamp: new Date().toISOString()
-            }));
-            
-            // Try to parse data for logging purposes
-            const parsedData = JSON.parse(rawData);
-            console.log("Parsed Polymarket data type:", Array.isArray(parsedData) ? "array" : typeof parsedData);
-            
-            if (Array.isArray(parsedData) && parsedData.length > 0) {
-              console.log("First element type:", parsedData[0].event_type || "unknown");
-            }
-          } catch (err) {
-            console.error("Error processing message from Polymarket:", err);
-            
-            // Still forward unparseable data to client
-            clientSocket.send(JSON.stringify({
-              raw_data: rawData,
-              parsing_error: true,
-              timestamp: new Date().toISOString()
-            }));
-          }
-        };
-        
         polySocket.onerror = (event) => {
-          console.error("Polymarket WebSocket error:", event);
-          clientSocket.send(JSON.stringify({ 
-            status: "error", 
-            message: "Error in Polymarket connection",
+          console.error("Polymarket connection error", event);
+          clientSocket.send(JSON.stringify({
+            type: "error",
+            source: "polymarket",
+            message: "Polymarket WebSocket error",
             timestamp: new Date().toISOString()
           }));
         };
         
         polySocket.onclose = (event) => {
-          console.log(`Polymarket WebSocket closed with code ${event.code}, reason: ${event.reason}`);
-          connected = false;
+          console.log(`Polymarket connection closed: code=${event.code}, reason=${event.reason}`);
           
           if (pingInterval) {
             clearInterval(pingInterval);
             pingInterval = null;
           }
           
-          clientSocket.send(JSON.stringify({ 
-            status: "polymarket_disconnected", 
-            message: "Disconnected from Polymarket WebSocket",
-            code: event.code,
-            reason: event.reason,
+          clientSocket.send(JSON.stringify({
+            type: "status",
+            status: "polymarket_disconnected",
+            message: `Polymarket connection closed: code=${event.code}, reason=${event.reason}`,
             timestamp: new Date().toISOString()
           }));
+          
+          // Retry connection if it was closed unexpectedly
+          if (connectionAttempts < 3) {
+            clientSocket.send(JSON.stringify({
+              type: "status",
+              status: "reconnecting",
+              message: `Attempting to reconnect (${connectionAttempts}/3)`,
+              timestamp: new Date().toISOString()
+            }));
+            
+            setTimeout(connectToPolymarket, 2000);
+          }
         };
       } catch (err) {
-        console.error("Error establishing connection to Polymarket:", err);
-        clientSocket.send(JSON.stringify({ 
-          status: "error", 
-          message: "Failed to connect to Polymarket: " + err.message,
+        console.error(`Error connecting to Polymarket: ${err.message}`);
+        clientSocket.send(JSON.stringify({
+          type: "error",
+          message: `Failed to connect to Polymarket: ${err.message}`,
           timestamp: new Date().toISOString()
         }));
       }
@@ -223,23 +222,24 @@ serve(async (req) => {
         pingInterval = null;
       }
       
-      if (polySocket && (polySocket.readyState === WebSocket.OPEN || polySocket.readyState === WebSocket.CONNECTING)) {
+      if (polySocket && polySocket.readyState !== WebSocket.CLOSED) {
         try {
           polySocket.close();
         } catch (err) {
-          console.error("Error closing Polymarket socket:", err);
+          console.error(`Error closing Polymarket socket: ${err.message}`);
         }
       }
       
       polySocket = null;
     };
     
+    // Return the response
     return response;
   } catch (err) {
-    console.error("Error handling WebSocket connection:", err);
+    console.error(`WebSocket upgrade error: ${err.message}`);
     return new Response(JSON.stringify({ 
       status: "error", 
-      message: "Failed to establish WebSocket connection: " + err.message,
+      message: `WebSocket upgrade failed: ${err.message}`,
       timestamp: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
