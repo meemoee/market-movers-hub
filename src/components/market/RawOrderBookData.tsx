@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -24,10 +25,10 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         const baseUrl = "https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws";
         setRawData(prev => [...prev, `Testing connection to: ${baseUrl}?test=true`]);
         
-        // Use queryParams for GET request parameters
-        const { data, error } = await supabase.functions.invoke('polymarket-ws', {
-          method: 'GET',
-          queryParams: { test: 'true' }
+        // Call the edge function directly using invoke without query parameters
+        // We'll use the function name with the test parameter included
+        const { data, error } = await supabase.functions.invoke('polymarket-ws?test=true', {
+          method: 'GET'
         });
 
         if (error) {
