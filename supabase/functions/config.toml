@@ -29,15 +29,3 @@ verify_jwt = false
 [[functions]]
 name = "polymarket-stream"
 verify_jwt = false
-
-[[functions]]
-name = "get-top-movers"
-verify_jwt = false
-
-[[functions]]
-name = "price-history"
-verify_jwt = false
-
-[[functions]]
-name = "search-markets"
-verify_jwt = false
