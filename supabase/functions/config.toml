@@ -41,3 +41,7 @@ verify_jwt = false
 [[functions]]
 name = "polymarket-ws"
 verify_jwt = false
+
+[[functions]]
+name = "execute-market-order"
+verify_jwt = false
