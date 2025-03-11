@@ -1,190 +1,169 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
+
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
+interface AnalysisRequest {
+  content: string;
+  query: string;
+  question: string;
+  marketId?: string;
+  focusText?: string;
+  previousAnalyses?: string;
+  areasForResearch?: string[];
+  marketPrice?: number;
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+};
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const {
-      content,
-      query,
-      question,
-      marketId,
-      marketDescription,
-      previousAnalyses = "",
-      areasForResearch = [],
-      marketPrice,
-      focusText = null,
-      isFocusedResearch = false
-    } = await req.json()
-
-    const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY')
+    const { 
+      content, 
+      query, 
+      question, 
+      marketId, 
+      focusText,
+      previousAnalyses,
+      areasForResearch,
+      marketPrice
+    } = await req.json() as AnalysisRequest;
     
-    if (!openrouterApiKey) {
-      throw new Error('OPENROUTER_API_KEY is not configured')
+    // Log request info for debugging
+    console.log(`Analyze web content request for market ID ${marketId || 'unknown'}:`, {
+      contentLength: content?.length || 0,
+      query: query?.substring(0, 100) || 'Not provided',
+      question: question?.substring(0, 100) || 'Not provided',
+      focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
+      previousAnalysesLength: previousAnalyses?.length || 0,
+      areasForResearchCount: areasForResearch?.length || 0,
+      marketPrice: marketPrice || 'Not provided'
+    });
+
+    // Get OpenRouter API key
+    const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+    
+    if (!openRouterKey) {
+      throw new Error('No API key configured for OpenRouter');
     }
 
-    // Create a stream for the response
-    const stream = new TransformStream()
-    const writer = stream.writable.getWriter()
-    const encoder = new TextEncoder()
+    // Set up content limiter to prevent tokens from being exceeded
+    const contentLimit = 80000; // Arbitrary limit to prevent token overages
+    const truncatedContent = content.length > contentLimit 
+      ? content.substring(0, contentLimit) + "... [content truncated]" 
+      : content;
 
-    // Generate the analysis asynchronously
-    (async () => {
-      try {
-        // Generate a context-aware system prompt that accounts for focused research
-        let systemPrompt = `You are a highly skilled market research analyst specialized in analyzing web content to assess probabilities for prediction markets.
-Your task is to analyze web content related to the following market question:
-"${question || query}"
-${marketDescription ? `Market Description: ${marketDescription}` : ""}
-Market ID: ${marketId}
-`
+    // Create a system prompt that incorporates the specific market context
+    const marketContext = marketId
+      ? `\nImportant context: You are analyzing content for prediction market ID: ${marketId}\n`
+      : '';
 
-        // Add focus text if available
-        if (focusText) {
-          systemPrompt += `
-IMPORTANT: This analysis is specifically focused on: "${focusText}"
-You should prioritize information related to this specific focus area and analyze how it impacts the broader question.
-`
-        }
+    const focusContext = focusText
+      ? `\nIMPORTANT: Focus your analysis specifically on: "${focusText}"\n`
+      : '';
 
-        // Add market price information if available
-        if (marketPrice !== undefined) {
-          systemPrompt += `
-The current market price is ${marketPrice}%, which represents the collective prediction.
-`
-        }
+    // Include previous areas for research if available
+    const researchAreasContext = areasForResearch && areasForResearch.length > 0
+      ? `\nPreviously identified research areas to focus on: ${areasForResearch.join(', ')}\n`
+      : '';
 
-        // Add previous analyses and areas for research if available
-        if (previousAnalyses) {
-          systemPrompt += `
-Previous Analysis:
-${previousAnalyses}
-`
-        }
-
-        if (Array.isArray(areasForResearch) && areasForResearch.length > 0) {
-          systemPrompt += `
-Key Areas Identified for Research:
-${areasForResearch.join('\n')}
-`
-        }
-
-        systemPrompt += `
-Guidelines:
-1. Analyze the provided web content thoroughly and extract key insights related to ${focusText ? `the focus area "${focusText}"` : "the market question"}
-2. Identify relevant facts, trends, expert opinions, and statistical data
-3. Evaluate strengths and weaknesses of the information sources
-4. Synthesize information from multiple sources to form a cohesive analysis
-5. Provide a balanced analysis that considers different perspectives
-${focusText ? `6. Continuously relate your analysis back to the focus area "${focusText}" and how it impacts the overall question` : ""}
-
-Your analysis should be detailed, objective, and well-structured, formatted with markdown.
-`
-
-        // Generate the content prompt based on whether this is focused research
-        const contentPrompt = focusText 
-          ? `Please analyze the following web content specifically focused on "${focusText}" in relation to the market question "${query}".
-The content was obtained from web searches related to this specific focus area.
-Extract and synthesize the most relevant information that helps understand how "${focusText}" affects the probability of the market question.
-
-Web Content:
-${content}`
-          : `Please analyze the following web content related to the market question:
-"${query}"
-
-Web Content:
-${content}`;
-
-        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openrouterApiKey}`,
-            'HTTP-Referer': 'https://hunchex.app',
-            'X-Title': 'HunchEx',
-          },
-          body: JSON.stringify({
-            model: 'google/gemini-2.0-pro',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: contentPrompt }
-            ],
-            stream: true
-          }),
-        })
-
-        if (!response.body) {
-          throw new Error('Response body is null')
-        }
-
-        const reader = response.body.getReader()
-        const decoder = new TextDecoder()
-
-        while (true) {
-          const { done, value } = await reader.read()
-          
-          if (done) {
-            console.log('Stream complete')
-            await writer.close()
-            break
-          }
-          
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
-          
-          for (const line of lines) {
-            if (line.trim() && line.startsWith('data: ')) {
-              const jsonStr = line.slice(6).trim()
-              
-              if (jsonStr === '[DONE]') {
-                continue
-              }
-              
-              try {
-                writer.write(encoder.encode(`${line}\n\n`))
-              } catch (e) {
-                console.error('Error writing to stream:', e)
-              }
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Error in analyze-web-content function:', error)
-        
-        try {
-          writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
-          writer.close()
-        } catch (e) {
-          console.error('Error writing error to stream:', e)
-        }
+    // Check if market is already resolved (price is 0% or 100%)
+    const isMarketResolved = marketPrice === 0 || marketPrice === 100;
+    
+    // Include market price info if available
+    let marketPriceContext = '';
+    if (marketPrice !== undefined) {
+      if (isMarketResolved) {
+        marketPriceContext = `\nThe current market price for this event is ${marketPrice}%, which indicates the market considers this event as ${marketPrice === 100 ? 'already happened/resolved YES' : 'definitely not happening/resolved NO'}. Focus your analysis on explaining why this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than predicting probability.\n`;
+      } else {
+        marketPriceContext = `\nThe current market price for this event is ${marketPrice}%, which in prediction markets reflects the market's assessment of the probability the event will occur. Keep this in mind during your analysis.\n`;
       }
-    })()
+    }
 
-    return new Response(stream.readable, {
+    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}
+Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
+Provide a comprehensive, balanced analysis of the key information, focusing on facts that help ${isMarketResolved ? 'understand why this event did or did not occur' : 'assess probability'}.
+Be factual and evidence-based, not speculative.`;
+
+    // Create the prompt for the user message
+    let prompt = `Here is the web content I've collected during research:
+---
+${truncatedContent}
+---`;
+
+    // Include previous analyses if available
+    if (previousAnalyses && previousAnalyses.length > 0) {
+      prompt += `\n\nPrevious research has identified the following insights:
+---
+${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... [truncated]' : ''}
+---`;
+    }
+
+    prompt += `\nBased solely on the information in this content:
+1. What are the key facts and insights relevant to the market question "${question}"?
+${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
+2. What evidence supports or contradicts the proposition?
+${isMarketResolved ? 
+  `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
+  `3. How does this information affect the probability assessment?`
+}
+4. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
+${marketPrice !== undefined && !isMarketResolved ? `5. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+
+Ensure your analysis is factual, balanced, and directly addresses the market question.`;
+
+    // Make the streaming request with Gemini model
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openRouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hunchex.com',
+        'X-Title': 'Hunchex Analysis'
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-lite-001",
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        stream: true,
+        temperature: 0.3
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API error: ${response.status} ${errorText}`);
+    }
+
+    // Return the streaming response directly
+    return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
-      },
-    })
+      }
+    });
   } catch (error) {
-    console.error('Error in analyze-web-content function:', error)
+    console.error('Error in analyze-web-content:', error);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error.message || 'Unknown error' }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       }
-    )
+    );
   }
-})
+});
