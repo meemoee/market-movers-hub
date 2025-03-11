@@ -1,11 +1,15 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RawOrderBookProps {
   clobTokenId?: string;
   isClosing?: boolean;
 }
+
+// Get the Supabase anon key from the client
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
 
 export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) {
   const [status, setStatus] = useState<string>("disconnected");
@@ -18,8 +22,19 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   useEffect(() => {
     const testEndpoint = async () => {
       try {
-        const response = await fetch(`https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?test=true`);
+        // Add authentication header to the test request
+        const response = await fetch(
+          `https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?test=true`, 
+          {
+            headers: {
+              'apikey': SUPABASE_ANON_KEY,
+            }
+          }
+        );
+        
+        const responseText = await response.text();
         setRawData(prev => [...prev, `HTTP test status: ${response.status}`]);
+        setRawData(prev => [...prev, `HTTP test response: ${responseText}`]);
         
         // Only attempt WebSocket if the endpoint is available
         if (response.ok) {
@@ -68,13 +83,17 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     setStatus("connecting");
     setError(null);
     
-    // Get WebSocket URL
+    // Get WebSocket URL with the asset ID
     const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}`;
     setRawData(prev => [...prev, `Attempting to connect to: ${wsUrl}`]);
     
     try {
-      // Create WebSocket
-      const ws = new WebSocket(wsUrl);
+      // Create WebSocket with authentication headers in the WebSocket protocol
+      // Since browsers don't allow adding headers to WebSocket connections,
+      // we use a trick by adding the auth token as a protocol
+      const authProtocol = `apikey-${SUPABASE_ANON_KEY}`;
+      const ws = new WebSocket(wsUrl, [authProtocol]);
+      
       wsRef.current = ws;
       
       // Connection opened
@@ -86,7 +105,10 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           
           // Send a ping message immediately after connection
           try {
-            const pingData = JSON.stringify({ ping: Date.now() });
+            const pingData = JSON.stringify({ 
+              ping: Date.now(),
+              assetId: clobTokenId 
+            });
             ws.send(pingData);
             setRawData(prev => [...prev, `SENT: ${pingData}`]);
           } catch (err) {
@@ -106,7 +128,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       };
 
       // Handle errors
-      ws.onerror = () => {
+      ws.onerror = (event) => {
         if (mountedRef.current) {
           setStatus("error");
           setError("WebSocket error occurred");
