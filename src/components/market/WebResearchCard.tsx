@@ -390,25 +390,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = [], explicitFocus?: string) => {
+  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
       setCurrentIteration(iteration)
       setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
       
-      // Ensure effectiveFocusText is a string before trying to trim
-      const effectiveFocusText = explicitFocus !== undefined ? 
-        (typeof explicitFocus === 'string' ? explicitFocus : String(explicitFocus)) : 
-        (typeof focusText === 'string' ? focusText : String(focusText));
-      
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
-      console.log(`Focus text for web-scrape:`, effectiveFocusText, typeof effectiveFocusText)
-      
-      if (effectiveFocusText && effectiveFocusText !== "[object Object]") {
-        setProgress(prev => [...prev, `Focusing web research on: ${effectiveFocusText.trim()}`]);
-      }
+      console.log(`Focus text for web-scrape: ${focusText || 'none'}`)
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -426,11 +417,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketId: marketId,
         marketDescription: description,
         query: description,
-        focusText: effectiveFocusText && effectiveFocusText.trim() ? effectiveFocusText.trim() : null
+        focusText: focusText.trim() || null // Always include focusText, even if null
       };
 
-      if (effectiveFocusText && effectiveFocusText.trim()) {
-        setProgress(prev => [...prev, `Focusing web research on: ${effectiveFocusText.trim()}`]);
+      if (focusText?.trim()) {
+        setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
       }
       
       const response = await supabase.functions.invoke('web-scrape', {
@@ -545,7 +536,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return
       }
 
-      await processQueryResults(allContent, iteration, queries, iterationResults, effectiveFocusText)
+      await processQueryResults(allContent, iteration, queries, iterationResults)
     } catch (error) {
       console.error(`Error in web research iteration ${iteration}:`, error)
       setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -554,15 +545,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[], explicitFocus?: string) => {
+  const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[]) => {
     try {
       setIsAnalyzing(true)
       setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
-      
-      // Ensure effectiveFocusText is a string before trying to trim
-      const effectiveFocusText = explicitFocus !== undefined ? 
-        (typeof explicitFocus === 'string' ? explicitFocus : String(explicitFocus)) : 
-        (typeof focusText === 'string' ? focusText : String(focusText));
       
       console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
       
@@ -578,7 +564,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           
           setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
           setCurrentQueries(simplifiedQueries);
-          await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent], effectiveFocusText);
+          await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent]);
           return;
         }
       }
@@ -751,7 +737,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               marketDescription: description,
               areasForResearch: streamingState.parsedData?.areasForResearch || [],
               previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: effectiveFocusText && effectiveFocusText.trim ? effectiveFocusText.trim() : ""
+              focusText: focusText.trim()
             })
           })
 
@@ -775,7 +761,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
           })
 
-          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent], effectiveFocusText)
+          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
         } catch (error) {
           console.error("Error generating refined queries:", error);
           
@@ -787,7 +773,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           
           setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
           setCurrentQueries(fallbackQueries);
-          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent], effectiveFocusText)
+          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
         }
       }
 
@@ -930,7 +916,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const handleResearch = async (explicitFocus?: string) => {
+  const handleResearch = async () => {
     setLoadedResearchId(null);
     
     setIsLoading(true)
@@ -947,17 +933,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueryIndex(-1)
 
     try {
-      // Ensure effectiveFocusText is a string before trying to trim
-      const effectiveFocusText = explicitFocus !== undefined ? 
-        (typeof explicitFocus === 'string' ? explicitFocus : String(explicitFocus)) : 
-        (typeof focusText === 'string' ? focusText : String(focusText));
-      
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
       setProgress(prev => [...prev, `Market question: ${description}`])
       
-      if (effectiveFocusText && effectiveFocusText.trim()) {
-        setProgress(prev => [...prev, `Research focus: ${effectiveFocusText.trim()}`])
+      if (focusText.trim()) {
+        setProgress(prev => [...prev, `Research focus: ${focusText.trim()}`])
       }
       
       setProgress(prev => [...prev, "Generating initial search queries..."])
@@ -967,7 +948,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           description, 
           marketId,
           descriptionLength: description ? description.length : 0,
-          focusText: effectiveFocusText && effectiveFocusText.trim ? effectiveFocusText.trim() : null
+          focusText: focusText.trim() || null
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
@@ -977,7 +958,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketDescription: description,
             question: description,
             iteration: 1,
-            focusText: effectiveFocusText && effectiveFocusText.trim ? effectiveFocusText.trim() : ""
+            focusText: focusText.trim()
           })
         });
 
@@ -1004,7 +985,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
         });
 
-        await handleWebScrape(cleanQueries, 1, [], effectiveFocusText);
+        await handleWebScrape(cleanQueries, 1);
       } catch (error) {
         console.error("Error generating initial queries:", error);
         
@@ -1026,7 +1007,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setCurrentQueries(fallbackQueries);
         
         setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
-        await handleWebScrape(fallbackQueries, 1, [], effectiveFocusText);
+        await handleWebScrape(fallbackQueries, 1);
       }
 
       setProgress(prev => [...prev, "Research complete!"])
@@ -1043,7 +1024,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const handleResearchArea = (area: string) => {
     const currentResearchId = loadedResearchId;
     
-    console.log(`Starting focused research with parent ID: ${currentResearchId} on area:`, area, typeof area);
+    console.log(`Starting focused research with parent ID: ${currentResearchId} on area: ${area}`);
     
     if (!currentResearchId) {
       console.warn("Cannot create focused research: No parent research ID available");
@@ -1055,27 +1036,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       return;
     }
     
-    const areaString = typeof area === 'string' ? area : String(area);
-    
-    if (areaString === "[object Object]") {
-      console.error("Invalid research area format:", area);
-      toast({
-        title: "Invalid research area",
-        description: "The selected research area has an invalid format",
-        variant: "destructive"
-      });
-      return;
-    }
-    
     const parentId = currentResearchId;
     
     setLoadedResearchId(null);
     setParentResearchId(parentId);
     
-    setFocusText(areaString);
+    setFocusText(area);
     toast({
       title: "Research focus set",
-      description: `Starting new research focused on: ${areaString}`
+      description: `Starting new research focused on: ${area}`
     });
     
     setIsLoading(true);
@@ -1092,7 +1061,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueryIndex(-1);
     
     setTimeout(() => {
-      handleResearch(areaString);
+      handleResearch();
     }, 200);
   };
 

@@ -14,13 +14,7 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
   
   useEffect(() => {
     if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      // Ensure message is a string
-      const safeMessage = typeof lastMessage === 'string' 
-        ? lastMessage 
-        : String(lastMessage);
-        
-      setCurrentMessage(safeMessage);
+      setCurrentMessage(messages[messages.length - 1])
     }
   }, [messages])
   
@@ -36,29 +30,24 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
     }
   }, [messages]);
 
-  if (!messages.length) return null;
-  
-  // Process messages to ensure they're all strings
-  const processedMessages = messages.map(message => 
-    typeof message === 'string' ? message : String(message)
-  );
+  if (!messages.length) return null
   
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
       <ScrollArea className="h-full">
         <div className="p-4 space-y-2">
-          {processedMessages.map((message, index) => (
+          {messages.map((message, index) => (
             <div 
               key={`${index}-${message.substring(0, 20)}`}
               className={cn(
                 "flex items-center gap-3 py-1 text-sm",
-                index === processedMessages.length - 1 ? "animate-pulse" : ""
+                index === messages.length - 1 ? "animate-pulse" : ""
               )}
             >
-              {index === processedMessages.length - 1 && (
+              {index === messages.length - 1 && (
                 <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
               )}
-              <span className={index === processedMessages.length - 1 ? "text-foreground" : "text-muted-foreground"}>
+              <span className={index === messages.length - 1 ? "text-foreground" : "text-muted-foreground"}>
                 {message}
               </span>
             </div>
