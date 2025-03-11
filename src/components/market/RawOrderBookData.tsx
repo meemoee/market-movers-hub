@@ -22,75 +22,82 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   const [status, setStatus] = useState<string>("disconnected");
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const pollingRef = useRef<number | null>(null);
+  const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
   
   useEffect(() => {
     if (isClosing || !clobTokenId) return;
     
-    // Clear previous polling
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
+    // Clear previous reconnect timeout if any
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
     }
     
-    const fetchOrderBookData = async () => {
+    const fetchInitialOrderBookData = async () => {
       try {
         setStatus("connecting");
-        console.log(`Fetching order book data for token: ${clobTokenId}`);
+        console.log(`Connecting to order book stream for token: ${clobTokenId}`);
         
-        // First try the WebSocket-based endpoint
-        const { data: streamData, error: streamError } = await supabase.functions.invoke('polymarket-stream', {
+        const { data, error } = await supabase.functions.invoke('polymarket-stream', {
           body: { tokenId: clobTokenId }
         });
         
-        if (streamError) {
-          console.error("WebSocket stream failed, falling back to REST API:", streamError);
-          // Fall back to the REST API
-          const { data: restData, error: restError } = await supabase.functions.invoke('get-orderbook', {
-            body: { tokenId: clobTokenId }
+        if (error) {
+          console.error("WebSocket stream failed:", error);
+          setStatus("error");
+          setError(error.message);
+          scheduleReconnect();
+          return;
+        }
+        
+        if (data) {
+          console.log("Received initial order book data:", {
+            bid_levels: data.bids ? Object.keys(data.bids).length : 0,
+            ask_levels: data.asks ? Object.keys(data.asks).length : 0,
+            best_bid: data.best_bid,
+            best_ask: data.best_ask
           });
           
-          if (restError) {
-            setStatus("error");
-            setError(restError.message);
-            return;
-          }
-          
-          processData(restData);
-        } else {
-          processData(streamData);
+          setStatus("connected");
+          setError(null);
+          setOrderBookData(data);
+          setLastUpdateTime(new Date().toLocaleTimeString());
+          reconnectAttemptsRef.current = 0; // Reset reconnect attempts on successful connection
         }
       } catch (err) {
+        console.error("Error fetching order book data:", err);
         setStatus("error");
-        setError(`Failed to fetch data: ${(err as Error).message}`);
+        setError(`Connection failed: ${(err as Error).message}`);
+        scheduleReconnect();
       }
     };
     
-    const processData = (data: OrderBookData) => {
-      console.log("Processing order book data:", {
-        bid_levels: data.bids ? Object.keys(data.bids).length : 0,
-        ask_levels: data.asks ? Object.keys(data.asks).length : 0,
-        best_bid: data.best_bid,
-        best_ask: data.best_ask
-      });
+    const scheduleReconnect = () => {
+      // Exponential backoff with max of 10 seconds
+      const backoff = Math.min(1000 * Math.pow(1.5, reconnectAttemptsRef.current), 10000);
+      reconnectAttemptsRef.current++;
       
-      setStatus("connected");
-      setError(null);
-      setOrderBookData(data);
+      console.log(`Scheduling reconnection in ${backoff/1000} seconds... (attempt ${reconnectAttemptsRef.current})`);
+      
+      reconnectTimeoutRef.current = window.setTimeout(() => {
+        if (!isClosing && clobTokenId) {
+          console.log('Attempting reconnection...');
+          fetchInitialOrderBookData();
+        }
+      }, backoff);
     };
     
     // Initial fetch
-    fetchOrderBookData();
-    
-    // Set up polling every 3 seconds
-    pollingRef.current = window.setInterval(fetchOrderBookData, 3000);
+    fetchInitialOrderBookData();
     
     // Cleanup function
     return () => {
-      console.log("Cleaning up order book polling");
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
+      console.log("Cleaning up order book connection");
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
       }
     };
   }, [clobTokenId, isClosing]);
@@ -106,6 +113,33 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       minimumFractionDigits: 0,
       maximumFractionDigits: 2
     });
+  };
+
+  // Handle manual refresh
+  const handleManualRefresh = async () => {
+    if (!clobTokenId) return;
+    
+    setStatus("connecting");
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('polymarket-stream', {
+        body: { tokenId: clobTokenId }
+      });
+      
+      if (error) {
+        setStatus("error");
+        setError(error.message);
+        return;
+      }
+      
+      setOrderBookData(data as OrderBookData);
+      setStatus("connected");
+      setError(null);
+      setLastUpdateTime(new Date().toLocaleTimeString());
+    } catch (err) {
+      setStatus("error");
+      setError(`Failed to refresh: ${(err as Error).message}`);
+    }
   };
 
   // Render loading state
@@ -135,19 +169,14 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             </div>
             
             <div className="text-xs text-muted-foreground">
-              Last update: {orderBookData?.timestamp ? new Date(orderBookData.timestamp).toLocaleTimeString() : 'N/A'}
+              Last update: {lastUpdateTime || 'N/A'}
             </div>
           </div>
           
           <div className="flex flex-wrap gap-1 mt-1">
             {(status === "error" || status === "disconnected") && (
               <button 
-                onClick={() => {
-                  if (clobTokenId) {
-                    setStatus("connecting");
-                    setOrderBookData(null);
-                  }
-                }}
+                onClick={handleManualRefresh}
                 className="px-2 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-xs"
               >
                 Retry
@@ -156,54 +185,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             
             {status === "connected" && (
               <button 
-                onClick={() => {
-                  // Force an immediate refresh
-                  if (pollingRef.current) {
-                    clearInterval(pollingRef.current);
-                  }
-                  
-                  console.log("Manual refresh initiated");
-                  // First try the WebSocket approach
-                  supabase.functions.invoke('polymarket-stream', {
-                    body: { tokenId: clobTokenId }
-                  }).then(({ data, error }) => {
-                    if (error) {
-                      console.error("WebSocket stream failed, falling back to REST API:", error);
-                      // Fall back to the REST API
-                      return supabase.functions.invoke('get-orderbook', {
-                        body: { tokenId: clobTokenId }
-                      });
-                    }
-                    return { data, error };
-                  }).then(({ data, error }) => {
-                    if (error) {
-                      setStatus("error");
-                      setError(error.message);
-                      return;
-                    }
-                    
-                    setOrderBookData(data as OrderBookData);
-                    
-                    // Restart the polling
-                    pollingRef.current = window.setInterval(() => {
-                      supabase.functions.invoke('polymarket-stream', {
-                        body: { tokenId: clobTokenId }
-                      }).then(({ data, error }) => {
-                        if (error) {
-                          // Fall back to REST API if WebSocket fails
-                          return supabase.functions.invoke('get-orderbook', {
-                            body: { tokenId: clobTokenId }
-                          });
-                        }
-                        return { data, error };
-                      }).then(({ data, error }) => {
-                        if (!error) {
-                          setOrderBookData(data as OrderBookData);
-                        }
-                      });
-                    }, 3000);
-                  });
-                }}
+                onClick={handleManualRefresh}
                 className="px-2 py-1 bg-green-500/10 hover:bg-green-500/20 rounded-md text-xs"
               >
                 Refresh Now
