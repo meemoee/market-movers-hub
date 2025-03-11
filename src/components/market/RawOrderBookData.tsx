@@ -36,6 +36,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     const fetchOrderBookData = async () => {
       try {
         setStatus("connecting");
+        console.log(`Fetching order book data for token: ${clobTokenId}`);
         
         // First try the WebSocket-based endpoint
         const { data: streamData, error: streamError } = await supabase.functions.invoke('polymarket-stream', {
@@ -43,7 +44,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         });
         
         if (streamError) {
-          console.log("WebSocket stream failed, falling back to REST API:", streamError);
+          console.error("WebSocket stream failed, falling back to REST API:", streamError);
           // Fall back to the REST API
           const { data: restData, error: restError } = await supabase.functions.invoke('get-orderbook', {
             body: { tokenId: clobTokenId }
@@ -66,6 +67,13 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     };
     
     const processData = (data: OrderBookData) => {
+      console.log("Processing order book data:", {
+        bid_levels: data.bids ? Object.keys(data.bids).length : 0,
+        ask_levels: data.asks ? Object.keys(data.asks).length : 0,
+        best_bid: data.best_bid,
+        best_ask: data.best_ask
+      });
+      
       setStatus("connected");
       setError(null);
       setOrderBookData(data);
@@ -79,6 +87,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     
     // Cleanup function
     return () => {
+      console.log("Cleaning up order book polling");
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
@@ -153,12 +162,13 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                     clearInterval(pollingRef.current);
                   }
                   
+                  console.log("Manual refresh initiated");
                   // First try the WebSocket approach
                   supabase.functions.invoke('polymarket-stream', {
                     body: { tokenId: clobTokenId }
                   }).then(({ data, error }) => {
                     if (error) {
-                      console.log("WebSocket stream failed, falling back to REST API:", error);
+                      console.error("WebSocket stream failed, falling back to REST API:", error);
                       // Fall back to the REST API
                       return supabase.functions.invoke('get-orderbook', {
                         body: { tokenId: clobTokenId }

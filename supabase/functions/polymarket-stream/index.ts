@@ -3,7 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import WebSocket from "npm:ws@8.13.0";
 
-console.log("Polymarket Stream v2.0.0");
+console.log("Polymarket Stream v2.0.1");
 
 class PolymarketStream {
   private wsUrl = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
@@ -52,6 +52,8 @@ class PolymarketStream {
             asset_id: this.tokenId
           };
           this.ws.send(JSON.stringify(snapshotRequest));
+          
+          console.log(`Sent subscription and snapshot request for token: ${this.tokenId}`);
         });
 
         this.ws.on('message', (data) => {
@@ -62,17 +64,36 @@ class PolymarketStream {
             const events = JSON.parse(message);
             if (!Array.isArray(events) || events.length === 0) return;
             
+            let updatedOrderbook = false;
+            
             events.forEach(event => {
               if (event.event_type === "book") {
                 // Process orderbook snapshot
                 this.handleOrderbookSnapshot(event);
+                updatedOrderbook = true;
+                console.log("Received orderbook snapshot");
+              } else if (event.event_type === "price_change") {
+                this.handleLevelUpdate(event);
+                updatedOrderbook = true;
+                console.log("Received price change update");
+              }
+            });
+            
+            if (updatedOrderbook) {
+              console.log("Updated orderbook:", {
+                best_bid: this.orderbook.best_bid,
+                best_ask: this.orderbook.best_ask,
+                bid_levels: Object.keys(this.orderbook.bids).length,
+                ask_levels: Object.keys(this.orderbook.asks).length
+              });
+              
+              // We have a complete orderbook now, resolve the promise
+              if (this.orderbook.best_bid !== null || this.orderbook.best_ask !== null) {
                 clearTimeout(timer);
                 this.ws?.close();
                 resolve(this.orderbook);
-              } else if (event.event_type === "price_change") {
-                this.handleLevelUpdate(event);
               }
-            });
+            }
           } catch (error) {
             console.error('Error processing message:', error);
           }

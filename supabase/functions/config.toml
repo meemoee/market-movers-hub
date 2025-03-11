@@ -1,55 +1,23 @@
 
 project_id = "lfmkoismabbhujycnqpn"
 
-# Define functions as an array of tables (using double brackets)
-[[functions]]
-name = "market-analysis"
+[functions.polymarket-stream]
 verify_jwt = false
 
-[[functions]]
-name = "analyze-web-content"
+[functions.get-orderbook]
 verify_jwt = false
 
-[[functions]]
-name = "brave-search"
+[functions.market-analysis]
 verify_jwt = false
 
-[[functions]]
-name = "web-scrape"
+[functions.analyze-web-content]
 verify_jwt = false
 
-[[functions]]
-name = "web-research"
+[functions.brave-search]
 verify_jwt = false
 
-[[functions]]
-name = "extract-research-insights"
+[functions.web-research]
 verify_jwt = false
 
-[[functions]]
-name = "generate-qa-tree"
-verify_jwt = false
-
-[[functions]]
-name = "evaluate-qa-pair"
-verify_jwt = false
-
-[[functions]]
-name = "evaluate-qa-final"
-verify_jwt = false
-
-[[functions]]
-name = "polymarket-ws"
-verify_jwt = false
-
-[[functions]]
-name = "execute-market-order"
-verify_jwt = false
-
-[[functions]]
-name = "get-orderbook"
-verify_jwt = false
-
-[[functions]]
-name = "polymarket-stream"
+[functions.extract-research-insights]
 verify_jwt = false
