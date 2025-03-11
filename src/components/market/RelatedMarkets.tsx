@@ -1,4 +1,3 @@
-
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
@@ -23,9 +22,10 @@ interface RelatedMarketsProps {
 interface OrderBookData {
   bids: Record<string, number>;
   asks: Record<string, number>;
-  best_bid: number;
-  best_ask: number;
-  spread: number;
+  best_bid: number | null;
+  best_ask: number | null;
+  spread: string | null;
+  timestamp: string | null;
 }
 
 // Helper function to clean text fields
