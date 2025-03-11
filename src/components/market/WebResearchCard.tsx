@@ -396,8 +396,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setCurrentIteration(iteration)
       setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
       
-      // Use explicit focus if provided, otherwise fall back to state
-      const effectiveFocusText = explicitFocus !== undefined ? explicitFocus : focusText;
+      // Ensure effectiveFocusText is a string before trying to trim
+      const effectiveFocusText = explicitFocus !== undefined ? String(explicitFocus) : focusText;
       
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
@@ -420,10 +420,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketId: marketId,
         marketDescription: description,
         query: description,
-        focusText: effectiveFocusText?.trim() || null // Use effectiveFocusText
+        focusText: effectiveFocusText && effectiveFocusText.trim() ? effectiveFocusText.trim() : null
       };
 
-      if (effectiveFocusText?.trim()) {
+      if (effectiveFocusText && effectiveFocusText.trim()) {
         setProgress(prev => [...prev, `Focusing web research on: ${effectiveFocusText.trim()}`]);
       }
       
@@ -553,8 +553,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setIsAnalyzing(true)
       setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
       
-      // Use explicit focus if provided, otherwise fall back to state
-      const effectiveFocusText = explicitFocus !== undefined ? explicitFocus : focusText;
+      // Ensure effectiveFocusText is a string before trying to trim
+      const effectiveFocusText = explicitFocus !== undefined ? String(explicitFocus) : focusText;
       
       console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
       
@@ -743,7 +743,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               marketDescription: description,
               areasForResearch: streamingState.parsedData?.areasForResearch || [],
               previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: effectiveFocusText.trim()
+              focusText: effectiveFocusText && effectiveFocusText.trim ? effectiveFocusText.trim() : ""
             })
           })
 
@@ -939,14 +939,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueryIndex(-1)
 
     try {
-      // Use explicit focus if provided, otherwise fall back to state
-      const effectiveFocusText = explicitFocus !== undefined ? explicitFocus : focusText;
+      // Ensure effectiveFocusText is a string before trying to trim
+      const effectiveFocusText = explicitFocus !== undefined ? String(explicitFocus) : focusText;
       
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
       setProgress(prev => [...prev, `Market question: ${description}`])
       
-      if (effectiveFocusText.trim()) {
+      if (effectiveFocusText && effectiveFocusText.trim()) {
         setProgress(prev => [...prev, `Research focus: ${effectiveFocusText.trim()}`])
       }
       
@@ -957,7 +957,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           description, 
           marketId,
           descriptionLength: description ? description.length : 0,
-          focusText: effectiveFocusText.trim() || null
+          focusText: effectiveFocusText && effectiveFocusText.trim ? effectiveFocusText.trim() : null
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
@@ -967,7 +967,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketDescription: description,
             question: description,
             iteration: 1,
-            focusText: effectiveFocusText.trim()
+            focusText: effectiveFocusText && effectiveFocusText.trim ? effectiveFocusText.trim() : ""
           })
         });
 
