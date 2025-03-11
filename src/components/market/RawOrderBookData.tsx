@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -23,14 +22,14 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     const testEndpoint = async () => {
       try {
         const baseUrl = "https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws";
-        setRawData(prev => [...prev, `Testing connection to: ${baseUrl}?test=true`]);
+        setRawData(prev => [...prev, `Testing connection to: ${baseUrl}`]);
         
-        // Call the edge function by appending the query parameter to the function name
+        // Call the edge function using the x-client-info header for test mode
         const { data, error } = await supabase.functions.invoke('polymarket-ws', {
           method: 'GET',
           headers: { 
             'Content-Type': 'application/json',
-            'test': 'true'
+            'x-client-info': 'test-mode'
           }
         });
 
