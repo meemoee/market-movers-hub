@@ -2,6 +2,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
 import { TopMover } from '@/components/TopMoversList'
+import { useTopMovers } from '@/hooks/useTopMovers'
 
 interface MarketSearchResponse {
   data: TopMover[];
@@ -10,49 +11,26 @@ interface MarketSearchResponse {
 }
 
 export function useMarketSearch(searchQuery: string = '', page: number = 1, probabilityMin?: number, probabilityMax?: number) {
-  return useQuery({
-    queryKey: ['marketSearch', searchQuery, page, probabilityMin, probabilityMax],
-    queryFn: async () => {
-      console.log('Searching markets with:', { searchQuery, page, probabilityMin, probabilityMax });
-      
-      // Ensure search query is properly trimmed
-      const trimmedQuery = searchQuery.trim();
-      
-      const { data, error } = await supabase.functions.invoke<MarketSearchResponse>('search-markets', {
-        body: {
-          searchQuery: trimmedQuery,
-          page,
-          limit: 20,
-          probabilityMin,
-          probabilityMax
-        }
-      });
+  // Instead of using the search-markets function, we'll reuse the useTopMovers hook
+  // which uses the get-top-movers function (still available)
+  const topMoversQuery = useTopMovers(
+    '1440', // Use 24h interval
+    true,   // Open markets only
+    searchQuery,
+    undefined, // No specific marketId
+    probabilityMin,
+    probabilityMax
+  );
 
-      if (error) {
-        console.error('Error searching markets:', error);
-        throw error;
-      }
-      
-      console.log('Received market search response:', data);
-      
-      // Add detailed logging for debugging
-      if (data?.data?.length) {
-        console.log('First market in results:', {
-          id: data.data[0].market_id,
-          question: data.data[0].question,
-          probability: data.data[0].final_last_traded_price
-        });
-      }
-      
-      return {
-        data: data?.data || [],
-        hasMore: data?.hasMore || false,
-        total: data?.total
-      };
-    },
-    enabled: true,
-    staleTime: 0,
-    retry: 2,
-    retryDelay: 1000
-  });
+  // Map the results to match the original format
+  return {
+    data: topMoversQuery.data?.pages ? topMoversQuery.data.pages.flatMap(page => page.data) : [],
+    isLoading: topMoversQuery.isLoading,
+    error: topMoversQuery.error,
+    hasMore: topMoversQuery.hasNextPage || false,
+    fetchNextPage: topMoversQuery.fetchNextPage,
+    isFetchingNextPage: topMoversQuery.isFetchingNextPage,
+    isFetching: topMoversQuery.isFetching,
+    total: topMoversQuery.data?.pages?.[0]?.total
+  };
 }
