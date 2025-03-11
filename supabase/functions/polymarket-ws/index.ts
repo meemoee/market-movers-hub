@@ -10,7 +10,7 @@ const enhancedCorsHeaders = {
   'Access-Control-Max-Age': '86400'
 };
 
-console.log("Polymarket WebSocket Function v2.0 - Comprehensive debug mode");
+console.log("Polymarket WebSocket Function v2.0.1 - Using standard Deno WebSocket with enhanced security");
 
 serve(async (req) => {
   console.log(`Request received: ${req.method} ${req.url}`);
@@ -26,8 +26,7 @@ serve(async (req) => {
   
   const url = new URL(req.url);
   const assetId = url.searchParams.get('assetId');
-  const protocol = url.searchParams.get('protocol') || 'ws';
-  console.log(`URL parameters: assetId=${assetId}, protocol=${protocol}`);
+  console.log(`URL parameters: assetId=${assetId}`);
   
   const clientInfo = req.headers.get('x-client-info') || '';
   const isTest = clientInfo.includes('test-mode');
@@ -47,20 +46,13 @@ serve(async (req) => {
   }
   
   const upgradeHeader = req.headers.get("upgrade") || "";
-  const connection = req.headers.get("connection") || "";
-  const wsKey = req.headers.get("sec-websocket-key") || "";
-  const wsVersion = req.headers.get("sec-websocket-version") || "";
-  
-  console.log(`WebSocket headers: upgrade=${upgradeHeader}, connection=${connection}, key=${wsKey}, version=${wsVersion}`);
-  
   if (upgradeHeader.toLowerCase() !== "websocket") {
     console.log('Non-WebSocket request detected - returning HTTP response');
     return new Response(JSON.stringify({ 
       status: "ready",
       message: "This endpoint requires a WebSocket connection.",
       timestamp: new Date().toISOString(),
-      headers: Object.fromEntries([...req.headers]),
-      url: req.url
+      headers: Object.fromEntries([...req.headers])
     }), {
       headers: { ...enhancedCorsHeaders, 'Content-Type': 'application/json' },
       status: 200,
@@ -80,7 +72,6 @@ serve(async (req) => {
       
       console.log("Trying WebSocket upgrade with explicit options");
       ({ socket, response } = Deno.upgradeWebSocket(req, {
-        protocol,
         idleTimeout: 60,
         compress: false
       }));

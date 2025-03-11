@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/components/ui/use-toast";
 
 interface RawOrderBookProps {
   clobTokenId?: string;
@@ -10,23 +11,23 @@ interface RawOrderBookProps {
 // Get the Supabase anon key from the client
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
 
-// Different WebSocket URLs to try
+// Different WebSocket URL formats to try
 const WS_URL_FORMATS = [
-  // Standard format
+  // Direct domain with project id, no API key (relying on authorization header)
   (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}/functions/v1/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}`,
-  
-  // With protocol parameter
-  (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}/functions/v1/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}&protocol=ws`,
+    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}`,
     
-  // Direct function domain
+  // Standard URL with API key as query param
   (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}`,
+    `wss://${baseUrl}.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}`,
     
-  // Without apikey parameter
+  // With explicit protocol specified
   (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}/functions/v1/polymarket-ws?assetId=${tokenId}`,
+    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&protocol=ws`,
+    
+  // Direct HTTP fetch and process response (non-WebSocket fallback)
+  (baseUrl: string, tokenId: string) => 
+    `https://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&x-client-info=debug`,
 ];
 
 export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) {
@@ -40,57 +41,129 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   const urlFormatIndexRef = useRef<number>(0);
   const heartbeatTimeoutRef = useRef<number | null>(null);
   const lastHeartbeatRef = useRef<number>(Date.now());
+  const directFetchTriedRef = useRef<boolean>(false);
   
   // Basic HTTP test to check Edge Function availability
   useEffect(() => {
     const testEndpoint = async () => {
       try {
         const baseUrl = "lfmkoismabbhujycnqpn";
-        const testUrl = `https://${baseUrl}.functions.supabase.co/polymarket-ws`;
-        setRawData(prev => [...prev, `Testing connection to: ${testUrl}`]);
         
-        // Call the edge function using the x-client-info header for test mode
-        const { data, error } = await supabase.functions.invoke('polymarket-ws', {
-          method: 'GET',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-client-info': 'test-mode',
-            'apikey': SUPABASE_ANON_KEY
-          }
-        });
+        // Try multiple test approaches
+        setRawData(prev => [...prev, `📋 DIAGNOSTIC MODE - TRYING MULTIPLE CONNECTION APPROACHES`]);
+        
+        // First approach: Using Supabase client for test mode
+        try {
+          setRawData(prev => [...prev, `🔍 TEST 1: Using Supabase client.functions.invoke('polymarket-ws')`]);
+          
+          const { data, error } = await supabase.functions.invoke('polymarket-ws', {
+            method: 'GET',
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-client-info': 'test-mode',
+            }
+          });
 
-        if (error) {
-          setRawData(prev => [...prev, `❌ Edge Function error: ${error.message}`]);
-          setError(`Edge Function error: ${error.message}`);
-          return;
+          if (error) {
+            setRawData(prev => [...prev, `❌ Test 1 failed: ${error.message}`]);
+          } else {
+            setRawData(prev => [...prev, `✅ Test 1 succeeded: ${JSON.stringify(data)}`]);
+          }
+        } catch (err) {
+          setRawData(prev => [...prev, `❌ Test 1 exception: ${(err as Error).message}`]);
         }
         
-        setRawData(prev => [...prev, `✅ Edge Function response: ${JSON.stringify(data)}`]);
-        
-        // Test a direct fetch to the function URL to check CORS
+        // Second approach: Direct fetch with API key in URL
         try {
-          const directResponse = await fetch(testUrl, {
+          const testUrl2 = `https://${baseUrl}.functions.supabase.co/polymarket-ws?apikey=${SUPABASE_ANON_KEY}`;
+          setRawData(prev => [...prev, `🔍 TEST 2: Direct fetch with API key in URL: ${testUrl2}`]);
+          
+          const response2 = await fetch(testUrl2, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
               'x-client-info': 'test-mode',
-              'apikey': SUPABASE_ANON_KEY
             }
           });
           
-          if (directResponse.ok) {
-            const directData = await directResponse.json();
-            setRawData(prev => [...prev, `✅ Direct fetch successful: ${JSON.stringify(directData)}`]);
+          if (response2.ok) {
+            const data2 = await response2.json();
+            setRawData(prev => [...prev, `✅ Test 2 succeeded: ${JSON.stringify(data2)}`]);
           } else {
-            setRawData(prev => [...prev, `❌ Direct fetch failed: ${directResponse.status} ${directResponse.statusText}`]);
+            setRawData(prev => [...prev, `❌ Test 2 failed: ${response2.status} ${response2.statusText}`]);
+            const errorText = await response2.text();
+            setRawData(prev => [...prev, `Response: ${errorText}`]);
           }
-        } catch (fetchErr) {
-          setRawData(prev => [...prev, `❌ Direct fetch error: ${(fetchErr as Error).message}`]);
+        } catch (err) {
+          setRawData(prev => [...prev, `❌ Test 2 exception: ${(err as Error).message}`]);
         }
         
-        setRawData(prev => [...prev, `✅ Edge Function is accessible`]);
+        // Third approach: Direct fetch with API key in header
+        try {
+          const testUrl3 = `https://${baseUrl}.functions.supabase.co/polymarket-ws`;
+          setRawData(prev => [...prev, `🔍 TEST 3: Direct fetch with API key in header: ${testUrl3}`]);
+          
+          const response3 = await fetch(testUrl3, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-info': 'test-mode',
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+            }
+          });
+          
+          if (response3.ok) {
+            const data3 = await response3.json();
+            setRawData(prev => [...prev, `✅ Test 3 succeeded: ${JSON.stringify(data3)}`]);
+          } else {
+            setRawData(prev => [...prev, `❌ Test 3 failed: ${response3.status} ${response3.statusText}`]);
+            const errorText = await response3.text();
+            setRawData(prev => [...prev, `Response: ${errorText}`]);
+          }
+        } catch (err) {
+          setRawData(prev => [...prev, `❌ Test 3 exception: ${(err as Error).message}`]);
+        }
+        
+        // Options request test
+        try {
+          const testUrl4 = `https://${baseUrl}.functions.supabase.co/polymarket-ws`;
+          setRawData(prev => [...prev, `🔍 TEST 4: OPTIONS request to test CORS: ${testUrl4}`]);
+          
+          const response4 = await fetch(testUrl4, {
+            method: 'OPTIONS',
+            headers: {
+              'x-client-info': 'test-mode',
+              'apikey': SUPABASE_ANON_KEY,
+              'Origin': window.location.origin
+            }
+          });
+          
+          if (response4.ok) {
+            setRawData(prev => [...prev, `✅ Test 4 succeeded: ${response4.status} ${response4.statusText}`]);
+            
+            // Log CORS headers
+            const corsHeaders = [
+              'Access-Control-Allow-Origin',
+              'Access-Control-Allow-Methods',
+              'Access-Control-Allow-Headers'
+            ];
+            
+            corsHeaders.forEach(header => {
+              const value = response4.headers.get(header);
+              setRawData(prev => [...prev, `CORS Header: ${header}: ${value || 'not present'}`]);
+            });
+          } else {
+            setRawData(prev => [...prev, `❌ Test 4 failed: ${response4.status} ${response4.statusText}`]);
+          }
+        } catch (err) {
+          setRawData(prev => [...prev, `❌ Test 4 exception: ${(err as Error).message}`]);
+        }
+        
+        setRawData(prev => [...prev, `📋 DIAGNOSTIC TESTS COMPLETED - Now attempting WebSocket connection`]);
+        
       } catch (err) {
-        setRawData(prev => [...prev, `❌ Could not access Edge Function: ${(err as Error).message}`]);
+        setRawData(prev => [...prev, `❌ Overall diagnostic failed: ${(err as Error).message}`]);
         setError(`Network error: ${(err as Error).message}`);
       }
     };
@@ -156,6 +229,48 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       setupHeartbeatMonitor();
     }, 5000);
   };
+  
+  // Try a direct HTTP fetch as a fallback
+  const tryDirectFetch = async () => {
+    if (directFetchTriedRef.current || !clobTokenId) return;
+    
+    directFetchTriedRef.current = true;
+    setRawData(prev => [...prev, `🔍 Trying direct HTTP fetch as fallback...`]);
+    
+    try {
+      const baseUrl = "lfmkoismabbhujycnqpn";
+      const fetchUrl = `https://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}`;
+      
+      const response = await fetch(fetchUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setRawData(prev => [...prev, `✅ Direct fetch succeeded: ${JSON.stringify(data)}`]);
+        
+        // Simulate some activity since WebSocket failed
+        setInterval(() => {
+          if (mountedRef.current) {
+            setRawData(prev => {
+              const newEntry = `SIMULATED: Periodic update at ${new Date().toISOString()}`;
+              const newData = [...prev, newEntry];
+              return newData.length > 50 ? newData.slice(-50) : newData;
+            });
+          }
+        }, 5000);
+      } else {
+        setRawData(prev => [...prev, `❌ Direct fetch failed: ${response.status} ${response.statusText}`]);
+      }
+    } catch (err) {
+      setRawData(prev => [...prev, `❌ Direct fetch error: ${(err as Error).message}`]);
+    }
+  };
 
   // Connect to WebSocket
   useEffect(() => {
@@ -185,12 +300,31 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       const urlFormatter = WS_URL_FORMATS[urlFormatIndex];
       const wsUrl = urlFormatter(baseProjectId, clobTokenId);
       
-      setRawData(prev => [...prev, `Connecting to WebSocket (attempt #${reconnectAttemptRef.current}, format #${urlFormatIndex + 1}): ${wsUrl}`]);
+      // Check if this is a direct HTTP URL (our fallback)
+      if (wsUrl.startsWith('http')) {
+        tryDirectFetch();
+        return;
+      }
+      
+      setRawData(prev => [...prev, `🔌 Connecting to WebSocket (attempt #${reconnectAttemptRef.current}, format #${urlFormatIndex + 1}): ${wsUrl}`]);
       
       try {
         // Create WebSocket with detailed logging
         const ws = new WebSocket(wsUrl);
         wsRef.current = ws;
+        
+        // Add authorization header if supported by browser
+        try {
+          // Note: This is a newer API and may not be supported in all browsers
+          if ('setRequestHeader' in ws) {
+            // @ts-ignore - TypeScript doesn't know about this API
+            ws.setRequestHeader('Authorization', `Bearer ${SUPABASE_ANON_KEY}`);
+            ws.setRequestHeader('apikey', SUPABASE_ANON_KEY);
+            setRawData(prev => [...prev, `✅ Added authorization headers to WebSocket`]);
+          }
+        } catch (err) {
+          setRawData(prev => [...prev, `ℹ️ Could not set WebSocket headers: ${(err as Error).message}`]);
+        }
         
         // Set connection timeout
         if (timeoutRef.current) {
@@ -199,15 +333,33 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         
         timeoutRef.current = window.setTimeout(() => {
           if (status === "connecting" && ws.readyState !== WebSocket.OPEN) {
-            setRawData(prev => [...prev, `Connection timeout after 15 seconds`]);
+            setRawData(prev => [...prev, `⏱️ Connection timeout after 15 seconds`]);
             setError("Connection timeout - trying next format");
             ws.close();
             
             // Try next format on timeout
             urlFormatIndexRef.current += 1;
+            
+            // If we've tried all formats, consider fallback to HTTP
+            if (urlFormatIndexRef.current >= WS_URL_FORMATS.length) {
+              tryDirectFetch();
+            }
+            
             timeoutRef.current = window.setTimeout(() => {
-              if (mountedRef.current && !isClosing) {
+              if (mountedRef.current && !isClosing && reconnectAttemptRef.current < 10) {
                 connectWebSocket();
+              } else if (reconnectAttemptRef.current >= 10) {
+                setRawData(prev => [...prev, `⚠️ Maximum reconnection attempts reached (${reconnectAttemptRef.current})`]);
+                
+                // Try fallback HTTP method
+                tryDirectFetch();
+                
+                // Show a toast notification
+                toast({
+                  title: "WebSocket Connection Failed",
+                  description: "Could not establish a WebSocket connection after multiple attempts. Using fallback mode.",
+                  variant: "destructive"
+                });
               }
             }, 1000);
           }
@@ -243,6 +395,13 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             } catch (err) {
               setRawData(prev => [...prev, `❌ Error sending message: ${(err as Error).message}`]);
             }
+            
+            // Show toast notification
+            toast({
+              title: "WebSocket Connected",
+              description: "Successfully established WebSocket connection.",
+              variant: "default"
+            });
           }
         };
 
@@ -370,11 +529,24 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             // Try next format on closure if not a normal closure
             if (event.code !== 1000) {
               urlFormatIndexRef.current += 1;
+              
+              // If we've tried all formats without success, try HTTP fallback
+              if (urlFormatIndexRef.current >= WS_URL_FORMATS.length && !directFetchTriedRef.current) {
+                tryDirectFetch();
+              }
+              
               timeoutRef.current = window.setTimeout(() => {
                 if (mountedRef.current && !isClosing && reconnectAttemptRef.current < 10) {
                   connectWebSocket();
                 } else if (reconnectAttemptRef.current >= 10) {
                   setRawData(prev => [...prev, `⚠️ Maximum reconnection attempts reached (${reconnectAttemptRef.current})`]);
+                  
+                  // Show toast notification about failure
+                  toast({
+                    title: "WebSocket Reconnection Failed",
+                    description: "Could not reconnect after multiple attempts.",
+                    variant: "destructive"
+                  });
                 }
               }, 2000);
             }
@@ -392,6 +564,12 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         
         // Try next format on error
         urlFormatIndexRef.current += 1;
+        
+        // If we've tried all formats without success, try HTTP fallback
+        if (urlFormatIndexRef.current >= WS_URL_FORMATS.length && !directFetchTriedRef.current) {
+          tryDirectFetch();
+        }
+        
         timeoutRef.current = window.setTimeout(() => {
           if (mountedRef.current && !isClosing && reconnectAttemptRef.current < 10) {
             connectWebSocket();
@@ -422,7 +600,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         wsRef.current = null;
       }
     };
-  }, [clobTokenId, isClosing, status]);
+  }, [clobTokenId, isClosing]);
 
   // Send a test message periodically to keep connection alive
   useEffect(() => {
@@ -465,6 +643,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       setStatus("connecting");
       setError(null);
       reconnectAttemptRef.current = 0;
+      directFetchTriedRef.current = false;
       
       // Reset to the beginning or use specified format
       if (formatIndex !== undefined) {
@@ -480,7 +659,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       }
       
       // Add a timestamp to force a new connection attempt
-      setRawData(prev => [...prev, `Manual reconnect at: ${new Date().toISOString()}`]);
+      setRawData(prev => [...prev, `⏱️ Manual reconnect at: ${new Date().toISOString()}`]);
     }
   };
 
@@ -506,6 +685,14 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                 Reconnect
               </button>
             )}
+            
+            {/* Add test connection button to try HTTP fallback */}
+            <button 
+              onClick={() => tryDirectFetch()}
+              className="px-2 py-1 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-md text-xs"
+            >
+              HTTP Test
+            </button>
             
             {WS_URL_FORMATS.map((_, index) => (
               <button 
