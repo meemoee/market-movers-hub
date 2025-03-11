@@ -6,7 +6,7 @@ export interface OrderBookData {
   asks: Record<string, number>;
   best_bid: number | null;
   best_ask: number | null;
-  spread: string | null;
+  spread: string | null;  // Changed from number to string | null to match other definitions
   timestamp: string | null;
 }
 

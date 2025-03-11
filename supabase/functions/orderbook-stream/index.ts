@@ -110,6 +110,8 @@ function connectToPolymarket(tokenId: string) {
       
       orderbook.best_bid = bidPrices.length > 0 ? Math.max(...bidPrices) : null;
       orderbook.best_ask = askPrices.length > 0 ? Math.min(...askPrices) : null;
+      
+      // Ensure spread is a string to maintain compatibility with interface
       orderbook.spread = (orderbook.best_bid && orderbook.best_ask) 
         ? (orderbook.best_ask - orderbook.best_bid).toFixed(5) 
         : null;
