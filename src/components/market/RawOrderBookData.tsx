@@ -81,14 +81,12 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     setStatus("connecting");
     setError(null);
     
-    // Get WebSocket URL with the asset ID
-    const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}`;
-    setRawData(prev => [...prev, `Attempting to connect to: ${wsUrl}`]);
+    // Get WebSocket URL with the asset ID and authentication
+    const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}&apikey=${SUPABASE_ANON_KEY}`;
+    setRawData(prev => [...prev, `Attempting to connect to WebSocket...`]);
     
     try {
-      // Simple WebSocket connection - no need for protocol or custom headers
       const ws = new WebSocket(wsUrl);
-      
       wsRef.current = ws;
       
       // Connection opened
@@ -128,6 +126,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           setStatus("error");
           setError("WebSocket error occurred");
           setRawData(prev => [...prev, `❌ WebSocket error occurred`]);
+          console.error('WebSocket error:', event);
         }
       };
 

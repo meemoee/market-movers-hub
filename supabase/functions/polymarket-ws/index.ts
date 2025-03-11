@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("Polymarket WebSocket Function v1.5 - Using standard headers");
+console.log("Polymarket WebSocket Function v1.6 - Authentication support");
 
 serve(async (req) => {
   console.log(`Request received: ${req.method} ${req.url}`);
@@ -12,14 +12,18 @@ serve(async (req) => {
     console.log('Handling CORS preflight request');
     return new Response(null, {
       status: 204,
-      headers: corsHeaders
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Allow-Private-Network': 'true'
+      }
     });
   }
   
   // Get URL parameters
   const url = new URL(req.url);
   const assetId = url.searchParams.get('assetId');
-  console.log(`URL parameters: assetId=${assetId}`);
+  const anonKey = url.searchParams.get('apikey') || req.headers.get('apikey');
+  console.log(`URL parameters: assetId=${assetId}, auth present: ${Boolean(anonKey)}`);
   
   // Check for test info in x-client-info header
   const clientInfo = req.headers.get('x-client-info') || '';
@@ -35,6 +39,19 @@ serve(async (req) => {
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 200,
+    });
+  }
+  
+  // Verify authentication
+  if (!anonKey) {
+    console.log('Authentication failed: No API key provided');
+    return new Response(JSON.stringify({ 
+      status: "error",
+      message: "Authentication required",
+      timestamp: new Date().toISOString()
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 401,
     });
   }
   
@@ -64,6 +81,7 @@ serve(async (req) => {
     Object.entries(corsHeaders).forEach(([key, value]) => {
       responseHeaders.set(key, value);
     });
+    responseHeaders.set('Access-Control-Allow-Private-Network', 'true');
     
     // Set up event handlers
     socket.onopen = () => {
