@@ -397,12 +397,18 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
       
       // Ensure effectiveFocusText is a string before trying to trim
-      const effectiveFocusText = explicitFocus !== undefined ? String(explicitFocus) : focusText;
+      const effectiveFocusText = explicitFocus !== undefined ? 
+        (typeof explicitFocus === 'string' ? explicitFocus : String(explicitFocus)) : 
+        (typeof focusText === 'string' ? focusText : String(focusText));
       
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
-      console.log(`Focus text for web-scrape: ${effectiveFocusText || 'none'}`)
+      console.log(`Focus text for web-scrape:`, effectiveFocusText, typeof effectiveFocusText)
+      
+      if (effectiveFocusText && effectiveFocusText !== "[object Object]") {
+        setProgress(prev => [...prev, `Focusing web research on: ${effectiveFocusText.trim()}`]);
+      }
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -554,7 +560,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
       
       // Ensure effectiveFocusText is a string before trying to trim
-      const effectiveFocusText = explicitFocus !== undefined ? String(explicitFocus) : focusText;
+      const effectiveFocusText = explicitFocus !== undefined ? 
+        (typeof explicitFocus === 'string' ? explicitFocus : String(explicitFocus)) : 
+        (typeof focusText === 'string' ? focusText : String(focusText));
       
       console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
       
@@ -940,7 +948,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
     try {
       // Ensure effectiveFocusText is a string before trying to trim
-      const effectiveFocusText = explicitFocus !== undefined ? String(explicitFocus) : focusText;
+      const effectiveFocusText = explicitFocus !== undefined ? 
+        (typeof explicitFocus === 'string' ? explicitFocus : String(explicitFocus)) : 
+        (typeof focusText === 'string' ? focusText : String(focusText));
       
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
@@ -1033,7 +1043,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const handleResearchArea = (area: string) => {
     const currentResearchId = loadedResearchId;
     
-    console.log(`Starting focused research with parent ID: ${currentResearchId} on area: ${area}`);
+    console.log(`Starting focused research with parent ID: ${currentResearchId} on area:`, area, typeof area);
     
     if (!currentResearchId) {
       console.warn("Cannot create focused research: No parent research ID available");
@@ -1045,15 +1055,27 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       return;
     }
     
+    const areaString = typeof area === 'string' ? area : String(area);
+    
+    if (areaString === "[object Object]") {
+      console.error("Invalid research area format:", area);
+      toast({
+        title: "Invalid research area",
+        description: "The selected research area has an invalid format",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     const parentId = currentResearchId;
     
     setLoadedResearchId(null);
     setParentResearchId(parentId);
     
-    setFocusText(area);
+    setFocusText(areaString);
     toast({
       title: "Research focus set",
-      description: `Starting new research focused on: ${area}`
+      description: `Starting new research focused on: ${areaString}`
     });
     
     setIsLoading(true);
@@ -1070,7 +1092,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueryIndex(-1);
     
     setTimeout(() => {
-      handleResearch(area);  // Pass area directly to handleResearch
+      handleResearch(areaString);
     }, 200);
   };
 
