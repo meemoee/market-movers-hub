@@ -14,7 +14,6 @@ import { RawOrderBookData } from './RawOrderBookData';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from 'react';
-import { Input } from "@/components/ui/input";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -105,7 +104,7 @@ export function TransactionDialog({
     }, 100);
   };
 
-  // Get the correct WebSocket URL for display
+  // Get the WebSocket URL for display
   const getWebSocketUrl = (tokenId?: string) => {
     if (!tokenId) return "";
     return `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${tokenId}`;
@@ -140,7 +139,7 @@ export function TransactionDialog({
           
           <div className="space-y-4">
             <div className="text-sm space-y-2">
-              <div className="font-medium">Debug Information</div>
+              <div className="font-medium">WebSocket Debug Information</div>
               <div className="grid grid-cols-2 gap-2 text-xs bg-muted/50 p-2 rounded">
                 <div>Token ID:</div>
                 <div className="font-mono break-all">{selectedMarket?.clobTokenId}</div>
@@ -156,7 +155,7 @@ export function TransactionDialog({
             </div>
             
             <div className="text-sm font-medium">
-              Raw WebSocket Data (Debug Mode)
+              Basic WebSocket Test
             </div>
             
             <RawOrderBookData 
@@ -165,9 +164,9 @@ export function TransactionDialog({
             />
             
             <div className="text-xs text-muted-foreground mt-4">
-              This is a debug view showing raw data from the WebSocket connection.
+              This is a basic WebSocket test showing raw connection data.
               <br />
-              All raw messages will be displayed above for debugging purposes.
+              All received messages will be displayed above.
             </div>
           </div>
         </AlertDialogHeader>

@@ -15,4 +15,3 @@ export const wsHeaders = {
   'Sec-WebSocket-Version': '13',
   'Sec-WebSocket-Protocol': 'websocket'
 };
-
