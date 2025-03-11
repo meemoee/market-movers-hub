@@ -1,9 +1,22 @@
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
 export interface OrderBookData {
   token_id: string;
   timestamp: string | null;
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
+
+// Type for the database response
+interface OrderBookDataDB {
+  id: number;
+  market_id: string;
+  timestamp: string;
   bids: Record<string, number>;
   asks: Record<string, number>;
   best_bid: number;
@@ -29,7 +42,7 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
         const { data, error } = await supabase
           .from('orderbook_data')
           .select('*')
-          .eq('token_id', tokenId)
+          .eq('market_id', tokenId)
           .order('timestamp', { ascending: false })
           .limit(1);
 
@@ -38,7 +51,19 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
         }
 
         if (data && data.length > 0) {
-          setOrderBookData(data[0] as OrderBookData);
+          // Convert from DB schema to our OrderBookData type
+          const dbData = data[0] as OrderBookDataDB;
+          const orderBookData: OrderBookData = {
+            token_id: dbData.market_id,
+            timestamp: dbData.timestamp,
+            bids: dbData.bids,
+            asks: dbData.asks,
+            best_bid: dbData.best_bid,
+            best_ask: dbData.best_ask,
+            spread: dbData.spread
+          };
+          
+          setOrderBookData(orderBookData);
         }
 
         // Subscribe to the orderbook_data table for this token
@@ -68,10 +93,22 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           event: 'UPDATE',
           schema: 'public',
           table: 'orderbook_data',
-          filter: `token_id=eq.${tokenId}`,
+          filter: `market_id=eq.${tokenId}`,
         },
         (payload) => {
-          setOrderBookData(payload.new as OrderBookData);
+          // Convert the payload to our OrderBookData type
+          const dbData = payload.new as OrderBookDataDB;
+          const orderBookData: OrderBookData = {
+            token_id: dbData.market_id,
+            timestamp: dbData.timestamp,
+            bids: dbData.bids,
+            asks: dbData.asks,
+            best_bid: dbData.best_bid,
+            best_ask: dbData.best_ask,
+            spread: dbData.spread
+          };
+          
+          setOrderBookData(orderBookData);
         }
       )
       .subscribe();
