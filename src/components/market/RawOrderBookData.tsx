@@ -1,18 +1,8 @@
-
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Loader2, ArrowDown, ArrowUp, Tag, Wifi, WifiOff } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { Card } from "@/components/ui/card";
+import { subscribeToOrderBook, OrderBookData } from '@/services/PolymarketService';
 import { useEventListener } from "@/hooks/use-event-listener";
-
-interface OrderBookData {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number | null;
-  best_ask: number | null;
-  spread: string | null;
-  timestamp: string | null;
-}
 
 interface RawOrderBookProps {
   clobTokenId?: string;
@@ -28,227 +18,35 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
   const [reconnecting, setReconnecting] = useState<boolean>(false);
   const [reconnectInfo, setReconnectInfo] = useState<string | null>(null);
   
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<number | null>(null);
-  const manualReconnectRef = useRef<boolean>(false);
-  
-  // Update parent component with order book data
   useEffect(() => {
-    if (orderBookData && onOrderBookData) {
-      onOrderBookData(orderBookData);
-    }
-  }, [orderBookData, onOrderBookData]);
-
-  // Function to fetch initial data via REST API as fallback
-  const fetchInitialOrderBookData = async () => {
-    if (!clobTokenId) return;
-    
-    try {
-      setStatus("connecting");
-      console.log(`Fetching initial order book data for token: ${clobTokenId}`);
-      
-      const { data, error } = await supabase.functions.invoke('polymarket-stream', {
-        body: { tokenId: clobTokenId }
-      });
-      
-      if (error) {
-        console.error("Initial data fetch failed:", error);
-        setStatus("error");
-        setError(error.message);
-        return;
-      }
-      
-      if (data) {
-        console.log("Received initial order book data:", {
-          bid_levels: data.bids ? Object.keys(data.bids).length : 0,
-          ask_levels: data.asks ? Object.keys(data.asks).length : 0,
-          best_bid: data.best_bid,
-          best_ask: data.best_ask
-        });
-        
-        setStatus("connected");
-        setError(null);
-        setOrderBookData(data);
-        setLastUpdateTime(new Date().toLocaleTimeString());
-      }
-    } catch (err) {
-      console.error("Error fetching order book data:", err);
-      setStatus("error");
-      setError(`Connection failed: ${(err as Error).message}`);
-    }
-  };
-
-  // Connect to WebSocket
-  const connectWebSocket = () => {
     if (!clobTokenId || isClosing) return;
     
-    // Clear any existing reconnection timeout
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
+    setStatus("connecting");
+    console.log(`Subscribing to orderbook updates for token: ${clobTokenId}`);
     
-    try {
-      setStatus("connecting");
-      setReconnecting(false);
-      setReconnectInfo(null);
-      
-      // Close any existing connection
-      if (wsRef.current) {
-        try {
-          wsRef.current.close();
-          wsRef.current = null;
-        } catch (err) {
-          console.error("Error closing existing WebSocket:", err);
+    const unsubscribe = subscribeToOrderBook(
+      clobTokenId,
+      (data) => {
+        setOrderBookData(data);
+        setLastUpdateTime(new Date().toLocaleTimeString());
+        setStatus("connected");
+        setError(null);
+        if (onOrderBookData) {
+          onOrderBookData(data);
         }
-      }
-      
-      const projectId = 'lfmkoismabbhujycnqpn';
-      const wsUrl = `wss://${projectId}.functions.supabase.co/orderbook-stream?tokenId=${clobTokenId}`;
-      
-      console.log(`Connecting to WebSocket: ${wsUrl}`);
-      wsRef.current = new WebSocket(wsUrl);
-      
-      wsRef.current.onopen = () => {
-        console.log('WebSocket connection opened to Edge Function');
-        // Status will be updated when the "connected" message is received from the server
-      };
-      
-      wsRef.current.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          
-          switch (message.type) {
-            case 'orderbook_update':
-              setOrderBookData(message.data);
-              setLastUpdateTime(new Date().toLocaleTimeString());
-              setStatus("connected");
-              setError(null);
-              setReconnecting(false);
-              setReconnectInfo(null);
-              break;
-              
-            case 'connected':
-              console.log('Connected to Polymarket through Edge Function');
-              setStatus("connected");
-              setError(null);
-              setReconnecting(false);
-              setReconnectInfo(null);
-              break;
-              
-            case 'reconnecting':
-              console.log('Reconnecting to Polymarket:', message.message);
-              setStatus("reconnecting");
-              setReconnecting(true);
-              setReconnectInfo(message.message);
-              break;
-              
-            case 'error':
-              console.error('WebSocket error message:', message.message);
-              setError(message.message);
-              
-              // Only change status to error if we're not reconnecting
-              if (!message.message.includes('Reconnecting')) {
-                setStatus("error");
-              }
-              break;
-              
-            case 'disconnected':
-              setStatus("disconnected");
-              setError(message.message);
-              break;
-              
-            default:
-              console.log('Unknown message type:', message.type);
-          }
-        } catch (err) {
-          console.error('Error parsing WebSocket message:', err);
-        }
-      };
-      
-      wsRef.current.onerror = (event) => {
-        console.error('WebSocket error:', event);
+      },
+      (error) => {
+        console.error("Orderbook subscription error:", error);
         setStatus("error");
-        setError('WebSocket connection error');
-        
-        // If this is a manual reconnect attempt and it failed, try the REST API
-        if (manualReconnectRef.current) {
-          manualReconnectRef.current = false;
-          fetchInitialOrderBookData();
-        }
-      };
-      
-      wsRef.current.onclose = (event) => {
-        console.log(`WebSocket closed: code=${event.code}, reason=${event.reason || 'No reason provided'}`);
-        
-        if (status !== "disconnected" && !isClosing) {
-          setStatus("disconnected");
-        }
-        
-        wsRef.current = null;
-      };
-    } catch (err) {
-      console.error('Error establishing WebSocket connection:', err);
-      setStatus("error");
-      setError(`Failed to connect: ${(err as Error).message}`);
-      wsRef.current = null;
-      
-      // If this is a manual reconnect attempt and it failed, try the REST API
-      if (manualReconnectRef.current) {
-        manualReconnectRef.current = false;
-        fetchInitialOrderBookData();
+        setError(error.message);
       }
-    }
-  };
-  
-  // Initialize connection
-  useEffect(() => {
-    if (isClosing || !clobTokenId) return;
+    );
     
-    // Try WebSocket connection first
-    connectWebSocket();
-    
-    // Cleanup function
     return () => {
-      console.log("Cleaning up order book connection");
-      
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      console.log("Cleaning up orderbook subscription");
+      unsubscribe();
     };
-  }, [clobTokenId, isClosing]);
-  
-  // Detect window focus changes to reconnect if needed
-  useEventListener('focus', () => {
-    if ((status === "disconnected" || status === "error") && !isClosing && clobTokenId && !wsRef.current) {
-      console.log('Window focused, attempting to reconnect WebSocket');
-      connectWebSocket();
-    }
-  });
-
-  // Handle manual refresh
-  const handleManualRefresh = async () => {
-    if (!clobTokenId) return;
-    
-    manualReconnectRef.current = true;
-    
-    // Try to reconnect via WebSocket
-    connectWebSocket();
-    
-    // If we still don't have data after a short delay, fall back to REST API
-    setTimeout(() => {
-      if (status !== "connected" && manualReconnectRef.current) {
-        manualReconnectRef.current = false;
-        fetchInitialOrderBookData();
-      }
-    }, 3000);
-  };
+  }, [clobTokenId, isClosing, onOrderBookData]);
 
   // Format price to a readable string
   const formatPrice = (price: string | number) => {
@@ -263,12 +61,11 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
     });
   };
 
-  // Render loading state
-  if ((status === "connecting" || status === "reconnecting") && !orderBookData) {
+  if (status === "connecting" && !orderBookData) {
     return (
       <div className="flex items-center justify-center p-4">
         <Loader2 className="w-6 h-6 animate-spin mr-2" />
-        <span>{status === "reconnecting" ? "Reconnecting to order book..." : "Connecting to order book stream..."}</span>
+        <span>Connecting to order book stream...</span>
       </div>
     );
   }
@@ -310,7 +107,6 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
           <div className="flex flex-wrap gap-1 mt-1">
             {(status === "error" || status === "disconnected") && (
               <button 
-                onClick={handleManualRefresh}
                 className="px-2 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-xs"
               >
                 Reconnect
@@ -319,7 +115,6 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
             
             {status === "connected" && (
               <button 
-                onClick={handleManualRefresh}
                 className="px-2 py-1 bg-green-500/10 hover:bg-green-500/20 rounded-md text-xs"
               >
                 Force Refresh
