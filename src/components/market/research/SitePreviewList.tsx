@@ -3,11 +3,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { FileText, Globe } from "lucide-react"
 import { getFaviconUrl } from "@/utils/favicon"
 
+export interface ResearchResult {
+  url: string
+  title?: string
+}
+
 interface SitePreviewListProps {
-  results: Array<{
-    url: string
-    title?: string
-  }>
+  results: ResearchResult[]
 }
 
 export function SitePreviewList({ results }: SitePreviewListProps) {
