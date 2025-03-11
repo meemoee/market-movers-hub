@@ -110,7 +110,7 @@ export function TransactionDialog({
       open={selectedMarket !== null} 
       onOpenChange={handleClose}
     >
-      <AlertDialogContent>
+      <AlertDialogContent className="max-w-2xl">
         <AlertDialogHeader>
           <div className="flex items-start gap-4 mb-4">
             {topMover && (
@@ -144,6 +144,8 @@ export function TransactionDialog({
             
             <div className="text-sm text-muted-foreground mt-4">
               This is a debug view showing raw data from the WebSocket connection.
+              <br />
+              All raw messages will be displayed above for debugging purposes.
             </div>
           </div>
         </AlertDialogHeader>

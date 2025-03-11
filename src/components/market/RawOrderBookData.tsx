@@ -1,6 +1,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RawOrderBookProps {
   clobTokenId?: string;
@@ -16,6 +17,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   
   // Get WebSocket URL
   const getWebSocketUrl = (tokenId: string) => {
+    // Direct connection to supabase edge function
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://lfmkoismabbhujycnqpn.supabase.co";
     return `${supabaseUrl.replace('https://', 'wss://')}/functions/v1/polymarket-ws?assetId=${tokenId}`;
   };
@@ -48,58 +50,43 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     setError(null);
     setRawData([]);
 
-    // Log debug info
-    console.log("[RawOrderBookData] Debug - Starting new WebSocket connection");
-    console.log("[RawOrderBookData] - Token ID:", clobTokenId);
-    console.log("[RawOrderBookData] - Closing:", isClosing);
-    console.log("[RawOrderBookData] - Environment:", import.meta.env.MODE);
-    console.log("[RawOrderBookData] - Supabase URL:", import.meta.env.VITE_SUPABASE_URL);
-
-    try {
-      // Create WebSocket URL
-      const wsUrl = getWebSocketUrl(clobTokenId);
-      console.log("[RawOrderBookData] Connecting to:", wsUrl);
-
-      // First test if endpoint is available
-      const httpUrl = wsUrl.replace('wss://', 'https://');
-      console.log("[RawOrderBookData] Testing endpoint:", httpUrl);
-      
-      // Check endpoint with HTTP request
-      fetch(httpUrl)
-        .then(response => {
-          console.log("[RawOrderBookData] Endpoint test status:", response.status);
-          
-          // Extract response body for debugging
-          response.text().then(text => {
-            console.log("[RawOrderBookData] Endpoint response body:", text);
-            
-            try {
-              // Try to parse as JSON
-              const data = JSON.parse(text);
-              console.log("[RawOrderBookData] Parsed endpoint response:", data);
-              
-              // Add to log
-              setRawData(prev => [...prev, `Endpoint test: ${JSON.stringify(data, null, 2)}`]);
-            } catch (err) {
-              console.log("[RawOrderBookData] Endpoint response is not valid JSON");
-              
-              // Add raw response to log
-              setRawData(prev => [...prev, `Endpoint test raw response: ${text}`]);
-            }
-          });
-          
-          // Now connect via WebSocket
-          connectWebSocket(wsUrl);
-        })
-        .catch(err => {
-          console.error("[RawOrderBookData] Endpoint test failed:", err);
-          setError(`Endpoint test failed: ${err.message}`);
-          setRawData(prev => [...prev, `Endpoint test error: ${err.message}`]);
-        });
-    } catch (err) {
-      console.error("[RawOrderBookData] Setup failed:", err);
-      setError(`Setup error: ${err.message}`);
-    }
+    // Create WebSocket URL
+    const wsUrl = getWebSocketUrl(clobTokenId);
+    console.log("[RawOrderBookData] Initiating WebSocket connection for token:", clobTokenId);
+    console.log("[RawOrderBookData] WebSocket URL:", wsUrl);
+    
+    // Add debug log to see if function is registered
+    const functionUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/polymarket-ws?assetId=${clobTokenId}`;
+    console.log("[RawOrderBookData] Testing endpoint via HTTP:", functionUrl);
+    
+    // Test endpoint via HTTP first
+    fetch(functionUrl)
+      .then(response => {
+        console.log("[RawOrderBookData] Endpoint test status:", response.status);
+        return response.text();
+      })
+      .then(text => {
+        console.log("[RawOrderBookData] Endpoint response:", text);
+        setRawData(prev => [...prev, `HTTP test response: ${text}`]);
+        
+        try {
+          const data = JSON.parse(text);
+          setRawData(prev => [...prev, `Parsed HTTP response: ${JSON.stringify(data, null, 2)}`]);
+        } catch (e) {
+          setRawData(prev => [...prev, `Failed to parse HTTP response as JSON: ${e.message}`]);
+        }
+        
+        // Now try WebSocket connection
+        connectWebSocket(wsUrl);
+      })
+      .catch(err => {
+        console.error("[RawOrderBookData] HTTP test failed:", err);
+        setError(`HTTP test failed: ${err.message}`);
+        setRawData(prev => [...prev, `HTTP test error: ${err.message}`]);
+        
+        // Try WebSocket anyway
+        connectWebSocket(wsUrl);
+      });
 
     // Cleanup
     return () => {
@@ -115,7 +102,8 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   const connectWebSocket = (wsUrl: string) => {
     try {
       // Create WebSocket
-      console.log("[RawOrderBookData] Creating WebSocket:", wsUrl);
+      console.log("[RawOrderBookData] Creating WebSocket connection to:", wsUrl);
+      
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -125,29 +113,33 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           console.error("[RawOrderBookData] Connection timeout");
           setError("Connection timeout after 10 seconds");
           setStatus("error");
+          setRawData(prev => [...prev, "WebSocket connection timeout after 10 seconds"]);
           ws.close();
         }
       }, 10000);
 
       // Connection opened
       ws.onopen = () => {
-        console.log("[RawOrderBookData] WebSocket connected");
+        console.log("[RawOrderBookData] WebSocket connected successfully!");
         clearTimeout(timeout);
         
         if (mountedRef.current) {
           setStatus("connected");
           setError(null);
-          setRawData(prev => [...prev, "WebSocket connected"]);
+          setRawData(prev => [...prev, "✅ WebSocket connected successfully"]);
           
           // Send ping
-          ws.send(JSON.stringify({ ping: new Date().toISOString() }));
+          const pingData = JSON.stringify({ ping: new Date().toISOString() });
+          console.log("[RawOrderBookData] Sending ping:", pingData);
+          ws.send(pingData);
         }
 
         // Setup ping interval
         const pingInterval = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
-            console.log("[RawOrderBookData] Sending ping");
-            ws.send(JSON.stringify({ ping: new Date().toISOString() }));
+            const pingData = JSON.stringify({ ping: new Date().toISOString() });
+            console.log("[RawOrderBookData] Sending ping:", pingData);
+            ws.send(pingData);
           } else {
             clearInterval(pingInterval);
           }
@@ -161,7 +153,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         if (mountedRef.current) {
           // Always add raw data to log
           setRawData(prev => {
-            const newData = [...prev, `DATA: ${event.data}`];
+            const newData = [...prev, `RECEIVED: ${event.data}`];
             return newData.length > 100 ? newData.slice(-100) : newData;
           });
           
@@ -193,7 +185,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         if (mountedRef.current) {
           setStatus("error");
           setError("WebSocket error occurred");
-          setRawData(prev => [...prev, "WebSocket error"]);
+          setRawData(prev => [...prev, "❌ WebSocket error occurred"]);
         }
       };
 
@@ -204,13 +196,14 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         
         if (mountedRef.current) {
           setStatus("disconnected");
-          setRawData(prev => [...prev, `WebSocket closed: code=${event.code}, reason=${event.reason}`]);
+          setRawData(prev => [...prev, `WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`]);
         }
       };
     } catch (err) {
       console.error("[RawOrderBookData] Error creating WebSocket:", err);
       setError(`Failed to create WebSocket: ${err.message}`);
       setStatus("error");
+      setRawData(prev => [...prev, `❌ Error creating WebSocket: ${err.message}`]);
     }
   };
 
@@ -227,8 +220,15 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   // Render error state
   if (error && !isClosing) {
     return (
-      <div className="text-center text-red-500 p-4">
-        <div className="mb-2 font-semibold">{error}</div>
+      <div className="text-center p-4">
+        <div className="mb-2 font-semibold text-red-500">{error}</div>
+        <div className="max-h-[200px] overflow-y-auto bg-background/50 border border-border rounded-md p-2 mb-4 text-xs font-mono">
+          {rawData.map((data, index) => (
+            <div key={index} className="border-b border-border/30 pb-1 mb-1">
+              {data}
+            </div>
+          ))}
+        </div>
         <button 
           onClick={() => {
             if (clobTokenId) {
@@ -252,13 +252,14 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   return (
     <div className="h-[300px] overflow-y-auto bg-background/50 border border-border rounded-md p-2">
       <div className="text-xs font-mono">
-        <div className="mb-2 text-muted-foreground">
+        <div className="sticky top-0 bg-background/90 mb-2 py-1 border-b border-border">
           Status: <span className={
             status === "connected" ? "text-green-500" :
             status === "connecting" ? "text-yellow-500" :
             status === "error" ? "text-red-500" :
             "text-muted-foreground"
           }>{status}</span>
+          {error && <span className="text-red-500 ml-2">Error: {error}</span>}
         </div>
         
         <div className="space-y-1 whitespace-pre-wrap break-all">
@@ -266,7 +267,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             <div className="text-muted-foreground">Waiting for data...</div>
           ) : (
             rawData.map((data, index) => (
-              <div key={index} className="border-b border-border/30 pb-1">
+              <div key={index} className="border-b border-border/30 pb-1 mb-1">
                 {data}
               </div>
             ))
