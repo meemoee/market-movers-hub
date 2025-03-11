@@ -15,11 +15,35 @@ name = "brave-search"
 verify_jwt = false
 
 [[functions]]
+name = "web-scrape"
+verify_jwt = false
+
+[[functions]]
 name = "web-research"
 verify_jwt = false
 
 [[functions]]
 name = "extract-research-insights"
+verify_jwt = false
+
+[[functions]]
+name = "generate-qa-tree"
+verify_jwt = false
+
+[[functions]]
+name = "evaluate-qa-pair"
+verify_jwt = false
+
+[[functions]]
+name = "evaluate-qa-final"
+verify_jwt = false
+
+[[functions]]
+name = "polymarket-ws"
+verify_jwt = false
+
+[[functions]]
+name = "execute-market-order"
 verify_jwt = false
 
 [[functions]]
