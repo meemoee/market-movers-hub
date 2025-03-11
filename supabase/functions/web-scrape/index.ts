@@ -436,13 +436,21 @@ serve(async (req) => {
           await scraper.run(marketDescription || query || marketId, focusText, isFocusedResearch);
         }
         
-        await writer.close()
+        await writer.close();
       } catch (error) {
-        console.error("Error in web research:", error)
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`))
-        await writer.close()
+        console.error("Error in web research:", error);
+        try {
+          await writer.write(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`));
+        } catch (e) {
+          console.error("Error writing error message:", e);
+        }
+        try {
+          await writer.close();
+        } catch (e) {
+          console.error("Error closing writer:", e);
+        }
       }
-    })()
+    })();
 
     return new Response(readable, {
       headers: {
@@ -451,15 +459,15 @@ serve(async (req) => {
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
       },
-    })
+    });
   } catch (error) {
-    console.error("Error in web-research function:", error)
+    console.error("Error in web-research function:", error);
     return new Response(
       JSON.stringify({ error: error.message }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       }
-    )
+    );
   }
-})
+});
