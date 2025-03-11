@@ -29,30 +29,44 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         const timestamp = new Date().toISOString();
         setMessages(prev => [...prev, `Fetching data at ${timestamp}`]);
         
-        // Call the Supabase function to get orderbook data
-        const { data, error } = await supabase.functions.invoke('get-orderbook', {
+        // First try the new polymarket-stream function which uses WebSockets
+        const { data: streamData, error: streamError } = await supabase.functions.invoke('polymarket-stream', {
           body: { tokenId: clobTokenId }
         });
         
-        if (error) {
-          setMessages(prev => [...prev, `🔴 Error fetching data: ${error.message}`]);
-          setStatus("error");
-          setError(error.message);
-          return;
+        if (streamError) {
+          console.log("WebSocket stream failed, falling back to REST API:", streamError);
+          // Fall back to the REST API
+          const { data: restData, error: restError } = await supabase.functions.invoke('get-orderbook', {
+            body: { tokenId: clobTokenId }
+          });
+          
+          if (restError) {
+            setMessages(prev => [...prev, `🔴 Error fetching data: ${restError.message}`]);
+            setStatus("error");
+            setError(restError.message);
+            return;
+          }
+          
+          processData(restData);
+        } else {
+          processData(streamData);
         }
-        
-        // Process the received data
-        setStatus("connected");
-        setError(null);
-        setMessages(prev => {
-          const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
-          return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
-        });
       } catch (err) {
         setMessages(prev => [...prev, `🔴 Error: ${(err as Error).message}`]);
         setStatus("error");
         setError(`Failed to fetch data: ${(err as Error).message}`);
       }
+    };
+    
+    const processData = (data: any) => {
+      // Process the received data
+      setStatus("connected");
+      setError(null);
+      setMessages(prev => {
+        const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
+        return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
+      });
     };
     
     // Initial fetch
@@ -116,8 +130,19 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                   if (pollingRef.current) {
                     clearInterval(pollingRef.current);
                   }
-                  supabase.functions.invoke('get-orderbook', {
+                  
+                  // First try the WebSocket approach
+                  supabase.functions.invoke('polymarket-stream', {
                     body: { tokenId: clobTokenId }
+                  }).then(({ data, error }) => {
+                    if (error) {
+                      console.log("WebSocket stream failed, falling back to REST API:", error);
+                      // Fall back to the REST API
+                      return supabase.functions.invoke('get-orderbook', {
+                        body: { tokenId: clobTokenId }
+                      });
+                    }
+                    return { data, error };
                   }).then(({ data, error }) => {
                     if (error) {
                       setMessages(prev => [...prev, `🔴 Error fetching data: ${error.message}`]);
@@ -129,8 +154,23 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                     });
                     // Restart the polling
                     pollingRef.current = window.setInterval(() => {
-                      supabase.functions.invoke('get-orderbook', {
+                      supabase.functions.invoke('polymarket-stream', {
                         body: { tokenId: clobTokenId }
+                      }).then(({ data, error }) => {
+                        if (error) {
+                          // Fall back to REST API if WebSocket fails
+                          return supabase.functions.invoke('get-orderbook', {
+                            body: { tokenId: clobTokenId }
+                          });
+                        }
+                        return { data, error };
+                      }).then(({ data, error }) => {
+                        if (!error) {
+                          setMessages(prev => {
+                            const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
+                            return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
+                          });
+                        }
                       });
                     }, 3000);
                   });
