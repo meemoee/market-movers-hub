@@ -390,16 +390,19 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
+  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = [], explicitFocus?: string) => {
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
       setCurrentIteration(iteration)
       setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
       
+      // Use explicit focus if provided, otherwise fall back to state
+      const effectiveFocusText = explicitFocus !== undefined ? explicitFocus : focusText;
+      
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
-      console.log(`Focus text for web-scrape: ${focusText || 'none'}`)
+      console.log(`Focus text for web-scrape: ${effectiveFocusText || 'none'}`)
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -417,11 +420,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketId: marketId,
         marketDescription: description,
         query: description,
-        focusText: focusText.trim() || null // Always include focusText, even if null
+        focusText: effectiveFocusText?.trim() || null // Use effectiveFocusText
       };
 
-      if (focusText?.trim()) {
-        setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
+      if (effectiveFocusText?.trim()) {
+        setProgress(prev => [...prev, `Focusing web research on: ${effectiveFocusText.trim()}`]);
       }
       
       const response = await supabase.functions.invoke('web-scrape', {
@@ -536,7 +539,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return
       }
 
-      await processQueryResults(allContent, iteration, queries, iterationResults)
+      await processQueryResults(allContent, iteration, queries, iterationResults, effectiveFocusText)
     } catch (error) {
       console.error(`Error in web research iteration ${iteration}:`, error)
       setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -545,10 +548,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[]) => {
+  const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[], explicitFocus?: string) => {
     try {
       setIsAnalyzing(true)
       setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
+      
+      // Use explicit focus if provided, otherwise fall back to state
+      const effectiveFocusText = explicitFocus !== undefined ? explicitFocus : focusText;
       
       console.log(`Starting content analysis for iteration ${iteration} with content length:`, allContent.join('\n\n').length)
       
@@ -564,7 +570,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           
           setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
           setCurrentQueries(simplifiedQueries);
-          await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent]);
+          await handleWebScrape(simplifiedQueries, iteration + 1, [...allContent], effectiveFocusText);
           return;
         }
       }
@@ -737,7 +743,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               marketDescription: description,
               areasForResearch: streamingState.parsedData?.areasForResearch || [],
               previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: focusText.trim()
+              focusText: effectiveFocusText.trim()
             })
           })
 
@@ -761,7 +767,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
           })
 
-          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent])
+          await handleWebScrape(refinedQueriesData.queries, iteration + 1, [...allContent], effectiveFocusText)
         } catch (error) {
           console.error("Error generating refined queries:", error);
           
@@ -773,7 +779,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           
           setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
           setCurrentQueries(fallbackQueries);
-          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent])
+          await handleWebScrape(fallbackQueries, iteration + 1, [...allContent], effectiveFocusText)
         }
       }
 
@@ -916,7 +922,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const handleResearch = async () => {
+  const handleResearch = async (explicitFocus?: string) => {
     setLoadedResearchId(null);
     
     setIsLoading(true)
@@ -933,12 +939,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueryIndex(-1)
 
     try {
+      // Use explicit focus if provided, otherwise fall back to state
+      const effectiveFocusText = explicitFocus !== undefined ? explicitFocus : focusText;
+      
       setProgress(prev => [...prev, "Starting iterative web research..."])
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
       setProgress(prev => [...prev, `Market question: ${description}`])
       
-      if (focusText.trim()) {
-        setProgress(prev => [...prev, `Research focus: ${focusText.trim()}`])
+      if (effectiveFocusText.trim()) {
+        setProgress(prev => [...prev, `Research focus: ${effectiveFocusText.trim()}`])
       }
       
       setProgress(prev => [...prev, "Generating initial search queries..."])
@@ -948,7 +957,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           description, 
           marketId,
           descriptionLength: description ? description.length : 0,
-          focusText: focusText.trim() || null
+          focusText: effectiveFocusText.trim() || null
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
@@ -958,7 +967,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketDescription: description,
             question: description,
             iteration: 1,
-            focusText: focusText.trim()
+            focusText: effectiveFocusText.trim()
           })
         });
 
@@ -985,7 +994,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
         });
 
-        await handleWebScrape(cleanQueries, 1);
+        await handleWebScrape(cleanQueries, 1, [], effectiveFocusText);
       } catch (error) {
         console.error("Error generating initial queries:", error);
         
@@ -1007,7 +1016,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setCurrentQueries(fallbackQueries);
         
         setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
-        await handleWebScrape(fallbackQueries, 1);
+        await handleWebScrape(fallbackQueries, 1, [], effectiveFocusText);
       }
 
       setProgress(prev => [...prev, "Research complete!"])
@@ -1061,7 +1070,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueryIndex(-1);
     
     setTimeout(() => {
-      handleResearch();
+      handleResearch(area);  // Pass area directly to handleResearch
     }, 200);
   };
 
