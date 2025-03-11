@@ -28,11 +28,15 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         setMessages(prev => [...prev, `Attempting connection at ${new Date().toISOString()}`]);
         setStatus("connecting");
         
-        // Get the authentication headers
+        // Get the authentication headers - Use the constant from client.ts
         const { data: { session } } = await supabase.auth.getSession();
+        
+        // Get the anon key from Supabase URL
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
+        
         const headers = {
-          apikey: supabase.supabaseKey,
-          Authorization: `Bearer ${session?.access_token || supabase.supabaseKey}`,
+          apikey: SUPABASE_ANON_KEY,
+          Authorization: `Bearer ${session?.access_token || SUPABASE_ANON_KEY}`,
         };
         
         // Create WebSocket URL with authentication
