@@ -430,6 +430,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
+    // Pass the area directly to handleResearch instead of relying on focusText state
     handleResearch(area);
   };
 
@@ -461,22 +462,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress(prev => [...prev, "Generating initial search queries..."]);
 
       try {
-        console.log("Calling generate-queries with:", { 
-          description, 
-          marketId,
-          descriptionLength: description ? description.length : 0,
-          focusText: focusArea || null
-        });
+        // Make sure we're only passing primitive values in the payload, not React elements
+        const queryPayload = { 
+          query: description,
+          marketId: marketId,
+          marketDescription: description,
+          question: description,
+          iteration: 1,
+          // Ensure focusText is a string, not a React element or complex object
+          focusText: typeof focusArea === 'string' ? focusArea : null
+        };
+        
+        console.log("Calling generate-queries with:", queryPayload);
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
-          body: JSON.stringify({ 
-            query: description,
-            marketId: marketId,
-            marketDescription: description,
-            question: description,
-            iteration: 1,
-            focusText: focusArea || null
-          })
+          body: JSON.stringify(queryPayload)
         });
 
         if (queriesError) {
@@ -502,6 +502,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`]);
         });
 
+        // Pass focusArea directly to avoid relying on state
         await handleWebScrape(cleanQueries, 1, focusArea);
       } catch (error) {
         console.error("Error generating initial queries:", error);
@@ -524,6 +525,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setCurrentQueries(fallbackQueries);
         
         setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
+        
+        // Pass focusArea directly to avoid relying on state
         await handleWebScrape(fallbackQueries, 1, focusArea);
       }
 
@@ -560,12 +563,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return cleanedQuery;
       });
       
+      // Create a plain object with only serializable properties
       const scrapePayload = { 
         queries: shortenedQueries,
         marketId: marketId,
         marketDescription: description,
         query: description,
-        focusText: focusArea || null
+        // Ensure focusText is a string or null, not an object
+        focusText: typeof focusArea === 'string' ? focusArea : null
       };
 
       if (focusArea) {
@@ -684,6 +689,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return
       }
 
+      // Pass the focusArea directly to avoid relying on state
       await processQueryResults(allContent, iteration, queries, iterationResults, focusArea)
     } catch (error) {
       console.error(`Error in web research iteration ${iteration}:`, error)
@@ -712,11 +718,14 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           
           setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
           setCurrentQueries(simplifiedQueries);
+          
+          // Pass focusArea directly instead of using state value
           await handleWebScrape(simplifiedQueries, iteration + 1, focusArea, [...allContent]);
           return;
         }
       }
       
+      // Create a clean payload with only serializable data
       const analyzePayload = {
         content: allContent.join('\n\n'),
         query: description,
@@ -876,40 +885,45 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
+          // Create clean payload for generate-queries
+          const refinedQueriesPayload = { 
+            query: description,
+            previousResults: analysisContent,
+            iteration: iteration,
+            marketId: marketId,
+            marketDescription: description,
+            areasForResearch: streamingState.parsedData?.areasForResearch || [],
+            previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+            // Ensure focusText is a string, not an object
+            focusText: typeof focusArea === 'string' ? focusArea : ''
+          };
+          
           const { data: refinedQueriesData, error: refinedQueriesError } = await supabase.functions.invoke('generate-queries', {
-            body: JSON.stringify({ 
-              query: description,
-              previousResults: analysisContent,
-              iteration: iteration,
-              marketId: marketId,
-              marketDescription: description,
-              areasForResearch: streamingState.parsedData?.areasForResearch || [],
-              previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
-              focusText: typeof focusArea === 'string' ? focusArea.trim() : ''
-            })
-          })
+            body: JSON.stringify(refinedQueriesPayload)
+          });
 
           if (refinedQueriesError) {
             console.error("Error from generate-queries:", refinedQueriesError);
-            throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`)
+            throw new Error(`Error generating refined queries: ${refinedQueriesError.message}`);
           }
 
           if (!refinedQueriesData?.queries || !Array.isArray(refinedQueriesData.queries)) {
             console.error("Invalid refined queries response:", refinedQueriesData);
-            throw new Error('Invalid refined queries response')
+            throw new Error('Invalid refined queries response');
           }
 
-          console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries)
-          setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`])
+          console.log(`Generated refined queries for iteration ${iteration + 1}:`, refinedQueriesData.queries);
+          setProgress(prev => [...prev, `Generated ${refinedQueriesData.queries.length} refined search queries for iteration ${iteration + 1}`]);
           
           setCurrentQueries(refinedQueriesData.queries);
           setCurrentQueryIndex(-1);
           
           refinedQueriesData.queries.forEach((query: string, index: number) => {
-            setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`])
-          })
+            setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`]);
+          });
 
-          await handleWebScrape(refinedQueriesData.queries, iteration + 1, focusArea)
+          // Pass focusArea directly
+          await handleWebScrape(refinedQueriesData.queries, iteration + 1, focusArea);
         } catch (error) {
           console.error("Error generating refined queries:", error);
           
@@ -917,11 +931,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             `${description} latest information`,
             `${description} expert analysis`,
             `${description} key details`
-          ]
+          ];
           
-          setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`])
+          setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`]);
           setCurrentQueries(fallbackQueries);
-          await handleWebScrape(fallbackQueries, iteration + 1, focusArea)
+          
+          // Pass focusArea directly
+          await handleWebScrape(fallbackQueries, iteration + 1, focusArea);
         }
       }
 
@@ -931,7 +947,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setError(`Error analyzing content: ${error.message}`);
       setIsAnalyzing(false);
     }
-  }
+  };
 
   const extractInsights = async (allContent: string[], finalAnalysis: string) => {
     setProgress(prev => [...prev, "Final analysis complete, extracting key insights and probability estimates..."]);
@@ -965,7 +981,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     try {
       const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
-        body: insightsPayload
+        body: JSON.stringify(insightsPayload)
       });
 
       if (insightsResponse.error) {
