@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.0";
 
@@ -124,7 +123,7 @@ async function connectToPolymarket(tokenId: string) {
               const { data: latestData } = await supabase
                 .from('orderbook_data')
                 .select('*')
-                .eq('token_id', tokenId)
+                .eq('market_id', tokenId)
                 .order('timestamp', { ascending: false })
                 .limit(1);
               
@@ -155,7 +154,7 @@ async function connectToPolymarket(tokenId: string) {
           const { error } = await supabase
             .from('orderbook_data')
             .upsert({
-              token_id: tokenId,
+              market_id: tokenId,
               timestamp: timestamp,
               bids: orderbook.bids,
               asks: orderbook.asks,
@@ -163,7 +162,7 @@ async function connectToPolymarket(tokenId: string) {
               best_ask: orderbook.best_ask,
               spread: orderbook.spread
             }, {
-              onConflict: 'token_id'
+              onConflict: 'market_id'
             });
             
           if (error) {
@@ -359,7 +358,7 @@ setInterval(async () => {
 // Setup for handling the table if it doesn't exist
 async function ensureOrderbookTable() {
   try {
-    // Check if table exists
+    // Check if table exists - FIX: Specify the table schema to avoid ambiguity
     const { data, error } = await supabase.rpc('check_table_exists', { table_name: 'orderbook_data' });
     
     if (error) {
@@ -427,7 +426,7 @@ serve(async (req) => {
       const { data } = await supabase
         .from('orderbook_data')
         .select('*')
-        .eq('token_id', tokenId)
+        .eq('market_id', tokenId)
         .single();
       
       return new Response(
