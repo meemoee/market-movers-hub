@@ -2,10 +2,14 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import WebSocket from "npm:ws@8.13.0";
 
-console.log("Orderbook WebSocket Stream v1.0.0");
+console.log("Orderbook WebSocket Stream v1.1.0");
 
 // Seconds to wait for initial connection before timing out
-const CONNECT_TIMEOUT_SECONDS = 5;
+const CONNECT_TIMEOUT_SECONDS = 10;
+// Seconds to wait between reconnection attempts
+const RECONNECT_INTERVAL_SECONDS = 3;
+// Maximum number of reconnection attempts
+const MAX_RECONNECT_ATTEMPTS = 5;
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -52,38 +56,14 @@ serve(async (req) => {
     // Upgrade the connection to WebSocket
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
     
-    // Connect to Polymarket WebSocket
-    const polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market", {
-      rejectUnauthorized: false,
-      perMessageDeflate: false
-    });
-    
-    // Track connection state
-    let polymarketConnected = false;
+    // State tracking
+    let polymarketWs = null;
+    let reconnectAttempts = 0;
+    let reconnectTimeout = null;
+    let heartbeatInterval = null;
+    let isClosing = false;
+    let connectionTimeout = null;
     let initialSnapshotReceived = false;
-    
-    // Set up connection timeout
-    const connectionTimeout = setTimeout(() => {
-      if (!polymarketConnected || !initialSnapshotReceived) {
-        console.log("Connection timeout reached");
-        clientSocket.send(JSON.stringify({
-          type: "error",
-          message: "Connection to Polymarket timed out",
-          timestamp: new Date().toISOString()
-        }));
-        
-        // Try to close connections cleanly
-        try {
-          polymarketWs.close();
-          clientSocket.close(1013, "Connection timeout");
-        } catch (e) {
-          console.error("Error closing connection after timeout:", e);
-        }
-      }
-    }, CONNECT_TIMEOUT_SECONDS * 1000);
-    
-    // Set up heartbeat to keep connection alive
-    let heartbeatInterval;
     
     // Initialize orderbook data
     let orderbook = {
@@ -95,118 +75,217 @@ serve(async (req) => {
       timestamp: new Date().toISOString()
     };
     
-    // Handle client WebSocket events
-    clientSocket.onopen = () => {
-      console.log("Client connection opened");
-    };
-    
-    clientSocket.onclose = (event) => {
-      console.log(`Client connection closed: code=${event.code}, reason=${event.reason || "No reason provided"}`);
-      clearInterval(heartbeatInterval);
-      clearTimeout(connectionTimeout);
-      
-      // Close Polymarket connection when client disconnects
-      if (polymarketWs.readyState === WebSocket.OPEN) {
-        polymarketWs.close();
-      }
-    };
-    
-    clientSocket.onerror = (event) => {
-      console.error("Client WebSocket error:", event);
-      clearInterval(heartbeatInterval);
-      clearTimeout(connectionTimeout);
-    };
-    
-    // Handle Polymarket WebSocket events
-    polymarketWs.on('open', () => {
-      console.log('Connected to Polymarket WebSocket');
-      polymarketConnected = true;
-      
-      // Subscribe to market data
-      const subscription = {
-        type: "Market",
-        assets_ids: [tokenId]
-      };
-      polymarketWs.send(JSON.stringify(subscription));
-      
-      // Request initial snapshot
-      const snapshotRequest = {
-        type: "GetMarketSnapshot",
-        asset_id: tokenId
-      };
-      polymarketWs.send(JSON.stringify(snapshotRequest));
-      
-      console.log(`Sent subscription and snapshot request for token: ${tokenId}`);
-      
-      // Set up heartbeat to keep connection alive
-      heartbeatInterval = setInterval(() => {
-        if (polymarketWs.readyState === WebSocket.OPEN) {
-          polymarketWs.send(JSON.stringify({ type: "PING" }));
-        }
-      }, 30000);
-    });
-    
-    polymarketWs.on('message', (data) => {
-      const message = data.toString();
-      if (message === "PONG") return;
+    // Helper functions
+    function connectToPolymarket() {
+      if (isClosing) return;
       
       try {
-        const events = JSON.parse(message);
-        if (!Array.isArray(events) || events.length === 0) return;
+        console.log(`Connecting to Polymarket WebSocket (attempt ${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS + 1})`);
         
-        let updatedOrderbook = false;
+        // Close existing connection if any
+        if (polymarketWs && polymarketWs.readyState !== WebSocket.CLOSED) {
+          try {
+            polymarketWs.close();
+          } catch (e) {
+            console.error("Error closing existing WebSocket connection:", e);
+          }
+        }
         
-        events.forEach(event => {
-          if (event.event_type === "book") {
-            // Process orderbook snapshot
-            handleOrderbookSnapshot(event);
-            initialSnapshotReceived = true;
-            updatedOrderbook = true;
-            console.log("Received orderbook snapshot");
-          } else if (event.event_type === "price_change") {
-            handleLevelUpdate(event);
-            updatedOrderbook = true;
+        // Create new connection
+        polymarketWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market", {
+          rejectUnauthorized: false,
+          perMessageDeflate: false
+        });
+        
+        // Set up connection timeout
+        clearTimeout(connectionTimeout);
+        connectionTimeout = setTimeout(() => {
+          if (!initialSnapshotReceived) {
+            console.log("Connection timeout reached");
+            clientSocket.send(JSON.stringify({
+              type: "error",
+              message: "Connection to Polymarket timed out",
+              timestamp: new Date().toISOString()
+            }));
+            
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+              scheduleReconnect();
+            } else {
+              clientSocket.send(JSON.stringify({
+                type: "error",
+                message: "Max reconnection attempts reached",
+                timestamp: new Date().toISOString()
+              }));
+              attemptToCloseConnections("Connection timeout and max reconnects reached");
+            }
+          }
+        }, CONNECT_TIMEOUT_SECONDS * 1000);
+        
+        polymarketWs.on('open', () => {
+          console.log('Connected to Polymarket WebSocket');
+          reconnectAttempts = 0; // Reset on successful connection
+          
+          // Subscribe to market data
+          const subscription = {
+            type: "Market",
+            assets_ids: [tokenId]
+          };
+          polymarketWs.send(JSON.stringify(subscription));
+          
+          // Request initial snapshot
+          const snapshotRequest = {
+            type: "GetMarketSnapshot",
+            asset_id: tokenId
+          };
+          polymarketWs.send(JSON.stringify(snapshotRequest));
+          
+          console.log(`Sent subscription and snapshot request for token: ${tokenId}`);
+          
+          // Set up heartbeat to keep connection alive
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = setInterval(() => {
+            if (polymarketWs.readyState === WebSocket.OPEN) {
+              polymarketWs.send(JSON.stringify({ type: "PING" }));
+            }
+          }, 30000);
+          
+          // Notify client
+          clientSocket.send(JSON.stringify({
+            type: "connected",
+            message: "Connected to Polymarket",
+            timestamp: new Date().toISOString()
+          }));
+        });
+        
+        polymarketWs.on('message', (data) => {
+          const message = data.toString();
+          if (message === "PONG") return;
+          
+          try {
+            const events = JSON.parse(message);
+            if (!Array.isArray(events) || events.length === 0) return;
+            
+            let updatedOrderbook = false;
+            
+            events.forEach(event => {
+              if (event.event_type === "book") {
+                // Process orderbook snapshot
+                handleOrderbookSnapshot(event);
+                initialSnapshotReceived = true;
+                updatedOrderbook = true;
+                console.log("Received orderbook snapshot");
+              } else if (event.event_type === "price_change") {
+                handleLevelUpdate(event);
+                updatedOrderbook = true;
+              }
+            });
+            
+            if (updatedOrderbook) {
+              // Send updated orderbook to client
+              clientSocket.send(JSON.stringify({
+                type: "orderbook_update",
+                data: orderbook,
+                timestamp: new Date().toISOString()
+              }));
+            }
+          } catch (error) {
+            console.error('Error processing message:', error);
           }
         });
         
-        if (updatedOrderbook) {
-          // Send updated orderbook to client
+        polymarketWs.on('error', (error) => {
+          console.error('Polymarket WebSocket Error:', error);
           clientSocket.send(JSON.stringify({
-            type: "orderbook_update",
-            data: orderbook,
+            type: "error",
+            message: `Polymarket connection error: ${error.message}`,
             timestamp: new Date().toISOString()
           }));
+          
+          if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            scheduleReconnect();
+          }
+        });
+        
+        polymarketWs.on('close', (code, reason) => {
+          console.log(`Polymarket WebSocket closed: code=${code}, reason=${reason || "No reason provided"}`);
+          
+          clearInterval(heartbeatInterval);
+          
+          if (!isClosing && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+            scheduleReconnect();
+          } else if (!isClosing) {
+            clientSocket.send(JSON.stringify({
+              type: "disconnected",
+              message: "Max reconnection attempts reached",
+              timestamp: new Date().toISOString()
+            }));
+            
+            // Try to close client connection if it's still open
+            attemptToCloseConnections("Max reconnection attempts reached");
+          }
+        });
+      } catch (err) {
+        console.error("Error establishing Polymarket connection:", err);
+        
+        clientSocket.send(JSON.stringify({
+          type: "error",
+          message: `Failed to connect: ${err.message}`,
+          timestamp: new Date().toISOString()
+        }));
+        
+        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+          scheduleReconnect();
+        } else {
+          attemptToCloseConnections("Error establishing connection and max reconnects reached");
         }
-      } catch (error) {
-        console.error('Error processing message:', error);
       }
-    });
+    }
     
-    polymarketWs.on('error', (error) => {
-      console.error('Polymarket WebSocket Error:', error);
+    function scheduleReconnect() {
+      clearTimeout(reconnectTimeout);
+      
+      reconnectAttempts++;
+      const delay = RECONNECT_INTERVAL_SECONDS * 1000;
+      
+      console.log(`Scheduling reconnection in ${RECONNECT_INTERVAL_SECONDS} seconds... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+      
       clientSocket.send(JSON.stringify({
-        type: "error",
-        message: `Polymarket connection error: ${error.message}`,
+        type: "reconnecting",
+        message: `Reconnecting in ${RECONNECT_INTERVAL_SECONDS} seconds (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
         timestamp: new Date().toISOString()
       }));
-    });
+      
+      reconnectTimeout = setTimeout(() => {
+        if (!isClosing) {
+          connectToPolymarket();
+        }
+      }, delay);
+    }
     
-    polymarketWs.on('close', (code, reason) => {
-      console.log(`Polymarket WebSocket closed: code=${code}, reason=${reason || "No reason provided"}`);
+    function attemptToCloseConnections(reason) {
+      isClosing = true;
+      clearTimeout(connectionTimeout);
+      clearTimeout(reconnectTimeout);
       clearInterval(heartbeatInterval);
       
-      clientSocket.send(JSON.stringify({
-        type: "disconnected",
-        message: `Polymarket connection closed: ${reason || "Connection closed"}`,
-        code: code,
-        timestamp: new Date().toISOString()
-      }));
-      
-      // Try to close client connection if it's still open
-      if (clientSocket.readyState === WebSocket.OPEN) {
-        clientSocket.close(1011, "Polymarket connection closed");
+      // Close Polymarket connection
+      if (polymarketWs && polymarketWs.readyState !== WebSocket.CLOSED) {
+        try {
+          polymarketWs.close();
+        } catch (e) {
+          console.error("Error closing Polymarket connection:", e);
+        }
       }
-    });
+      
+      // Close client connection
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        try {
+          clientSocket.close(1011, reason);
+        } catch (e) {
+          console.error("Error closing client connection:", e);
+        }
+      }
+    }
     
     // Helper functions for orderbook processing
     function handleOrderbookSnapshot(book) {
@@ -270,6 +349,48 @@ serve(async (req) => {
       orderbook.timestamp = new Date().toISOString();
     }
     
+    // Handle client WebSocket events
+    clientSocket.onopen = () => {
+      console.log("Client connection opened");
+      connectToPolymarket();
+    };
+    
+    clientSocket.onclose = (event) => {
+      console.log(`Client connection closed: code=${event.code}, reason=${event.reason || "No reason provided"}`);
+      isClosing = true;
+      
+      clearInterval(heartbeatInterval);
+      clearTimeout(connectionTimeout);
+      clearTimeout(reconnectTimeout);
+      
+      // Close Polymarket connection when client disconnects
+      if (polymarketWs && polymarketWs.readyState !== WebSocket.CLOSED) {
+        try {
+          polymarketWs.close();
+        } catch (e) {
+          console.error("Error closing Polymarket connection on client disconnect:", e);
+        }
+      }
+    };
+    
+    clientSocket.onerror = (event) => {
+      console.error("Client WebSocket error:", event);
+      isClosing = true;
+      
+      clearInterval(heartbeatInterval);
+      clearTimeout(connectionTimeout);
+      clearTimeout(reconnectTimeout);
+      
+      // Close Polymarket connection on client error
+      if (polymarketWs && polymarketWs.readyState !== WebSocket.CLOSED) {
+        try {
+          polymarketWs.close();
+        } catch (e) {
+          console.error("Error closing Polymarket connection on client error:", e);
+        }
+      }
+    };
+    
     // Return the WebSocket response
     const headers = new Headers(response.headers);
     headers.set('Access-Control-Allow-Origin', '*');
@@ -293,3 +414,4 @@ serve(async (req) => {
     });
   }
 });
+

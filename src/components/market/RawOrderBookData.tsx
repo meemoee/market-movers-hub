@@ -25,10 +25,12 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
+  const [reconnecting, setReconnecting] = useState<boolean>(false);
+  const [reconnectInfo, setReconnectInfo] = useState<string | null>(null);
+  
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
-  const reconnectAttemptsRef = useRef<number>(0);
-  const maxReconnectAttempts = 5;
+  const manualReconnectRef = useRef<boolean>(false);
   
   // Update parent component with order book data
   useEffect(() => {
@@ -53,7 +55,6 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
         console.error("Initial data fetch failed:", error);
         setStatus("error");
         setError(error.message);
-        scheduleReconnect();
         return;
       }
       
@@ -74,21 +75,32 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
       console.error("Error fetching order book data:", err);
       setStatus("error");
       setError(`Connection failed: ${(err as Error).message}`);
-      scheduleReconnect();
     }
   };
 
   // Connect to WebSocket
   const connectWebSocket = () => {
-    if (!clobTokenId || isClosing || wsRef.current) return;
+    if (!clobTokenId || isClosing) return;
+    
+    // Clear any existing reconnection timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
     
     try {
       setStatus("connecting");
+      setReconnecting(false);
+      setReconnectInfo(null);
       
       // Close any existing connection
       if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+        try {
+          wsRef.current.close();
+          wsRef.current = null;
+        } catch (err) {
+          console.error("Error closing existing WebSocket:", err);
+        }
       }
       
       const projectId = 'lfmkoismabbhujycnqpn';
@@ -98,26 +110,56 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
       wsRef.current = new WebSocket(wsUrl);
       
       wsRef.current.onopen = () => {
-        console.log('WebSocket connection established');
-        setStatus("connected");
-        setError(null);
-        reconnectAttemptsRef.current = 0; // Reset reconnect counter on successful connection
+        console.log('WebSocket connection opened to Edge Function');
+        // Status will be updated when the "connected" message is received from the server
       };
       
       wsRef.current.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
           
-          if (message.type === 'orderbook_update') {
-            setOrderBookData(message.data);
-            setLastUpdateTime(new Date().toLocaleTimeString());
-          } else if (message.type === 'error') {
-            console.error('WebSocket error message:', message.message);
-            setError(message.message);
-          } else if (message.type === 'disconnected') {
-            setStatus("disconnected");
-            setError(message.message);
-            scheduleReconnect();
+          switch (message.type) {
+            case 'orderbook_update':
+              setOrderBookData(message.data);
+              setLastUpdateTime(new Date().toLocaleTimeString());
+              setStatus("connected");
+              setError(null);
+              setReconnecting(false);
+              setReconnectInfo(null);
+              break;
+              
+            case 'connected':
+              console.log('Connected to Polymarket through Edge Function');
+              setStatus("connected");
+              setError(null);
+              setReconnecting(false);
+              setReconnectInfo(null);
+              break;
+              
+            case 'reconnecting':
+              console.log('Reconnecting to Polymarket:', message.message);
+              setStatus("reconnecting");
+              setReconnecting(true);
+              setReconnectInfo(message.message);
+              break;
+              
+            case 'error':
+              console.error('WebSocket error message:', message.message);
+              setError(message.message);
+              
+              // Only change status to error if we're not reconnecting
+              if (!message.message.includes('Reconnecting')) {
+                setStatus("error");
+              }
+              break;
+              
+            case 'disconnected':
+              setStatus("disconnected");
+              setError(message.message);
+              break;
+              
+            default:
+              console.log('Unknown message type:', message.type);
           }
         } catch (err) {
           console.error('Error parsing WebSocket message:', err);
@@ -128,73 +170,42 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
         console.error('WebSocket error:', event);
         setStatus("error");
         setError('WebSocket connection error');
+        
+        // If this is a manual reconnect attempt and it failed, try the REST API
+        if (manualReconnectRef.current) {
+          manualReconnectRef.current = false;
+          fetchInitialOrderBookData();
+        }
       };
       
       wsRef.current.onclose = (event) => {
         console.log(`WebSocket closed: code=${event.code}, reason=${event.reason || 'No reason provided'}`);
         
-        if (status !== "disconnected") {
+        if (status !== "disconnected" && !isClosing) {
           setStatus("disconnected");
         }
         
         wsRef.current = null;
-        
-        if (!isClosing) {
-          scheduleReconnect();
-        }
       };
     } catch (err) {
       console.error('Error establishing WebSocket connection:', err);
       setStatus("error");
       setError(`Failed to connect: ${(err as Error).message}`);
       wsRef.current = null;
-      scheduleReconnect();
-    }
-  };
-  
-  // Schedule WebSocket reconnection with exponential backoff
-  const scheduleReconnect = () => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    
-    if (reconnectAttemptsRef.current >= maxReconnectAttempts) {
-      console.log(`Max reconnect attempts (${maxReconnectAttempts}) reached, falling back to REST API`);
-      fetchInitialOrderBookData();
-      return;
-    }
-    
-    // Exponential backoff with max of 10 seconds
-    const backoff = Math.min(1000 * Math.pow(1.5, reconnectAttemptsRef.current), 10000);
-    reconnectAttemptsRef.current++;
-    
-    console.log(`Scheduling reconnection in ${backoff/1000} seconds... (attempt ${reconnectAttemptsRef.current}/${maxReconnectAttempts})`);
-    
-    reconnectTimeoutRef.current = window.setTimeout(() => {
-      if (!isClosing) {
-        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-          console.log('Attempting WebSocket reconnection...');
-          connectWebSocket();
-        } else {
-          console.log('Falling back to REST API after max reconnect attempts');
-          fetchInitialOrderBookData();
-        }
+      
+      // If this is a manual reconnect attempt and it failed, try the REST API
+      if (manualReconnectRef.current) {
+        manualReconnectRef.current = false;
+        fetchInitialOrderBookData();
       }
-    }, backoff);
+    }
   };
   
   // Initialize connection
   useEffect(() => {
     if (isClosing || !clobTokenId) return;
     
-    // Clear previous reconnect timeout if any
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    
-    // First try WebSocket connection
+    // Try WebSocket connection first
     connectWebSocket();
     
     // Cleanup function
@@ -215,11 +226,29 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
   
   // Detect window focus changes to reconnect if needed
   useEventListener('focus', () => {
-    if (status === "disconnected" && !isClosing && clobTokenId && !wsRef.current) {
+    if ((status === "disconnected" || status === "error") && !isClosing && clobTokenId && !wsRef.current) {
       console.log('Window focused, attempting to reconnect WebSocket');
       connectWebSocket();
     }
   });
+
+  // Handle manual refresh
+  const handleManualRefresh = async () => {
+    if (!clobTokenId) return;
+    
+    manualReconnectRef.current = true;
+    
+    // Try to reconnect via WebSocket
+    connectWebSocket();
+    
+    // If we still don't have data after a short delay, fall back to REST API
+    setTimeout(() => {
+      if (status !== "connected" && manualReconnectRef.current) {
+        manualReconnectRef.current = false;
+        fetchInitialOrderBookData();
+      }
+    }, 3000);
+  };
 
   // Format price to a readable string
   const formatPrice = (price: string | number) => {
@@ -234,32 +263,12 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
     });
   };
 
-  // Handle manual refresh
-  const handleManualRefresh = async () => {
-    if (!clobTokenId) return;
-    
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      console.log('WebSocket connection already active, no need to refresh');
-      return;
-    }
-    
-    // Try to reconnect WebSocket first
-    connectWebSocket();
-    
-    // If still not connected after a short delay, fall back to REST API
-    setTimeout(() => {
-      if (status !== "connected") {
-        fetchInitialOrderBookData();
-      }
-    }, 1000);
-  };
-
   // Render loading state
-  if (status === "connecting" && !orderBookData) {
+  if ((status === "connecting" || status === "reconnecting") && !orderBookData) {
     return (
       <div className="flex items-center justify-center p-4">
         <Loader2 className="w-6 h-6 animate-spin mr-2" />
-        <span>Connecting to order book stream...</span>
+        <span>{status === "reconnecting" ? "Reconnecting to order book..." : "Connecting to order book stream..."}</span>
       </div>
     );
   }
@@ -273,16 +282,22 @@ export function RawOrderBookData({ clobTokenId, isClosing, onOrderBookData }: Ra
             <div className="flex items-center">
               {status === "connected" ? (
                 <Wifi className="h-3 w-3 mr-1 text-green-500" />
+              ) : status === "reconnecting" ? (
+                <Loader2 className="h-3 w-3 mr-1 text-yellow-500 animate-spin" />
               ) : (
                 <WifiOff className="h-3 w-3 mr-1 text-red-500" />
               )}
               <span className={
                 status === "connected" ? "text-green-500" :
                 status === "connecting" ? "text-yellow-500" :
+                status === "reconnecting" ? "text-yellow-500" :
                 status === "error" ? "text-red-500" :
                 "text-muted-foreground"
               }>{status}</span>
-              {error && <span className="text-red-500 ml-2 text-[10px]">Error: {error}</span>}
+              {error && !reconnecting && <span className="text-red-500 ml-2 text-[10px]">Error: {error}</span>}
+              {reconnecting && reconnectInfo && (
+                <span className="text-yellow-500 ml-2 text-[10px]">{reconnectInfo}</span>
+              )}
             </div>
             
             <div className="text-xs text-muted-foreground">
