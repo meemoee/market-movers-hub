@@ -105,6 +105,12 @@ export function TransactionDialog({
     }, 100);
   };
 
+  // Get the correct WebSocket URL for display
+  const getWebSocketUrl = (tokenId?: string) => {
+    if (!tokenId) return "";
+    return `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${tokenId}`;
+  };
+
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
@@ -144,7 +150,7 @@ export function TransactionDialog({
                 <div>{userBalance !== null ? `$${userBalance}` : 'Loading...'}</div>
                 <div>WebSocket URL:</div>
                 <div className="font-mono break-all text-[10px]">
-                  wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId={selectedMarket?.clobTokenId}
+                  {getWebSocketUrl(selectedMarket?.clobTokenId)}
                 </div>
               </div>
             </div>

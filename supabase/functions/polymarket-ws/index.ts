@@ -1,8 +1,7 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("polymarket-ws function loaded - v5.0.0 (simple debug version with auth disabled)");
+console.log("polymarket-ws function loaded - v5.0.1 (debug version with enhanced error reporting)");
 
 serve(async (req) => {
   // Log request details
@@ -33,6 +32,8 @@ serve(async (req) => {
         method: req.method,
         headers: Object.fromEntries([...req.headers.entries()]),
         asset_id: assetId,
+        current_time: new Date().toISOString(),
+        upgrade_header: upgradeHeader
       },
       timestamp: new Date().toISOString()
     }), {
@@ -59,6 +60,18 @@ serve(async (req) => {
         type: "status",
         status: "connected",
         message: "Client WebSocket connected",
+        timestamp: new Date().toISOString()
+      }));
+      
+      // Send initial debug information
+      clientSocket.send(JSON.stringify({
+        type: "debug",
+        message: "Connection established successfully",
+        request_details: {
+          url: req.url,
+          headers: Object.fromEntries([...req.headers.entries()]),
+          asset_id: assetId
+        },
         timestamp: new Date().toISOString()
       }));
       
@@ -112,6 +125,13 @@ serve(async (req) => {
       connectionAttempts++;
       console.log(`Connecting to Polymarket WebSocket (attempt ${connectionAttempts})`);
       
+      clientSocket.send(JSON.stringify({
+        type: "status",
+        status: "connecting_to_polymarket",
+        message: `Connecting to Polymarket (attempt ${connectionAttempts})`,
+        timestamp: new Date().toISOString()
+      }));
+      
       try {
         // Connect to Polymarket
         polySocket = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
@@ -135,6 +155,12 @@ serve(async (req) => {
             
             console.log(`Sending subscription: ${subscriptionMsg}`);
             polySocket?.send(subscriptionMsg);
+            clientSocket.send(JSON.stringify({
+              type: "debug",
+              message: "Sent subscription to Polymarket",
+              data: subscriptionMsg,
+              timestamp: new Date().toISOString()
+            }));
             
             // Also request initial snapshot
             const snapshotMsg = JSON.stringify({
@@ -144,6 +170,12 @@ serve(async (req) => {
             
             console.log(`Sending snapshot request: ${snapshotMsg}`);
             polySocket?.send(snapshotMsg);
+            clientSocket.send(JSON.stringify({
+              type: "debug",
+              message: "Sent snapshot request to Polymarket",
+              data: snapshotMsg,
+              timestamp: new Date().toISOString()
+            }));
           }
           
           // Setup keep-alive ping
@@ -151,6 +183,11 @@ serve(async (req) => {
             if (polySocket && polySocket.readyState === WebSocket.OPEN) {
               polySocket.send("PING");
               console.log("Sent PING to Polymarket");
+              clientSocket.send(JSON.stringify({
+                type: "debug",
+                message: "Sent ping to Polymarket",
+                timestamp: new Date().toISOString()
+              }));
             }
           }, 30000);
         };
@@ -240,6 +277,10 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       status: "error", 
       message: `WebSocket upgrade failed: ${err.message}`,
+      error_details: {
+        name: err.name,
+        stack: err.stack
+      },
       timestamp: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

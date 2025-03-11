@@ -13,10 +13,10 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   const [rawData, setRawData] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const mountedRef = useRef<boolean>(true);
-  
-  // Get WebSocket URL
+
+  // Get the correct WebSocket URL
   const getWebSocketUrl = (tokenId: string) => {
-    const supabaseUrl = "https://lfmkoismabbhujycnqpn.supabase.co";
+    // Use the Edge Function URL with the correct format
     return `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${tokenId}`;
   };
 
@@ -48,15 +48,15 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     setError(null);
     setRawData([]);
 
-    // Instead of testing HTTP, just log and try WebSocket directly
+    // Log the WebSocket connection attempt
     console.log("[RawOrderBookData] Initializing WebSocket connection");
     
-    // Try WebSocket connection
+    // Try WebSocket connection directly
     const wsUrl = getWebSocketUrl(clobTokenId);
     console.log("[RawOrderBookData] WebSocket URL:", wsUrl);
     
     try {
-      // Create WebSocket
+      // Create WebSocket with the correct URL format
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       console.log("[RawOrderBookData] WebSocket created");
@@ -64,7 +64,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       // Log all raw data
       setRawData(prev => [...prev, `Attempting to connect to: ${wsUrl}`]);
 
-      // Set timeout
+      // Set timeout for connection
       const timeout = setTimeout(() => {
         if (wsRef.current?.readyState !== WebSocket.OPEN) {
           console.error("[RawOrderBookData] Connection timeout");
@@ -120,7 +120,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             }
           } catch (err) {
             console.log("[RawOrderBookData] Couldn't parse message as JSON:", err);
-            setRawData(prev => [...prev, `Parse error: ${err.message}`]);
+            setRawData(prev => [...prev, `Parse error: ${(err as Error).message}`]);
           }
         }
       };
@@ -149,9 +149,9 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       };
     } catch (err) {
       console.error("[RawOrderBookData] Error creating WebSocket:", err);
-      setError(`Failed to create WebSocket: ${err.message}`);
+      setError(`Failed to create WebSocket: ${(err as Error).message}`);
       setStatus("error");
-      setRawData(prev => [...prev, `❌ Error creating WebSocket: ${err.message}`]);
+      setRawData(prev => [...prev, `❌ Error creating WebSocket: ${(err as Error).message}`]);
     }
     
     // Cleanup
@@ -232,9 +232,9 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                     };
                   } catch (err) {
                     console.error("[RawOrderBookData] Error creating WebSocket:", err);
-                    setError(`Failed to create WebSocket: ${err.message}`);
+                    setError(`Failed to create WebSocket: ${(err as Error).message}`);
                     setStatus("error");
-                    setRawData(prev => [...prev, `❌ Error creating WebSocket: ${err.message}`]);
+                    setRawData(prev => [...prev, `❌ Error creating WebSocket: ${(err as Error).message}`]);
                   }
                 }
               }}
