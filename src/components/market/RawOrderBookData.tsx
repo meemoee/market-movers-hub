@@ -18,6 +18,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   const wsRef = useRef<WebSocket | null>(null);
   const mountedRef = useRef<boolean>(true);
   const reconnectAttemptRef = useRef<number>(0);
+  const timeoutRef = useRef<number | null>(null);
   
   // Basic HTTP test to check Edge Function availability
   useEffect(() => {
@@ -64,117 +65,146 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
     };
   }, []);
 
-  // Connect to WebSocket with simplified approach
+  // Connect to WebSocket
   useEffect(() => {
     // Skip if closing or no tokenId
     if (isClosing || !clobTokenId) {
       return;
     }
 
-    // Clear existing connection
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    // Reset state
-    setStatus("connecting");
-    setError(null);
-    reconnectAttemptRef.current += 1;
-    
-    // Simplified WebSocket URL with auth
-    const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}&apikey=${SUPABASE_ANON_KEY}`;
-    setRawData(prev => [...prev, `Connecting to WebSocket (attempt #${reconnectAttemptRef.current})...`]);
-    
-    // Set a connection timeout
-    const connectionTimeoutId = setTimeout(() => {
-      if (status === "connecting") {
-        setRawData(prev => [...prev, `Connection timeout - WebSocket took too long to connect`]);
-        setError("Connection timeout");
-        setStatus("error");
-        
-        // Force close if needed
-        if (wsRef.current) {
-          wsRef.current.close();
-        }
+    // Function to establish WebSocket connection
+    const connectWebSocket = () => {
+      // Clear existing connection
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
-    }, 10000); // 10 second timeout
-    
-    try {
-      // Create WebSocket with explicit protocols array
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+
+      // Reset state
+      setStatus("connecting");
+      setError(null);
+      reconnectAttemptRef.current += 1;
       
-      // Connection opened
-      ws.onopen = () => {
-        if (mountedRef.current) {
-          clearTimeout(connectionTimeoutId);
-          setStatus("connected");
-          setError(null);
-          setRawData(prev => [...prev, `✅ WebSocket connected successfully`]);
-          
-          // Send a simple message to test the connection
-          try {
-            const pingData = JSON.stringify({ 
-              type: "ping",
-              timestamp: new Date().toISOString()
-            });
-            ws.send(pingData);
-            setRawData(prev => [...prev, `SENT: ${pingData}`]);
-          } catch (err) {
-            setRawData(prev => [...prev, `❌ Error sending message: ${(err as Error).message}`]);
+      // Use the full path to the v1 functions endpoint
+      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${clobTokenId}&apikey=${SUPABASE_ANON_KEY}`;
+      setRawData(prev => [...prev, `Connecting to WebSocket (attempt #${reconnectAttemptRef.current}): ${wsUrl}`]);
+      
+      try {
+        // Create WebSocket with explicit options
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        
+        // Set a connection timeout
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+        
+        timeoutRef.current = window.setTimeout(() => {
+          if (status === "connecting" && ws.readyState !== WebSocket.OPEN) {
+            setRawData(prev => [...prev, `Connection timeout after 15 seconds`]);
+            setError("Connection timeout - please retry");
+            ws.close();
           }
-        }
-      };
+        }, 15000);
+        
+        // Connection opened
+        ws.onopen = () => {
+          if (mountedRef.current) {
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
+            
+            setStatus("connected");
+            setError(null);
+            setRawData(prev => [...prev, `✅ WebSocket connected successfully`]);
+            
+            // Send a simple message to test the connection
+            try {
+              const pingData = JSON.stringify({ 
+                type: "ping",
+                assetId: clobTokenId,
+                timestamp: new Date().toISOString()
+              });
+              ws.send(pingData);
+              setRawData(prev => [...prev, `SENT: ${pingData}`]);
+            } catch (err) {
+              setRawData(prev => [...prev, `❌ Error sending message: ${(err as Error).message}`]);
+            }
+          }
+        };
 
-      // Handle messages
-      ws.onmessage = (event) => {
-        if (mountedRef.current) {
-          setRawData(prev => {
-            const newData = [...prev, `RECEIVED: ${event.data}`];
-            return newData.length > 50 ? newData.slice(-50) : newData;
-          });
-        }
-      };
+        // Handle messages
+        ws.onmessage = (event) => {
+          if (mountedRef.current) {
+            setRawData(prev => {
+              const newData = [...prev, `RECEIVED: ${event.data}`];
+              return newData.length > 50 ? newData.slice(-50) : newData;
+            });
+          }
+        };
 
-      // Handle errors
-      ws.onerror = (event) => {
-        clearTimeout(connectionTimeoutId);
-        if (mountedRef.current) {
-          setStatus("error");
-          setError("WebSocket error occurred");
-          setRawData(prev => [...prev, `❌ WebSocket error occurred`]);
-          console.error('WebSocket error:', event);
-        }
-      };
+        // Handle errors
+        ws.onerror = (event) => {
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
+          
+          if (mountedRef.current) {
+            setStatus("error");
+            setError("WebSocket error occurred");
+            setRawData(prev => [...prev, `❌ WebSocket error occurred`]);
+            console.error('WebSocket error:', event);
+          }
+        };
 
-      // Handle close
-      ws.onclose = (event) => {
-        clearTimeout(connectionTimeoutId);
-        if (mountedRef.current) {
-          setStatus("disconnected");
-          setRawData(prev => [...prev, `WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`]);
+        // Handle close
+        ws.onclose = (event) => {
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
+          
+          if (mountedRef.current) {
+            setStatus("disconnected");
+            setRawData(prev => [...prev, `WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`]);
+          }
+        };
+      } catch (err) {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
         }
-      };
-    } catch (err) {
-      clearTimeout(connectionTimeoutId);
-      setError(`Failed to create WebSocket: ${(err as Error).message}`);
-      setStatus("error");
-      setRawData(prev => [...prev, `❌ Error creating WebSocket: ${(err as Error).message}`]);
-    }
+        
+        setError(`Failed to create WebSocket: ${(err as Error).message}`);
+        setStatus("error");
+        setRawData(prev => [...prev, `❌ Error creating WebSocket: ${(err as Error).message}`]);
+      }
+    };
+    
+    // Connect to WebSocket
+    connectWebSocket();
     
     // Cleanup
     return () => {
-      clearTimeout(connectionTimeoutId);
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+      
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
       }
     };
-  }, [clobTokenId, isClosing]);
+  }, [clobTokenId, isClosing, status]);
 
   // Render loading state
   if (status === "connecting" && rawData.length === 0) {
@@ -199,26 +229,27 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           }>{status}</span>
           {error && <span className="text-red-500 ml-2">Error: {error}</span>}
           
-          {status === "error" && (
+          {(status === "error" || status === "disconnected") && (
             <button 
               onClick={() => {
                 if (clobTokenId) {
                   setStatus("connecting");
                   setError(null);
+                  reconnectAttemptRef.current = 0;
                   
-                  // Simple retry - just reset the connection
+                  // Close any existing connection
                   if (wsRef.current) {
                     wsRef.current.close();
                     wsRef.current = null;
                   }
                   
                   // Add a timestamp to force a new connection attempt
-                  setRawData(prev => [...prev, `Retry attempt at: ${new Date().toISOString()}`]);
+                  setRawData(prev => [...prev, `Manual reconnect at: ${new Date().toISOString()}`]);
                 }
               }}
               className="px-3 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-xs ml-2"
             >
-              Retry
+              Reconnect
             </button>
           )}
         </div>

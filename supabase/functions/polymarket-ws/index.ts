@@ -7,10 +7,10 @@ const enhancedCorsHeaders = {
   'Access-Control-Allow-Private-Network': 'true',
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, Sec-WebSocket-Protocol'
 };
 
-console.log("Polymarket WebSocket Function v1.7 - Enhanced connection stability");
+console.log("Polymarket WebSocket Function v1.8 - Fixed upgrade process");
 
 serve(async (req) => {
   console.log(`Request received: ${req.method} ${req.url}`);
@@ -27,11 +27,7 @@ serve(async (req) => {
   // Get URL parameters
   const url = new URL(req.url);
   const assetId = url.searchParams.get('assetId');
-  const anonKey = url.searchParams.get('apikey') || req.headers.get('apikey');
-  console.log(`URL parameters: assetId=${assetId}, auth present: ${Boolean(anonKey)}`);
-  
-  // For now, we'll make authentication optional to ensure maximum compatibility
-  // This helps isolate whether the issue is auth-related or connection-related
+  console.log(`URL parameters: assetId=${assetId}`);
   
   // Check for test info in x-client-info header
   const clientInfo = req.headers.get('x-client-info') || '';
@@ -67,24 +63,16 @@ serve(async (req) => {
   }
   
   try {
-    console.log('Attempting WebSocket upgrade');
-    // Upgrade to WebSocket with minimal configuration
+    console.log('Attempting WebSocket upgrade with assetId:', assetId);
+    
+    // Simplified WebSocket upgrade process
     const { socket, response } = Deno.upgradeWebSocket(req);
     
-    // Add CORS headers to WebSocket response
-    const responseHeaders = new Headers(response.headers);
-    Object.entries(enhancedCorsHeaders).forEach(([key, value]) => {
-      responseHeaders.set(key, value);
-    });
-    
-    console.log('WebSocket upgrade successful, setting up event handlers');
-    
-    // Set up simplified event handlers for maximum compatibility
+    // Set up simplified event handlers
     socket.onopen = () => {
       console.log("Client WebSocket connection established");
       socket.send(JSON.stringify({
-        type: "status",
-        status: "connected",
+        type: "connected",
         message: `WebSocket connection established for asset ID: ${assetId || 'not specified'}`,
         timestamp: new Date().toISOString()
       }));
@@ -92,7 +80,7 @@ serve(async (req) => {
     
     socket.onmessage = (event) => {
       console.log(`Message received: ${event.data}`);
-      // Simple echo for now
+      // Echo for now
       socket.send(JSON.stringify({
         type: "echo",
         received: event.data,
@@ -108,11 +96,16 @@ serve(async (req) => {
       console.log(`WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`);
     };
     
-    // Return the response with enhanced headers
+    // Apply CORS headers to the upgrade response
+    const headers = new Headers(response.headers);
+    Object.entries(enhancedCorsHeaders).forEach(([key, value]) => {
+      headers.set(key, value);
+    });
+    
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
-      headers: responseHeaders
+      headers
     });
   } catch (err) {
     console.error(`WebSocket upgrade error: ${err.message}`);
