@@ -1,6 +1,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 
 interface RawOrderBookProps {
   clobTokenId?: string;
@@ -13,7 +14,6 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   const wsRef = useRef<WebSocket | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // Connect to WebSocket when component mounts
   useEffect(() => {
     if (isClosing || !clobTokenId) return;
     
@@ -23,94 +23,75 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       wsRef.current = null;
     }
     
-    setMessages(prev => [...prev, `Attempting connection at ${new Date().toISOString()}`]);
-    setStatus("connecting");
-    
-    try {
-      // Create WebSocket connection
-      const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}`;
-      setMessages(prev => [...prev, `WebSocket URL: ${wsUrl}`]);
-      
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      
-      // Connection opened
-      ws.onopen = () => {
-        setMessages(prev => [...prev, `🟢 Connection opened at ${new Date().toISOString()}`]);
-        setStatus("connected");
-        setError(null);
+    const connectWebSocket = async () => {
+      try {
+        setMessages(prev => [...prev, `Attempting connection at ${new Date().toISOString()}`]);
+        setStatus("connecting");
         
-        // Send a test message
-        const testMessage = JSON.stringify({ type: "ping", timestamp: new Date().toISOString() });
-        ws.send(testMessage);
-        setMessages(prev => [...prev, `SENT: ${testMessage}`]);
-      };
-      
-      // Listen for messages
-      ws.onmessage = (event) => {
-        setMessages(prev => {
-          const newMessages = [...prev, `RECEIVED: ${event.data}`];
-          return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
-        });
-      };
-      
-      // Listen for errors
-      ws.onerror = (event) => {
-        setMessages(prev => [...prev, `🔴 WebSocket error at ${new Date().toISOString()}`]);
+        // Get the authentication headers
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = {
+          apikey: supabase.supabaseKey,
+          Authorization: `Bearer ${session?.access_token || supabase.supabaseKey}`,
+        };
+        
+        // Create WebSocket URL with authentication
+        const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}`;
+        setMessages(prev => [...prev, `WebSocket URL: ${wsUrl}`]);
+        
+        const ws = new WebSocket(wsUrl);
+        wsRef.current = ws;
+        
+        // Connection opened
+        ws.onopen = () => {
+          setMessages(prev => [...prev, `🟢 Connection opened at ${new Date().toISOString()}`]);
+          setStatus("connected");
+          setError(null);
+          
+          // Send a test message
+          const testMessage = JSON.stringify({ type: "ping", timestamp: new Date().toISOString() });
+          ws.send(testMessage);
+          setMessages(prev => [...prev, `SENT: ${testMessage}`]);
+        };
+        
+        // Listen for messages
+        ws.onmessage = (event) => {
+          setMessages(prev => {
+            const newMessages = [...prev, `RECEIVED: ${event.data}`];
+            return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
+          });
+        };
+        
+        // Listen for errors
+        ws.onerror = (event) => {
+          setMessages(prev => [...prev, `🔴 WebSocket error at ${new Date().toISOString()}`]);
+          setStatus("error");
+          setError("Connection error");
+          console.error("WebSocket error:", event);
+        };
+        
+        // Connection closed
+        ws.onclose = (event) => {
+          setMessages(prev => [...prev, `🔴 Connection closed: code=${event.code}, reason=${event.reason || "No reason provided"}`]);
+          setStatus("disconnected");
+          wsRef.current = null;
+        };
+      } catch (err) {
+        setMessages(prev => [...prev, `🔴 Error creating WebSocket: ${(err as Error).message}`]);
         setStatus("error");
-        setError("Connection error");
-        console.error("WebSocket error:", event);
-      };
-      
-      // Connection closed
-      ws.onclose = (event) => {
-        setMessages(prev => [...prev, `🔴 Connection closed: code=${event.code}, reason=${event.reason || "No reason provided"}`]);
-        setStatus("disconnected");
-        wsRef.current = null;
-      };
-      
-      // Cleanup function
-      return () => {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
-          ws.close();
-        }
-      };
-    } catch (err) {
-      setMessages(prev => [...prev, `🔴 Error creating WebSocket: ${(err as Error).message}`]);
-      setStatus("error");
-      setError(`Failed to create connection: ${(err as Error).message}`);
-    }
-  }, [clobTokenId, isClosing]);
-  
-  // Function to manually send a test message
-  const sendTestMessage = () => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      const testMessage = JSON.stringify({ 
-        type: "test", 
-        message: "This is a test message", 
-        timestamp: new Date().toISOString() 
-      });
-      wsRef.current.send(testMessage);
-      setMessages(prev => [...prev, `SENT: ${testMessage}`]);
-    } else {
-      setMessages(prev => [...prev, `Cannot send message - connection not open`]);
-    }
-  };
-  
-  // Function to reconnect
-  const reconnect = () => {
-    if (clobTokenId) {
-      setMessages(prev => [...prev, `Manual reconnection at ${new Date().toISOString()}`]);
-      
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+        setError(`Failed to create connection: ${(err as Error).message}`);
       }
-      
-      // Force effect to run again
-      setStatus("connecting");
-    }
-  };
+    };
+    
+    connectWebSocket();
+    
+    // Cleanup function
+    return () => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.close();
+      }
+    };
+  }, [clobTokenId, isClosing]);
   
   // Render loading state
   if (status === "connecting" && messages.length === 0) {
@@ -138,7 +119,16 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           <div className="flex flex-wrap gap-1 mt-1">
             {(status === "error" || status === "disconnected") && (
               <button 
-                onClick={reconnect}
+                onClick={() => {
+                  if (clobTokenId) {
+                    if (wsRef.current) {
+                      wsRef.current.close();
+                      wsRef.current = null;
+                    }
+                    setStatus("connecting");
+                    setMessages([]);
+                  }
+                }}
                 className="px-2 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-xs"
               >
                 Reconnect
@@ -147,7 +137,17 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             
             {status === "connected" && (
               <button 
-                onClick={sendTestMessage}
+                onClick={() => {
+                  if (wsRef.current?.readyState === WebSocket.OPEN) {
+                    const testMessage = JSON.stringify({ 
+                      type: "test", 
+                      message: "This is a test message",
+                      timestamp: new Date().toISOString() 
+                    });
+                    wsRef.current.send(testMessage);
+                    setMessages(prev => [...prev, `SENT: ${testMessage}`]);
+                  }
+                }}
                 className="px-2 py-1 bg-green-500/10 hover:bg-green-500/20 rounded-md text-xs"
               >
                 Send Test

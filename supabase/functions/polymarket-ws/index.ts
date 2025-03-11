@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("Basic WebSocket Test v1.0.0");
+console.log("Basic WebSocket Test v1.1.0");
 
 serve(async (req) => {
   // Log all request details for debugging
@@ -21,7 +21,7 @@ serve(async (req) => {
       status: 204,
       headers: {
         ...corsHeaders,
-        'Access-Control-Allow-Headers': req.headers.get('Access-Control-Request-Headers') || '*'
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
       }
     });
   }
@@ -45,10 +45,12 @@ serve(async (req) => {
   try {
     console.log('Attempting WebSocket upgrade');
     
-    // Basic WebSocket upgrade
-    const { socket, response } = Deno.upgradeWebSocket(req);
+    // Basic WebSocket upgrade with protocol
+    const { socket, response } = Deno.upgradeWebSocket(req, {
+      protocol: "ws",
+    });
     
-    // Simple event handlers
+    // Simple event handlers with enhanced logging
     socket.onopen = () => {
       console.log("WebSocket opened");
       socket.send(JSON.stringify({
@@ -76,10 +78,11 @@ serve(async (req) => {
       console.log(`WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`);
     };
 
-    // Add CORS headers to response
+    // Add WebSocket-specific headers to response
     const headers = new Headers(response.headers);
     headers.set('Access-Control-Allow-Origin', '*');
-    headers.set('Access-Control-Allow-Headers', '*');
+    headers.set('Access-Control-Allow-Headers', 'authorization, x-client-info, apikey, content-type');
+    headers.set('Sec-WebSocket-Protocol', 'ws');
     
     return new Response(response.body, {
       status: response.status,
