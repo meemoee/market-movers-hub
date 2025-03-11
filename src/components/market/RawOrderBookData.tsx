@@ -13,17 +13,17 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 // Different WebSocket URL formats to try
 const WS_URL_FORMATS = [
-  // Standard format with API key in URL
-  (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}`,
-    
-  // Format with explicit protocol
-  (baseUrl: string, tokenId: string) => 
-    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&protocol=ws`,
-    
-  // Basic format with auth header (handled by Edge Function)
+  // Format with auth in headers (managed by the browser)
   (baseUrl: string, tokenId: string) => 
     `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}`,
+    
+  // Format with explicit protocol and auth
+  (baseUrl: string, tokenId: string) => 
+    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&protocol=websocket`,
+    
+  // Format with apikey in URL (fallback)
+  (baseUrl: string, tokenId: string) => 
+    `wss://${baseUrl}.functions.supabase.co/polymarket-ws?assetId=${tokenId}&apikey=${SUPABASE_ANON_KEY}`,
     
   // Direct HTTP fetch fallback
   (baseUrl: string, tokenId: string) => 
@@ -73,16 +73,18 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           setRawData(prev => [...prev, `❌ Test 1 exception: ${(err as Error).message}`]);
         }
         
-        // Second approach: Direct fetch with API key in URL
+        // Second approach: Direct fetch with API key in header
         try {
-          const testUrl2 = `https://${baseUrl}.functions.supabase.co/polymarket-ws?apikey=${SUPABASE_ANON_KEY}`;
-          setRawData(prev => [...prev, `🔍 TEST 2: Direct fetch with API key in URL: ${testUrl2}`]);
+          const testUrl2 = `https://${baseUrl}.functions.supabase.co/polymarket-ws`;
+          setRawData(prev => [...prev, `🔍 TEST 2: Direct fetch with API key in header: ${testUrl2}`]);
           
           const response2 = await fetch(testUrl2, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
               'x-client-info': 'test-mode',
+              'apikey': SUPABASE_ANON_KEY,
+              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
             }
           });
           
@@ -98,39 +100,12 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           setRawData(prev => [...prev, `❌ Test 2 exception: ${(err as Error).message}`]);
         }
         
-        // Third approach: Direct fetch with API key in header
+        // Third approach: Test CORS with OPTIONS
         try {
           const testUrl3 = `https://${baseUrl}.functions.supabase.co/polymarket-ws`;
-          setRawData(prev => [...prev, `🔍 TEST 3: Direct fetch with API key in header: ${testUrl3}`]);
+          setRawData(prev => [...prev, `🔍 TEST 3: OPTIONS request to test CORS: ${testUrl3}`]);
           
           const response3 = await fetch(testUrl3, {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-client-info': 'test-mode',
-              'apikey': SUPABASE_ANON_KEY,
-              'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
-            }
-          });
-          
-          if (response3.ok) {
-            const data3 = await response3.json();
-            setRawData(prev => [...prev, `✅ Test 3 succeeded: ${JSON.stringify(data3)}`]);
-          } else {
-            setRawData(prev => [...prev, `❌ Test 3 failed: ${response3.status} ${response3.statusText}`]);
-            const errorText = await response3.text();
-            setRawData(prev => [...prev, `Response: ${errorText}`]);
-          }
-        } catch (err) {
-          setRawData(prev => [...prev, `❌ Test 3 exception: ${(err as Error).message}`]);
-        }
-        
-        // Options request test
-        try {
-          const testUrl4 = `https://${baseUrl}.functions.supabase.co/polymarket-ws`;
-          setRawData(prev => [...prev, `🔍 TEST 4: OPTIONS request to test CORS: ${testUrl4}`]);
-          
-          const response4 = await fetch(testUrl4, {
             method: 'OPTIONS',
             headers: {
               'x-client-info': 'test-mode',
@@ -139,8 +114,8 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             }
           });
           
-          if (response4.ok) {
-            setRawData(prev => [...prev, `✅ Test 4 succeeded: ${response4.status} ${response4.statusText}`]);
+          if (response3.ok) {
+            setRawData(prev => [...prev, `✅ Test 3 succeeded: ${response3.status} ${response3.statusText}`]);
             
             // Log CORS headers
             const corsHeaders = [
@@ -150,14 +125,14 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             ];
             
             corsHeaders.forEach(header => {
-              const value = response4.headers.get(header);
+              const value = response3.headers.get(header);
               setRawData(prev => [...prev, `CORS Header: ${header}: ${value || 'not present'}`]);
             });
           } else {
-            setRawData(prev => [...prev, `❌ Test 4 failed: ${response4.status} ${response4.statusText}`]);
+            setRawData(prev => [...prev, `❌ Test 3 failed: ${response3.status} ${response3.statusText}`]);
           }
         } catch (err) {
-          setRawData(prev => [...prev, `❌ Test 4 exception: ${(err as Error).message}`]);
+          setRawData(prev => [...prev, `❌ Test 3 exception: ${(err as Error).message}`]);
         }
         
         setRawData(prev => [...prev, `📋 DIAGNOSTIC TESTS COMPLETED - Now attempting WebSocket connection`]);
@@ -307,12 +282,12 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       }
       
       try {
-        // Create WebSocket with detailed logging
+        // Create WebSocket with protocols explicitly specified
         const ws = new WebSocket(wsUrl, ['websocket']);
         wsRef.current = ws;
         
         // Log connection attempt
-        setRawData(prev => [...prev, `🔌 Attempting connection with format #${urlFormatIndex + 1}`]);
+        setRawData(prev => [...prev, `🔌 Attempting connection with format #${urlFormatIndex + 1}: ${wsUrl}`]);
         
         // Set connection timeout
         if (timeoutRef.current) {

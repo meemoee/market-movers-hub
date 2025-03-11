@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
+// Enhanced CORS headers specifically for WebSocket connections
 const enhancedCorsHeaders = {
   ...corsHeaders,
   'Access-Control-Allow-Origin': '*',
@@ -10,12 +11,13 @@ const enhancedCorsHeaders = {
   'Access-Control-Max-Age': '86400'
 };
 
-console.log("Polymarket WebSocket Function v2.0.1 - Using standard Deno WebSocket with enhanced security");
+console.log("Polymarket WebSocket Function v2.1.0 - Enhanced CORS and WebSocket protocol support");
 
 serve(async (req) => {
   console.log(`Request received: ${req.method} ${req.url}`);
   console.log("Headers:", JSON.stringify(Object.fromEntries([...req.headers])));
   
+  // Handle CORS preflight requests properly
   if (req.method === 'OPTIONS') {
     console.log('Handling CORS preflight request');
     return new Response(null, {
@@ -28,11 +30,12 @@ serve(async (req) => {
   const assetId = url.searchParams.get('assetId');
   console.log(`URL parameters: assetId=${assetId}`);
   
+  // Check for test mode via client info header
   const clientInfo = req.headers.get('x-client-info') || '';
-  const isTest = clientInfo.includes('test-mode');
+  const isTest = clientInfo.includes('test-mode') || url.searchParams.get('x-client-info') === 'debug';
   
   if (isTest) {
-    console.log('Test request detected via x-client-info header');
+    console.log('Test request detected via header or URL param');
     return new Response(JSON.stringify({ 
       status: "ready",
       message: "Polymarket WebSocket endpoint is active.",
@@ -45,6 +48,7 @@ serve(async (req) => {
     });
   }
   
+  // Check if this is a WebSocket upgrade request
   const upgradeHeader = req.headers.get("upgrade") || "";
   if (upgradeHeader.toLowerCase() !== "websocket") {
     console.log('Non-WebSocket request detected - returning HTTP response');
@@ -64,12 +68,14 @@ serve(async (req) => {
     
     let socket, response;
     
+    // Try with different WebSocket upgrade approaches
     try {
       console.log("Using standard WebSocket upgrade");
       ({ socket, response } = Deno.upgradeWebSocket(req));
     } catch (err) {
       console.error(`Standard upgrade failed: ${err.message}`);
       
+      // Try with explicit options if standard approach fails
       console.log("Trying WebSocket upgrade with explicit options");
       ({ socket, response } = Deno.upgradeWebSocket(req, {
         idleTimeout: 60,
@@ -95,6 +101,7 @@ serve(async (req) => {
       }
     };
     
+    // Set up heartbeat interval to keep connection alive
     const heartbeatInterval = setInterval(() => {
       try {
         if (socket.readyState === 1) {
@@ -159,6 +166,7 @@ serve(async (req) => {
       clearInterval(heartbeatInterval);
     };
     
+    // Add all CORS headers to the WebSocket response
     const headers = new Headers(response.headers);
     Object.entries(enhancedCorsHeaders).forEach(([key, value]) => {
       headers.set(key, value);
