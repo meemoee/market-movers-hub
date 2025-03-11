@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -5,9 +6,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+console.log("polymarket-ws function loaded");
+
 serve(async (req) => {
+  console.log("polymarket-ws function received request:", req.url);
+
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
+    console.log("Handling CORS preflight request");
     return new Response(null, { headers: corsHeaders });
   }
 
@@ -16,6 +22,7 @@ serve(async (req) => {
   const assetId = url.searchParams.get('assetId');
 
   if (!assetId) {
+    console.error("Missing assetId parameter");
     return new Response(JSON.stringify({ status: "error", message: "Asset ID is required" }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,

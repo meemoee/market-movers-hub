@@ -111,9 +111,21 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
-      // Fix parameter name from tokenId to assetId to match what the edge function expects
-      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}`;
+      // Build the WS URL with the correct parameter name (assetId) - ensuring it's correct
+      const wsUrl = `${window.location.protocol.replace('http', 'ws')}//${window.location.host}/api/v1/polymarket-ws?assetId=${tokenId}`;
       console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
+      
+      // Directly test if endpoint is reachable
+      fetch(`${window.location.protocol}//${window.location.host}/api/v1/polymarket-ws`, {
+        method: 'OPTIONS',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }).then(response => {
+        console.log('[LiveOrderBook] Endpoint test response:', response);
+      }).catch(err => {
+        console.error('[LiveOrderBook] Endpoint test failed:', err);
+      });
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
@@ -194,7 +206,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         console.error('[LiveOrderBook] WebSocket error:', event);
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
-          setError('WebSocket connection error');
+          setError('WebSocket connection error - please check network connectivity');
           
           // Handle reconnection in onclose since that's always called after an error
         }
@@ -232,7 +244,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       console.error('[LiveOrderBook] Error setting up WebSocket:', err);
       if (mountedRef.current && !isClosing) {
         setConnectionStatus("error");
-        setError('Failed to connect to orderbook service');
+        setError('Failed to connect to orderbook service - network error');
         
         // Schedule reconnect attempt if not at max attempts
         if (reconnectCountRef.current < MAX_RECONNECT_ATTEMPTS) {
