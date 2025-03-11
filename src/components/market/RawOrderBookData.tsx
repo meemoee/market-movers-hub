@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +17,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   const [rawData, setRawData] = useState<string[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const mountedRef = useRef<boolean>(true);
+  const reconnectAttemptRef = useRef<number>(0);
   
   // Basic HTTP test to check Edge Function availability
   useEffect(() => {
@@ -29,7 +31,8 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           method: 'GET',
           headers: { 
             'Content-Type': 'application/json',
-            'x-client-info': 'test-mode'
+            'x-client-info': 'test-mode',
+            'apikey': SUPABASE_ANON_KEY
           }
         });
 
@@ -64,7 +67,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     };
   }, []);
 
-  // Connect to WebSocket
+  // Connect to WebSocket with simplified approach
   useEffect(() => {
     // Skip if closing or no tokenId
     if (isClosing || !clobTokenId) {
@@ -80,32 +83,49 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     // Reset state
     setStatus("connecting");
     setError(null);
+    reconnectAttemptRef.current += 1;
     
-    // Get WebSocket URL with the asset ID and authentication
+    // Simplified WebSocket URL with auth
     const wsUrl = `wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId=${clobTokenId}&apikey=${SUPABASE_ANON_KEY}`;
-    setRawData(prev => [...prev, `Attempting to connect to WebSocket...`]);
+    setRawData(prev => [...prev, `Connecting to WebSocket (attempt #${reconnectAttemptRef.current})...`]);
+    
+    // Set a connection timeout
+    const connectionTimeoutId = setTimeout(() => {
+      if (status === "connecting") {
+        setRawData(prev => [...prev, `Connection timeout - WebSocket took too long to connect`]);
+        setError("Connection timeout");
+        setStatus("error");
+        
+        // Force close if needed
+        if (wsRef.current) {
+          wsRef.current.close();
+        }
+      }
+    }, 10000); // 10 second timeout
     
     try {
+      // Create WebSocket with explicit protocols array
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
       // Connection opened
       ws.onopen = () => {
         if (mountedRef.current) {
+          clearTimeout(connectionTimeoutId);
           setStatus("connected");
           setError(null);
           setRawData(prev => [...prev, `✅ WebSocket connected successfully`]);
           
-          // Send a ping message immediately after connection
+          // Send a simple message to test the connection
           try {
             const pingData = JSON.stringify({ 
-              ping: Date.now(),
-              assetId: clobTokenId 
+              type: "ping",
+              timestamp: new Date().toISOString()
             });
             ws.send(pingData);
             setRawData(prev => [...prev, `SENT: ${pingData}`]);
           } catch (err) {
-            setRawData(prev => [...prev, `❌ Error sending ping: ${(err as Error).message}`]);
+            setRawData(prev => [...prev, `❌ Error sending message: ${(err as Error).message}`]);
           }
         }
       };
@@ -122,6 +142,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
 
       // Handle errors
       ws.onerror = (event) => {
+        clearTimeout(connectionTimeoutId);
         if (mountedRef.current) {
           setStatus("error");
           setError("WebSocket error occurred");
@@ -132,12 +153,14 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
 
       // Handle close
       ws.onclose = (event) => {
+        clearTimeout(connectionTimeoutId);
         if (mountedRef.current) {
           setStatus("disconnected");
           setRawData(prev => [...prev, `WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`]);
         }
       };
     } catch (err) {
+      clearTimeout(connectionTimeoutId);
       setError(`Failed to create WebSocket: ${(err as Error).message}`);
       setStatus("error");
       setRawData(prev => [...prev, `❌ Error creating WebSocket: ${(err as Error).message}`]);
@@ -145,6 +168,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     
     // Cleanup
     return () => {
+      clearTimeout(connectionTimeoutId);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;

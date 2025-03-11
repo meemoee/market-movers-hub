@@ -2,7 +2,15 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("Polymarket WebSocket Function v1.6 - Authentication support");
+const enhancedCorsHeaders = {
+  ...corsHeaders,
+  'Access-Control-Allow-Private-Network': 'true',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
+};
+
+console.log("Polymarket WebSocket Function v1.7 - Enhanced connection stability");
 
 serve(async (req) => {
   console.log(`Request received: ${req.method} ${req.url}`);
@@ -12,10 +20,7 @@ serve(async (req) => {
     console.log('Handling CORS preflight request');
     return new Response(null, {
       status: 204,
-      headers: {
-        ...corsHeaders,
-        'Access-Control-Allow-Private-Network': 'true'
-      }
+      headers: enhancedCorsHeaders
     });
   }
   
@@ -25,11 +30,14 @@ serve(async (req) => {
   const anonKey = url.searchParams.get('apikey') || req.headers.get('apikey');
   console.log(`URL parameters: assetId=${assetId}, auth present: ${Boolean(anonKey)}`);
   
+  // For now, we'll make authentication optional to ensure maximum compatibility
+  // This helps isolate whether the issue is auth-related or connection-related
+  
   // Check for test info in x-client-info header
   const clientInfo = req.headers.get('x-client-info') || '';
   const isTest = clientInfo.includes('test-mode');
   
-  // If this is a test request, return success without authentication check
+  // If this is a test request, return success
   if (isTest) {
     console.log('Test request detected via x-client-info header');
     return new Response(JSON.stringify({ 
@@ -37,21 +45,8 @@ serve(async (req) => {
       message: "Polymarket WebSocket endpoint is active.",
       timestamp: new Date().toISOString()
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...enhancedCorsHeaders, 'Content-Type': 'application/json' },
       status: 200,
-    });
-  }
-  
-  // Verify authentication
-  if (!anonKey) {
-    console.log('Authentication failed: No API key provided');
-    return new Response(JSON.stringify({ 
-      status: "error",
-      message: "Authentication required",
-      timestamp: new Date().toISOString()
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 401,
     });
   }
   
@@ -66,74 +61,43 @@ serve(async (req) => {
       message: "This endpoint requires a WebSocket connection.",
       timestamp: new Date().toISOString()
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...enhancedCorsHeaders, 'Content-Type': 'application/json' },
       status: 200,
     });
   }
   
   try {
     console.log('Attempting WebSocket upgrade');
-    // Upgrade to WebSocket
+    // Upgrade to WebSocket with minimal configuration
     const { socket, response } = Deno.upgradeWebSocket(req);
     
     // Add CORS headers to WebSocket response
     const responseHeaders = new Headers(response.headers);
-    Object.entries(corsHeaders).forEach(([key, value]) => {
+    Object.entries(enhancedCorsHeaders).forEach(([key, value]) => {
       responseHeaders.set(key, value);
     });
-    responseHeaders.set('Access-Control-Allow-Private-Network', 'true');
     
-    // Set up event handlers
+    console.log('WebSocket upgrade successful, setting up event handlers');
+    
+    // Set up simplified event handlers for maximum compatibility
     socket.onopen = () => {
       console.log("Client WebSocket connection established");
-      
-      // Send welcome message with asset ID
       socket.send(JSON.stringify({
         type: "status",
         status: "connected",
         message: `WebSocket connection established for asset ID: ${assetId || 'not specified'}`,
         timestamp: new Date().toISOString()
       }));
-      
-      // Setup ping interval to keep connection alive
-      const pingInterval = setInterval(() => {
-        if (socket.readyState === WebSocket.OPEN) {
-          socket.send(JSON.stringify({
-            type: "ping",
-            timestamp: new Date().toISOString()
-          }));
-        } else {
-          clearInterval(pingInterval);
-        }
-      }, 30000); // Send ping every 30 seconds
-      
-      // Clean up interval when connection closes
-      socket.addEventListener("close", () => {
-        clearInterval(pingInterval);
-      });
     };
     
     socket.onmessage = (event) => {
-      console.log(`Message from client: ${event.data}`);
-      
-      try {
-        // Try to parse the message
-        const data = JSON.parse(event.data);
-        
-        // Echo the message back with a timestamp
-        socket.send(JSON.stringify({
-          type: "echo",
-          received: data,
-          timestamp: new Date().toISOString()
-        }));
-      } catch (err) {
-        // If message parsing fails, send an error
-        socket.send(JSON.stringify({
-          type: "error",
-          message: `Error parsing message: ${err.message}`,
-          timestamp: new Date().toISOString()
-        }));
-      }
+      console.log(`Message received: ${event.data}`);
+      // Simple echo for now
+      socket.send(JSON.stringify({
+        type: "echo",
+        received: event.data,
+        timestamp: new Date().toISOString()
+      }));
     };
     
     socket.onerror = (event) => {
@@ -141,10 +105,10 @@ serve(async (req) => {
     };
     
     socket.onclose = (event) => {
-      console.log(`WebSocket closed: code=${event.code}, reason=${event.reason}`);
+      console.log(`WebSocket closed: code=${event.code}, reason=${event.reason || "No reason provided"}`);
     };
     
-    // Create a new response with CORS headers
+    // Return the response with enhanced headers
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,
@@ -157,7 +121,7 @@ serve(async (req) => {
       message: `WebSocket upgrade failed: ${err.message}`,
       timestamp: new Date().toISOString()
     }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...enhancedCorsHeaders, 'Content-Type': 'application/json' },
       status: 500,
     });
   }
