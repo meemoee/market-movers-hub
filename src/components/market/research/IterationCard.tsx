@@ -1,7 +1,6 @@
 
 import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { ResearchResult, SitePreviewList } from "./SitePreviewList";
 import { AnalysisDisplay } from "./AnalysisDisplay";
 import { ChevronDown, ChevronRight } from 'lucide-react';
