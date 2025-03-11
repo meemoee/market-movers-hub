@@ -1,12 +1,17 @@
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
-import { ResearchResult } from "./SitePreviewList"
+
+interface ResearchResult {
+  url: string;
+  content: string;
+  title?: string;
+}
 
 interface IterationCardProps {
   iteration: {
@@ -32,18 +37,6 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  
-  // Auto-collapse when iteration completes and it's not the final iteration
-  useEffect(() => {
-    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
-      // Add a small delay to let the user see the completed results before collapsing
-      const timer = setTimeout(() => {
-        onToggleExpand();
-      }, 1500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
   return (
     <div className={cn(
@@ -83,71 +76,69 @@ export function IterationCard({
               <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
             </TabsList>
             
-            <div className="tab-content-container h-[200px] w-full">
-              <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
-                  isStreaming={isStreaming && isCurrentIteration}
-                  maxHeight="100%"
-                />
-              </TabsContent>
-              
-              <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
-                  <div className="space-y-2 w-full">
-                    {iteration.results.map((result, idx) => (
-                      <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full">
-                        <div className="flex items-center gap-2">
-                          <FileText className="h-3 w-3 flex-shrink-0" />
-                          <span className="source-title text-sm">
-                            {result.title || new URL(result.url).hostname}
-                          </span>
+            <TabsContent value="analysis" className="w-full max-w-full">
+              <AnalysisDisplay 
+                content={iteration.analysis || "Analysis in progress..."} 
+                isStreaming={isStreaming && isCurrentIteration}
+                maxHeight={isFinalIteration ? "300px" : "200px"}
+              />
+            </TabsContent>
+            
+            <TabsContent value="sources" className="w-full max-w-full">
+              <ScrollArea className="h-[200px] rounded-md border p-3 w-full max-w-full">
+                <div className="space-y-2 w-full">
+                  {iteration.results.map((result, idx) => (
+                    <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-3 w-3 flex-shrink-0" />
+                        <span className="source-title text-sm">
+                          {result.title || new URL(result.url).hostname}
+                        </span>
+                      </div>
+                      <a 
+                        href={result.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="source-url flex items-center gap-1 text-primary hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                        {result.url}
+                      </a>
+                      {result.content && (
+                        <div className="source-content text-muted-foreground">
+                          {result.content.substring(0, 120)}...
                         </div>
-                        <a 
-                          href={result.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="source-url flex items-center gap-1 text-primary hover:underline"
-                        >
-                          <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                          {result.url}
-                        </a>
-                        {result.content && (
-                          <div className="source-content text-muted-foreground">
-                            {result.content.substring(0, 120)}...
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    
-                    {iteration.results.length === 0 && (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No sources found for this iteration.
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-              
-              <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full">
-                  <div className="flex flex-wrap gap-2 w-full">
-                    {iteration.queries.map((query, idx) => (
-                      <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 w-fit max-w-full">
-                        <Search className="h-3 w-3 flex-shrink-0" />
-                        <span className="truncate text-xs max-w-[280px] sm:max-w-[360px] md:max-w-[400px]">{query}</span>
-                      </div>
-                    ))}
-                    
-                    {iteration.queries.length === 0 && (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No queries for this iteration.
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-            </div>
+                      )}
+                    </div>
+                  ))}
+                  
+                  {iteration.results.length === 0 && (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No sources found for this iteration.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
+            
+            <TabsContent value="queries" className="w-full max-w-full overflow-x-hidden">
+              <ScrollArea className="h-[150px] rounded-md border p-3 w-full">
+                <div className="flex flex-wrap gap-2 w-full">
+                  {iteration.queries.map((query, idx) => (
+                    <div key={idx} className="query-badge bg-accent/10 flex items-center gap-1 w-fit max-w-full">
+                      <Search className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate text-xs max-w-[280px] sm:max-w-[360px] md:max-w-[400px]">{query}</span>
+                    </div>
+                  ))}
+                  
+                  {iteration.queries.length === 0 && (
+                    <div className="p-4 text-center text-muted-foreground">
+                      No queries for this iteration.
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
+            </TabsContent>
           </Tabs>
         </div>
       )}

@@ -16,10 +16,7 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId, focusText } = await req.json();
-    
-    // Log incoming data for debugging
-    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}`);
+    const { queries, marketId } = await req.json();
     
     // Ensure queries don't have the market ID accidentally appended
     const cleanedQueries = queries.map((query: string) => {
