@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -13,7 +12,7 @@ import {
 import { LiveOrderBook } from './LiveOrderBook';
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from "@/components/ui/input";
 import { MultiRangeSlider } from "@/components/ui/multi-range-slider";
 
@@ -45,7 +44,7 @@ interface TransactionDialogProps {
   onClose: () => void;
   orderBookData: OrderBookData | null;
   isOrderBookLoading: boolean;
-  onOrderBookData: (data: OrderBookData) => void;
+  onOrderBookData: (data: OrderBookData | null) => void;
   onConfirm: () => void;
 }
 
@@ -64,11 +63,8 @@ export function TransactionDialog({
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [sharePercentage, setSharePercentage] = useState<number>(10);
   const [shareAmount, setShareAmount] = useState<number>(0);
-
-  // Add effect to log when orderbook data changes
-  useEffect(() => {
-    console.log('[TransactionDialog] OrderBook data changed:', orderBookData);
-  }, [orderBookData]);
+  const [localIsLoading, setLocalIsLoading] = useState<boolean>(true);
+  const initialLoadCompleteRef = useRef<boolean>(false);
 
   // Add effect to log when market selection changes
   useEffect(() => {
@@ -79,8 +75,24 @@ export function TransactionDialog({
         clobTokenId: selectedMarket.clobTokenId,
         selectedOutcome: selectedMarket.selectedOutcome
       });
+      
+      // Reset loading state when market changes
+      setLocalIsLoading(true);
+      initialLoadCompleteRef.current = false;
     }
   }, [selectedMarket]);
+
+  // Add effect to handle orderbook data changes
+  useEffect(() => {
+    console.log('[TransactionDialog] OrderBook data changed:', orderBookData);
+    
+    // If we receive non-null orderbook data, mark loading as complete
+    if (orderBookData && localIsLoading && !initialLoadCompleteRef.current) {
+      console.log('[TransactionDialog] Initial orderbook data received, ending loading state');
+      setLocalIsLoading(false);
+      initialLoadCompleteRef.current = true;
+    }
+  }, [orderBookData, localIsLoading]);
 
   // Fetch user balance when dialog opens
   useEffect(() => {
@@ -306,18 +318,30 @@ export function TransactionDialog({
             )}
           </div>
           <div className="space-y-4">
-            <LiveOrderBook 
-              onOrderBookData={(data) => {
-                console.log('[TransactionDialog] Received orderbook data from LiveOrderBook:', data);
-                onOrderBookData(data);
-              }}
-              isLoading={isOrderBookLoading}
-              clobTokenId={selectedMarket?.clobTokenId}
-              isClosing={isClosing}
-            />
+            {/* Always render LiveOrderBook component when we have a selectedMarket */}
+            {selectedMarket && (
+              <LiveOrderBook 
+                onOrderBookData={(data) => {
+                  console.log('[TransactionDialog] Received orderbook data from LiveOrderBook:', data);
+                  onOrderBookData(data);
+                }}
+                isLoading={false} // Important: Don't pass isOrderBookLoading here
+                clobTokenId={selectedMarket.clobTokenId}
+                isClosing={isClosing}
+              />
+            )}
             
             <div className="space-y-4 min-h-[280px]">
-              {orderBookData && (
+              {localIsLoading && (
+                <div className="flex flex-col items-center justify-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                  <p className="text-muted-foreground text-sm">
+                    Connecting to order book...
+                  </p>
+                </div>
+              )}
+              
+              {!localIsLoading && orderBookData && (
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -437,10 +461,10 @@ export function TransactionDialog({
           <AlertDialogCancel onClick={handleClose}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
-            disabled={!orderBookData || isOrderBookLoading || size <= 0}
+            disabled={!orderBookData || localIsLoading || size <= 0}
             className="bg-green-500 hover:bg-green-600"
           >
-            {isOrderBookLoading ? (
+            {localIsLoading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 Connecting...
