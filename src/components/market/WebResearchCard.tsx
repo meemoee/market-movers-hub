@@ -390,16 +390,163 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   }
 
-  const handleWebScrape = async (queries: string[], iteration: number, previousContent: string[] = []) => {
+  const handleResearchArea = (area: string) => {
+    const currentResearchId = loadedResearchId;
+    
+    console.log(`Starting focused research with parent ID: ${currentResearchId} on area: ${area}`);
+    
+    if (!currentResearchId) {
+      console.warn("Cannot create focused research: No parent research ID available");
+      toast({
+        title: "Cannot create focused research",
+        description: "Please save the current research first",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    const parentId = currentResearchId;
+    
+    setLoadedResearchId(null);
+    setParentResearchId(parentId);
+    setFocusText(area);
+    
+    toast({
+      title: "Research focus set",
+      description: `Starting new research focused on: ${area}`
+    });
+    
+    setIsLoading(true);
+    setProgress([]);
+    setResults([]);
+    setError(null);
+    setAnalysis('');
+    setIsAnalyzing(false);
+    setStreamingState({ rawText: '', parsedData: null });
+    setCurrentIteration(0);
+    setIterations([]);
+    setExpandedIterations(['iteration-1']);
+    setCurrentQueries([]);
+    setCurrentQueryIndex(-1);
+    
+    handleResearch(area);
+  };
+
+  const handleResearch = async (focusArea?: string) => {
+    setLoadedResearchId(null);
+    
+    setIsLoading(true);
+    setProgress([]);
+    setResults([]);
+    setError(null);
+    setAnalysis('');
+    setIsAnalyzing(false);
+    setStreamingState({ rawText: '', parsedData: null });
+    setCurrentIteration(0);
+    setIterations([]);
+    setExpandedIterations(['iteration-1']);
+    setCurrentQueries([]);
+    setCurrentQueryIndex(-1);
+
     try {
-      setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`])
-      setCurrentIteration(iteration)
-      setExpandedIterations(prev => [...prev, `iteration-${iteration}`])
+      setProgress(prev => [...prev, "Starting iterative web research..."]);
+      setProgress(prev => [...prev, `Researching market: ${marketId}`]);
+      setProgress(prev => [...prev, `Market question: ${description}`]);
       
-      console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
-      console.log(`Market ID for web-scrape: ${marketId}`)
-      console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
-      console.log(`Focus text for web-scrape: ${focusText || 'none'}`)
+      if (focusArea) {
+        setProgress(prev => [...prev, `Research focus: ${focusArea}`]);
+      }
+      
+      setProgress(prev => [...prev, "Generating initial search queries..."]);
+
+      try {
+        console.log("Calling generate-queries with:", { 
+          description, 
+          marketId,
+          descriptionLength: description ? description.length : 0,
+          focusText: focusArea || null
+        });
+        
+        const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
+          body: JSON.stringify({ 
+            query: description,
+            marketId: marketId,
+            marketDescription: description,
+            question: description,
+            iteration: 1,
+            focusText: focusArea || null
+          })
+        });
+
+        if (queriesError) {
+          console.error("Error from generate-queries:", queriesError)
+          throw new Error(`Error generating queries: ${queriesError.message}`)
+        }
+
+        console.log("Received queries data:", queriesData)
+
+        if (!queriesData?.queries || !Array.isArray(queriesData.queries)) {
+          console.error("Invalid queries response:", queriesData)
+          throw new Error('Invalid queries response')
+        }
+
+        const cleanQueries = queriesData.queries.map(q => q.replace(new RegExp(` ${marketId}$`), ''));
+        
+        console.log("Generated clean queries:", cleanQueries);
+        setProgress(prev => [...prev, `Generated ${cleanQueries.length} search queries`]);
+        
+        setCurrentQueries(cleanQueries);
+        
+        cleanQueries.forEach((query: string, index: number) => {
+          setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`]);
+        });
+
+        await handleWebScrape(cleanQueries, 1, focusArea);
+      } catch (error) {
+        console.error("Error generating initial queries:", error);
+        
+        const cleanDescription = description.trim();
+        let keywords = cleanDescription.split(/\s+/).filter(word => word.length > 3);
+        
+        const fallbackQueries = keywords.length >= 3 
+          ? [
+              `${keywords.slice(0, 5).join(' ')}`,
+              `${keywords.slice(0, 3).join(' ')} latest information`,
+              `${keywords.slice(0, 3).join(' ')} analysis prediction`
+            ]
+          : [
+              `${description.split(' ').slice(0, 10).join(' ')}`,
+              `${description.split(' ').slice(0, 8).join(' ')} latest`,
+              `${description.split(' ').slice(0, 8).join(' ')} prediction`
+            ];
+        
+        setCurrentQueries(fallbackQueries);
+        
+        setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
+        await handleWebScrape(fallbackQueries, 1, focusArea);
+      }
+
+      setProgress(prev => [...prev, "Research complete!"]);
+
+    } catch (error) {
+      console.error('Error in web research:', error);
+      setError(`Error occurred during research: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleWebScrape = async (queries: string[], iteration: number, focusArea?: string, previousContent: string[] = []) => {
+    try {
+      setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`]);
+      setCurrentIteration(iteration);
+      setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
+      
+      console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries);
+      console.log(`Market ID for web-scrape: ${marketId}`);
+      console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`);
+      console.log(`Focus text for web-scrape: ${focusArea || 'none'}`);
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -417,11 +564,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketId: marketId,
         marketDescription: description,
         query: description,
-        focusText: focusText.trim() || null // Always include focusText, even if null
+        focusText: focusArea || null
       };
 
-      if (focusText?.trim()) {
-        setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
+      if (focusArea) {
+        setProgress(prev => [...prev, `Focusing web research on: ${focusArea}`]);
       }
       
       const response = await supabase.functions.invoke('web-scrape', {
@@ -916,7 +1063,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
   };
 
-  const handleResearch = async () => {
+  const handleResearch = async (focusArea?: string) => {
     setLoadedResearchId(null);
     
     setIsLoading(true)
@@ -937,8 +1084,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress(prev => [...prev, `Researching market: ${marketId}`])
       setProgress(prev => [...prev, `Market question: ${description}`])
       
-      if (focusText.trim()) {
-        setProgress(prev => [...prev, `Research focus: ${focusText.trim()}`])
+      if (focusArea) {
+        setProgress(prev => [...prev, `Research focus: ${focusArea}`])
       }
       
       setProgress(prev => [...prev, "Generating initial search queries..."])
@@ -948,7 +1095,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           description, 
           marketId,
           descriptionLength: description ? description.length : 0,
-          focusText: focusText.trim() || null
+          focusText: focusArea || null
         });
         
         const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
@@ -958,7 +1105,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketDescription: description,
             question: description,
             iteration: 1,
-            focusText: focusText.trim()
+            focusText: focusArea || null
           })
         });
 
@@ -985,7 +1132,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`])
         });
 
-        await handleWebScrape(cleanQueries, 1);
+        await handleWebScrape(cleanQueries, 1, focusArea);
       } catch (error) {
         console.error("Error generating initial queries:", error);
         
@@ -1007,7 +1154,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setCurrentQueries(fallbackQueries);
         
         setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
-        await handleWebScrape(fallbackQueries, 1);
+        await handleWebScrape(fallbackQueries, 1, focusArea);
       }
 
       setProgress(prev => [...prev, "Research complete!"])
@@ -1040,8 +1187,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     setLoadedResearchId(null);
     setParentResearchId(parentId);
-    
     setFocusText(area);
+    
     toast({
       title: "Research focus set",
       description: `Starting new research focused on: ${area}`
@@ -1060,9 +1207,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
-    setTimeout(() => {
-      handleResearch();
-    }, 200);
+    handleResearch(area);
   };
 
   const handleViewChildResearch = useCallback((childResearch: SavedResearch) => {
