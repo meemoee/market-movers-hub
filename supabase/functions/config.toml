@@ -37,3 +37,7 @@ verify_jwt = false
 [[functions]]
 name = "evaluate-qa-final"
 verify_jwt = false
+
+[[functions]]
+name = "polymarket-orderbook-sync"
+verify_jwt = false

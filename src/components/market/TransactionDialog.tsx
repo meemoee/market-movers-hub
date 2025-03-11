@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -15,15 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from 'react';
 import { Input } from "@/components/ui/input";
-import { MultiRangeSlider } from "@/components/ui/multi-range-slider";
-
-interface OrderBookData {
-  bids: Record<string, number>;
-  asks: Record<string, number>;
-  best_bid: number;
-  best_ask: number;
-  spread: number;
-}
+import { OrderBookData } from '@/hooks/useOrderBookRealtime';
 
 interface TopMover {
   market_id: string;
@@ -45,7 +36,7 @@ interface TransactionDialogProps {
   onClose: () => void;
   orderBookData: OrderBookData | null;
   isOrderBookLoading: boolean;
-  onOrderBookData: (data: OrderBookData) => void;
+  onOrderBookData: (data: OrderBookData | null) => void;
   onConfirm: () => void;
 }
 
@@ -65,12 +56,10 @@ export function TransactionDialog({
   const [sharePercentage, setSharePercentage] = useState<number>(10);
   const [shareAmount, setShareAmount] = useState<number>(0);
 
-  // Add effect to log when orderbook data changes
   useEffect(() => {
     console.log('[TransactionDialog] OrderBook data changed:', orderBookData);
   }, [orderBookData]);
 
-  // Add effect to log when market selection changes
   useEffect(() => {
     if (selectedMarket) {
       console.log('[TransactionDialog] Market selected:', {
@@ -82,7 +71,6 @@ export function TransactionDialog({
     }
   }, [selectedMarket]);
 
-  // Fetch user balance when dialog opens
   useEffect(() => {
     const fetchUserBalance = async () => {
       if (!selectedMarket) return;
@@ -108,7 +96,6 @@ export function TransactionDialog({
         if (data) {
           console.log('[TransactionDialog] User balance:', data.balance);
           setUserBalance(data.balance);
-          // Initialize share amount to 10% of balance
           updateShareAmount(10);
         }
       } catch (error) {
@@ -119,7 +106,6 @@ export function TransactionDialog({
     fetchUserBalance();
   }, [selectedMarket]);
 
-  // Update share amount when percentage or orderbook data changes
   useEffect(() => {
     updateShareAmount(sharePercentage);
   }, [sharePercentage, orderBookData]);
@@ -130,7 +116,6 @@ export function TransactionDialog({
     const maxAmount = userBalance * (percentage / 100);
     const price = orderBookData.best_ask;
     
-    // Calculate how many shares can be purchased with this amount at current price
     const shares = price > 0 ? (maxAmount / price) : 0;
     
     setSharePercentage(percentage);
@@ -154,11 +139,9 @@ export function TransactionDialog({
       return;
     }
     
-    // Calculate percentage of balance
     const percentage = Math.min((inputAmount / userBalance) * 100, 100);
     const price = orderBookData.best_ask;
     
-    // Calculate shares based on amount and price
     const shares = price > 0 ? (inputAmount / price) : 0;
     
     setShareAmount(inputAmount);
@@ -178,11 +161,9 @@ export function TransactionDialog({
       return;
     }
     
-    // Calculate dollar amount based on size and price
     const price = orderBookData.best_ask;
     const amount = inputSize * price;
     
-    // Calculate percentage of balance
     const percentage = userBalance ? Math.min((amount / userBalance) * 100, 100) : 0;
     
     setSize(inputSize);
@@ -367,7 +348,6 @@ export function TransactionDialog({
                     Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
                   </div>
 
-                  {/* Share Amount Box and Slider */}
                   <div className="bg-accent/20 p-4 rounded-lg space-y-4">
                     <div className="text-sm font-medium">Order Details</div>
                     
