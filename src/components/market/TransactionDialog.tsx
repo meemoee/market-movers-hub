@@ -133,8 +133,24 @@ export function TransactionDialog({
           </div>
           
           <div className="space-y-4">
+            <div className="text-sm space-y-2">
+              <div className="font-medium">Debug Information</div>
+              <div className="grid grid-cols-2 gap-2 text-xs bg-muted/50 p-2 rounded">
+                <div>Token ID:</div>
+                <div className="font-mono break-all">{selectedMarket?.clobTokenId}</div>
+                <div>Market ID:</div>
+                <div className="font-mono break-all">{topMover?.market_id}</div>
+                <div>User Balance:</div>
+                <div>{userBalance !== null ? `$${userBalance}` : 'Loading...'}</div>
+                <div>WebSocket URL:</div>
+                <div className="font-mono break-all text-[10px]">
+                  wss://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws?assetId={selectedMarket?.clobTokenId}
+                </div>
+              </div>
+            </div>
+            
             <div className="text-sm font-medium">
-              Raw WebSocket Data (Debug Mode - Token ID: {selectedMarket?.clobTokenId})
+              Raw WebSocket Data (Debug Mode)
             </div>
             
             <RawOrderBookData 
@@ -142,7 +158,7 @@ export function TransactionDialog({
               isClosing={isClosing}
             />
             
-            <div className="text-sm text-muted-foreground mt-4">
+            <div className="text-xs text-muted-foreground mt-4">
               This is a debug view showing raw data from the WebSocket connection.
               <br />
               All raw messages will be displayed above for debugging purposes.

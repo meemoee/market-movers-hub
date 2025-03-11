@@ -2,7 +2,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("polymarket-ws function loaded - v4.0.0 (fixing auth)");
+console.log("polymarket-ws function loaded - v5.0.0 (simple debug version with auth disabled)");
 
 serve(async (req) => {
   // Log request details
