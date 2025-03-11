@@ -11,7 +11,6 @@ import { InsightPostBox } from './market/InsightPostBox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
-import { OrderBookData } from '@/services/PolymarketService';
 
 interface TimeInterval {
   label: string;
@@ -71,6 +70,14 @@ interface TopMoversListProps {
   onIntervalChange: (interval: string) => void;
   openMarketsOnly: boolean;
   onOpenMarketsChange: (value: boolean) => void;
+}
+
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
 }
 
 export default function TopMoversList({
@@ -153,14 +160,8 @@ export default function TopMoversList({
 
   const isSearching = debouncedSearch.length > 0 && !marketId;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
-  
-  const displayedMarkets = (isSearching ? 
-    marketSearchQuery.data?.data : 
-    topMoversQuery.data?.pages?.flatMap(page => page.data)) || [];
-    
-  const hasMore = isSearching ? 
-    !!marketSearchQuery.data?.hasMore : 
-    (!marketId && topMoversQuery.hasNextPage);
+  const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
+  const hasMore = isSearching ? marketSearchQuery.data?.hasMore : (!marketId && topMoversQuery.hasNextPage);
 
   const handleTransaction = () => {
     if (!selectedMarket || !orderBookData) return;

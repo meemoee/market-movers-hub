@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -429,15 +430,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
+    // Pass the area directly to handleResearch instead of relying on focusText state
     handleResearch(area);
   };
 
   const handleResearch = async (focusArea?: string) => {
-    if (focusArea && typeof focusArea !== 'string') {
-      console.warn("Invalid focusArea parameter:", focusArea);
-      focusArea = undefined; // Reset to undefined if it's not a string
-    }
-    
     setLoadedResearchId(null);
     
     setIsLoading(true);
@@ -458,19 +455,21 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress(prev => [...prev, `Researching market: ${marketId}`]);
       setProgress(prev => [...prev, `Market question: ${description}`]);
       
-      if (typeof focusArea === 'string' && focusArea) {
+      if (focusArea) {
         setProgress(prev => [...prev, `Research focus: ${focusArea}`]);
       }
       
       setProgress(prev => [...prev, "Generating initial search queries..."]);
 
       try {
+        // Make sure we're only passing primitive values in the payload, not React elements
         const queryPayload = { 
           query: description,
           marketId: marketId,
           marketDescription: description,
           question: description,
           iteration: 1,
+          // Ensure focusText is a string, not a React element or complex object
           focusText: typeof focusArea === 'string' ? focusArea : null
         };
         
@@ -503,6 +502,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Query ${index + 1}: "${query}"`]);
         });
 
+        // Pass focusArea directly to avoid relying on state
         await handleWebScrape(cleanQueries, 1, focusArea);
       } catch (error) {
         console.error("Error generating initial queries:", error);
@@ -526,6 +526,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         
         setProgress(prev => [...prev, `Using intelligent fallback queries due to error: ${error.message}`]);
         
+        // Pass focusArea directly to avoid relying on state
         await handleWebScrape(fallbackQueries, 1, focusArea);
       }
 
@@ -541,11 +542,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   };
 
   const handleWebScrape = async (queries: string[], iteration: number, focusArea?: string, previousContent: string[] = []) => {
-    if (focusArea && typeof focusArea !== 'string') {
-      console.warn("Invalid focusArea parameter in handleWebScrape:", focusArea);
-      focusArea = undefined;
-    }
-    
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`]);
       setCurrentIteration(iteration);
@@ -567,15 +563,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return cleanedQuery;
       });
       
+      // Create a plain object with only serializable properties
       const scrapePayload = { 
         queries: shortenedQueries,
         marketId: marketId,
         marketDescription: description,
         query: description,
+        // Ensure focusText is a string or null, not an object
         focusText: typeof focusArea === 'string' ? focusArea : null
       };
 
-      if (typeof focusArea === 'string' && focusArea) {
+      if (focusArea) {
         setProgress(prev => [...prev, `Focusing web research on: ${focusArea}`]);
       }
       
@@ -691,6 +689,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return
       }
 
+      // Pass the focusArea directly to avoid relying on state
       await processQueryResults(allContent, iteration, queries, iterationResults, focusArea)
     } catch (error) {
       console.error(`Error in web research iteration ${iteration}:`, error)
@@ -701,11 +700,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   }
 
   const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[], focusArea?: string) => {
-    if (focusArea && typeof focusArea !== 'string') {
-      console.warn("Invalid focusArea parameter in processQueryResults:", focusArea);
-      focusArea = undefined;
-    }
-    
     try {
       setIsAnalyzing(true)
       setProgress(prev => [...prev, `Starting content analysis for iteration ${iteration}...`])
@@ -725,11 +719,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Using simplified queries for next iteration...`]);
           setCurrentQueries(simplifiedQueries);
           
+          // Pass focusArea directly instead of using state value
           await handleWebScrape(simplifiedQueries, iteration + 1, focusArea, [...allContent]);
           return;
         }
       }
       
+      // Create a clean payload with only serializable data
       const analyzePayload = {
         content: allContent.join('\n\n'),
         query: description,
@@ -889,6 +885,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         setProgress(prev => [...prev, "Generating new queries based on analysis..."]);
         
         try {
+          // Create clean payload for generate-queries
           const refinedQueriesPayload = { 
             query: description,
             previousResults: analysisContent,
@@ -897,6 +894,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             marketDescription: description,
             areasForResearch: streamingState.parsedData?.areasForResearch || [],
             previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
+            // Ensure focusText is a string, not an object
             focusText: typeof focusArea === 'string' ? focusArea : ''
           };
           
@@ -924,6 +922,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`]);
           });
 
+          // Pass focusArea directly
           await handleWebScrape(refinedQueriesData.queries, iteration + 1, focusArea);
         } catch (error) {
           console.error("Error generating refined queries:", error);
@@ -937,6 +936,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           setProgress(prev => [...prev, `Using fallback queries for iteration ${iteration + 1} due to error: ${error.message}`]);
           setCurrentQueries(fallbackQueries);
           
+          // Pass focusArea directly
           await handleWebScrape(fallbackQueries, iteration + 1, focusArea);
         }
       }
@@ -1319,10 +1319,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       {iterations.length > 0 && (
         <div className="border rounded-md overflow-hidden w-full max-w-full">
-          <ScrollArea className="h-[400px]">
-            <div className="space-y-2 p-2 w-full max-w-full">
-              {renderIterations()}
-            </div>
+          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
+            {renderIterations()}
           </ScrollArea>
         </div>
       )}

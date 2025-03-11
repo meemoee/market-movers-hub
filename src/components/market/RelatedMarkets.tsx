@@ -1,3 +1,4 @@
+
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
@@ -12,12 +13,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { OrderBookData } from '@/services/PolymarketService';
 
 interface RelatedMarketsProps {
   eventId: string;
   marketId: string;
   selectedInterval: string;
+}
+
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
 }
 
 // Helper function to clean text fields
