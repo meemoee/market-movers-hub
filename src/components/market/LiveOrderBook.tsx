@@ -26,8 +26,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const initialConnectRef = useRef<boolean>(false);
   const reconnectCountRef = useRef<number>(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
-  const wsUrlRef = useRef<string>("");
-  const connectionAttemptedRef = useRef<boolean>(false);
 
   useEffect(() => {
     // Set mounted flag to true when component mounts
@@ -40,8 +38,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   }, []);
 
   useEffect(() => {
-    console.log(`[LiveOrderBook] Component mounted/updated with clobTokenId: ${clobTokenId}, isClosing: ${isClosing}`);
-    
     // Clear any existing error when closing
     if (isClosing) {
       console.log('[LiveOrderBook] Dialog is closing, clearing error state');
@@ -51,8 +47,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
     // Don't connect if we don't have a token ID
     if (!clobTokenId) {
-      console.warn('[LiveOrderBook] No CLOB token ID provided, not connecting to WebSocket');
-      setError("Missing token ID for orderbook connection");
+      console.log('[LiveOrderBook] No CLOB token ID provided, not connecting to WebSocket');
       return;
     }
 
@@ -60,13 +55,10 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     cleanupExistingConnection();
 
     // Create a new WebSocket connection
-    console.log('[LiveOrderBook] Attempting to connect to orderbook with token:', clobTokenId);
-    connectionAttemptedRef.current = true;
     connectToOrderbook(clobTokenId);
 
     // Cleanup function
     return () => {
-      console.log('[LiveOrderBook] Component unmounting or token/closing changed, cleaning up');
       cleanupExistingConnection();
       
       // Set mounted ref to false to prevent any further state updates
@@ -118,27 +110,14 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
-      // Construct the WebSocket URL with a timestamp to prevent caching issues
-      const timestamp = new Date().getTime();
-      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}&t=${timestamp}`;
-      wsUrlRef.current = wsUrl;
-      
+      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}`;
       console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       initialConnectRef.current = true;
 
-      // Set a connection timeout
-      const connectionTimeout = setTimeout(() => {
-        if (ws.readyState !== WebSocket.OPEN) {
-          console.log('[LiveOrderBook] Connection timeout - closing socket');
-          ws.close();
-        }
-      }, 10000); // 10 second timeout
-
       ws.onopen = () => {
-        clearTimeout(connectionTimeout);
         if (mountedRef.current) {
           console.log('[LiveOrderBook] WebSocket connected successfully');
           setConnectionStatus("connected");
@@ -149,10 +128,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           
           // Start ping interval to keep connection alive
           startPingInterval();
-          
-          // Log the readyState
-          console.log('[LiveOrderBook] WebSocket readyState:', ws.readyState, 
-                     '(0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED)');
         }
       };
 
@@ -198,7 +173,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             
             // Handle orderbook data
             if (data.orderbook) {
-              console.log('[LiveOrderBook] Valid orderbook data received. Passing to parent');
+              console.log('[LiveOrderBook] Valid orderbook data received:', data.orderbook);
               onOrderBookData(data.orderbook);
               setError(null);
             } else {
@@ -214,21 +189,16 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       };
 
       ws.onerror = (event) => {
-        clearTimeout(connectionTimeout);
         console.error('[LiveOrderBook] WebSocket error:', event);
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
-          setError(`WebSocket connection error. URL: ${wsUrlRef.current}`);
-          
-          // Additional diagnositc logging
-          console.error('[LiveOrderBook] Detailed error:', JSON.stringify(event));
+          setError('WebSocket connection error');
           
           // Handle reconnection in onclose since that's always called after an error
         }
       };
 
       ws.onclose = (event) => {
-        clearTimeout(connectionTimeout);
         console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
         
         // Only attempt reconnect if mounted and not intentionally closing
@@ -238,7 +208,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           // Check if we've exceeded max reconnect attempts
           if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
             console.log('[LiveOrderBook] Maximum reconnection attempts reached');
-            setError(`Failed to connect to orderbook service after ${MAX_RECONNECT_ATTEMPTS} attempts. Please try again later.`);
+            setError(`Failed to connect to orderbook service after ${MAX_RECONNECT_ATTEMPTS} attempts`);
             return;
           }
           
@@ -334,20 +304,5 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     );
   }
 
-  // Connection status indicator that doesn't block rendering
-  return (
-    <div className="text-xs text-muted-foreground text-right mb-1">
-      {connectionStatus === "connected" ? (
-        <span className="text-green-500">Connected to orderbook</span>
-      ) : connectionStatus === "connecting" ? (
-        <span className="text-yellow-500">Connecting to orderbook...</span>
-      ) : connectionStatus === "reconnecting" ? (
-        <span className="text-yellow-500">Reconnecting to orderbook...</span>
-      ) : connectionStatus === "error" ? (
-        <span className="text-red-500">Error connecting to orderbook</span>
-      ) : (
-        <span className="text-muted-foreground">Disconnected from orderbook</span>
-      )}
-    </div>
-  );
+  return null;
 }
