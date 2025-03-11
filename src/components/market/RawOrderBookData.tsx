@@ -1,7 +1,17 @@
 
 import { useEffect, useState, useRef } from 'react';
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowDown, ArrowUp, Tag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Card } from "@/components/ui/card";
+
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number | null;
+  best_ask: number | null;
+  spread: string | null;
+  timestamp: string | null;
+}
 
 interface RawOrderBookProps {
   clobTokenId?: string;
@@ -10,9 +20,9 @@ interface RawOrderBookProps {
 
 export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) {
   const [status, setStatus] = useState<string>("disconnected");
-  const [messages, setMessages] = useState<string[]>([]);
-  const pollingRef = useRef<number | null>(null);
+  const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pollingRef = useRef<number | null>(null);
   
   useEffect(() => {
     if (isClosing || !clobTokenId) return;
@@ -26,10 +36,8 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
     const fetchOrderBookData = async () => {
       try {
         setStatus("connecting");
-        const timestamp = new Date().toISOString();
-        setMessages(prev => [...prev, `Fetching data at ${timestamp}`]);
         
-        // First try the new polymarket-stream function which uses WebSockets
+        // First try the WebSocket-based endpoint
         const { data: streamData, error: streamError } = await supabase.functions.invoke('polymarket-stream', {
           body: { tokenId: clobTokenId }
         });
@@ -42,7 +50,6 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           });
           
           if (restError) {
-            setMessages(prev => [...prev, `🔴 Error fetching data: ${restError.message}`]);
             setStatus("error");
             setError(restError.message);
             return;
@@ -53,20 +60,15 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           processData(streamData);
         }
       } catch (err) {
-        setMessages(prev => [...prev, `🔴 Error: ${(err as Error).message}`]);
         setStatus("error");
         setError(`Failed to fetch data: ${(err as Error).message}`);
       }
     };
     
-    const processData = (data: any) => {
-      // Process the received data
+    const processData = (data: OrderBookData) => {
       setStatus("connected");
       setError(null);
-      setMessages(prev => {
-        const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
-        return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
-      });
+      setOrderBookData(data);
     };
     
     // Initial fetch
@@ -83,13 +85,26 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
       }
     };
   }, [clobTokenId, isClosing]);
-  
+
+  // Format price to a readable string
+  const formatPrice = (price: string | number) => {
+    return Number(price).toFixed(3);
+  };
+
+  // Format size to a readable string
+  const formatSize = (size: number) => {
+    return size.toLocaleString(undefined, { 
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2
+    });
+  };
+
   // Render loading state
-  if (status === "connecting" && messages.length === 0) {
+  if (status === "connecting" && !orderBookData) {
     return (
       <div className="flex items-center justify-center p-4">
         <Loader2 className="w-6 h-6 animate-spin mr-2" />
-        <span>Fetching data...</span>
+        <span>Fetching order book data...</span>
       </div>
     );
   }
@@ -97,15 +112,23 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
   // Render data display
   return (
     <div className="h-[300px] overflow-y-auto bg-background/50 border border-border rounded-md p-2">
-      <div className="text-xs font-mono">
-        <div className="sticky top-0 bg-background/90 mb-2 py-1 border-b border-border">
-          Status: <span className={
-            status === "connected" ? "text-green-500" :
-            status === "connecting" ? "text-yellow-500" :
-            status === "error" ? "text-red-500" :
-            "text-muted-foreground"
-          }>{status}</span>
-          {error && <span className="text-red-500 ml-2">Error: {error}</span>}
+      <div className="text-xs">
+        <div className="sticky top-0 bg-background/90 mb-2 py-1 border-b border-border z-10">
+          <div className="flex justify-between items-center">
+            <div>
+              Status: <span className={
+                status === "connected" ? "text-green-500" :
+                status === "connecting" ? "text-yellow-500" :
+                status === "error" ? "text-red-500" :
+                "text-muted-foreground"
+              }>{status}</span>
+              {error && <span className="text-red-500 ml-2">Error: {error}</span>}
+            </div>
+            
+            <div className="text-xs text-muted-foreground">
+              Last update: {orderBookData?.timestamp ? new Date(orderBookData.timestamp).toLocaleTimeString() : 'N/A'}
+            </div>
+          </div>
           
           <div className="flex flex-wrap gap-1 mt-1">
             {(status === "error" || status === "disconnected") && (
@@ -113,7 +136,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                 onClick={() => {
                   if (clobTokenId) {
                     setStatus("connecting");
-                    setMessages([]);
+                    setOrderBookData(null);
                   }
                 }}
                 className="px-2 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-xs"
@@ -125,7 +148,6 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
             {status === "connected" && (
               <button 
                 onClick={() => {
-                  setMessages(prev => [...prev, `Manual refresh at ${new Date().toISOString()}`]);
                   // Force an immediate refresh
                   if (pollingRef.current) {
                     clearInterval(pollingRef.current);
@@ -145,13 +167,13 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                     return { data, error };
                   }).then(({ data, error }) => {
                     if (error) {
-                      setMessages(prev => [...prev, `🔴 Error fetching data: ${error.message}`]);
+                      setStatus("error");
+                      setError(error.message);
                       return;
                     }
-                    setMessages(prev => {
-                      const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
-                      return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
-                    });
+                    
+                    setOrderBookData(data as OrderBookData);
+                    
                     // Restart the polling
                     pollingRef.current = window.setInterval(() => {
                       supabase.functions.invoke('polymarket-stream', {
@@ -166,10 +188,7 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
                         return { data, error };
                       }).then(({ data, error }) => {
                         if (!error) {
-                          setMessages(prev => {
-                            const newMessages = [...prev, `RECEIVED: ${JSON.stringify(data)}`];
-                            return newMessages.length > 50 ? newMessages.slice(-50) : newMessages;
-                          });
+                          setOrderBookData(data as OrderBookData);
                         }
                       });
                     }, 3000);
@@ -183,17 +202,118 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
           </div>
         </div>
         
-        <div className="space-y-1 whitespace-pre-wrap break-all">
-          {messages.length === 0 ? (
-            <div className="text-muted-foreground">Waiting for data...</div>
-          ) : (
-            messages.map((message, index) => (
-              <div key={index} className="border-b border-border/30 pb-1 mb-1 text-[11px]">
-                {message}
+        {!orderBookData ? (
+          <div className="text-center p-4 text-muted-foreground">
+            Waiting for order book data...
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4">
+            {/* Bids - Left Column */}
+            <div>
+              <div className="flex items-center mb-2 font-medium text-green-500">
+                <ArrowUp className="w-4 h-4 mr-1" />
+                Bids
               </div>
-            ))
-          )}
-        </div>
+              <div className="space-y-0.5">
+                <div className="grid grid-cols-3 text-xs mb-1 text-muted-foreground">
+                  <div>Price</div>
+                  <div className="text-right">Size</div>
+                  <div className="text-right">Total</div>
+                </div>
+                
+                {Object.entries(orderBookData.bids)
+                  .sort(([a], [b]) => parseFloat(b) - parseFloat(a))
+                  .slice(0, 10)
+                  .map(([price, size], index) => (
+                    <div 
+                      key={`bid-${price}`} 
+                      className={`grid grid-cols-3 text-xs py-0.5 ${
+                        orderBookData.best_bid === parseFloat(price) 
+                          ? 'bg-green-500/10 font-medium' 
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center">
+                        {orderBookData.best_bid === parseFloat(price) && (
+                          <Tag className="w-3 h-3 mr-1 text-green-500" />
+                        )}
+                        <span className="text-green-500">{formatPrice(price)}</span>
+                      </div>
+                      <div className="text-right">{formatSize(size)}</div>
+                      <div className="text-right">${formatSize(size * parseFloat(price))}</div>
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+            
+            {/* Asks - Right Column */}
+            <div>
+              <div className="flex items-center mb-2 font-medium text-red-500">
+                <ArrowDown className="w-4 h-4 mr-1" />
+                Asks
+              </div>
+              <div className="space-y-0.5">
+                <div className="grid grid-cols-3 text-xs mb-1 text-muted-foreground">
+                  <div>Price</div>
+                  <div className="text-right">Size</div>
+                  <div className="text-right">Total</div>
+                </div>
+                
+                {Object.entries(orderBookData.asks)
+                  .sort(([a], [b]) => parseFloat(a) - parseFloat(b))
+                  .slice(0, 10)
+                  .map(([price, size], index) => (
+                    <div 
+                      key={`ask-${price}`} 
+                      className={`grid grid-cols-3 text-xs py-0.5 ${
+                        orderBookData.best_ask === parseFloat(price) 
+                          ? 'bg-red-500/10 font-medium' 
+                          : ''
+                      }`}
+                    >
+                      <div className="flex items-center">
+                        {orderBookData.best_ask === parseFloat(price) && (
+                          <Tag className="w-3 h-3 mr-1 text-red-500" />
+                        )}
+                        <span className="text-red-500">{formatPrice(price)}</span>
+                      </div>
+                      <div className="text-right">{formatSize(size)}</div>
+                      <div className="text-right">${formatSize(size * parseFloat(price))}</div>
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {orderBookData && (
+          <Card className="mt-4 p-2 bg-primary-foreground">
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <div className="text-xs text-muted-foreground">Best Bid</div>
+                <div className="text-green-500 font-medium">
+                  {orderBookData.best_bid ? formatPrice(orderBookData.best_bid) : 'N/A'}
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-xs text-muted-foreground">Spread</div>
+                <div className="font-medium">
+                  {orderBookData.spread ? orderBookData.spread : 'N/A'}
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-xs text-muted-foreground">Best Ask</div>
+                <div className="text-red-500 font-medium">
+                  {orderBookData.best_ask ? formatPrice(orderBookData.best_ask) : 'N/A'}
+                </div>
+              </div>
+            </div>
+          </Card>
+        )}
       </div>
     </div>
   );
