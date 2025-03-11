@@ -1319,8 +1319,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       {iterations.length > 0 && (
         <div className="border rounded-md overflow-hidden w-full max-w-full">
-          <ScrollArea className={maxIterations > 3 ? "h-[400px]" : "max-h-full"}>
-            {renderIterations()}
+          <ScrollArea className="h-[400px]">
+            <div className="space-y-2 p-2 w-full max-w-full">
+              {renderIterations()}
+            </div>
           </ScrollArea>
         </div>
       )}
