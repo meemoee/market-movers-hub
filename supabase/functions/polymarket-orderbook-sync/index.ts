@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.0";
 
@@ -150,11 +151,12 @@ async function connectToPolymarket(tokenId: string) {
           }
           
           // Store the orderbook in the database
+          const timestamp = new Date().toISOString();
           const { error } = await supabase
             .from('orderbook_data')
             .upsert({
               token_id: tokenId,
-              timestamp: new Date().toISOString(),
+              timestamp: timestamp,
               bids: orderbook.bids,
               asks: orderbook.asks,
               best_bid: orderbook.best_bid,
@@ -354,6 +356,27 @@ setInterval(async () => {
   }
 }, 60000); // Check every minute
 
+// Setup for handling the table if it doesn't exist
+async function ensureOrderbookTable() {
+  try {
+    // Check if table exists
+    const { data, error } = await supabase.rpc('check_table_exists', { table_name: 'orderbook_data' });
+    
+    if (error) {
+      console.error("Error checking if table exists:", error);
+      
+      // Try to create the table anyway
+      await supabase.rpc('create_orderbook_table');
+    }
+    
+    // Enable realtime for orderbook_data table
+    await supabase.rpc('enable_realtime_for_table', { table_name: 'orderbook_data' });
+    
+  } catch (err) {
+    console.error("Error ensuring orderbook table exists:", err);
+  }
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -361,6 +384,9 @@ serve(async (req) => {
   }
   
   try {
+    // Ensure the orderbook table exists and is set up properly
+    await ensureOrderbookTable();
+    
     const url = new URL(req.url);
     const path = url.pathname.split('/').pop();
     
