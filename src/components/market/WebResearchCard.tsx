@@ -399,6 +399,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries)
       console.log(`Market ID for web-scrape: ${marketId}`)
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`)
+      console.log(`Focus text for web-scrape: ${focusText || 'none'}`)
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -411,15 +412,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         return cleanedQuery;
       });
       
-      const scrapePayload: any = { 
+      const scrapePayload = { 
         queries: shortenedQueries,
         marketId: marketId,
-        marketDescription: description
+        marketDescription: description,
+        query: description,
+        focusText: focusText.trim() || null // Always include focusText, even if null
       };
 
       if (focusText?.trim()) {
-        scrapePayload.focusText = focusText.trim();
-        scrapePayload.researchFocus = focusText.trim();
         setProgress(prev => [...prev, `Focusing web research on: ${focusText.trim()}`]);
       }
       
