@@ -26,6 +26,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const initialConnectRef = useRef<boolean>(false);
   const reconnectCountRef = useRef<number>(0);
   const MAX_RECONNECT_ATTEMPTS = 5;
+  const wsUrlRef = useRef<string>("");
 
   useEffect(() => {
     // Set mounted flag to true when component mounts
@@ -110,14 +111,27 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setError(null);
       }
 
-      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}`;
+      // Construct the WebSocket URL with a timestamp to prevent caching issues
+      const timestamp = new Date().getTime();
+      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/polymarket-ws?assetId=${tokenId}&t=${timestamp}`;
+      wsUrlRef.current = wsUrl;
+      
       console.log('[LiveOrderBook] Connecting to WebSocket:', wsUrl);
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       initialConnectRef.current = true;
 
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.log('[LiveOrderBook] Connection timeout - closing socket');
+          ws.close();
+        }
+      }, 10000); // 10 second timeout
+
       ws.onopen = () => {
+        clearTimeout(connectionTimeout);
         if (mountedRef.current) {
           console.log('[LiveOrderBook] WebSocket connected successfully');
           setConnectionStatus("connected");
@@ -189,16 +203,21 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       };
 
       ws.onerror = (event) => {
+        clearTimeout(connectionTimeout);
         console.error('[LiveOrderBook] WebSocket error:', event);
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
-          setError('WebSocket connection error');
+          setError(`WebSocket connection error. URL: ${wsUrlRef.current}`);
+          
+          // Additional diagnositc logging
+          console.error('[LiveOrderBook] Detailed error:', JSON.stringify(event));
           
           // Handle reconnection in onclose since that's always called after an error
         }
       };
 
       ws.onclose = (event) => {
+        clearTimeout(connectionTimeout);
         console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
         
         // Only attempt reconnect if mounted and not intentionally closing
@@ -208,7 +227,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           // Check if we've exceeded max reconnect attempts
           if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
             console.log('[LiveOrderBook] Maximum reconnection attempts reached');
-            setError(`Failed to connect to orderbook service after ${MAX_RECONNECT_ATTEMPTS} attempts`);
+            setError(`Failed to connect to orderbook service after ${MAX_RECONNECT_ATTEMPTS} attempts. Please try again later.`);
             return;
           }
           
