@@ -1,4 +1,3 @@
-
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,10 +24,10 @@ export function RawOrderBookData({ clobTokenId, isClosing }: RawOrderBookProps) 
         const baseUrl = "https://lfmkoismabbhujycnqpn.functions.supabase.co/polymarket-ws";
         setRawData(prev => [...prev, `Testing connection to: ${baseUrl}?test=true`]);
         
-        // Use the Supabase client to make the test request
+        // Update the invoke options to use params instead of query
         const { data, error } = await supabase.functions.invoke('polymarket-ws', {
           method: 'GET',
-          query: { test: 'true' }
+          params: { test: 'true' }
         });
 
         if (error) {
