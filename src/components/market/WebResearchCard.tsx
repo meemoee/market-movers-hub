@@ -40,8 +40,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         if (data && data.length > 0) {
           const job = data[0];
           // Load previous results if they exist
-          if (job.results && job.results.length > 0) {
-            setResults(job.results);
+          if (job.results && Array.isArray(job.results) && job.results.length > 0) {
+            setResults(job.results as Array<{ url: string; title: string; content: string }>);
           }
           
           if (job.analysis) {
@@ -52,8 +52,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             setProbability(job.probability);
           }
           
-          if (job.progress_log && job.progress_log.length > 0) {
-            setProgress(job.progress_log);
+          if (job.progress_log && Array.isArray(job.progress_log) && job.progress_log.length > 0) {
+            setProgress(job.progress_log as string[]);
           }
         }
       } catch (error) {
@@ -210,7 +210,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       </CardHeader>
       <CardContent>
         {progress.length > 0 && (
-          <ProgressDisplay progress={progress} isLoading={isLoading || isAnalyzing} />
+          <ProgressDisplay 
+            messages={progress} 
+          />
         )}
         
         {results.length > 0 && (
@@ -218,7 +220,10 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         )}
         
         {analysis && (
-          <AnalysisDisplay analysis={analysis} probability={probability} />
+          <AnalysisDisplay 
+            content={analysis}
+            isStreaming={false}
+          />
         )}
       </CardContent>
     </Card>
