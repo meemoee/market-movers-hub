@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -29,7 +28,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -49,7 +47,6 @@ serve(async (req) => {
       relatedMarkets
     } = await req.json() as InsightsRequest;
     
-    // Log request info for debugging
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
       webContentLength: webContent?.length || 0,
       analysisLength: analysis?.length || 0,
@@ -63,14 +60,12 @@ serve(async (req) => {
       relatedMarketsCount: relatedMarkets?.length || 0
     });
 
-    // Get OpenRouter API key
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
     
     if (!openRouterKey) {
       throw new Error('No API key configured for OpenRouter');
     }
 
-    // Set up content limiter to prevent tokens from being exceeded
     const contentLimit = 70000; // Arbitrary limit to prevent token overages
     const truncatedContent = webContent.length > contentLimit 
       ? webContent.substring(0, contentLimit) + "... [content truncated]" 
@@ -80,26 +75,21 @@ serve(async (req) => {
       ? analysis.substring(0, 10000) + "... [analysis truncated]" 
       : analysis;
 
-    // Prepare previous analyses for context
     const previousAnalysesContext = previousAnalyses && previousAnalyses.length > 0
       ? `Previous iteration analyses:
 ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.length > 2000 ? '...[truncated]' : ''}`).join('\n\n')}`
       : '';
     
-    // Prepare queries context
     const queriesContext = queries && queries.length > 0
       ? `Search queries used: ${queries.join(', ')}`
       : '';
     
-    // Prepare previous research areas
     const previousResearchAreas = areasForResearch && areasForResearch.length > 0
       ? `Previously identified research areas: ${areasForResearch.join(', ')}`
       : '';
 
-    // Check if market is already resolved (price is 0% or 100%)
     const isMarketResolved = marketPrice === 0 || marketPrice === 100;
     
-    // Add market price context with special handling for resolved markets
     let marketPriceContext = '';
     if (marketPrice !== undefined) {
       if (isMarketResolved) {
@@ -109,7 +99,6 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       }
     }
 
-    // Add related markets context if available
     let relatedMarketsContext = '';
     if (relatedMarkets && relatedMarkets.length > 0) {
       relatedMarketsContext = "\nRelated markets and their current probabilities:\n";
@@ -121,7 +110,6 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       relatedMarketsContext += "\nConsider how these related markets may affect your probability assessment. Are there dependencies or correlations between these markets and the main market?\n";
     }
 
-    // Create a system prompt that emphasizes the specific market context
     const marketContext = marketId && marketQuestion
       ? `\nYou are analyzing market ID: ${marketId} with the question: "${marketQuestion}"\n`
       : '';
@@ -131,25 +119,29 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       : '';
 
     const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
-Your task is to analyze web research content and provide precise insights about prediction market outcomes.
-${previousResearchAreas}
-${queriesContext}
-${marketPriceContext}
-${relatedMarketsContext}
+Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
 
-${isMarketResolved ? `Since the market price is ${marketPrice}%, this market has likely resolved. You should explain the evidence for WHY this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than providing a probability estimate.` : 'Based on your comprehensive analysis, provide a specific probability estimate (a percentage) for the market outcome.'}
+CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
+1. Historical Precedents: Always cite specific historical events, statistics, or past occurrences that inform your estimate
+2. Key Conditions: Identify and analyze the specific conditions that must be met for the event to occur
+3. Impact Factors: List the major factors that could positively or negatively impact the probability
+4. Evidence Quality: Assess the reliability and relevance of your sources
+5. Uncertainty: Acknowledge key areas of uncertainty and how they affect your estimate
+6. Competitive Analysis: When relevant, analyze competitor positions and market dynamics
+7. Timeline Considerations: Account for time-dependent factors and how they affect probability
 
-Format your answer as a JSON object with the following structure:
+Format your analysis as a JSON object with:
 {
-  ${isMarketResolved ? 
-    `"probability": "${marketPrice}%",` : 
-    `"probability": "X%" (numerical percentage with % sign),`
-  }
+  "probability": "X%" (numerical percentage with % sign),
   "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
-  "reasoning": "brief explanation of ${isMarketResolved ? 'why this event occurred or did not occur' : 'your reasoning behind the probability estimate'}"
+  "reasoning": "Detailed explanation following this structure:
+    1. Historical Precedents: [specific examples]
+    2. Key Conditions: [list conditions]
+    3. Impact Analysis: [major factors]
+    4. Evidence Assessment: [source evaluation]
+    5. Final Probability Justification"
 }`;
 
-    // Create a longer version of the prompt for a more nuanced response
     const prompt = `Here is the web content I've collected during research:
 ---
 ${truncatedContent}
@@ -162,26 +154,22 @@ ${truncatedAnalysis}
 
 ${previousAnalysesContext}
 
-Based on all this information:
-${isMarketResolved ?
-  `1. The market price is ${marketPrice}%, indicating this event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}. Explain the key evidence supporting this outcome.` :
-  `1. What is your best estimate of the probability this market event will occur? Give a specific percentage.`
-}
-2. What are the most important areas where more research is needed to improve prediction accuracy?
-3. Summarize the key evidence and reasoning behind your ${isMarketResolved ? 'explanation' : 'probability estimate'} in 2-3 sentences.
+Based on all this information, please provide:
+1. A specific probability estimate for the market question: "${marketQuestion}"
+2. The key areas where more research is needed
+3. A detailed reasoning that includes:
+   - Relevant historical precedents and statistics
+   - Specific conditions that need to be met
+   - Major impact factors (both positive and negative)
+   - Assessment of evidence quality
+   - Clear justification for the probability estimate
 ${relatedMarkets && relatedMarkets.length > 0 ? 
-  `4. Are there any insights from your analysis that might relate to the connected markets mentioned in context? Consider any potential correlations or dependencies.` : ''
-}
-
-${marketPrice !== undefined ? 
-  isMarketResolved ?
-    `Remember that the current market price is ${marketPrice}%, which means the market considers this event as ${marketPrice === 100 ? 'resolved YES' : 'resolved NO'}. Your task is to explain WHY based on the evidence.` :
-    `Remember that the current market price is ${marketPrice}%, which represents the market's assessment of probability. Consider how your evidence-based analysis compares to this assessment.` 
+  `4. Analysis of how the following related markets affect your assessment:
+${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 
   : ''}
 
-Remember to respond with a valid JSON object with "probability", "areasForResearch", and "reasoning" properties.`;
+Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
-    // Make the streaming request with Gemini model
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -208,7 +196,6 @@ Remember to respond with a valid JSON object with "probability", "areasForResear
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // Return the streaming response directly
     return new Response(response.body, {
       headers: {
         ...corsHeaders,
@@ -219,7 +206,6 @@ Remember to respond with a valid JSON object with "probability", "areasForResear
   } catch (error) {
     console.error('Error in extract-research-insights:', error);
     
-    // Return a structured error format that won't cause parsing flashes
     return new Response(
       JSON.stringify({ 
         error: error.message || 'Unknown error',

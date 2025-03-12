@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -27,7 +26,6 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -45,7 +43,6 @@ serve(async (req) => {
       relatedMarkets
     } = await req.json() as AnalysisRequest;
     
-    // Log request info for debugging
     console.log(`Analyze web content request for market ID ${marketId || 'unknown'}:`, {
       contentLength: content?.length || 0,
       query: query?.substring(0, 100) || 'Not provided',
@@ -57,20 +54,17 @@ serve(async (req) => {
       relatedMarketsCount: relatedMarkets?.length || 0
     });
 
-    // Get OpenRouter API key
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
     
     if (!openRouterKey) {
       throw new Error('No API key configured for OpenRouter');
     }
 
-    // Set up content limiter to prevent tokens from being exceeded
-    const contentLimit = 80000; // Arbitrary limit to prevent token overages
+    const contentLimit = 80000;
     const truncatedContent = content.length > contentLimit 
       ? content.substring(0, contentLimit) + "... [content truncated]" 
       : content;
 
-    // Create a system prompt that incorporates the specific market context
     const marketContext = marketId
       ? `\nImportant context: You are analyzing content for prediction market ID: ${marketId}\n`
       : '';
@@ -79,15 +73,12 @@ serve(async (req) => {
       ? `\nIMPORTANT: Focus your analysis specifically on: "${focusText}"\n`
       : '';
 
-    // Include previous areas for research if available
     const researchAreasContext = areasForResearch && areasForResearch.length > 0
       ? `\nPreviously identified research areas to focus on: ${areasForResearch.join(', ')}\n`
       : '';
 
-    // Check if market is already resolved (price is 0% or 100%)
     const isMarketResolved = marketPrice === 0 || marketPrice === 100;
     
-    // Include market price info if available
     let marketPriceContext = '';
     if (marketPrice !== undefined) {
       if (isMarketResolved) {
@@ -97,7 +88,6 @@ serve(async (req) => {
       }
     }
 
-    // Add related markets context if available
     let relatedMarketsContext = '';
     if (relatedMarkets && relatedMarkets.length > 0) {
       relatedMarketsContext = "\nRelated markets and their current probabilities:\n";
@@ -109,18 +99,42 @@ serve(async (req) => {
       relatedMarketsContext += "\nConsider how these related markets may inform your analysis. Look for correlations or dependencies between markets.\n";
     }
 
-    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}${relatedMarketsContext}
-Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
-Provide a comprehensive, balanced analysis of the key information, focusing on facts that help ${isMarketResolved ? 'understand why this event did or did not occur' : 'assess probability'}.
-Be factual and evidence-based, not speculative.`;
+    const systemPrompt = `You are an expert market research analyst focused on evidence-based analysis.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}${relatedMarketsContext}
 
-    // Create the prompt for the user message
+Your task is to analyze web content to assess the probability of market outcomes. Follow these critical guidelines:
+
+1. Historical Analysis
+   - Identify and analyze relevant historical precedents
+   - Compare current situation with similar past events
+   - Note key differences that might affect outcomes
+
+2. Evidence Assessment
+   - Evaluate source credibility and relevance
+   - Highlight strongest evidence points
+   - Note potential biases or limitations
+
+3. Impact Factor Analysis
+   - List major factors affecting probability
+   - Analyze positive and negative influences
+   - Consider timing and sequence of events
+
+4. Condition Mapping
+   - Identify necessary conditions for the event
+   - Assess likelihood of conditions being met
+   - Note dependencies between conditions
+
+5. Uncertainty Analysis
+   - Highlight key areas of uncertainty
+   - Discuss potential unknown factors
+   - Consider alternative scenarios
+
+Be factual, precise, and evidence-based in your analysis.`;
+
     let prompt = `Here is the web content I've collected during research:
 ---
 ${truncatedContent}
 ---`;
 
-    // Include previous analyses if available
     if (previousAnalyses && previousAnalyses.length > 0) {
       prompt += `\n\nPrevious research has identified the following insights:
 ---
@@ -142,7 +156,6 @@ ${relatedMarkets && relatedMarkets.length > 0 ? `6. Are there any insights that 
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
-    // Make the streaming request with Gemini model
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -167,7 +180,6 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // Return the streaming response directly
     return new Response(response.body, {
       headers: {
         ...corsHeaders,
