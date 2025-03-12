@@ -1,6 +1,5 @@
-
 import { useState } from 'react'
-import { useResearchJobs } from '@/hooks/useResearchJobs'
+import { useResearchJobs, useResearchJob } from '@/hooks/useResearchJobs'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'

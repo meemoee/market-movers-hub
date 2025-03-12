@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from "@/integrations/supabase/client"
 
@@ -28,7 +27,6 @@ interface ResearchJob {
 export function useResearchJobs(marketId?: string) {
   const queryClient = useQueryClient()
 
-  // Get all jobs for current user, optionally filtered by market
   const getResearchJobs = async (): Promise<ResearchJob[]> => {
     const { data: user } = await supabase.auth.getUser()
     if (!user.user) throw new Error('Not authenticated')
@@ -48,7 +46,6 @@ export function useResearchJobs(marketId?: string) {
     return data as ResearchJob[]
   }
 
-  // Get job by ID
   const getResearchJob = async (jobId: string): Promise<ResearchJob> => {
     const { data, error } = await supabase
       .from('research_jobs')
@@ -60,7 +57,6 @@ export function useResearchJobs(marketId?: string) {
     return data as ResearchJob
   }
 
-  // Start a new research job
   const createResearchJob = async ({
     query,
     marketId,
@@ -92,7 +88,6 @@ export function useResearchJobs(marketId?: string) {
 
     if (error) throw error
 
-    // Start the background processing
     const { error: processError } = await supabase.functions.invoke('process-research-job', {
       body: { jobId: data.id }
     })
@@ -104,7 +99,6 @@ export function useResearchJobs(marketId?: string) {
     return data as ResearchJob
   }
 
-  // Cancel a job (update status to 'failed')
   const cancelResearchJob = async (jobId: string): Promise<void> => {
     const { error } = await supabase
       .from('research_jobs')
@@ -118,14 +112,12 @@ export function useResearchJobs(marketId?: string) {
     if (error) throw error
   }
 
-  // Query for getting all jobs
   const { data: jobs, isLoading: isLoadingJobs, error: jobsError, refetch: refetchJobs } = useQuery({
     queryKey: ['research-jobs', marketId],
     queryFn: getResearchJobs,
-    refetchInterval: 5000 // Poll for updates every 5 seconds
+    refetchInterval: 5000
   })
 
-  // Mutation for creating a job
   const { mutateAsync: createJob, isPending: isCreatingJob } = useMutation({
     mutationFn: createResearchJob,
     onSuccess: () => {
@@ -133,7 +125,6 @@ export function useResearchJobs(marketId?: string) {
     }
   })
 
-  // Mutation for cancelling a job
   const { mutateAsync: cancelJob, isPending: isCancellingJob } = useMutation({
     mutationFn: cancelResearchJob,
     onSuccess: () => {
@@ -154,38 +145,29 @@ export function useResearchJobs(marketId?: string) {
   }
 }
 
-// Hook for getting a specific job by ID
 export function useResearchJob(jobId: string | undefined) {
   const queryClient = useQueryClient()
 
-  // Query for getting a single job
   const { data: job, isLoading, error, refetch } = useQuery({
     queryKey: ['research-job', jobId],
-    queryFn: () => {
+    queryFn: async () => {
       if (!jobId) throw new Error('Job ID is required')
-      return getResearchJob(jobId)
+      const { data, error } = await supabase
+        .from('research_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single()
+
+      if (error) throw error
+      return data as ResearchJob
     },
     enabled: !!jobId,
     refetchInterval: (data) => {
-      // Poll more frequently if the job is running, stop polling when completed or failed
       if (!data) return 5000
       return ['completed', 'failed'].includes(data.status) ? false : 3000
     }
   })
 
-  // Get job by ID
-  async function getResearchJob(id: string): Promise<ResearchJob> {
-    const { data, error } = await supabase
-      .from('research_jobs')
-      .select('*')
-      .eq('id', id)
-      .single()
-
-    if (error) throw error
-    return data as ResearchJob
-  }
-
-  // Cancel a job
   const { mutateAsync: cancelJob, isPending: isCancelling } = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
