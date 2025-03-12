@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "@/components/ui/use-toast";
 
 export interface OrderBookData {
   token_id: string;
@@ -65,18 +66,29 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           setOrderBookData(orderBookData);
         }
 
-        // Instead of using the functions.invoke method, directly call the get-orderbook function
-        // This function should already exist and be properly deployed
-        await supabase.functions.invoke('get-orderbook', {
+        // Call the get-orderbook function to fetch latest data
+        const { data: bookData, error: bookError } = await supabase.functions.invoke('get-orderbook', {
           method: 'POST',
           body: { 
             tokenId 
           },
         });
 
+        if (bookError) {
+          console.error('Error invoking get-orderbook:', bookError);
+          throw new Error(`Failed to fetch orderbook: ${bookError.message}`);
+        }
+
       } catch (err) {
         console.error('Error fetching orderbook:', err);
         setError(err instanceof Error ? err : new Error('Unknown error occurred'));
+        
+        // Show toast notification for error
+        toast({
+          title: "Error loading orderbook",
+          description: err instanceof Error ? err.message : 'Failed to load orderbook data',
+          variant: "destructive",
+        });
       } finally {
         setIsLoading(false);
       }

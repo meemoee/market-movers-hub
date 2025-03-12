@@ -1,6 +1,6 @@
 
 import { useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { useOrderBookRealtime } from '@/hooks/useOrderBookRealtime';
 import { OrderBookData } from '@/hooks/useOrderBookRealtime';
 
@@ -46,6 +46,7 @@ export function LiveOrderBook({
   if (error) {
     return (
       <div className="flex justify-center items-center p-4 h-16 text-destructive">
+        <AlertCircle className="h-5 w-5 mr-2" />
         <p className="text-sm">Error loading orderbook: {error.message}</p>
       </div>
     );
