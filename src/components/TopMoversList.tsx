@@ -158,6 +158,24 @@ export default function TopMoversList({
     setIsOrderBookLoading(true);
   }, [selectedMarket]);
 
+  const handleOrderBookData = (data: OrderBookData | null) => {
+    console.log('[TopMoversList] Setting orderbook data:', data);
+    
+    if (data === null) {
+      setOrderBookData(null);
+      setIsOrderBookLoading(false);
+      return;
+    }
+    
+    if (selectedMarket) {
+      setOrderBookData(data);
+      setIsOrderBookLoading(false);
+    } else {
+      console.warn('[TopMoversList] Received orderbook data but no market is selected');
+      setOrderBookData(null);
+    }
+  };
+
   const isSearching = debouncedSearch.length > 0 && !marketId;
   const activeQuery = isSearching ? marketSearchQuery : topMoversQuery;
   const displayedMarkets = (isSearching ? marketSearchQuery.data?.data : topMoversQuery.data?.pages.flatMap(page => page.data)) || [];
@@ -174,6 +192,22 @@ export default function TopMoversList({
       description: `Your ${action} order has been submitted at ${(price * 100).toFixed(2)}¢`,
     });
     setSelectedMarket(null);
+    setOrderBookData(null);
+  };
+
+  const handleMarketSelection = (market: { 
+    id: string; 
+    action: 'buy' | 'sell';
+    clobTokenId: string;
+    selectedOutcome: string;
+  } | null) => {
+    console.log('[TopMoversList] Setting selected market:', market);
+    
+    if (market?.id !== selectedMarket?.id) {
+      setOrderBookData(null);
+    }
+    
+    setSelectedMarket(market);
   };
 
   const toggleMarket = (marketId: string) => {
@@ -262,7 +296,7 @@ export default function TopMoversList({
             topMovers={sortedMarkets}
             expandedMarkets={expandedMarkets}
             toggleMarket={toggleMarket}
-            setSelectedMarket={setSelectedMarket}
+            setSelectedMarket={handleMarketSelection}
             onLoadMore={handleLoadMore}
             hasMore={hasMore}
             isLoadingMore={
@@ -281,10 +315,7 @@ export default function TopMoversList({
         onClose={() => setSelectedMarket(null)}
         orderBookData={orderBookData}
         isOrderBookLoading={isOrderBookLoading}
-        onOrderBookData={(data) => {
-          setOrderBookData(data);
-          setIsOrderBookLoading(false);
-        }}
+        onOrderBookData={handleOrderBookData}
         onConfirm={handleTransaction}
       />
     </div>

@@ -23,15 +23,22 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
   const [retryCount, setRetryCount] = useState(0);
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
+  const currentMarketRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Track the current market ID to validate incoming data
+    currentMarketRef.current = clobTokenId || null;
+    
     if (isClosing) {
       console.log('[LiveOrderBook] Dialog is closing, clearing state and subscriptions');
       setError(null);
       if (subscriptionRef.current) {
+        console.log('[LiveOrderBook] Unsubscribing from channel');
         subscriptionRef.current.unsubscribe();
         subscriptionRef.current = null;
       }
+      // Signal to parent that orderbook data should be cleared
+      onOrderBookData(null);
       return;
     }
 
@@ -40,12 +47,19 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       return;
     }
 
+    // Clear any previous data when switching markets
+    onOrderBookData(null);
+
     // Trigger initial fetch to populate data and establish WebSocket connection
     fetchOrderbookSnapshot(clobTokenId);
 
-    // Set up realtime subscription
+    // Create a unique channel name per market ID
+    const channelName = `orderbook-updates-${clobTokenId}`;
+    console.log(`[LiveOrderBook] Creating new channel: ${channelName} for market ${clobTokenId}`);
+
+    // Set up realtime subscription with unique channel name
     const channel = supabase
-      .channel('orderbook-updates')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -56,36 +70,57 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         },
         (payload) => {
           console.log('[LiveOrderBook] Received realtime update:', payload);
+          
+          // Only process updates for the current market
+          if (currentMarketRef.current !== clobTokenId) {
+            console.log('[LiveOrderBook] Ignoring update for different market', {
+              current: currentMarketRef.current,
+              received: clobTokenId
+            });
+            return;
+          }
+          
           if (payload.new) {
             const newData = payload.new as any;
-            const orderbookData: OrderBookData = {
-              bids: newData.bids || {},
-              asks: newData.asks || {},
-              best_bid: newData.best_bid,
-              best_ask: newData.best_ask,
-              spread: newData.spread,
-            };
-            onOrderBookData(orderbookData);
-            setConnectionStatus("connected");
-            setError(null);
+            // Validate that the update is for the current market
+            if (newData.market_id === clobTokenId) {
+              const orderbookData: OrderBookData = {
+                bids: newData.bids || {},
+                asks: newData.asks || {},
+                best_bid: newData.best_bid,
+                best_ask: newData.best_ask,
+                spread: newData.spread,
+              };
+              onOrderBookData(orderbookData);
+              setConnectionStatus("connected");
+              setError(null);
+            } else {
+              console.warn('[LiveOrderBook] Received update for wrong market', {
+                expected: clobTokenId,
+                received: newData.market_id
+              });
+            }
           }
         }
       )
       .subscribe((status) => {
-        console.log('[LiveOrderBook] Subscription status:', status);
+        console.log(`[LiveOrderBook] Subscription status for ${channelName}:`, status);
         if (status === 'SUBSCRIBED') {
-          console.log('[LiveOrderBook] Successfully subscribed to realtime updates');
+          console.log(`[LiveOrderBook] Successfully subscribed to realtime updates for ${clobTokenId}`);
         }
       });
 
+    // Store the subscription reference
     subscriptionRef.current = channel;
 
     return () => {
-      console.log('[LiveOrderBook] Cleaning up subscription');
+      console.log(`[LiveOrderBook] Cleaning up subscription for ${clobTokenId}`);
       if (subscriptionRef.current) {
         subscriptionRef.current.unsubscribe();
         subscriptionRef.current = null;
       }
+      // Clear the current market reference
+      currentMarketRef.current = null;
     };
   }, [clobTokenId, isClosing, retryCount, onOrderBookData]);
 
@@ -98,6 +133,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       const { data, error } = await supabase.functions.invoke('polymarket-ws', {
         body: { assetId: tokenId }
       });
+
+      // Verify we're still looking at the same market
+      if (currentMarketRef.current !== tokenId) {
+        console.log('[LiveOrderBook] Market changed during fetch, aborting update');
+        return;
+      }
 
       if (error) {
         console.error('[LiveOrderBook] Error fetching orderbook:', error);

@@ -45,7 +45,7 @@ interface TransactionDialogProps {
   onClose: () => void;
   orderBookData: OrderBookData | null;
   isOrderBookLoading: boolean;
-  onOrderBookData: (data: OrderBookData) => void;
+  onOrderBookData: (data: OrderBookData | null) => void;
   onConfirm: () => void;
 }
 
@@ -64,6 +64,28 @@ export function TransactionDialog({
   const [userBalance, setUserBalance] = useState<number | null>(null);
   const [sharePercentage, setSharePercentage] = useState<number>(10);
   const [shareAmount, setShareAmount] = useState<number>(0);
+  const [currentMarketId, setCurrentMarketId] = useState<string | null>(null);
+
+  // Effect to reset state when market changes
+  useEffect(() => {
+    if (selectedMarket?.id !== currentMarketId) {
+      console.log('[TransactionDialog] Market changed, resetting state', {
+        previous: currentMarketId,
+        current: selectedMarket?.id
+      });
+      
+      // Reset market-specific state
+      setCurrentMarketId(selectedMarket?.id || null);
+      setSize(1);
+      setSharePercentage(10);
+      setShareAmount(0);
+      
+      // Clear orderbook data when market changes
+      if (selectedMarket === null || (currentMarketId !== null && selectedMarket.id !== currentMarketId)) {
+        onOrderBookData(null);
+      }
+    }
+  }, [selectedMarket, currentMarketId, onOrderBookData]);
 
   // Add effect to log when orderbook data changes
   useEffect(() => {
@@ -198,6 +220,7 @@ export function TransactionDialog({
       onOrderBookData(null);
       onClose();
       setIsClosing(false);
+      setCurrentMarketId(null);
     }, 100);
   };
 
@@ -309,7 +332,10 @@ export function TransactionDialog({
             <LiveOrderBook 
               onOrderBookData={(data) => {
                 console.log('[TransactionDialog] Received orderbook data from LiveOrderBook:', data);
-                onOrderBookData(data);
+                // Only update if we're not closing
+                if (!isClosing) {
+                  onOrderBookData(data);
+                }
               }}
               isLoading={isOrderBookLoading}
               clobTokenId={selectedMarket?.clobTokenId}

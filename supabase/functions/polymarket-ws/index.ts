@@ -7,88 +7,146 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Global WebSocket connection and orderbook state
-let globalWs: WebSocket | null = null;
-let latestOrderbook: any = null;
+// Global WebSocket connections and orderbook state by market ID
+const connections = new Map<string, { 
+  ws: WebSocket,
+  lastData: any,
+  lastUpdated: number 
+}>();
 
-// Function to initialize WebSocket connection
+// Clean up inactive connections every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  const inactiveThreshold = 5 * 60 * 1000; // 5 minutes
+  
+  for (const [assetId, connection] of connections.entries()) {
+    if (now - connection.lastUpdated > inactiveThreshold) {
+      console.log(`Cleaning up inactive connection for ${assetId}`);
+      if (connection.ws.readyState === WebSocket.OPEN) {
+        connection.ws.close();
+      }
+      connections.delete(assetId);
+    }
+  }
+}, 60 * 1000); // Check every minute
+
+// Function to initialize WebSocket connection for a specific market
 async function initializeWebSocket(assetId: string) {
-  if (globalWs && globalWs.readyState === WebSocket.OPEN) {
-    console.log("WebSocket connection already exists");
-    return;
+  // Check if we already have an active connection
+  const existingConnection = connections.get(assetId);
+  if (existingConnection && existingConnection.ws.readyState === WebSocket.OPEN) {
+    console.log(`Using existing WebSocket connection for asset ID: ${assetId}`);
+    existingConnection.lastUpdated = Date.now();
+    return existingConnection.lastData;
   }
 
   console.log(`Initializing WebSocket connection for asset ID: ${assetId}`);
   
-  return new Promise((resolve, reject) => {
-    globalWs = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
-
-    globalWs.onopen = () => {
-      console.log("Polymarket WebSocket connected");
+  try {
+    // Create a new connection
+    const ws = new WebSocket("wss://ws-subscriptions-clob.polymarket.com/ws/market");
+    
+    // Store the connection in our map
+    const connectionData = {
+      ws: ws,
+      lastData: null,
+      lastUpdated: Date.now()
+    };
+    connections.set(assetId, connectionData);
+    
+    // Set up event handlers
+    ws.onopen = () => {
+      console.log(`Polymarket WebSocket connected for ${assetId}`);
       
       // Subscribe to market data
       const subscription = {
         type: "Market",
         assets_ids: [assetId]
       };
-      globalWs.send(JSON.stringify(subscription));
+      ws.send(JSON.stringify(subscription));
       
       // Request initial snapshot
       const snapshotRequest = {
         type: "GetMarketSnapshot",
         asset_id: assetId
       };
-      globalWs.send(JSON.stringify(snapshotRequest));
+      ws.send(JSON.stringify(snapshotRequest));
     };
     
-    globalWs.onmessage = async (event) => {
+    ws.onmessage = async (event) => {
       try {
         const data = event.data.toString();
         
         // Handle Polymarket's PONG response
         if (data === "PONG") {
-          console.log("Received PONG from Polymarket");
+          console.log(`Received PONG from Polymarket for ${assetId}`);
           return;
         }
         
         const parsed = JSON.parse(data);
         
         if (!Array.isArray(parsed) || parsed.length === 0) {
-          console.log("Received non-array data:", data);
+          console.log(`Received non-array data for ${assetId}:`, data);
           return;
         }
         
         // Process the events from Polymarket
         for (const event of parsed) {
           if (event.event_type === "book") {
-            console.log("Received orderbook update");
-            latestOrderbook = processOrderbookSnapshot(event);
+            console.log(`Received orderbook update for ${assetId}`);
+            const orderbook = processOrderbookSnapshot(event);
+            connectionData.lastData = orderbook;
+            connectionData.lastUpdated = Date.now();
             
             // Store the orderbook in the database
-            if (latestOrderbook) {
-              await storeOrderbook(assetId, latestOrderbook);
+            if (orderbook) {
+              await storeOrderbook(assetId, orderbook);
             }
           }
         }
       } catch (err) {
-        console.error("Error processing message from Polymarket:", err);
+        console.error(`Error processing message from Polymarket for ${assetId}:`, err);
       }
     };
     
-    globalWs.onerror = (event) => {
-      console.error("Polymarket WebSocket error:", event);
-      reject(new Error("WebSocket connection error"));
+    ws.onerror = (event) => {
+      console.error(`Polymarket WebSocket error for ${assetId}:`, event);
+      connections.delete(assetId);
     };
     
-    globalWs.onclose = (event) => {
-      console.log(`Polymarket WebSocket closed with code ${event.code}`);
-      globalWs = null;
-      latestOrderbook = null;
+    ws.onclose = (event) => {
+      console.log(`Polymarket WebSocket closed for ${assetId} with code ${event.code}`);
+      connections.delete(assetId);
     };
-
-    // Initial connection is considered successful after a short delay
-    setTimeout(() => resolve(true), 1000);
-  });
+    
+    // Wait for initial data with timeout
+    let timeoutId: number;
+    const initialData = await Promise.race([
+      new Promise<any>((resolve) => {
+        const checkInterval = setInterval(() => {
+          if (connectionData.lastData) {
+            clearInterval(checkInterval);
+            clearTimeout(timeoutId);
+            resolve(connectionData.lastData);
+          }
+        }, 100);
+      }),
+      new Promise<any>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('Timeout waiting for initial orderbook data'));
+        }, 5000);
+      })
+    ]).catch(error => {
+      console.error(`Error getting initial data for ${assetId}:`, error);
+      return null;
+    });
+    
+    return initialData;
+  } catch (err) {
+    console.error(`Error initializing WebSocket for ${assetId}:`, err);
+    connections.delete(assetId);
+    return null;
+  }
 }
 
 // Store orderbook in Supabase
@@ -113,12 +171,12 @@ async function storeOrderbook(assetId: string, orderbook: any) {
       });
     
     if (error) {
-      console.error("Error storing orderbook data:", error);
+      console.error(`Error storing orderbook data for ${assetId}:`, error);
     } else {
-      console.log("Successfully stored orderbook data for", assetId);
+      console.log(`Successfully stored orderbook data for ${assetId}`);
     }
   } catch (err) {
-    console.error("Error in storeOrderbook:", err);
+    console.error(`Error in storeOrderbook for ${assetId}:`, err);
   }
 }
 
@@ -143,10 +201,7 @@ serve(async (req) => {
       });
     }
 
-    // Initialize or ensure WebSocket connection
-    if (!globalWs || globalWs.readyState !== WebSocket.OPEN) {
-      await initializeWebSocket(assetId);
-    }
+    console.log(`Processing request for asset ID: ${assetId}`);
 
     // Look for existing data in the database
     const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
@@ -160,24 +215,70 @@ serve(async (req) => {
       .single();
     
     if (dbError && dbError.code !== 'PGRST116') {
-      console.error("Error fetching orderbook from DB:", dbError);
+      console.error(`Error fetching orderbook from DB for ${assetId}:`, dbError);
     }
     
-    // Use database data if available, otherwise use the latest from WebSocket
-    const responseData = dbOrderbook || { orderbook: latestOrderbook };
-
-    // Return the orderbook data
+    // If we have recent data in the database (less than 10 seconds old), use that
+    if (dbOrderbook) {
+      const timestamp = new Date(dbOrderbook.timestamp);
+      const now = new Date();
+      const age = now.getTime() - timestamp.getTime();
+      
+      if (age < 10000) { // 10 seconds
+        console.log(`Using recent database data for ${assetId} (${age}ms old)`);
+        return new Response(JSON.stringify({ 
+          status: "success", 
+          orderbook: {
+            bids: dbOrderbook.bids,
+            asks: dbOrderbook.asks,
+            best_bid: dbOrderbook.best_bid,
+            best_ask: dbOrderbook.best_ask,
+            spread: dbOrderbook.spread
+          }
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+    
+    // Initialize or get WebSocket connection and fetch live data
+    const wsData = await initializeWebSocket(assetId);
+    
+    // If we got live data from WebSocket, return it
+    if (wsData) {
+      console.log(`Returning live WebSocket data for ${assetId}`);
+      return new Response(JSON.stringify({ 
+        status: "success", 
+        orderbook: wsData
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // If we didn't get live data but have database data (even if old), return that as fallback
+    if (dbOrderbook) {
+      console.log(`Returning database data as fallback for ${assetId}`);
+      return new Response(JSON.stringify({ 
+        status: "success", 
+        orderbook: {
+          bids: dbOrderbook.bids,
+          asks: dbOrderbook.asks,
+          best_bid: dbOrderbook.best_bid,
+          best_ask: dbOrderbook.best_ask,
+          spread: dbOrderbook.spread
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // If we have no data at all, return an error
     return new Response(JSON.stringify({ 
-      status: "success", 
-      orderbook: dbOrderbook ? {
-        bids: dbOrderbook.bids,
-        asks: dbOrderbook.asks,
-        best_bid: dbOrderbook.best_bid,
-        best_ask: dbOrderbook.best_ask,
-        spread: dbOrderbook.spread
-      } : latestOrderbook 
+      status: "error", 
+      message: "Could not retrieve orderbook data" 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
     });
   } catch (err) {
     console.error("Error handling request:", err);
