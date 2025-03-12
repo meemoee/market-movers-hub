@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -23,7 +22,8 @@ serve(async (req) => {
       previousResults = "", 
       iteration = 1,
       areasForResearch = [],
-      focusText = ""
+      focusText = "",
+      previousQueries = [] // New parameter to track past queries
     } = requestData;
     
     // Use either question or query parameter
@@ -37,7 +37,8 @@ serve(async (req) => {
       previousResults: previousResults ? "present" : "absent",
       iteration,
       areasForResearch: Array.isArray(areasForResearch) ? areasForResearch.length : 0,
-      focusText: focusText ? focusText.substring(0, 100) + "..." : "none"
+      focusText: focusText ? focusText.substring(0, 100) + "..." : "none",
+      previousQueriesCount: Array.isArray(previousQueries) ? previousQueries.length : 0
     });
     
     const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -56,6 +57,17 @@ serve(async (req) => {
       contextInfo += `
         CRITICAL - Research Focus: ${focusText}
         ALL generated queries MUST specifically target this focus area.
+      `;
+    }
+    
+    // Add previous queries to avoid repetition
+    if (Array.isArray(previousQueries) && previousQueries.length > 0) {
+      contextInfo += `
+        Previous Search Queries:
+        ${previousQueries.map((q, i) => `${i+1}. ${q}`).join('\n')}
+        
+        IMPORTANT: DO NOT generate queries that are similar to these previous queries.
+        Each new query should explore DIFFERENT angles or aspects not covered by previous queries.
       `;
     }
     
@@ -111,10 +123,13 @@ serve(async (req) => {
       5. If researching a future event, include timeframes or dates
       6. Use precise terminology and specific entities mentioned in the original question
       ${focusText ? `7. EVERY query must EXPLICITLY target the focus area: "${focusText}" - do not generate general queries about the broader topic` : ''}
+      8. NEVER repeat or closely resemble any previous queries - examine the provided list of previous queries and ensure yours are distinctly different
+      9. Target UNEXPLORED areas or angles identified in previous research
+      10. Prioritize filling knowledge gaps mentioned in "Areas Needing Further Research"
       
       Focus specifically on areas that need additional investigation based on previous research.
-      Queries should be more targeted than previous iterations, diving deeper into unclear aspects.
-      DO NOT repeat previous queries, but build upon what has been learned.
+      Each query should target a DIFFERENT aspect of the topic that hasn't been adequately covered.
+      DO NOT repeat previous queries or generate similar variants - create truly NEW lines of investigation.
       Output ONLY valid JSON in the following format:
       {
         "queries": [
