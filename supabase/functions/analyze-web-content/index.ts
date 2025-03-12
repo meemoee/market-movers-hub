@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -102,36 +101,34 @@ serve(async (req) => {
 
     const systemPrompt = `You are an expert market research analyst focused on evidence-based analysis.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}${relatedMarketsContext}
 
-Your task is to analyze web content to assess the probability of market outcomes. Focus on:
+Your task is to analyze web content to assess the probability of market outcomes. Follow these critical guidelines:
 
-1. Historical Precedents & Examples
-   - Identify specific historical cases that have similarities to the current situation
-   - Compare past outcomes to potential current outcomes
-   - Note key differences that might affect probability
+1. Historical Analysis
+   - Identify and analyze relevant historical precedents
+   - Compare current situation with similar past events
+   - Note key differences that might affect outcomes
 
-2. Concrete Evidence Assessment
-   - Evaluate sources and their credibility
-   - Highlight specific facts, statistics and data points
-   - Note biases or limitations in the evidence
+2. Evidence Assessment
+   - Evaluate source credibility and relevance
+   - Highlight strongest evidence points
+   - Note potential biases or limitations
 
-3. Key Factors Analysis
+3. Impact Factor Analysis
    - List major factors affecting probability
-   - Analyze both supporting and contradicting evidence
-   - Consider timing and dependencies between events
+   - Analyze positive and negative influences
+   - Consider timing and sequence of events
 
-For markets already resolved (0% or 100%):
-- Focus on explaining WHY the outcome occurred or didn't occur
-- Identify the key factors that led to the final result
+4. Condition Mapping
+   - Identify necessary conditions for the event
+   - Assess likelihood of conditions being met
+   - Note dependencies between conditions
 
-The response should end with a JSON block containing:
-1. "probability": Your numerical assessment (e.g., "75%") or conclusion
-2. "areasForResearch": Array of specific topics needing further research
-3. "evidenceFor": Array of specific evidence points supporting the proposition
-4. "evidenceAgainst": Array of specific evidence points contradicting the proposition
-5. "historicalPrecedents": Array of relevant historical cases or examples
-6. "resolutionAnalysis": For resolved markets, explanation of outcome factors
+5. Uncertainty Analysis
+   - Highlight key areas of uncertainty
+   - Discuss potential unknown factors
+   - Consider alternative scenarios
 
-Be factual, precise, and evidence-based in your analysis. Cite specific examples, data points, and sources whenever possible.`;
+Be factual, precise, and evidence-based in your analysis.`;
 
     let prompt = `Here is the web content I've collected during research:
 ---
@@ -148,29 +145,16 @@ ${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... 
     prompt += `\nBased solely on the information in this content:
 1. What are the key facts and insights relevant to the market question "${question}"?
 ${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
-2. What specific evidence supports or contradicts the proposition?
+2. What evidence supports or contradicts the proposition?
 ${isMarketResolved ? 
-  `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what specific evidence supports this outcome.` : 
-  `3. How does this specific information affect the probability assessment?`
+  `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
+  `3. How does this information affect the probability assessment?`
 }
-4. What historical precedents or similar events are relevant to this analysis?
-5. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
-${marketPrice !== undefined && !isMarketResolved ? `6. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
-${relatedMarkets && relatedMarkets.length > 0 ? `7. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+4. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
+${marketPrice !== undefined && !isMarketResolved ? `5. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `6. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 
-Ensure your analysis is factual, balanced, and directly addresses the market question. Include specific references to data, events, and sources from the content.
-
-End your response with a structured JSON output capturing your analysis:
-\`\`\`json
-{
-  "probability": "your assessment (e.g., 75%)",
-  "areasForResearch": ["area1", "area2", ...],
-  "evidenceFor": ["specific point 1", "specific point 2", ...],
-  "evidenceAgainst": ["counterpoint 1", "counterpoint 2", ...],
-  "historicalPrecedents": ["precedent 1", "precedent 2", ...],
-  "resolutionAnalysis": "For resolved markets, explanation of why the outcome occurred or didn't"
-}
-\`\`\``;
+Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
