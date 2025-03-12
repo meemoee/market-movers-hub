@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -134,13 +135,25 @@ Format your analysis as a JSON object with:
 {
   "probability": "X%" (numerical percentage with % sign),
   "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
-  "reasoning": "Detailed explanation following this structure:
-    1. Historical Precedents: [specific examples]
-    2. Key Conditions: [list conditions]
-    3. Impact Analysis: [major factors]
-    4. Evidence Assessment: [source evaluation]
-    5. Final Probability Justification"
-}`;
+  "reasoning": {
+    "evidenceFor": [
+      "Detailed point 1 supporting the event happening, with specific examples, statistics, or historical precedents",
+      "Detailed point 2 supporting the event happening"
+      // Add multiple points as needed
+    ],
+    "evidenceAgainst": [
+      "Detailed point 1 against the event happening, with specific examples, statistics, or historical precedents",
+      "Detailed point 2 against the event happening"
+      // Add multiple points as needed
+    ]
+  }
+}
+
+IMPORTANT:
+- In the "evidenceFor" and "evidenceAgainst" arrays, include detailed points with specific examples, historical precedents, statistics, and source citations where available.
+- For resolved markets (0% or 100%), focus on explaining why the event did or didn't happen rather than probability assessment.
+- Consider all dimensions of the question including economic, political, social, and technological factors.
+- Each evidence point should be a complete, well-reasoned argument, not just a simple statement.`;
 
     const prompt = `Here is the web content I've collected during research:
 ---
@@ -157,12 +170,9 @@ ${previousAnalysesContext}
 Based on all this information, please provide:
 1. A specific probability estimate for the market question: "${marketQuestion}"
 2. The key areas where more research is needed
-3. A detailed reasoning that includes:
-   - Relevant historical precedents and statistics
-   - Specific conditions that need to be met
-   - Major impact factors (both positive and negative)
-   - Assessment of evidence quality
-   - Clear justification for the probability estimate
+3. A detailed reasoning section with:
+   - Evidence FOR the event happening (with specific historical precedents, examples, statistics)
+   - Evidence AGAINST the event happening (with specific historical precedents, examples, statistics)
 ${relatedMarkets && relatedMarkets.length > 0 ? 
   `4. Analysis of how the following related markets affect your assessment:
 ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 
@@ -211,7 +221,10 @@ Remember to format your response as a valid JSON object with probability, areasF
         error: error.message || 'Unknown error',
         probability: "Error: Could not analyze",
         areasForResearch: [],
-        reasoning: "Could not analyze due to technical error"
+        reasoning: {
+          evidenceFor: [],
+          evidenceAgainst: []
+        }
       }),
       {
         status: 500,

@@ -2,15 +2,20 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+
+interface ReasoningData {
+  evidenceFor?: string[];
+  evidenceAgainst?: string[];
+}
 
 interface StreamingState {
   rawText: string;
   parsedData: {
     probability: string;
     areasForResearch: string[];
-    reasoning?: string;
+    reasoning?: ReasoningData | string;
   } | null;
 }
 
@@ -74,6 +79,25 @@ export function InsightsDisplay({
       child.focusText.toLowerCase().includes(area.toLowerCase())
     );
   };
+
+  // Process reasoning data which can now be either a string or an object
+  const evidenceFor: string[] = [];
+  const evidenceAgainst: string[] = [];
+  
+  if (reasoning) {
+    if (typeof reasoning === 'string') {
+      // Legacy format: just a string
+      // Do nothing with this case, will use the old rendering logic
+    } else {
+      // New format: object with evidenceFor and evidenceAgainst arrays
+      if (reasoning.evidenceFor) {
+        evidenceFor.push(...reasoning.evidenceFor);
+      }
+      if (reasoning.evidenceAgainst) {
+        evidenceAgainst.push(...reasoning.evidenceAgainst);
+      }
+    }
+  }
   
   return (
     <div className="space-y-5">
@@ -133,7 +157,51 @@ export function InsightsDisplay({
             </div>
           </div>
           
-          {reasoning && (
+          {/* Display structured evidence if available */}
+          {(evidenceFor.length > 0 || evidenceAgainst.length > 0) && (
+            <div className="mt-4 space-y-4 border-t pt-4 border-accent/20">
+              {evidenceFor.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm font-medium">
+                      Evidence Supporting This Outcome
+                    </span>
+                  </div>
+                  <ul className="space-y-2 pl-2">
+                    {evidenceFor.map((evidence, index) => (
+                      <li key={`for-${index}`} className="text-sm text-muted-foreground flex gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-green-500 flex-shrink-0"></span>
+                        <span className="flex-1">{evidence}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {evidenceAgainst.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-sm font-medium">
+                      Evidence Against This Outcome
+                    </span>
+                  </div>
+                  <ul className="space-y-2 pl-2">
+                    {evidenceAgainst.map((evidence, index) => (
+                      <li key={`against-${index}`} className="text-sm text-muted-foreground flex gap-2">
+                        <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-red-500 flex-shrink-0"></span>
+                        <span className="flex-1">{evidence}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Fallback for old format reasoning (string type) */}
+          {typeof reasoning === 'string' && reasoning && (
             <div className="mt-4 border-t pt-4 border-accent/20">
               <div className="flex items-center gap-2 mb-2">
                 <InfoIcon className="h-4 w-4 text-muted-foreground" />

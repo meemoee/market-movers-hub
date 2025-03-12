@@ -1,5 +1,5 @@
 
-import { Target, ArrowDown, AlertCircle, ExternalLink } from "lucide-react";
+import { Target, ArrowDown, AlertCircle, ExternalLink, TrendingUp, ChevronRight, Check, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,12 +16,17 @@ interface ChildResearch {
   onView: () => void;
 }
 
+interface ReasoningData {
+  evidenceFor?: string[];
+  evidenceAgainst?: string[];
+}
+
 interface StreamingState {
   rawText: string;
   parsedData: {
     probability: string;
     areasForResearch: string[];
-    reasoning?: string;
+    reasoning?: ReasoningData | string;
   } | null;
 }
 
@@ -50,6 +55,26 @@ export function InsightsDisplay({
   // Use either direct props or streaming state
   const displayProbability = probability || streamingState?.parsedData?.probability || "Unknown";
   const displayAreas = areasForResearch || streamingState?.parsedData?.areasForResearch || [];
+  
+  // Process reasoning data which can now be either a string or an object
+  const reasoning = streamingState?.parsedData?.reasoning;
+  const evidenceFor: string[] = [];
+  const evidenceAgainst: string[] = [];
+  
+  if (reasoning) {
+    if (typeof reasoning === 'string') {
+      // Legacy format: just a string
+      // Do nothing with this case, will use the old rendering logic
+    } else {
+      // New format: object with evidenceFor and evidenceAgainst arrays
+      if (reasoning.evidenceFor) {
+        evidenceFor.push(...reasoning.evidenceFor);
+      }
+      if (reasoning.evidenceAgainst) {
+        evidenceAgainst.push(...reasoning.evidenceAgainst);
+      }
+    }
+  }
 
   return (
     <div className="space-y-4 bg-accent/5 rounded-md p-4 overflow-hidden">
@@ -91,6 +116,73 @@ export function InsightsDisplay({
                 </ul>
               </ScrollArea>
             </div>
+            
+            {/* Display the structured reasoning if available */}
+            {(evidenceFor.length > 0 || evidenceAgainst.length > 0) && (
+              <>
+                <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                    <TrendingUp className="h-4 w-4 text-blue-500" />
+                    Evidence Analysis:
+                  </div>
+                  
+                  <ScrollArea className="max-h-[300px]">
+                    <div className="space-y-4">
+                      {evidenceFor.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-medium text-green-600 dark:text-green-400">
+                            <Check className="h-4 w-4" />
+                            <span>Evidence Supporting This Outcome:</span>
+                          </div>
+                          <ul className="space-y-2 pl-6">
+                            {evidenceFor.map((evidence, index) => (
+                              <li key={`for-${index}`} className="text-sm text-muted-foreground relative">
+                                <span className="absolute left-[-1rem] top-1.5 h-1.5 w-1.5 rounded-full bg-green-500"></span>
+                                {evidence}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      
+                      {evidenceAgainst.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600 dark:text-red-400">
+                            <X className="h-4 w-4" />
+                            <span>Evidence Against This Outcome:</span>
+                          </div>
+                          <ul className="space-y-2 pl-6">
+                            {evidenceAgainst.map((evidence, index) => (
+                              <li key={`against-${index}`} className="text-sm text-muted-foreground relative">
+                                <span className="absolute left-[-1rem] top-1.5 h-1.5 w-1.5 rounded-full bg-red-500"></span>
+                                {evidence}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </>
+            )}
+            
+            {/* Fallback for old format reasoning (string type) */}
+            {typeof reasoning === 'string' && reasoning && (
+              <>
+                <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                    <TrendingUp className="h-4 w-4 text-blue-500" />
+                    Reasoning:
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {reasoning}
+                  </div>
+                </div>
+              </>
+            )}
             
             {childResearches && childResearches.length > 0 && (
               <>
