@@ -23,6 +23,7 @@ export function LiveOrderBook({
 
   // Pass order book data up to parent component
   useEffect(() => {
+    console.log('[LiveOrderBook] Passing orderbook data to parent:', orderBookData);
     onOrderBookData(orderBookData);
   }, [orderBookData, onOrderBookData]);
 

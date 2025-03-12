@@ -34,10 +34,13 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
 
     setIsLoading(true);
     setError(null);
+    console.log(`[useOrderBookRealtime] Initialize with tokenId: ${tokenId}`);
 
     // Initial fetch
     const fetchOrderBook = async () => {
       try {
+        console.log(`[useOrderBookRealtime] Fetching orderbook for tokenId: ${tokenId}`);
+        
         // Get the latest data
         const { data, error } = await supabase
           .from('orderbook_data')
@@ -47,10 +50,12 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           .limit(1);
 
         if (error) {
+          console.error(`[useOrderBookRealtime] Database error:`, error);
           throw error;
         }
 
         if (data && data.length > 0) {
+          console.log(`[useOrderBookRealtime] Found existing orderbook data in DB`);
           // Convert from DB schema to our OrderBookData type
           const dbData = data[0] as OrderBookDataDB;
           const orderBookData: OrderBookData = {
@@ -64,9 +69,12 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           };
           
           setOrderBookData(orderBookData);
+        } else {
+          console.log(`[useOrderBookRealtime] No existing orderbook data in DB`);
         }
 
         // Call the get-orderbook function to fetch latest data
+        console.log(`[useOrderBookRealtime] Calling get-orderbook function for tokenId: ${tokenId}`);
         const { data: bookData, error: bookError } = await supabase.functions.invoke('get-orderbook', {
           method: 'POST',
           body: { 
@@ -75,12 +83,20 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
         });
 
         if (bookError) {
-          console.error('Error invoking get-orderbook:', bookError);
+          console.error('[useOrderBookRealtime] Error invoking get-orderbook:', bookError);
           throw new Error(`Failed to fetch orderbook: ${bookError.message}`);
         }
 
+        console.log('[useOrderBookRealtime] Successfully received data from get-orderbook:', bookData);
+        
+        // If we got data back, we could process it here if needed
+        if (bookData && !bookData.error) {
+          // Process the data if needed
+          console.log('[useOrderBookRealtime] Processing orderbook data');
+        }
+
       } catch (err) {
-        console.error('Error fetching orderbook:', err);
+        console.error('[useOrderBookRealtime] Error fetching orderbook:', err);
         setError(err instanceof Error ? err : new Error('Unknown error occurred'));
         
         // Show toast notification for error
@@ -97,6 +113,7 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
     fetchOrderBook();
 
     // Set up realtime subscription
+    console.log(`[useOrderBookRealtime] Setting up realtime subscription for tokenId: ${tokenId}`);
     const channel = supabase
       .channel('orderbook-updates')
       .on(
@@ -108,6 +125,7 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           filter: `market_id=eq.${tokenId}`,
         },
         (payload) => {
+          console.log(`[useOrderBookRealtime] Received realtime update:`, payload);
           // Convert the payload to our OrderBookData type
           const dbData = payload.new as OrderBookDataDB;
           const orderBookData: OrderBookData = {
@@ -123,11 +141,14 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           setOrderBookData(orderBookData);
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[useOrderBookRealtime] Channel subscription status:`, status);
+      });
 
     // Keep the subscription alive with heartbeats
     const heartbeatInterval = setInterval(async () => {
       try {
+        console.log(`[useOrderBookRealtime] Sending heartbeat for tokenId: ${tokenId}`);
         await supabase.functions.invoke('get-orderbook', {
           method: 'POST',
           body: { 
@@ -136,11 +157,12 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           },
         });
       } catch (err) {
-        console.warn('Heartbeat error:', err);
+        console.warn('[useOrderBookRealtime] Heartbeat error:', err);
       }
     }, 30000);
 
     return () => {
+      console.log(`[useOrderBookRealtime] Cleaning up for tokenId: ${tokenId}`);
       // Clean up
       supabase.removeChannel(channel);
       clearInterval(heartbeatInterval);
@@ -152,7 +174,7 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           tokenId,
           action: 'unsubscribe'
         },
-      }).catch(err => console.warn('Error unsubscribing:', err));
+      }).catch(err => console.warn('[useOrderBookRealtime] Error unsubscribing:', err));
     };
   }, [tokenId]);
 
