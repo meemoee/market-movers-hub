@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -22,31 +23,17 @@ serve(async (req) => {
     });
   }
 
-  console.log(`Connecting to Polymarket WebSocket for asset ID: ${assetId}`);
+  console.log(`Testing Polymarket WebSocket connection for asset ID: ${assetId}`);
 
   try {
     // Client connection
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
     let polySocket: WebSocket | null = null;
-    let pingInterval: number | null = null;
-    let connected = false;
-    let reconnecting = false;
-    let reconnectAttempts = 0;
-    let reconnectTimeout: number | null = null;
-    const MAX_RECONNECT_ATTEMPTS = 5;
-
+    let initialDataReceived = false;
+    
     // Function to close everything and clean up
     const cleanupConnections = () => {
       console.log("Cleaning up connections");
-      if (pingInterval) {
-        clearInterval(pingInterval);
-        pingInterval = null;
-      }
-      
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-        reconnectTimeout = null;
-      }
       
       if (polySocket && (polySocket.readyState === WebSocket.OPEN || polySocket.readyState === WebSocket.CONNECTING)) {
         try {
@@ -61,19 +48,6 @@ serve(async (req) => {
 
     // Function to connect to Polymarket WebSocket
     const connectToPolymarket = () => {
-      if (reconnecting) {
-        clientSocket.send(JSON.stringify({ status: "reconnecting", attempt: reconnectAttempts }));
-      }
-      
-      // Close previous connection if exists
-      if (polySocket) {
-        try {
-          polySocket.close();
-        } catch (err) {
-          console.error("Error closing previous Polymarket socket:", err);
-        }
-      }
-
       try {
         console.log("Connecting to Polymarket WebSocket...");
         // Connect to Polymarket WebSocket
@@ -81,14 +55,11 @@ serve(async (req) => {
         
         polySocket.onopen = () => {
           console.log("Polymarket WebSocket connected");
-          connected = true;
-          reconnecting = false;
-          reconnectAttempts = 0;
           
           // Send connection status to client
           clientSocket.send(JSON.stringify({ status: "connected" }));
           
-          // Subscribe to market data with a slight delay to ensure connection is stable
+          // Subscribe to market data
           setTimeout(() => {
             if (polySocket && polySocket.readyState === WebSocket.OPEN) {
               // Subscribe to market data
@@ -108,25 +79,6 @@ serve(async (req) => {
               console.log('Requested initial snapshot');
             }
           }, 100);
-          
-          // Setup ping interval to keep connection alive
-          if (pingInterval) {
-            clearInterval(pingInterval);
-          }
-          
-          pingInterval = setInterval(() => {
-            if (polySocket && polySocket.readyState === WebSocket.OPEN) {
-              try {
-                polySocket.send("PING");
-                clientSocket.send(JSON.stringify({ ping: new Date().toISOString() }));
-              } catch (err) {
-                console.error("Error sending ping:", err);
-                scheduleReconnect();
-              }
-            } else {
-              scheduleReconnect();
-            }
-          }, 30000);
         };
         
         polySocket.onmessage = (event) => {
@@ -157,8 +109,17 @@ serve(async (req) => {
               }
             }
             
-            if (orderbook) {
+            if (orderbook && !initialDataReceived) {
+              console.log("Sending initial orderbook data to client:", orderbook);
               clientSocket.send(JSON.stringify({ orderbook }));
+              initialDataReceived = true;
+              
+              // Close the connection after sending initial data
+              setTimeout(() => {
+                console.log("Initial data sent, closing connections");
+                clientSocket.send(JSON.stringify({ status: "complete", message: "Initial data sent" }));
+                cleanupConnections();
+              }, 1000);
             }
           } catch (err) {
             console.error("Error processing message from Polymarket:", err);
@@ -171,16 +132,10 @@ serve(async (req) => {
             status: "error", 
             message: "Error connecting to orderbook service"
           }));
-          scheduleReconnect();
         };
         
         polySocket.onclose = (event) => {
           console.log(`Polymarket WebSocket closed with code ${event.code}, reason: ${event.reason}`);
-          connected = false;
-          
-          if (!reconnecting) {
-            scheduleReconnect();
-          }
         };
       } catch (err) {
         console.error("Error establishing connection to Polymarket:", err);
@@ -188,34 +143,7 @@ serve(async (req) => {
           status: "error", 
           message: "Failed to connect to orderbook service" 
         }));
-        scheduleReconnect();
       }
-    };
-    
-    const scheduleReconnect = () => {
-      if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-        console.log("Maximum reconnection attempts reached");
-        clientSocket.send(JSON.stringify({ 
-          status: "failed", 
-          message: "Failed to connect to orderbook service after multiple attempts" 
-        }));
-        return;
-      }
-      
-      reconnecting = true;
-      reconnectAttempts++;
-      const backoff = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
-      
-      console.log(`Scheduling reconnection attempt ${reconnectAttempts} in ${backoff/1000} seconds...`);
-      
-      if (reconnectTimeout) {
-        clearTimeout(reconnectTimeout);
-      }
-      
-      reconnectTimeout = setTimeout(() => {
-        console.log(`Reconnection attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}`);
-        connectToPolymarket();
-      }, backoff);
     };
     
     // Global orderbook state
