@@ -182,7 +182,7 @@ ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed
 
 Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
-    // Change to non-streaming mode
+    // Use non-streaming mode for reliable JSON response
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -197,7 +197,7 @@ Remember to format your response as a valid JSON object with probability, areasF
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        stream: false, // Changed to false to use non-streaming mode
+        stream: false, // Use non-streaming mode for reliable JSON responses
         temperature: 0.2,
         response_format: { type: "json_object" }
       }),
@@ -209,22 +209,42 @@ Remember to format your response as a valid JSON object with probability, areasF
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // For non-streaming response, we get the full response at once
+    // For non-streaming response, get full data
     const data = await response.json();
     
-    // Create a simple SSE stream to maintain compatibility with existing frontend
+    // Extract the content from the response
+    const content = data.choices?.[0]?.message?.content || "{}";
+    console.log("Received complete response:", content.substring(0, 200) + "...");
+    
+    // Validate JSON before sending
+    let validatedContent = content;
+    try {
+      // Attempt to parse the JSON to ensure it's valid
+      JSON.parse(content);
+    } catch (jsonError) {
+      console.error("Invalid JSON received from model:", jsonError);
+      console.log("Attempting to fix JSON...");
+      
+      // Create a fallback JSON in case parsing fails
+      validatedContent = JSON.stringify({
+        probability: "Unknown (JSON parsing error)",
+        areasForResearch: ["Research needed on model reliability", "Try refining your search queries"],
+        reasoning: {
+          evidenceFor: ["Unable to parse model response"],
+          evidenceAgainst: ["Unable to parse model response"]
+        }
+      });
+    }
+    
+    // Create a simple SSE stream for frontend compatibility
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       start(controller) {
         try {
-          // Send the complete response as a single SSE event
-          const content = data.choices?.[0]?.message?.content || "{}";
-          console.log("Received complete response:", content.substring(0, 200) + "...");
-          
           // Send the content as a single event
-          controller.enqueue(encoder.encode(`data: ${content}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${validatedContent}\n\n`));
           
-          // Send the done event
+          // Send the DONE marker
           controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
           controller.close();
         } catch (error) {
@@ -245,23 +265,34 @@ Remember to format your response as a valid JSON object with probability, areasF
   } catch (error) {
     console.error('Error in extract-research-insights:', error);
     
-    return new Response(
-      JSON.stringify({ 
-        error: error.message || 'Unknown error',
-        probability: "Error: Could not analyze",
-        areasForResearch: [],
-        reasoning: {
-          evidenceFor: [],
-          evidenceAgainst: []
-        }
-      }),
-      {
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
+    // Return a well-formed error response as JSON
+    const errorResponse = {
+      error: error.message || 'Unknown error',
+      probability: "Error: Could not analyze",
+      areasForResearch: ["Error occurred during analysis"],
+      reasoning: {
+        evidenceFor: ["Error processing research data"],
+        evidenceAgainst: ["Error processing research data"]
       }
-    );
+    };
+    
+    // Create an SSE stream with the error response
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(errorResponse)}\n\n`));
+        controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
+        controller.close();
+      }
+    });
+    
+    return new Response(stream, {
+      status: 500,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Connection': 'keep-alive'
+      }
+    });
   }
 });
