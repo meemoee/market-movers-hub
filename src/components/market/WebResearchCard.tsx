@@ -343,8 +343,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
       
       try {
-        // Create event source for SSE
-        const functionsUrl = supabase.functions.url('web-scrape');
+        // Create event source for SSE - Fix: use toString() on the URL
+        const functionsUrl = supabase.functions.url('web-scrape').toString();
         const url = `${functionsUrl}/connect?jobId=${jobId}&token=${authToken}`;
         const eventSource = new EventSource(url);
         
@@ -950,101 +950,4 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     const queryIndex = parseInt(queryMatch[1], 10) - 1;
                     setCurrentQueryIndex(queryIndex);
                     
-                    const cleanQueryText = queryMatch[2].replace(new RegExp(` ${marketId}$`), '');
-                    setProgress(prev => [...prev, `Iteration ${iteration}: Searching "${cleanQueryText}"`]);
-                  } else {
-                    setProgress(prev => [...prev, parsed.message]);
-                  }
-                } else if (parsed.type === 'error' && parsed.message) {
-                  console.error("Received error from stream:", parsed.message)
-                  setProgress(prev => [...prev, `Error: ${parsed.message}`])
-                }
-              } catch (error) {
-                console.error('Error parsing SSE data:', error);
-              }
-            }
-          }
-        }
-      };
-
-      const reader = new Response(response.data.body).body?.getReader();
-      if (!reader) {
-        throw new Error('Failed to get reader from response');
-      }
-
-      await processStream(reader);
-
-      if (hasResults) {
-        setProgress(prev => [...prev, "Research completed successfully"]);
-      } else {
-        setProgress(prev => [...prev, "No results found"]);
-      }
-    } catch (error) {
-      console.error('Error in web search:', error);
-      setError(`Error in web search: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Card className="overflow-hidden">
-      <ResearchHeader 
-        description={description}
-        onResearch={handleResearch}
-        isLoading={isLoading} 
-        hasResults={results.length > 0}
-        onSave={saveResearch}
-      />
-
-      <div className="p-4 space-y-4">
-        {progress.length > 0 && (
-          <ProgressDisplay messages={progress} />
-        )}
-
-        {error && (
-          <div className="p-4 bg-red-50 text-red-800 rounded-md">
-            <p className="font-semibold">Error</p>
-            <p>{error}</p>
-          </div>
-        )}
-
-        {results.length > 0 && (
-          <SitePreviewList 
-            results={results} 
-            onViewAnalysis={() => {}} 
-          />
-        )}
-
-        {iterations.length > 0 && iterations.map((iteration, index) => (
-          <IterationCard
-            key={`iteration-${iteration.iteration}`}
-            iteration={iteration}
-            isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
-            onToggle={() => {
-              setExpandedIterations(prev => {
-                const id = `iteration-${iteration.iteration}`;
-                if (prev.includes(id)) {
-                  return prev.filter(i => i !== id);
-                } else {
-                  return [...prev, id];
-                }
-              });
-            }}
-          />
-        ))}
-
-        {streamingState.parsedData && (
-          <InsightsDisplay 
-            data={streamingState.parsedData} 
-            onResearchArea={handleResearchArea}
-          />
-        )}
-
-        {analysis && (
-          <AnalysisDisplay analysis={analysis} />
-        )}
-      </div>
-    </Card>
-  );
-}
-
+                    const clean
