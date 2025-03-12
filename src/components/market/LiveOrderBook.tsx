@@ -1,6 +1,6 @@
 
 import { useEffect } from 'react';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useOrderBookRealtime } from '@/hooks/useOrderBookRealtime';
 import { OrderBookData } from '@/hooks/useOrderBookRealtime';
 
@@ -61,8 +61,17 @@ export function LiveOrderBook({
     );
   }
 
+  // If we're using mock data or debugging data, show a warning
+  const isMockData = orderBookData._mock || orderBookData._debug_info;
+
   return (
     <div className="p-2 h-16 bg-accent/10 rounded-lg flex items-center justify-center">
+      {isMockData && (
+        <div className="absolute top-0 right-0 bg-yellow-500/20 text-yellow-700 text-xs px-2 py-1 rounded-bl-lg flex items-center">
+          <AlertTriangle className="h-3 w-3 mr-1" />
+          Test Data
+        </div>
+      )}
       <div className="flex items-center space-x-3">
         <div className="text-center">
           <div className="text-xs text-muted-foreground">Best Bid</div>

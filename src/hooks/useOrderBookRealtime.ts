@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
@@ -10,6 +11,8 @@ export interface OrderBookData {
   best_bid: number;
   best_ask: number;
   spread: number;
+  _mock?: boolean;
+  _debug_info?: any;
 }
 
 // Type for the database response
@@ -28,6 +31,8 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
   const [orderBookData, setOrderBookData] = useState<OrderBookData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [attemptCount, setAttemptCount] = useState(0);
+  const [lastAttemptTime, setLastAttemptTime] = useState(0);
 
   useEffect(() => {
     if (!tokenId) return;
@@ -73,6 +78,16 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           console.log(`[useOrderBookRealtime] No existing orderbook data in DB`);
         }
 
+        // Don't make too many attempts in a short period to avoid rate limiting
+        const now = Date.now();
+        if (attemptCount > 0 && now - lastAttemptTime < 5000) {
+          console.log('[useOrderBookRealtime] Throttling API calls, waiting before retrying');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+        
+        setAttemptCount(prev => prev + 1);
+        setLastAttemptTime(Date.now());
+
         // Call the get-orderbook function to fetch latest data
         console.log(`[useOrderBookRealtime] Calling get-orderbook function for tokenId: ${tokenId}`);
         const { data: bookData, error: bookError } = await supabase.functions.invoke('get-orderbook', {
@@ -87,12 +102,83 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           throw new Error(`Failed to fetch orderbook: ${bookError.message}`);
         }
 
-        console.log('[useOrderBookRealtime] Successfully received data from get-orderbook:', bookData);
+        console.log('[useOrderBookRealtime] Response from get-orderbook:', bookData);
         
-        // If we got data back, we could process it here if needed
-        if (bookData && !bookData.error) {
-          // Process the data if needed
-          console.log('[useOrderBookRealtime] Processing orderbook data');
+        if (bookData && bookData.error) {
+          console.error('[useOrderBookRealtime] Error from get-orderbook:', bookData.error);
+          
+          // Check if we got mock data we can use
+          if (bookData.mock_data) {
+            console.log('[useOrderBookRealtime] Using mock data as fallback');
+            const mockData: OrderBookData = {
+              ...bookData.mock_data,
+              token_id: tokenId,
+              timestamp: new Date().toISOString(),
+            };
+            setOrderBookData(mockData);
+            // Still throw error to show message to user
+            throw new Error(`${bookData.error}. Using mock data as fallback.`);
+          } else {
+            throw new Error(bookData.error);
+          }
+        }
+        
+        // Check if we received data with debugging info
+        if (bookData && bookData._debug_info) {
+          console.log('[useOrderBookRealtime] Received data with debug info:', bookData._debug_info);
+        }
+        
+        // Check if the response has the expected structure
+        if (bookData && (bookData.bids || bookData.asks)) {
+          console.log('[useOrderBookRealtime] Successfully received orderbook data');
+          
+          // Process data for rendering in UI
+          const processedData: OrderBookData = {
+            token_id: tokenId,
+            timestamp: new Date().toISOString(),
+            bids: bookData.bids || {},
+            asks: bookData.asks || {},
+            best_bid: bookData.best_bid || Object.keys(bookData.bids || {}).reduce((max, price) => 
+              Math.max(max, parseFloat(price)), 0),
+            best_ask: bookData.best_ask || Object.keys(bookData.asks || {}).reduce((min, price) => 
+              min === 0 ? parseFloat(price) : Math.min(min, parseFloat(price)), 0),
+            spread: bookData.spread || 0,
+            _debug_info: bookData._debug_info,
+            _mock: bookData._mock
+          };
+          
+          // Calculate spread if not provided
+          if (!processedData.spread && processedData.best_ask && processedData.best_bid) {
+            processedData.spread = processedData.best_ask - processedData.best_bid;
+          }
+          
+          setOrderBookData(processedData);
+        } else if (bookData) {
+          console.warn('[useOrderBookRealtime] Response data does not match expected format:', bookData);
+          
+          // Try to extract or construct data from unexpected format
+          const constructedData: OrderBookData = {
+            token_id: tokenId,
+            timestamp: new Date().toISOString(),
+            bids: {},
+            asks: {},
+            best_bid: 0,
+            best_ask: 0,
+            spread: 0,
+            _debug_info: {
+              message: 'Constructed from unexpected data format',
+              original_data: bookData
+            }
+          };
+          
+          setOrderBookData(constructedData);
+          
+          // Notify about unexpected format but don't throw error
+          toast({
+            title: "Unexpected data format",
+            description: "The orderbook data has an unexpected format. Some features may not work correctly.",
+            variant: "default",
+          });
         }
 
       } catch (err) {
@@ -176,7 +262,7 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
         },
       }).catch(err => console.warn('[useOrderBookRealtime] Error unsubscribing:', err));
     };
-  }, [tokenId]);
+  }, [tokenId, attemptCount, lastAttemptTime]);
 
   return { orderBookData, isLoading, error };
 };
