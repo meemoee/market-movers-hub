@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 
 const corsHeaders = {
@@ -17,7 +18,11 @@ serve(async (req) => {
       throw new Error('tokenId is required')
     }
 
-    const response = await fetch(`https://clob.polymarket.com/orderbook/${tokenId}`, {
+    // Log the request
+    console.log('Fetching orderbook for token:', tokenId)
+
+    // Updated URL for Polymarket API
+    const response = await fetch(`https://strapi-matic.poly.market/orderbook/${tokenId}`, {
       headers: {
         'Accept': 'application/json'
       }
