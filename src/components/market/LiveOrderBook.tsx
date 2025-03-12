@@ -1,5 +1,4 @@
-
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -36,15 +35,23 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
   const [retryCount, setRetryCount] = useState(0);
   const [orderbookData, setOrderbookData] = useState<OrderBookData | null>(null);
+  const previousDataRef = useRef<OrderBookData | null>(null);
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const currentMarketRef = useRef<string | null>(null);
   const instanceIdRef = useRef<string>(`orderbook-${Math.random().toString(36).substring(2, 11)}`);
   
-  const debouncedOrderbookData = useDebounce(orderbookData, 300);
+  const debouncedOrderbookData = useDebounce(orderbookData, 600);
+  
+  useEffect(() => {
+    if (debouncedOrderbookData) {
+      previousDataRef.current = debouncedOrderbookData;
+    }
+  }, [debouncedOrderbookData]);
   
   useEffect(() => {
     if (!isClosing) {
-      onOrderBookData(debouncedOrderbookData);
+      const dataToSend = debouncedOrderbookData || previousDataRef.current;
+      onOrderBookData(dataToSend);
     }
   }, [debouncedOrderbookData, onOrderBookData, isClosing]);
 
@@ -59,7 +66,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         subscriptionRef.current.unsubscribe();
         subscriptionRef.current = null;
       }
-      setOrderbookData(null);
+      
       onOrderBookData(null);
       return;
     }
@@ -69,14 +76,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       return;
     }
 
-    setOrderbookData(null);
-
     fetchOrderbookSnapshot(clobTokenId);
 
     const channelName = `orderbook-updates-${clobTokenId}-${instanceIdRef.current}`;
     console.log(`[LiveOrderBook] Creating new channel: ${channelName} for market ${clobTokenId}`);
 
-    // Fix: Correct syntax for Supabase Realtime subscription
     const channel = supabase
       .channel(channelName)
       .on(
@@ -102,8 +106,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           if (typedPayload.new) {
             if (typedPayload.new.market_id === clobTokenId) {
               const orderbookData: OrderBookData = {
-                bids: typedPayload.new.bids || {},
-                asks: typedPayload.new.asks || {},
+                bids: typedPayload.new.bids || previousDataRef.current?.bids || {},
+                asks: typedPayload.new.asks || previousDataRef.current?.asks || {},
                 best_bid: typedPayload.new.best_bid,
                 best_ask: typedPayload.new.best_ask,
                 spread: typedPayload.new.spread,
@@ -136,7 +140,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         subscriptionRef.current = null;
       }
       currentMarketRef.current = null;
-      setOrderbookData(null);
     };
   }, [clobTokenId, isClosing, retryCount, onOrderBookData]);
 
@@ -164,7 +167,17 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       if (data && data.orderbook) {
         console.log('[LiveOrderBook] Received orderbook data:', data.orderbook);
-        setOrderbookData(data.orderbook);
+        
+        const newOrderbookData = {
+          bids: data.orderbook.bids || previousDataRef.current?.bids || {},
+          asks: data.orderbook.asks || previousDataRef.current?.asks || {},
+          best_bid: data.orderbook.best_bid,
+          best_ask: data.orderbook.best_ask,
+          spread: data.orderbook.spread,
+        };
+        
+        setOrderbookData(newOrderbookData);
+        previousDataRef.current = newOrderbookData;
         setConnectionStatus("connected");
         setError(null);
       } else {
@@ -206,8 +219,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     );
   }
 
-  // Instead of returning null, we'll return an empty or placeholder component
-  // This ensures a consistent render between updates
   return (
     <div className="hidden">
       {/* Hidden component that ensures the component stays mounted */}

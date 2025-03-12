@@ -289,16 +289,9 @@ export function TransactionDialog({
   const formatPercentage = (value: number) => `${value}%`;
 
   const renderOrderbookRows = (data: Record<string, number> | undefined, isAsk: boolean, maxRows: number = 5) => {
-    if (!data) {
-      return Array(maxRows).fill(0).map((_, index) => (
-        <div key={`${isAsk ? 'ask' : 'bid'}-empty-${index}`} className="flex justify-between text-sm opacity-80 transition-opacity duration-300">
-          <span className="text-muted-foreground">--</span>
-          <span className="text-muted-foreground">--</span>
-        </div>
-      ));
-    }
-
-    const sortedEntries = Object.entries(data)
+    const stableData = data || {};
+    
+    const sortedEntries = Object.entries(stableData)
       .sort(([priceA], [priceB]) => 
         isAsk 
           ? Number(priceA) - Number(priceB)  // Ascending for asks
@@ -311,17 +304,22 @@ export function TransactionDialog({
       rows.push(['--', 0]);
     }
     
-    return rows.map(([price, size], index) => (
-      <div 
-        key={`${isAsk ? 'ask' : 'bid'}-${index}`} 
-        className="flex justify-between text-sm transition-all duration-300 ease-in-out"
-      >
-        <span className={size > 0 ? (isAsk ? "text-red-500" : "text-green-500") : "text-muted-foreground"}>
-          {size > 0 ? `${(Number(price) * 100).toFixed(2)}¢` : "--"}
-        </span>
-        <span>{size > 0 ? size.toFixed(2) : "--"}</span>
+    return (
+      <div className="space-y-1">
+        {rows.map(([price, size], index) => (
+          <div 
+            key={`${isAsk ? 'ask' : 'bid'}-${index}`} 
+            className={`flex justify-between text-sm transition-all duration-300 ease-in-out ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}
+            style={{height: '20px'}}
+          >
+            <span className={size > 0 ? (isAsk ? "text-red-500" : "text-green-500") : "text-muted-foreground"}>
+              {size > 0 ? `${(Number(price) * 100).toFixed(2)}¢` : "--"}
+            </span>
+            <span>{size > 0 ? size.toFixed(2) : "--"}</span>
+          </div>
+        ))}
       </div>
-    ));
+    );
   };
 
   return (
@@ -362,34 +360,36 @@ export function TransactionDialog({
             </div>
             
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4 transition-opacity duration-300">
+              <div className="grid grid-cols-2 gap-4 transition-all duration-300">
                 <div className="space-y-2">
                   <div className="text-sm font-medium">Bids</div>
-                  <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                  <div className="bg-accent/20 p-3 rounded-lg h-[140px] relative">
                     {isOrderBookLoading ? (
-                      Array(5).fill(0).map((_, i) => (
-                        <Skeleton key={`bid-skeleton-${i}`} className="h-5 w-full" />
-                      ))
-                    ) : (
-                      renderOrderbookRows(orderBookData?.bids, false)
-                    )}
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : null}
+                    <div className={`transition-opacity duration-300 ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}>
+                      {renderOrderbookRows(orderBookData?.bids, false)}
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <div className="text-sm font-medium">Asks</div>
-                  <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                  <div className="bg-accent/20 p-3 rounded-lg h-[140px] relative">
                     {isOrderBookLoading ? (
-                      Array(5).fill(0).map((_, i) => (
-                        <Skeleton key={`ask-skeleton-${i}`} className="h-5 w-full" />
-                      ))
-                    ) : (
-                      renderOrderbookRows(orderBookData?.asks, true)
-                    )}
+                      <div className="absolute inset-0 flex items-center justify-center bg-background/50 rounded-lg z-10">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : null}
+                    <div className={`transition-opacity duration-300 ${isOrderBookLoading ? 'opacity-50' : 'opacity-100'}`}>
+                      {renderOrderbookRows(orderBookData?.asks, true)}
+                    </div>
                   </div>
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg transition-opacity duration-300">
+              <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg transition-all duration-300">
                 <div>
                   <div className="text-sm text-muted-foreground">Best Bid</div>
                   <div className="text-lg font-medium text-green-500 h-7">
@@ -404,7 +404,7 @@ export function TransactionDialog({
                 </div>
               </div>
               
-              <div className="text-sm text-muted-foreground mb-4 h-5 transition-opacity duration-300">
+              <div className="text-sm text-muted-foreground mb-4 h-5 transition-all duration-300">
                 Spread: {orderBookData?.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
               </div>
 
