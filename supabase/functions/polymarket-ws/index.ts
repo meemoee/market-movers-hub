@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -12,9 +11,22 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Get asset ID from URL parameters
+  // Get asset ID from URL parameters or request body
+  let assetId;
   const url = new URL(req.url);
-  const assetId = url.searchParams.get('assetId');
+  
+  // Check if assetId is in URL parameters
+  assetId = url.searchParams.get('assetId');
+  
+  // If not in URL, try to get from request body
+  if (!assetId) {
+    try {
+      const body = await req.json();
+      assetId = body.assetId || body.tokenId;
+    } catch (e) {
+      // If body parsing fails, that's okay, we'll check if assetId exists
+    }
+  }
 
   if (!assetId) {
     return new Response(JSON.stringify({ status: "error", message: "Asset ID is required" }), {
@@ -24,7 +36,20 @@ serve(async (req) => {
   }
 
   console.log(`Testing Polymarket WebSocket connection for asset ID: ${assetId}`);
+  
+  // Check if this is a WebSocket upgrade request
+  const upgrade = req.headers.get("upgrade") || "";
+  const isWebSocketRequest = upgrade.toLowerCase() === "websocket";
+  
+  if (isWebSocketRequest) {
+    return handleWebSocketConnection(req, assetId);
+  } else {
+    // Handle normal HTTP request - just get initial orderbook data
+    return handleHttpRequest(assetId);
+  }
+});
 
+async function handleWebSocketConnection(req, assetId) {
   try {
     // Client connection
     const { socket: clientSocket, response } = Deno.upgradeWebSocket(req);
@@ -276,4 +301,48 @@ serve(async (req) => {
       status: 500,
     });
   }
-});
+}
+
+async function handleHttpRequest(assetId) {
+  try {
+    console.log(`HTTP request for Polymarket orderbook data, asset ID: ${assetId}`);
+    
+    // Connect to Polymarket API directly
+    const response = await fetch(`https://clob.polymarket.com/orderbook/${assetId}`, {
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Error from Polymarket API: ${response.status}`, errorText);
+      return new Response(JSON.stringify({ 
+        status: "error", 
+        message: `Failed to fetch orderbook data: ${response.status}` 
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: response.status,
+      });
+    }
+
+    const data = await response.json();
+    console.log("Successfully retrieved orderbook data from Polymarket API");
+    
+    return new Response(JSON.stringify({ 
+      status: "success", 
+      orderbook: data 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    console.error("Error fetching orderbook data:", err);
+    return new Response(JSON.stringify({ 
+      status: "error", 
+      message: `Error fetching orderbook data: ${err.message}` 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      status: 500,
+    });
+  }
+}

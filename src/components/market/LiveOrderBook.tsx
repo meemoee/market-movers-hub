@@ -21,6 +21,7 @@ interface LiveOrderBookProps {
 export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosing }: LiveOrderBookProps) {
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     // Clear any existing error when closing
@@ -37,7 +38,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     }
 
     fetchInitialOrderbookData(clobTokenId);
-  }, [clobTokenId, isClosing]);
+  }, [clobTokenId, isClosing, retryCount]);
 
   const fetchInitialOrderbookData = async (tokenId: string) => {
     try {
@@ -59,7 +60,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       if (data) {
         console.log('[LiveOrderBook] Received orderbook data:', data);
-        onOrderBookData(data);
+        
+        // Handle both direct response and response from WebSocket endpoint
+        const orderbookData = data.orderbook ? data.orderbook : data;
+        
+        onOrderBookData(orderbookData);
         setConnectionStatus("connected");
         setError(null);
       } else {
@@ -91,9 +96,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         <div className="mb-2">{error}</div>
         <button 
           onClick={() => {
-            if (clobTokenId) {
-              fetchInitialOrderbookData(clobTokenId);
-            }
+            setRetryCount(prev => prev + 1);
           }}
           className="px-3 py-1 bg-primary/10 hover:bg-primary/20 rounded-md text-sm"
         >
