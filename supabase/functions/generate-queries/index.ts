@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -217,11 +218,7 @@ serve(async (req) => {
         cleanQuery = addContextToQuery(cleanQuery, researchQuery, focusText);
       }
       
-      // Limit query length to 150 chars for efficiency
-      if (cleanQuery.length > 150) {
-        cleanQuery = cleanQuery.substring(0, 150);
-      }
-      
+      // Removing the length limit to ensure we get full queries
       return cleanQuery;
     });
     
