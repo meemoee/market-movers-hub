@@ -1,3 +1,4 @@
+
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { HoverButton } from '@/components/ui/hover-button';
@@ -12,12 +13,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { OrderBookData } from '@/hooks/useOrderBookRealtime';
 
 interface RelatedMarketsProps {
   eventId: string;
   marketId: string;
   selectedInterval: string;
+}
+
+interface OrderBookData {
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
 }
 
 // Helper function to clean text fields
@@ -26,6 +34,7 @@ function cleanTextFields(market: any) {
   
   fieldsToClean.forEach(field => {
     if (market[field]) {
+      // Replace multiple apostrophes with a single one
       market[field] = market[field].replace(/'{2,}/g, "'");
     }
   });
@@ -94,6 +103,7 @@ export function RelatedMarkets({ eventId, marketId, selectedInterval }: RelatedM
           ? market.outcomes.map(outcome => String(outcome))
           : [];
 
+        // Clean text fields before returning
         const cleanedMarket = cleanTextFields({
           ...market,
           finalPrice: moverData.final_last_traded_price,
