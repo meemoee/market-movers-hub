@@ -2,6 +2,13 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+interface RelatedMarket {
+  market_id: string;
+  question: string;
+  probability: number;
+  price_change?: number;
+}
+
 interface AnalysisRequest {
   content: string;
   query: string;
@@ -11,6 +18,7 @@ interface AnalysisRequest {
   previousAnalyses?: string;
   areasForResearch?: string[];
   marketPrice?: number;
+  relatedMarkets?: RelatedMarket[];
 }
 
 const corsHeaders = {
@@ -33,7 +41,8 @@ serve(async (req) => {
       focusText,
       previousAnalyses,
       areasForResearch,
-      marketPrice
+      marketPrice,
+      relatedMarkets
     } = await req.json() as AnalysisRequest;
     
     // Log request info for debugging
@@ -44,7 +53,8 @@ serve(async (req) => {
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       previousAnalysesLength: previousAnalyses?.length || 0,
       areasForResearchCount: areasForResearch?.length || 0,
-      marketPrice: marketPrice || 'Not provided'
+      marketPrice: marketPrice || 'Not provided',
+      relatedMarketsCount: relatedMarkets?.length || 0
     });
 
     // Get OpenRouter API key
@@ -87,7 +97,19 @@ serve(async (req) => {
       }
     }
 
-    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}
+    // Add related markets context if available
+    let relatedMarketsContext = '';
+    if (relatedMarkets && relatedMarkets.length > 0) {
+      relatedMarketsContext = "\nRelated markets and their current probabilities:\n";
+      relatedMarkets.forEach(market => {
+        const priceChangeInfo = market.price_change !== undefined ? 
+          ` (${market.price_change > 0 ? '+' : ''}${(market.price_change * 100).toFixed(1)}pp change)` : '';
+        relatedMarketsContext += `- "${market.question}": ${(market.probability * 100).toFixed(1)}%${priceChangeInfo}\n`;
+      });
+      relatedMarketsContext += "\nConsider how these related markets may inform your analysis. Look for correlations or dependencies between markets.\n";
+    }
+
+    const systemPrompt = `You are an expert market research analyst.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}${relatedMarketsContext}
 Your task is to analyze content scraped from the web relevant to the following market question: "${question}".
 Provide a comprehensive, balanced analysis of the key information, focusing on facts that help ${isMarketResolved ? 'understand why this event did or did not occur' : 'assess probability'}.
 Be factual and evidence-based, not speculative.`;
@@ -116,6 +138,7 @@ ${isMarketResolved ?
 }
 4. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
 ${marketPrice !== undefined && !isMarketResolved ? `5. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `6. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 

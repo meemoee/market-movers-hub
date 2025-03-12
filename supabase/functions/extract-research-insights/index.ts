@@ -2,6 +2,13 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+interface RelatedMarket {
+  market_id: string;
+  question: string;
+  probability: number;
+  price_change?: number;
+}
+
 interface InsightsRequest {
   webContent: string;
   analysis: string;
@@ -13,6 +20,7 @@ interface InsightsRequest {
   areasForResearch?: string[];
   focusText?: string;
   marketPrice?: number;
+  relatedMarkets?: RelatedMarket[];
 }
 
 const corsHeaders = {
@@ -37,7 +45,8 @@ serve(async (req) => {
       queries,
       areasForResearch,
       focusText,
-      marketPrice
+      marketPrice,
+      relatedMarkets
     } = await req.json() as InsightsRequest;
     
     // Log request info for debugging
@@ -50,7 +59,8 @@ serve(async (req) => {
       queriesCount: queries?.length || 0,
       areasForResearchCount: areasForResearch?.length || 0,
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
-      marketPrice: marketPrice || 'Not provided'
+      marketPrice: marketPrice || 'Not provided',
+      relatedMarketsCount: relatedMarkets?.length || 0
     });
 
     // Get OpenRouter API key
@@ -99,6 +109,18 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       }
     }
 
+    // Add related markets context if available
+    let relatedMarketsContext = '';
+    if (relatedMarkets && relatedMarkets.length > 0) {
+      relatedMarketsContext = "\nRelated markets and their current probabilities:\n";
+      relatedMarkets.forEach(market => {
+        const priceChangeInfo = market.price_change !== undefined ? 
+          ` (${market.price_change > 0 ? '+' : ''}${(market.price_change * 100).toFixed(1)}pp change)` : '';
+        relatedMarketsContext += `- "${market.question}": ${(market.probability * 100).toFixed(1)}%${priceChangeInfo}\n`;
+      });
+      relatedMarketsContext += "\nConsider how these related markets may affect your probability assessment. Are there dependencies or correlations between these markets and the main market?\n";
+    }
+
     // Create a system prompt that emphasizes the specific market context
     const marketContext = marketId && marketQuestion
       ? `\nYou are analyzing market ID: ${marketId} with the question: "${marketQuestion}"\n`
@@ -113,6 +135,7 @@ Your task is to analyze web research content and provide precise insights about 
 ${previousResearchAreas}
 ${queriesContext}
 ${marketPriceContext}
+${relatedMarketsContext}
 
 ${isMarketResolved ? `Since the market price is ${marketPrice}%, this market has likely resolved. You should explain the evidence for WHY this event ${marketPrice === 100 ? 'occurred' : 'did not occur'} rather than providing a probability estimate.` : 'Based on your comprehensive analysis, provide a specific probability estimate (a percentage) for the market outcome.'}
 
@@ -146,6 +169,9 @@ ${isMarketResolved ?
 }
 2. What are the most important areas where more research is needed to improve prediction accuracy?
 3. Summarize the key evidence and reasoning behind your ${isMarketResolved ? 'explanation' : 'probability estimate'} in 2-3 sentences.
+${relatedMarkets && relatedMarkets.length > 0 ? 
+  `4. Are there any insights from your analysis that might relate to the connected markets mentioned in context? Consider any potential correlations or dependencies.` : ''
+}
 
 ${marketPrice !== undefined ? 
   isMarketResolved ?

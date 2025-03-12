@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/popover"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
+import { useRelatedMarkets } from "@/hooks/useRelatedMarkets"
 
 interface WebResearchCardProps {
   description: string;
@@ -99,6 +100,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [parentResearchId, setParentResearchId] = useState<string | null>(null)
   const [childResearches, setChildResearches] = useState<SavedResearch[]>([])
   const { toast } = useToast()
+  const { data: relatedMarkets } = useRelatedMarkets(marketId);
 
   const { data: savedResearch, refetch: refetchSavedResearch } = useQuery({
     queryKey: ['saved-research', marketId],
@@ -738,10 +740,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketDescription: description,
         previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
         areasForResearch: streamingState.parsedData?.areasForResearch || [],
-        marketPrice: marketPrice
+        marketPrice: marketPrice,
+        relatedMarkets: relatedMarkets || []
       };
 
-      console.log(`Analyze payload for market ${marketId} includes marketPrice: ${marketPrice}`);
+      console.log(`Analyze payload for market ${marketId} includes ${relatedMarkets?.length || 0} related markets`);
 
       setIterations(prev => {
         const updatedIterations = [...prev];
@@ -965,7 +968,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       iterations: iterations,
       queries: allQueries,
       areasForResearch: streamingState.parsedData?.areasForResearch || [],
-      marketPrice: marketPrice
+      marketPrice: marketPrice,
+      relatedMarkets: relatedMarkets || []
     };
     
     setStreamingState({
