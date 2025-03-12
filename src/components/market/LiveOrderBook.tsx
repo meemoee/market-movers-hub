@@ -1,3 +1,4 @@
+
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -74,18 +75,20 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     const channelName = `orderbook-updates-${clobTokenId}-${instanceIdRef.current}`;
     console.log(`[LiveOrderBook] Creating new channel: ${channelName} for market ${clobTokenId}`);
 
+    // Fix: Correct syntax for Supabase Realtime subscription
     const channel = supabase
       .channel(channelName)
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
           table: 'orderbook_data',
           filter: `market_id=eq.${clobTokenId}`,
         },
-        (payload: RealtimePayload) => {
-          console.log('[LiveOrderBook] Received realtime update for market:', payload.new?.market_id);
+        (payload) => {
+          const typedPayload = payload as unknown as RealtimePayload;
+          console.log('[LiveOrderBook] Received realtime update for market:', typedPayload.new?.market_id);
           
           if (currentMarketRef.current !== clobTokenId) {
             console.log('[LiveOrderBook] Ignoring update for different market', {
@@ -95,14 +98,14 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             return;
           }
           
-          if (payload.new) {
-            if (payload.new.market_id === clobTokenId) {
+          if (typedPayload.new) {
+            if (typedPayload.new.market_id === clobTokenId) {
               const orderbookData: OrderBookData = {
-                bids: payload.new.bids || {},
-                asks: payload.new.asks || {},
-                best_bid: payload.new.best_bid,
-                best_ask: payload.new.best_ask,
-                spread: payload.new.spread,
+                bids: typedPayload.new.bids || {},
+                asks: typedPayload.new.asks || {},
+                best_bid: typedPayload.new.best_bid,
+                best_ask: typedPayload.new.best_ask,
+                spread: typedPayload.new.spread,
               };
               setOrderbookData(orderbookData);
               setConnectionStatus("connected");
@@ -110,7 +113,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             } else {
               console.warn('[LiveOrderBook] Received update for wrong market', {
                 expected: clobTokenId,
-                received: payload.new.market_id
+                received: typedPayload.new.market_id
               });
             }
           }
