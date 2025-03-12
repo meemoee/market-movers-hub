@@ -372,6 +372,21 @@ export type Database = {
         }
         Relationships: []
       }
+      orderbook_subscriptions: {
+        Row: {
+          last_access: string
+          token_id: string
+        }
+        Insert: {
+          last_access?: string
+          token_id: string
+        }
+        Update: {
+          last_access?: string
+          token_id?: string
+        }
+        Relationships: []
+      }
       orders: {
         Row: {
           created_at: string
@@ -590,7 +605,17 @@ export type Database = {
         }
         Returns: undefined
       }
+      check_table_exists: {
+        Args: {
+          p_table_name: string
+        }
+        Returns: boolean
+      }
       clean_old_market_data: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      create_orderbook_table: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
@@ -605,6 +630,12 @@ export type Database = {
           last_traded_price: number
           volume: number
         }[]
+      }
+      enable_realtime_for_table: {
+        Args: {
+          table_name: string
+        }
+        Returns: undefined
       }
       execute_market_order: {
         Args: {

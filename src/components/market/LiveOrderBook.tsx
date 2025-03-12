@@ -28,62 +28,55 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const MAX_RECONNECT_ATTEMPTS = 5;
 
   useEffect(() => {
-    // Set mounted flag to true when component mounts
     mountedRef.current = true;
+    console.log('[LiveOrderBook] Component mounted');
     
     return () => {
-      // Set mounted flag to false when component unmounts
+      console.log('[LiveOrderBook] Component unmounting');
       mountedRef.current = false;
     };
   }, []);
 
   useEffect(() => {
-    // Clear any existing error when closing
     if (isClosing) {
-      console.log('[LiveOrderBook] Dialog is closing, clearing error state');
+      console.log('[LiveOrderBook] Dialog is closing, cleaning up');
       setError(null);
       return;
     }
 
-    // Don't connect if we don't have a token ID
     if (!clobTokenId) {
-      console.log('[LiveOrderBook] No CLOB token ID provided, not connecting to WebSocket');
+      console.log('[LiveOrderBook] No CLOB token ID provided, not connecting');
       return;
     }
 
-    // Clean up any existing connection first
+    console.log(`[LiveOrderBook] Initiating connection for token ID: ${clobTokenId}`);
+    
     cleanupExistingConnection();
 
-    // Create a new WebSocket connection
     connectToOrderbook(clobTokenId);
 
-    // Cleanup function
     return () => {
+      console.log('[LiveOrderBook] Effect cleanup triggered');
       cleanupExistingConnection();
-      
-      // Set mounted ref to false to prevent any further state updates
       mountedRef.current = false;
     };
   }, [clobTokenId, isClosing]);
 
   const cleanupExistingConnection = () => {
-    console.log('[LiveOrderBook] Cleaning up existing connections');
+    console.log('[LiveOrderBook] Cleaning up existing connection');
     
-    // Clear ping interval if it exists
     if (pingIntervalRef.current) {
       console.log('[LiveOrderBook] Clearing ping interval');
       clearInterval(pingIntervalRef.current);
       pingIntervalRef.current = null;
     }
     
-    // Clear any existing reconnect timeout
     if (reconnectTimeoutRef.current) {
-      console.log('[LiveOrderBook] Clearing existing reconnect timeout');
+      console.log('[LiveOrderBook] Clearing reconnect timeout');
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
     
-    // Close any existing WebSocket connection
     if (wsRef.current) {
       console.log('[LiveOrderBook] Closing existing WebSocket connection');
       wsRef.current.onopen = null;
@@ -94,7 +87,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       wsRef.current = null;
     }
     
-    // Reset connection status
     if (mountedRef.current) {
       setConnectionStatus("disconnected");
     }
@@ -102,10 +94,9 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   const connectToOrderbook = (tokenId: string) => {
     try {
-      console.log('[LiveOrderBook] Initiating WebSocket connection for token:', tokenId);
+      console.log('[LiveOrderBook] Starting new connection for token:', tokenId);
       setConnectionStatus("connecting");
       
-      // Reset error state
       if (mountedRef.current) {
         setError(null);
       }
@@ -123,10 +114,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           setConnectionStatus("connected");
           setError(null);
           
-          // Reset reconnect counter on successful connection
           reconnectCountRef.current = 0;
-          
-          // Start ping interval to keep connection alive
           startPingInterval();
         }
       };
@@ -137,13 +125,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
             console.log('[LiveOrderBook] Received WebSocket message:', event.data);
             const data = JSON.parse(event.data);
             
-            // Handle ping-pong messages
             if (data.ping) {
               ws.send(JSON.stringify({ pong: new Date().toISOString() }));
               return;
             }
             
-            // Handle status messages
             if (data.status) {
               console.log('[LiveOrderBook] Received status update:', data.status);
               
@@ -171,7 +157,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
               return;
             }
             
-            // Handle orderbook data
             if (data.orderbook) {
               console.log('[LiveOrderBook] Valid orderbook data received:', data.orderbook);
               onOrderBookData(data.orderbook);
@@ -193,26 +178,21 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("error");
           setError('WebSocket connection error');
-          
-          // Handle reconnection in onclose since that's always called after an error
         }
       };
 
       ws.onclose = (event) => {
         console.log('[LiveOrderBook] WebSocket closed with code:', event.code, 'reason:', event.reason);
         
-        // Only attempt reconnect if mounted and not intentionally closing
         if (mountedRef.current && !isClosing) {
           setConnectionStatus("disconnected");
           
-          // Check if we've exceeded max reconnect attempts
           if (reconnectCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
             console.log('[LiveOrderBook] Maximum reconnection attempts reached');
             setError(`Failed to connect to orderbook service after ${MAX_RECONNECT_ATTEMPTS} attempts`);
             return;
           }
           
-          // Schedule a reconnect attempt with exponential backoff
           reconnectCountRef.current += 1;
           const reconnectDelay = Math.min(1000 * Math.pow(2, reconnectCountRef.current - 1), 30000);
           
@@ -232,7 +212,6 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         setConnectionStatus("error");
         setError('Failed to connect to orderbook service');
         
-        // Schedule reconnect attempt if not at max attempts
         if (reconnectCountRef.current < MAX_RECONNECT_ATTEMPTS) {
           reconnectCountRef.current += 1;
           const reconnectDelay = Math.min(1000 * Math.pow(2, reconnectCountRef.current - 1), 30000);
@@ -258,13 +237,12 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       clearInterval(pingIntervalRef.current);
     }
     
-    // Send a ping every 20 seconds to keep the connection alive
     pingIntervalRef.current = setInterval(() => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         console.log('[LiveOrderBook] Sending ping to keep connection alive');
         wsRef.current.send(JSON.stringify({ ping: new Date().toISOString() }));
       } else {
-        // Clear interval if socket is no longer open
+        console.log('[LiveOrderBook] WebSocket not open during ping, clearing interval');
         clearInterval(pingIntervalRef.current!);
         pingIntervalRef.current = null;
       }
