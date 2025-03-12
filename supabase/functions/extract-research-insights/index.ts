@@ -116,7 +116,7 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       : '';
 
     const focusContext = focusText
-      ? `\nThe research particularly focused on: "${focusText}"\n`
+      ? `\nCRITICAL: This analysis is specifically focused on: "${focusText}"\nYou MUST ensure ALL evidence points directly address this specific focus area.\n`
       : '';
 
     const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
@@ -130,6 +130,7 @@ CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
 5. Uncertainty: Acknowledge key areas of uncertainty and how they affect your estimate
 6. Competitive Analysis: When relevant, analyze competitor positions and market dynamics
 7. Timeline Considerations: Account for time-dependent factors and how they affect probability
+${focusText ? `8. FOCUS AREA: Every evidence point MUST explicitly connect to the focus area: "${focusText}". Prioritize evidence that directly addresses this specific aspect.\n` : ''}
 
 Format your analysis as a JSON object with:
 {
@@ -137,12 +138,12 @@ Format your analysis as a JSON object with:
   "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
   "reasoning": {
     "evidenceFor": [
-      "Detailed point 1 supporting the event happening, with specific examples, statistics, or historical precedents",
+      "Detailed point 1 supporting the event happening, with specific examples, statistics, or historical precedents${focusText ? ` that directly addresses the focus area: "${focusText}"` : ''}",
       "Detailed point 2 supporting the event happening"
       // Add multiple points as needed
     ],
     "evidenceAgainst": [
-      "Detailed point 1 against the event happening, with specific examples, statistics, or historical precedents",
+      "Detailed point 1 against the event happening, with specific examples, statistics, or historical precedents${focusText ? ` that directly addresses the focus area: "${focusText}"` : ''}",
       "Detailed point 2 against the event happening"
       // Add multiple points as needed
     ]
@@ -153,7 +154,7 @@ IMPORTANT:
 - In the "evidenceFor" and "evidenceAgainst" arrays, include detailed points with specific examples, historical precedents, statistics, and source citations where available.
 - For resolved markets (0% or 100%), focus on explaining why the event did or didn't happen rather than probability assessment.
 - Consider all dimensions of the question including economic, political, social, and technological factors.
-- Each evidence point should be a complete, well-reasoned argument, not just a simple statement.`;
+- Each evidence point should be a complete, well-reasoned argument, not just a simple statement.${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
 
     const prompt = `Here is the web content I've collected during research:
 ---
@@ -173,6 +174,7 @@ Based on all this information, please provide:
 3. A detailed reasoning section with:
    - Evidence FOR the event happening (with specific historical precedents, examples, statistics)
    - Evidence AGAINST the event happening (with specific historical precedents, examples, statistics)
+${focusText ? `\nCRITICAL: Your analysis MUST focus specifically on: "${focusText}"\nEnsure ALL evidence points directly address this specific focus area.\n` : ''}
 ${relatedMarkets && relatedMarkets.length > 0 ? 
   `4. Analysis of how the following related markets affect your assessment:
 ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 

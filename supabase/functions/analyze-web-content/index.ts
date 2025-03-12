@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -70,7 +71,7 @@ serve(async (req) => {
       : '';
 
     const focusContext = focusText
-      ? `\nIMPORTANT: Focus your analysis specifically on: "${focusText}"\n`
+      ? `\nCRITICAL: Focus your analysis EXCLUSIVELY on: "${focusText}"\nYou MUST ensure ALL insights directly address this specific focus area.\n`
       : '';
 
     const researchAreasContext = areasForResearch && areasForResearch.length > 0
@@ -127,6 +128,11 @@ Your task is to analyze web content to assess the probability of market outcomes
    - Highlight key areas of uncertainty
    - Discuss potential unknown factors
    - Consider alternative scenarios
+   
+${focusText ? `6. Focus Area Priority
+   - EVERY insight MUST explicitly address the focus area: "${focusText}"
+   - Information not directly related to the focus area should be excluded
+   - Clearly explain how each point connects to the specified focus` : ''}
 
 Be factual, precise, and evidence-based in your analysis.`;
 
@@ -144,7 +150,7 @@ ${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... 
 
     prompt += `\nBased solely on the information in this content:
 1. What are the key facts and insights relevant to the market question "${question}"?
-${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
+${focusText ? `1a. CRITICAL: Focus specifically ONLY on aspects directly related to: "${focusText}"` : ''}
 2. What evidence supports or contradicts the proposition?
 ${isMarketResolved ? 
   `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
@@ -153,6 +159,7 @@ ${isMarketResolved ?
 4. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
 ${marketPrice !== undefined && !isMarketResolved ? `5. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
 ${relatedMarkets && relatedMarkets.length > 0 ? `6. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+${focusText ? `\nCRITICAL REMINDER: Your analysis MUST focus EXCLUSIVELY on: "${focusText}"\nEnsure ALL insights directly address this specific focus area.\n` : ''}
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 

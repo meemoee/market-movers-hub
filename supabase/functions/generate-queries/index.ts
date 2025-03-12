@@ -54,7 +54,8 @@ serve(async (req) => {
     // Add research focus if provided
     if (focusText) {
       contextInfo += `
-        Research Focus: ${focusText}
+        CRITICAL - Research Focus: ${focusText}
+        ALL generated queries MUST specifically target this focus area.
       `;
     }
     
@@ -77,7 +78,7 @@ serve(async (req) => {
     if (iteration === 1) {
       systemPrompt = `You are a research query generator for a prediction market platform. 
       Given a prediction market question and description, generate 3 search queries that would help research this topic.
-      ${focusText ? `IMPORTANT: Focus specifically on researching: "${focusText}"` : ''}
+      ${focusText ? `CRITICAL: Focus EXCLUSIVELY on researching: "${focusText}". ALL queries MUST directly address this specific aspect.` : ''}
       
       CRITICAL GUIDELINES FOR QUERIES:
       1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
@@ -86,20 +87,21 @@ serve(async (req) => {
       4. Make each query a complete, standalone question or statement that contains ALL relevant context
       5. If the original question asks about a future event, include timeframes or dates
       6. Use precise terminology and specific entities mentioned in the original question
+      ${focusText ? `7. EVERY query must EXPLICITLY target the focus area: "${focusText}" - do not generate general queries about the broader topic` : ''}
       
       Focus on factual information that would help determine the likelihood of the event.
       Output ONLY valid JSON in the following format:
       {
         "queries": [
-          "first search query with full context",
-          "second search query with full context", 
-          "third search query with full context"
+          "first search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}",
+          "second search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}", 
+          "third search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}"
         ]
       }`;
     } else {
       systemPrompt = `You are a research query generator for a prediction market platform.
       Based on previous analysis and identified areas needing further research, generate 3 NEW search queries that address knowledge gaps.
-      ${focusText ? `IMPORTANT: Focus specifically on researching: "${focusText}"` : ''}
+      ${focusText ? `CRITICAL: Focus EXCLUSIVELY on researching: "${focusText}". ALL queries MUST directly address this specific aspect.` : ''}
       
       CRITICAL GUIDELINES FOR QUERIES:
       1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
@@ -108,6 +110,7 @@ serve(async (req) => {
       4. Make each query a complete, standalone question or statement that contains ALL relevant context
       5. If researching a future event, include timeframes or dates
       6. Use precise terminology and specific entities mentioned in the original question
+      ${focusText ? `7. EVERY query must EXPLICITLY target the focus area: "${focusText}" - do not generate general queries about the broader topic` : ''}
       
       Focus specifically on areas that need additional investigation based on previous research.
       Queries should be more targeted than previous iterations, diving deeper into unclear aspects.
@@ -115,9 +118,9 @@ serve(async (req) => {
       Output ONLY valid JSON in the following format:
       {
         "queries": [
-          "first refined search query with full context",
-          "second refined search query with full context", 
-          "third refined search query with full context"
+          "first refined search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}",
+          "second refined search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}", 
+          "third refined search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}"
         ]
       }`;
     }
@@ -167,7 +170,7 @@ serve(async (req) => {
           // Check if queries contain undefined values and replace them if needed
           if (queries.some(q => q === "undefined" || q === undefined)) {
             console.log("Found undefined values in queries, using fallback queries");
-            queries = generateFallbackQueries(researchQuery, iteration, previousResults);
+            queries = generateFallbackQueries(researchQuery, iteration, previousResults, focusText);
           }
         } catch (parseError) {
           console.error("Error parsing JSON from model response:", parseError);
@@ -187,7 +190,7 @@ serve(async (req) => {
     // If extraction failed or no queries were found, fall back to smart fallback queries
     if (!queries.length || queries.every(q => q === "undefined" || q === undefined)) {
       console.log("Falling back to smart query generation");
-      queries = generateFallbackQueries(researchQuery, iteration, previousResults);
+      queries = generateFallbackQueries(researchQuery, iteration, previousResults, focusText);
     }
     
     // Clean up queries and ensure they contain sufficient context
@@ -196,7 +199,7 @@ serve(async (req) => {
       
       // Ensure the query has enough context by checking for common issues
       if (!containsSufficientContext(cleanQuery, researchQuery)) {
-        cleanQuery = addContextToQuery(cleanQuery, researchQuery);
+        cleanQuery = addContextToQuery(cleanQuery, researchQuery, focusText);
       }
       
       // Limit query length to 150 chars for efficiency
@@ -220,14 +223,16 @@ serve(async (req) => {
     // Get the query from the request if possible
     let query = "unknown";
     let iteration = 1;
+    let focusText = "";
     try {
       const requestData = await req.json();
       query = requestData.query || requestData.question || "unknown";
       iteration = requestData.iteration || 1;
+      focusText = requestData.focusText || "";
       const previousResults = requestData.previousResults || "";
       
       // Generate intelligent fallback queries
-      const fallbackQueries = generateFallbackQueries(query, iteration, previousResults);
+      const fallbackQueries = generateFallbackQueries(query, iteration, previousResults, focusText);
       
       return new Response(JSON.stringify({ queries: fallbackQueries }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -235,7 +240,7 @@ serve(async (req) => {
     } catch (parseError) {
       // If we can't parse the request, use very basic fallback
       console.error("Error parsing request in fallback:", parseError);
-      const basicFallbackQueries = generateBasicFallbackQueries(query);
+      const basicFallbackQueries = generateBasicFallbackQueries(query, focusText);
       
       return new Response(JSON.stringify({ queries: basicFallbackQueries }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -264,7 +269,7 @@ function containsSufficientContext(query: string, originalQuestion: string): boo
 }
 
 // Add context to a query
-function addContextToQuery(query: string, originalQuestion: string): string {
+function addContextToQuery(query: string, originalQuestion: string, focusText: string = ""): string {
   // Extract key entities and phrases from original question
   const keyEntities = extractKeyEntities(originalQuestion);
   
@@ -276,8 +281,12 @@ function addContextToQuery(query: string, originalQuestion: string): string {
   // Simplify original question to its core
   const simplifiedQuestion = originalQuestion.split(/[.?!]/).filter(s => s.trim().length > 0)[0].trim();
   
-  // Combine the query with context from the original question
-  return `${query} regarding ${simplifiedQuestion}`;
+  // Combine the query with context from the original question and focus if provided
+  if (focusText && !query.toLowerCase().includes(focusText.toLowerCase())) {
+    return `${query} regarding ${focusText} in context of ${simplifiedQuestion}`;
+  } else {
+    return `${query} regarding ${simplifiedQuestion}`;
+  }
 }
 
 // Extract key entities and phrases from text
@@ -314,7 +323,7 @@ function extractKeyEntities(text: string): string[] {
 }
 
 // Helper function to generate intelligent fallback queries based on iteration
-function generateFallbackQueries(query: string, iteration: number, previousResults: string = ""): string[] {
+function generateFallbackQueries(query: string, iteration: number, previousResults: string = "", focusText: string = ""): string[] {
   // Clean up query text
   const cleanQuery = query.trim();
   
@@ -327,12 +336,15 @@ function generateFallbackQueries(query: string, iteration: number, previousResul
   const keyEntities = extractKeyEntities(cleanQuery);
   const keyTerms = keyEntities.length > 0 ? keyEntities.slice(0, 3).join(' ') : words.slice(0, 5).join(' ');
   
+  // Add focus text to queries if provided
+  const focusPhrase = focusText ? ` specifically regarding ${focusText}` : '';
+  
   if (iteration === 1) {
     // First iteration - general exploration with full context
     return [
-      `${cleanQuery} recent developments and current status`,
-      `${cleanQuery} expert analysis and predictions`,
-      `${cleanQuery} historical precedents and similar cases`
+      `${cleanQuery}${focusPhrase} recent developments and current status`,
+      `${cleanQuery}${focusPhrase} expert analysis and predictions`,
+      `${cleanQuery}${focusPhrase} historical precedents and similar cases`
     ];
   } else if (iteration === 2) {
     // Second iteration - more targeted based on topic
@@ -344,9 +356,9 @@ function generateFallbackQueries(query: string, iteration: number, previousResul
     const entityPhrase = potentialEntities || keyTerms;
     
     return [
-      `${entityPhrase} latest data and statistics regarding ${cleanQuery}`,
-      `${cleanQuery} future outlook and probability assessments`,
-      `${cleanQuery} expert opinions and consensus view`
+      `${entityPhrase} latest data and statistics regarding ${focusText || cleanQuery}`,
+      `${cleanQuery}${focusPhrase} future outlook and probability assessments`,
+      `${cleanQuery}${focusPhrase} expert opinions and consensus view`
     ];
   } else {
     // Third+ iteration - focus on specifics and filling gaps
@@ -356,21 +368,22 @@ function generateFallbackQueries(query: string, iteration: number, previousResul
       : keyTerms;
     
     return [
-      `${prevTerms} statistical analysis in context of ${cleanQuery}`,
-      `${cleanQuery} historical precedent and outcome patterns`,
-      `${cleanQuery} expert forecast methodology and confidence levels`
+      `${prevTerms} statistical analysis in context of ${focusText || cleanQuery}`,
+      `${cleanQuery}${focusPhrase} historical precedent and outcome patterns`,
+      `${cleanQuery}${focusPhrase} expert forecast methodology and confidence levels`
     ];
   }
 }
 
 // Helper to generate very basic fallback queries when everything else fails
-function generateBasicFallbackQueries(query: string): string[] {
+function generateBasicFallbackQueries(query: string, focusText: string = ""): string[] {
   const cleanQuery = query.trim();
+  const focusPhrase = focusText ? ` specifically regarding ${focusText}` : '';
   
   return [
-    `${cleanQuery} comprehensive analysis`,
-    `${cleanQuery} recent developments and current status`,
-    `${cleanQuery} expert predictions and probability estimates`
+    `${cleanQuery}${focusPhrase} comprehensive analysis`,
+    `${cleanQuery}${focusPhrase} recent developments and current status`,
+    `${cleanQuery}${focusPhrase} expert predictions and probability estimates`
   ];
 }
 
