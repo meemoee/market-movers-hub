@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -20,6 +21,17 @@ interface InsightsRequest {
   focusText?: string;
   marketPrice?: number;
   relatedMarkets?: RelatedMarket[];
+}
+
+interface InsightsResponseData {
+  probability: string;
+  areasForResearch: string[];
+  reasoning: {
+    evidenceFor: string[];
+    evidenceAgainst: string[];
+    historicalPrecedents?: string[];
+    resolutionAnalysis?: string;
+  };
 }
 
 const corsHeaders = {
@@ -122,25 +134,25 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
 Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
 
 CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
-1. Historical Precedents: Always cite specific historical events, statistics, or past occurrences that inform your estimate
-2. Key Conditions: Identify and analyze the specific conditions that must be met for the event to occur
-3. Impact Factors: List the major factors that could positively or negatively impact the probability
-4. Evidence Quality: Assess the reliability and relevance of your sources
-5. Uncertainty: Acknowledge key areas of uncertainty and how they affect your estimate
-6. Competitive Analysis: When relevant, analyze competitor positions and market dynamics
-7. Timeline Considerations: Account for time-dependent factors and how they affect probability
+1. Use specific historical precedents and examples when supporting your analysis
+2. Cite concrete evidence from the research
+3. Identify key indicators and events that could affect outcome
+4. When markets are already resolved (0% or 100%), explain the factors that led to that outcome
+5. Acknowledge areas of uncertainty and their impact
 
-Format your analysis as a JSON object with:
+Format your response as a JSON object with the following structure:
 {
-  "probability": "X%" (numerical percentage with % sign),
-  "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
-  "reasoning": "Detailed explanation following this structure:
-    1. Historical Precedents: [specific examples]
-    2. Key Conditions: [list conditions]
-    3. Impact Analysis: [major factors]
-    4. Evidence Assessment: [source evaluation]
-    5. Final Probability Justification"
-}`;
+  "probability": "X%" (percentage with % sign),
+  "areasForResearch": ["specific topic 1", "specific topic 2", ...] (2-5 specific areas that need more research),
+  "reasoning": {
+    "evidenceFor": ["specific evidence point 1", "specific evidence point 2", ...] (list specific evidence supporting the outcome),
+    "evidenceAgainst": ["specific evidence point 1", "specific evidence point 2", ...] (list specific evidence against the outcome),
+    "historicalPrecedents": ["precedent 1", "precedent 2", ...] (list relevant historical examples),
+    "resolutionAnalysis": "Only for resolved markets - explain why the event did/didn't occur"
+  }
+}
+
+IMPORTANT: Your response must be a valid JSON object.`;
 
     const prompt = `Here is the web content I've collected during research:
 ---
@@ -157,18 +169,16 @@ ${previousAnalysesContext}
 Based on all this information, please provide:
 1. A specific probability estimate for the market question: "${marketQuestion}"
 2. The key areas where more research is needed
-3. A detailed reasoning that includes:
-   - Relevant historical precedents and statistics
-   - Specific conditions that need to be met
-   - Major impact factors (both positive and negative)
-   - Assessment of evidence quality
-   - Clear justification for the probability estimate
+3. Detailed reasoning including:
+   - Specific evidence points for and against the outcome
+   - Relevant historical precedents and examples
+   - For resolved markets (${marketPrice === 0 || marketPrice === 100 ? 'like this one' : 'not applicable here'}): analysis of why the event ${marketPrice === 100 ? 'occurred' : marketPrice === 0 ? 'did not occur' : 'may or may not occur'}
 ${relatedMarkets && relatedMarkets.length > 0 ? 
   `4. Analysis of how the following related markets affect your assessment:
 ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 
   : ''}
 
-Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
+Remember to format your response as a valid JSON object.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -211,7 +221,12 @@ Remember to format your response as a valid JSON object with probability, areasF
         error: error.message || 'Unknown error',
         probability: "Error: Could not analyze",
         areasForResearch: [],
-        reasoning: "Could not analyze due to technical error"
+        reasoning: {
+          evidenceFor: [],
+          evidenceAgainst: [],
+          historicalPrecedents: [],
+          resolutionAnalysis: "Could not analyze due to technical error"
+        }
       }),
       {
         status: 500,

@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -101,34 +102,28 @@ serve(async (req) => {
 
     const systemPrompt = `You are an expert market research analyst focused on evidence-based analysis.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}${relatedMarketsContext}
 
-Your task is to analyze web content to assess the probability of market outcomes. Follow these critical guidelines:
+Your task is to analyze web content to assess the probability of market outcomes. Focus on:
 
-1. Historical Analysis
-   - Identify and analyze relevant historical precedents
-   - Compare current situation with similar past events
-   - Note key differences that might affect outcomes
+1. Historical Precedents & Examples
+   - Identify specific historical cases that have similarities to the current situation
+   - Compare past outcomes to potential current outcomes
+   - Note key differences that might affect probability
 
-2. Evidence Assessment
-   - Evaluate source credibility and relevance
-   - Highlight strongest evidence points
-   - Note potential biases or limitations
+2. Concrete Evidence Assessment
+   - Evaluate sources and their credibility
+   - Highlight specific facts, statistics and data points
+   - Note biases or limitations in the evidence
 
-3. Impact Factor Analysis
+3. Key Factors Analysis
    - List major factors affecting probability
-   - Analyze positive and negative influences
-   - Consider timing and sequence of events
+   - Analyze both supporting and contradicting evidence
+   - Consider timing and dependencies between events
 
-4. Condition Mapping
-   - Identify necessary conditions for the event
-   - Assess likelihood of conditions being met
-   - Note dependencies between conditions
+For markets already resolved (0% or 100%):
+- Focus on explaining WHY the outcome occurred or didn't occur
+- Identify the key factors that led to the final result
 
-5. Uncertainty Analysis
-   - Highlight key areas of uncertainty
-   - Discuss potential unknown factors
-   - Consider alternative scenarios
-
-Be factual, precise, and evidence-based in your analysis.`;
+Be factual, precise, and evidence-based in your analysis. Cite specific examples, data points, and sources whenever possible.`;
 
     let prompt = `Here is the web content I've collected during research:
 ---
@@ -145,16 +140,17 @@ ${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... 
     prompt += `\nBased solely on the information in this content:
 1. What are the key facts and insights relevant to the market question "${question}"?
 ${focusText ? `1a. Specifically analyze aspects related to: "${focusText}"` : ''}
-2. What evidence supports or contradicts the proposition?
+2. What specific evidence supports or contradicts the proposition?
 ${isMarketResolved ? 
-  `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
-  `3. How does this information affect the probability assessment?`
+  `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what specific evidence supports this outcome.` : 
+  `3. How does this specific information affect the probability assessment?`
 }
-4. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
-${marketPrice !== undefined && !isMarketResolved ? `5. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
-${relatedMarkets && relatedMarkets.length > 0 ? `6. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+4. What historical precedents or similar events are relevant to this analysis?
+5. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
+${marketPrice !== undefined && !isMarketResolved ? `6. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `7. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 
-Ensure your analysis is factual, balanced, and directly addresses the market question.`;
+Ensure your analysis is factual, balanced, and directly addresses the market question. Include specific references to data, events, and sources from the content.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',

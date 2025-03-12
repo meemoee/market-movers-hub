@@ -2,15 +2,21 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle, Clock, History } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
 
 interface StreamingState {
   rawText: string;
   parsedData: {
     probability: string;
     areasForResearch: string[];
-    reasoning?: string;
+    reasoning?: {
+      evidenceFor?: string[];
+      evidenceAgainst?: string[];
+      historicalPrecedents?: string[];
+      resolutionAnalysis?: string;
+    };
   } | null;
 }
 
@@ -134,14 +140,60 @@ export function InsightsDisplay({
           </div>
           
           {reasoning && (
-            <div className="mt-4 border-t pt-4 border-accent/20">
-              <div className="flex items-center gap-2 mb-2">
-                <InfoIcon className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm font-medium">
-                  {isResolved ? 'Explanation' : 'Reasoning'}
-                </span>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">{reasoning}</p>
+            <div className="mt-4">
+              <Separator className="my-4" />
+              
+              {reasoning.evidenceFor && reasoning.evidenceFor.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span className="text-sm font-medium">Evidence Supporting Outcome</span>
+                  </div>
+                  <ul className="space-y-2 pl-6 list-disc marker:text-green-500">
+                    {reasoning.evidenceFor.map((item, index) => (
+                      <li key={index} className="text-sm text-muted-foreground leading-relaxed">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {reasoning.evidenceAgainst && reasoning.evidenceAgainst.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <XCircle className="h-4 w-4 text-red-500" />
+                    <span className="text-sm font-medium">Evidence Against Outcome</span>
+                  </div>
+                  <ul className="space-y-2 pl-6 list-disc marker:text-red-500">
+                    {reasoning.evidenceAgainst.map((item, index) => (
+                      <li key={index} className="text-sm text-muted-foreground leading-relaxed">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {reasoning.historicalPrecedents && reasoning.historicalPrecedents.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <History className="h-4 w-4 text-blue-500" />
+                    <span className="text-sm font-medium">Historical Precedents</span>
+                  </div>
+                  <ul className="space-y-2 pl-6 list-disc marker:text-blue-500">
+                    {reasoning.historicalPrecedents.map((item, index) => (
+                      <li key={index} className="text-sm text-muted-foreground leading-relaxed">{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              {reasoning.resolutionAnalysis && isResolved && (
+                <div className="mt-3 p-3 bg-accent/10 rounded-lg border border-accent/20">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="h-4 w-4 text-accent" />
+                    <span className="text-sm font-medium">Resolution Explanation</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{reasoning.resolutionAnalysis}</p>
+                </div>
+              )}
             </div>
           )}
         </Card>
