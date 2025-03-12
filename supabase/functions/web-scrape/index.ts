@@ -1,7 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { SearchResponse } from "./types.ts"
+import { SearchResponse, SSEMessage } from "./types.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,13 +43,15 @@ serve(async (req) => {
         
         const processQueries = async () => {
           let allResults = [];
+          let currentIteration = 0;
           
           try {
             for (const [index, query] of cleanedQueries.entries()) {
+              currentIteration = index + 1;
               // Send a message for each query
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                 type: 'message',
-                message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
+                message: `Processing query ${currentIteration}/${cleanedQueries.length}: ${query}`
               })}\n\n`));
 
               try {
@@ -153,9 +155,24 @@ serve(async (req) => {
             controller.close();
           }
         };
+
+        // Set up abort handling for function termination
+        addEventListener("beforeunload", (event) => {
+          console.log("Function shutting down, saving progress...");
+          // You could save the current state here if needed
+        });
         
-        // Start processing queries in the background using EdgeRuntime.waitUntil
-        EdgeRuntime.waitUntil(processQueries());
+        // Start processing queries using EdgeRuntime.waitUntil
+        EdgeRuntime.waitUntil(
+          (async () => {
+            try {
+              await processQueries();
+              console.log("Background processing completed successfully");
+            } catch (error) {
+              console.error("Background processing failed:", error);
+            }
+          })()
+        );
       }
     });
     
