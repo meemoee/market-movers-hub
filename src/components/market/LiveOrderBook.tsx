@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -22,14 +22,16 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
   const [retryCount, setRetryCount] = useState(0);
-  const [pollInterval, setPollInterval] = useState<number | null>(null);
+  // Use useRef for the interval ID instead of useState
+  const pollIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (isClosing) {
       console.log('[LiveOrderBook] Dialog is closing, clearing state and intervals');
       setError(null);
-      if (pollInterval) {
-        clearInterval(pollInterval);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
       return;
     }
@@ -47,11 +49,13 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       fetchOrderbookSnapshot(clobTokenId);
     }, 3000);
 
-    setPollInterval(interval);
+    // Store the interval ID in the ref
+    pollIntervalRef.current = interval;
 
     return () => {
-      if (interval) {
-        clearInterval(interval);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
     };
   }, [clobTokenId, isClosing, retryCount]);
