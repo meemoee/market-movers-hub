@@ -98,98 +98,94 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       setProgress([`Generated ${generatedQueries.length} search queries`]);
       
       // Execute web scrape
-      const response = await supabase.functions.invoke('web-scrape', {
-        body: { queries: generatedQueries, marketId, focusText: description },
-      });
-      
-      if (response.error) {
-        console.error('Web scrape error:', response.error);
-        toast.error(`Research failed: ${response.error.message}`);
-        setIsLoading(false);
-        return;
-      }
-      
-      const reader = response.data.getReader();
-      const decoder = new TextDecoder();
-      let allResults: Array<{ url: string; title: string; content: string }> = [];
-      
-      // Process the stream
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      try {
+        // Call the web-scrape function and get the JSON response
+        const { data: scrapeData, error: scrapeError } = await supabase.functions.invoke('web-scrape', {
+          body: { queries: generatedQueries, marketId, focusText: description },
+        });
         
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n\n');
-        
-        for (const line of lines) {
-          if (!line.trim() || !line.startsWith('data:')) continue;
-          
-          const data = line.replace('data:', '').trim();
-          
-          if (data === '[DONE]') {
-            // Stream complete
-            continue;
-          }
-          
-          try {
-            const parsed = JSON.parse(data) as { 
-              type: string; 
-              message?: string; 
-              data?: Array<{ url: string; title: string; content: string }> 
-            };
-            
-            if (parsed.type === 'message' && parsed.message) {
-              setProgress(prev => [...prev, parsed.message]);
-            }
-            
-            if (parsed.type === 'results' && parsed.data) {
-              allResults = [...allResults, ...parsed.data];
-              setResults([...allResults]);
-            }
-            
-            if (parsed.type === 'error' && parsed.message) {
-              setProgress(prev => [...prev, `Error: ${parsed.message}`]);
-              toast.error(parsed.message);
-            }
-          } catch (e) {
-            console.error('Error parsing stream data:', e, data);
-          }
+        if (scrapeError) {
+          console.error('Web scrape error:', scrapeError);
+          toast.error(`Research failed: ${scrapeError.message}`);
+          setIsLoading(false);
+          return;
         }
-      }
-      
-      if (allResults.length === 0) {
-        toast.error('No research results found');
+        
+        if (!scrapeData) {
+          toast.error('No data received from research function');
+          setIsLoading(false);
+          return;
+        }
+
+        console.log('Web scrape response:', scrapeData);
+        
+        let allResults: Array<{ url: string; title: string; content: string }> = [];
+        
+        // Process messages if they're returned as an array
+        if (Array.isArray(scrapeData.messages)) {
+          for (const message of scrapeData.messages) {
+            if (message.type === 'message') {
+              setProgress(prev => [...prev, message.message]);
+            } else if (message.type === 'results' && Array.isArray(message.data)) {
+              allResults = [...allResults, ...message.data];
+              setResults([...allResults]);
+            } else if (message.type === 'error') {
+              toast.error(message.message);
+              setProgress(prev => [...prev, `Error: ${message.message}`]);
+            }
+          }
+        } else if (Array.isArray(scrapeData.results)) {
+          // If results are directly returned
+          allResults = scrapeData.results;
+          setResults(allResults);
+          setProgress(prev => [...prev, `Retrieved ${allResults.length} research results`]);
+        } else {
+          console.log('Unexpected response format:', scrapeData);
+          toast.error('Unexpected response format from research function');
+          setIsLoading(false);
+          return;
+        }
+        
+        if (allResults.length === 0) {
+          toast.error('No research results found');
+          setIsLoading(false);
+          return;
+        }
+        
+        setProgress(prev => [...prev, `Retrieved ${allResults.length} research results`]);
+        
+        // Analyze the results
+        setIsAnalyzing(true);
         setIsLoading(false);
-        return;
-      }
-      
-      setProgress(prev => [...prev, `Retrieved ${allResults.length} research results`]);
-      
-      // Analyze the results
-      setIsAnalyzing(true);
-      setIsLoading(false);
-      
-      const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-web-content', {
-        body: { results: allResults, marketId, description },
-      });
-      
-      if (analysisError) {
-        console.error('Analysis error:', analysisError);
-        toast.error(`Analysis failed: ${analysisError.message}`);
+        
+        const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-web-content', {
+          body: { results: allResults, marketId, description },
+        });
+        
+        if (analysisError) {
+          console.error('Analysis error:', analysisError);
+          toast.error(`Analysis failed: ${analysisError.message}`);
+          setIsAnalyzing(false);
+          return;
+        }
+        
+        if (analysisData.analysis) {
+          setAnalysis(analysisData.analysis);
+        }
+        
+        if (analysisData.probability) {
+          setProbability(analysisData.probability);
+        }
+        
+        setProgress(prev => [...prev, 'Analysis complete']);
+        
+      } catch (error) {
+        console.error('Research process error:', error);
+        toast.error(`Research process failed: ${error.message}`);
+      } finally {
+        setIsLoading(false);
         setIsAnalyzing(false);
-        return;
       }
-      
-      if (analysisData.analysis) {
-        setAnalysis(analysisData.analysis);
-      }
-      
-      if (analysisData.probability) {
-        setProbability(analysisData.probability);
-      }
-      
-      setProgress(prev => [...prev, 'Analysis complete']);
-      setIsAnalyzing(false);
       
     } catch (error) {
       console.error('Research error:', error);
