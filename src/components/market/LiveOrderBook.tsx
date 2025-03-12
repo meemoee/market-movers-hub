@@ -22,8 +22,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
   const [retryCount, setRetryCount] = useState(0);
-  // Use useRef for the interval ID instead of useState
-  const pollIntervalRef = useRef<number | null>(null);
+  // Use useRef for the interval ID with the correct type (NodeJS.Timeout | null)
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (isClosing) {
