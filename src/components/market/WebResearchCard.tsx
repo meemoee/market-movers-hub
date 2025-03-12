@@ -33,9 +33,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { useRelatedMarkets } from "@/hooks/useRelatedMarkets"
-import { BackgroundResearchButton } from "./research/BackgroundResearchButton"
-import { ResearchJobsList } from "./research/ResearchJobsList"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface WebResearchCardProps {
   description: string;
@@ -102,7 +99,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [loadedResearchId, setLoadedResearchId] = useState<string | null>(null)
   const [parentResearchId, setParentResearchId] = useState<string | null>(null)
   const [childResearches, setChildResearches] = useState<SavedResearch[]>([])
-  const [activeTab, setActiveTab] = useState<string>("interactive")
   const { toast } = useToast()
   const { data: relatedMarkets } = useRelatedMarkets(marketId);
 
@@ -1198,194 +1194,173 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         </div>
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <div className="flex justify-between items-center mb-4">
-          <TabsList>
-            <TabsTrigger value="interactive">Interactive Research</TabsTrigger>
-            <TabsTrigger value="background">Background Research</TabsTrigger>
-          </TabsList>
+      <div className="flex items-center justify-between w-full max-w-full">
+        <ResearchHeader 
+          isLoading={isLoading}
+          isAnalyzing={isAnalyzing}
+          onResearch={handleResearch}
+        />
+        
+        <div className="flex space-x-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon">
+                <Settings className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <div className="space-y-4">
+                <h4 className="font-medium text-sm">Research Settings</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">Number of Iterations</span>
+                    <span className="text-sm font-medium">{maxIterations}</span>
+                  </div>
+                  <Slider
+                    value={[maxIterations]}
+                    min={1}
+                    max={5}
+                    step={1}
+                    onValueChange={(values) => setMaxIterations(values[0])}
+                    disabled={isLoading || isAnalyzing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Higher values will provide more thorough research but take longer to complete.
+                  </p>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           
-          <div className="flex space-x-2">
-            {activeTab === "interactive" ? (
-              <>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="icon">
-                      <Settings className="h-4 w-4" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80">
-                    <div className="space-y-4">
-                      <h4 className="font-medium text-sm">Research Settings</h4>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm">Number of Iterations</span>
-                          <span className="text-sm font-medium">{maxIterations}</span>
-                        </div>
-                        <Slider
-                          value={[maxIterations]}
-                          min={1}
-                          max={5}
-                          step={1}
-                          onValueChange={(values) => setMaxIterations(values[0])}
-                          disabled={isLoading || isAnalyzing}
-                        />
-                        <p className="text-xs text-muted-foreground">
-                          Higher values will provide more thorough research but take longer to complete.
-                        </p>
-                      </div>
+          {savedResearch && savedResearch.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  Saved Research <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[300px]">
+                <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {savedResearch.map((research) => (
+                  <DropdownMenuItem 
+                    key={research.id}
+                    onClick={() => loadSavedResearch(research)}
+                    className="flex flex-col items-start"
+                  >
+                    <div className="font-medium truncate w-full">
+                      {research.focus_text ? (
+                        <span className="flex items-center gap-1">
+                          {research.parent_research_id && <ArrowLeftCircle className="h-3 w-3 text-muted-foreground" />}
+                          <span>{research.focus_text}</span>
+                        </span>
+                      ) : (
+                        research.query.substring(0, 40) + (research.query.length > 40 ? '...' : '')
+                      )}
                     </div>
-                  </PopoverContent>
-                </Popover>
-                <ResearchHeader 
-                  isLoading={isLoading}
-                  isAnalyzing={isAnalyzing}
-                  onResearch={handleResearch}
-                />
-              </>
-            ) : (
-              <BackgroundResearchButton 
-                marketId={marketId} 
-                description={description} 
-              />
-            )}
-            
-            {savedResearch && savedResearch.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    Saved Research <ChevronDown className="ml-2 h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-[300px]">
-                  <DropdownMenuLabel>Your Saved Research</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {savedResearch.map((research) => (
-                    <DropdownMenuItem 
-                      key={research.id}
-                      onClick={() => loadSavedResearch(research)}
-                      className="flex flex-col items-start"
-                    >
-                      <div className="font-medium truncate w-full">
-                        {research.focus_text ? (
-                          <span className="flex items-center gap-1">
-                            {research.parent_research_id && <ArrowLeftCircle className="h-3 w-3 text-muted-foreground" />}
-                            <span>{research.focus_text}</span>
-                          </span>
-                        ) : (
-                          research.query.substring(0, 40) + (research.query.length > 40 ? '...' : '')
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
-                      </div>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                    <div className="text-sm text-muted-foreground">
+                      {format(new Date(research.created_at), 'MMM d, yyyy HH:mm')}
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
+
+      <div className="flex items-center space-x-2 w-full max-w-full">
+        <div className="relative flex-1">
+          <Input
+            placeholder="Enter specific research focus (optional)..."
+            value={focusText}
+            onChange={(e) => setFocusText(e.target.value)}
+            disabled={isLoading || isAnalyzing}
+            className="pr-8"
+          />
+          {focusText && (
+            <button
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setFocusText('')}
+              disabled={isLoading || isAnalyzing}
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {focusText && (
+          <div className="shrink-0">
+            <Badge variant="outline" className="whitespace-nowrap">
+              <Search className="h-3 w-3 mr-1" />
+              Focus: {focusText.length > 20 ? focusText.substring(0, 20) + '...' : focusText}
+            </Badge>
+          </div>
+        )}
+      </div>
+
+      {error && (
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
+          {error}
+        </div>
+      )}
+
+      {currentIteration > 0 && (
+        <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
+          <div 
+            className="bg-primary h-full transition-all duration-500 ease-in-out"
+            style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
+          />
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>Iteration {currentIteration} of {maxIterations}</span>
+            <span>{Math.round((currentIteration / maxIterations) * 100)}% complete</span>
           </div>
         </div>
+      )}
 
-        <TabsContent value="interactive" className="mt-0">
-          <div className="flex items-center space-x-2 w-full max-w-full">
-            <div className="relative flex-1">
-              <Input
-                placeholder="Enter specific research focus (optional)..."
-                value={focusText}
-                onChange={(e) => setFocusText(e.target.value)}
-                disabled={isLoading || isAnalyzing}
-                className="pr-8"
-              />
-              {focusText && (
-                <button
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                  onClick={() => setFocusText('')}
-                  disabled={isLoading || isAnalyzing}
-                >
-                  ×
-                </button>
-              )}
+      {(isLoading || isAnalyzing) && renderQueryDisplay()}
+
+      <ProgressDisplay messages={progress} />
+      
+      {iterations.length > 0 && (
+        <div className="border rounded-md overflow-hidden w-full max-w-full">
+          <ScrollArea className="h-[400px]">
+            <div className="space-y-2 p-2 w-full max-w-full">
+              {renderIterations()}
             </div>
-            {focusText && (
-              <div className="shrink-0">
-                <Badge variant="outline" className="whitespace-nowrap">
-                  <Search className="h-3 w-3 mr-1" />
-                  Focus: {focusText.length > 20 ? focusText.substring(0, 20) + '...' : focusText}
-                </Badge>
-              </div>
-            )}
+          </ScrollArea>
+        </div>
+      )}
+      
+      <InsightsDisplay 
+        streamingState={streamingState} 
+        onResearchArea={handleResearchArea}
+        parentResearch={parentResearchId && parentResearch ? {
+          id: parentResearch.id,
+          focusText: focusText || undefined,
+          onView: handleViewParentResearch
+        } : undefined}
+        childResearches={childResearchList.length > 0 ? childResearchList.map(child => ({
+          id: child.id,
+          focusText: child.focus_text || 'Unknown focus',
+          onView: () => handleViewChildResearch(child)
+        })) : undefined}
+      />
+
+      {results.length > 0 && !iterations.length && (
+        <>
+          <div className="border-t pt-4 w-full max-w-full">
+            <h3 className="text-lg font-medium mb-2">Search Results</h3>
+            <SitePreviewList results={results} />
           </div>
-
-          {error && (
-            <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
-              {error}
-            </div>
-          )}
-
-          {currentIteration > 0 && (
-            <div className="w-full bg-accent/30 h-2 rounded-full overflow-hidden">
-              <div 
-                className="bg-primary h-full transition-all duration-500 ease-in-out"
-                style={{ width: `${(currentIteration / maxIterations) * 100}%` }}
-              />
-              <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                <span>Iteration {currentIteration} of {maxIterations}</span>
-                <span>{Math.round((currentIteration / maxIterations) * 100)}% complete</span>
-              </div>
-            </div>
-          )}
-
-          {(isLoading || isAnalyzing) && renderQueryDisplay()}
-
-          <ProgressDisplay messages={progress} />
           
-          {iterations.length > 0 && (
-            <div className="border rounded-md overflow-hidden w-full max-w-full">
-              <ScrollArea className="h-[400px]">
-                <div className="space-y-2 p-2 w-full max-w-full">
-                  {renderIterations()}
-                </div>
-              </ScrollArea>
+          {analysis && (
+            <div className="border-t pt-4 w-full max-w-full">
+              <h3 className="text-lg font-medium mb-2">Analysis</h3>
+              <AnalysisDisplay content={analysis} />
             </div>
           )}
-          
-          <InsightsDisplay 
-            streamingState={streamingState} 
-            onResearchArea={handleResearchArea}
-            parentResearch={parentResearchId && parentResearch ? {
-              id: parentResearch.id,
-              focusText: focusText || undefined,
-              onView: handleViewParentResearch
-            } : undefined}
-            childResearches={childResearchList.length > 0 ? childResearchList.map(child => ({
-              id: child.id,
-              focusText: child.focus_text || 'Unknown focus',
-              onView: () => handleViewChildResearch(child)
-            })) : undefined}
-          />
-
-          {results.length > 0 && !iterations.length && (
-            <>
-              <div className="border-t pt-4 w-full max-w-full">
-                <h3 className="text-lg font-medium mb-2">Search Results</h3>
-                <SitePreviewList results={results} />
-              </div>
-              
-              {analysis && (
-                <div className="border-t pt-4 w-full max-w-full">
-                  <h3 className="text-lg font-medium mb-2">Analysis</h3>
-                  <AnalysisDisplay content={analysis} />
-                </div>
-              )}
-            </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="background" className="mt-0">
-          <ResearchJobsList marketId={marketId} />
-        </TabsContent>
-      </Tabs>
+        </>
+      )}
     </Card>
   );
 }
