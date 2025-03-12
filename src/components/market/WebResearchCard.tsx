@@ -77,6 +77,11 @@ interface SavedResearch {
   parent_research_id?: string;
 }
 
+interface ProgressLogItem {
+  message: string;
+  timestamp: string;
+}
+
 interface ResearchJob {
   id: string;
   user_id: string;
@@ -91,7 +96,7 @@ interface ResearchJob {
   updated_at: string;
   current_iteration: number;
   max_iterations: number;
-  progress_log: Array<{message: string, timestamp: string}>;
+  progress_log: ProgressLogItem[];
   iterations: ResearchIteration[];
   results: ResearchResult[];
   areas_for_research: string[];
@@ -145,7 +150,15 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       if (error) throw error
       
-      return data as ResearchJob[];
+      return (data as any[]).map(job => ({
+        ...job,
+        progress_log: Array.isArray(job.progress_log) 
+          ? job.progress_log 
+          : (job.progress_log ? JSON.parse(String(job.progress_log)) : []),
+        iterations: job.iterations || [],
+        results: job.results || [],
+        areas_for_research: job.areas_for_research || []
+      })) as ResearchJob[];
     },
     refetchInterval: isPollingForJob ? 5000 : false
   })
@@ -331,7 +344,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       try {
         // Create event source for SSE
-        const url = `${supabase.functions.url('web-scrape')}/connect?jobId=${jobId}&token=${authToken}`;
+        const functionsUrl = supabase.functions.url('web-scrape');
+        const url = `${functionsUrl}/connect?jobId=${jobId}&token=${authToken}`;
         const eventSource = new EventSource(url);
         
         eventSource.onmessage = (event) => {
@@ -973,8 +987,64 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   };
 
   return (
-    <Card>
-      {/* Card content */}
+    <Card className="overflow-hidden">
+      <ResearchHeader 
+        description={description}
+        onResearch={handleResearch}
+        isLoading={isLoading} 
+        hasResults={results.length > 0}
+        onSave={saveResearch}
+      />
+
+      <div className="p-4 space-y-4">
+        {progress.length > 0 && (
+          <ProgressDisplay messages={progress} />
+        )}
+
+        {error && (
+          <div className="p-4 bg-red-50 text-red-800 rounded-md">
+            <p className="font-semibold">Error</p>
+            <p>{error}</p>
+          </div>
+        )}
+
+        {results.length > 0 && (
+          <SitePreviewList 
+            results={results} 
+            onViewAnalysis={() => {}} 
+          />
+        )}
+
+        {iterations.length > 0 && iterations.map((iteration, index) => (
+          <IterationCard
+            key={`iteration-${iteration.iteration}`}
+            iteration={iteration}
+            isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
+            onToggle={() => {
+              setExpandedIterations(prev => {
+                const id = `iteration-${iteration.iteration}`;
+                if (prev.includes(id)) {
+                  return prev.filter(i => i !== id);
+                } else {
+                  return [...prev, id];
+                }
+              });
+            }}
+          />
+        ))}
+
+        {streamingState.parsedData && (
+          <InsightsDisplay 
+            data={streamingState.parsedData} 
+            onResearchArea={handleResearchArea}
+          />
+        )}
+
+        {analysis && (
+          <AnalysisDisplay analysis={analysis} />
+        )}
+      </div>
     </Card>
   );
 }
+
