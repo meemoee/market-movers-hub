@@ -761,7 +761,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               const jsonStr = line.slice(6).trim();
               
               if (jsonStr === '[DONE]') {
-                console.log("Received [DONE] marker");
                 continue;
               }
               
@@ -796,7 +795,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   setError(parsed.message);
                 }
               } catch (e) {
-                console.error('Error parsing SSE data:', e);
+                console.error("Error handling SSE message:", e);
               }
             }
           }
@@ -946,4 +945,36 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   console.error("Received error from stream:", parsed.message)
                   setProgress(prev => [...prev, `Error: ${parsed.message}`])
                 }
-              } catch (e
+              } catch (error) {
+                console.error('Error parsing SSE data:', error);
+              }
+            }
+          }
+        }
+      };
+
+      const reader = new Response(response.data.body).body?.getReader();
+      if (!reader) {
+        throw new Error('Failed to get reader from response');
+      }
+
+      await processStream(reader);
+
+      if (hasResults) {
+        setProgress(prev => [...prev, "Research completed successfully"]);
+      } else {
+        setProgress(prev => [...prev, "No results found"]);
+      }
+    } catch (error) {
+      console.error('Error in web search:', error);
+      setError(`Error in web search: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Card>
+      {/* Card content */}
+    </Card>
+  );
+}
