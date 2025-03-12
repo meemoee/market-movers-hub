@@ -11,7 +11,9 @@ const corsHeaders = {
 const connections = new Map<string, { 
   ws: WebSocket,
   lastData: any,
-  lastUpdated: number 
+  lastUpdated: number,
+  updateCount: number,
+  pendingUpdates: boolean
 }>();
 
 // Clean up inactive connections every 5 minutes
@@ -29,6 +31,28 @@ setInterval(() => {
     }
   }
 }, 60 * 1000); // Check every minute
+
+// Throttle updates to reduce flickering
+function processBookUpdate(assetId: string, bookData: any) {
+  const connection = connections.get(assetId);
+  if (!connection) return;
+
+  // Debounce updates to reduce UI flickering
+  // Only process 1 update per second max
+  if (!connection.pendingUpdates) {
+    connection.pendingUpdates = true;
+    
+    setTimeout(() => {
+      const conn = connections.get(assetId);
+      if (conn) {
+        conn.pendingUpdates = false;
+        conn.lastData = processOrderbookSnapshot(bookData);
+        conn.lastUpdated = Date.now();
+        conn.updateCount++;
+      }
+    }, 300);
+  }
+}
 
 // Function to initialize WebSocket connection for a specific market
 async function initializeWebSocket(assetId: string) {
@@ -50,7 +74,9 @@ async function initializeWebSocket(assetId: string) {
     const connectionData = {
       ws: ws,
       lastData: null,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
+      updateCount: 0,
+      pendingUpdates: false
     };
     connections.set(assetId, connectionData);
     
@@ -94,13 +120,13 @@ async function initializeWebSocket(assetId: string) {
         for (const event of parsed) {
           if (event.event_type === "book") {
             console.log(`Received orderbook update for ${assetId}`);
-            const orderbook = processOrderbookSnapshot(event);
-            connectionData.lastData = orderbook;
-            connectionData.lastUpdated = Date.now();
+            // Process updates with throttling
+            processBookUpdate(assetId, event);
             
-            // Store the orderbook in the database
-            if (orderbook) {
-              await storeOrderbook(assetId, orderbook);
+            // Store in the database less frequently (every 5 updates)
+            const conn = connections.get(assetId);
+            if (conn && conn.updateCount % 5 === 0 && conn.lastData) {
+              await storeOrderbook(assetId, conn.lastData);
             }
           }
         }
@@ -292,7 +318,7 @@ serve(async (req) => {
   }
 });
 
-// Process initial orderbook snapshot
+// Process initial orderbook snapshot with more consistent structure
 function processOrderbookSnapshot(book: any) {
   console.log("Processing orderbook snapshot");
   
@@ -304,24 +330,26 @@ function processOrderbookSnapshot(book: any) {
     spread: null
   };
   
-  // Process bids
+  // Process bids with validation
   if (Array.isArray(book.bids)) {
     for (const bid of book.bids) {
       if (bid.price && bid.size) {
+        const price = parseFloat(bid.price);
         const size = parseFloat(bid.size);
-        if (size > 0) {
+        if (!isNaN(price) && !isNaN(size) && size > 0) {
           orderbook.bids[bid.price] = size;
         }
       }
     }
   }
   
-  // Process asks
+  // Process asks with validation
   if (Array.isArray(book.asks)) {
     for (const ask of book.asks) {
       if (ask.price && ask.size) {
+        const price = parseFloat(ask.price);
         const size = parseFloat(ask.size);
-        if (size > 0) {
+        if (!isNaN(price) && !isNaN(size) && size > 0) {
           orderbook.asks[ask.price] = size;
         }
       }

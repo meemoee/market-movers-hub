@@ -2,6 +2,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useDebounce } from "@/hooks/use-debounce";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -22,8 +23,20 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
   const [retryCount, setRetryCount] = useState(0);
+  const [orderbookData, setOrderbookData] = useState<OrderBookData | null>(null);
   const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
   const currentMarketRef = useRef<string | null>(null);
+  const instanceIdRef = useRef<string>(`orderbook-${Math.random().toString(36).substring(2, 11)}`);
+  
+  // Debounce orderbook updates to reduce flickering
+  const debouncedOrderbookData = useDebounce(orderbookData, 300);
+  
+  // Effect to pass debounced data to parent
+  useEffect(() => {
+    if (!isClosing) {
+      onOrderBookData(debouncedOrderbookData);
+    }
+  }, [debouncedOrderbookData, onOrderBookData, isClosing]);
 
   useEffect(() => {
     // Track the current market ID to validate incoming data
@@ -38,6 +51,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
         subscriptionRef.current = null;
       }
       // Signal to parent that orderbook data should be cleared
+      setOrderbookData(null);
       onOrderBookData(null);
       return;
     }
@@ -48,13 +62,13 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     }
 
     // Clear any previous data when switching markets
-    onOrderBookData(null);
+    setOrderbookData(null);
 
     // Trigger initial fetch to populate data and establish WebSocket connection
     fetchOrderbookSnapshot(clobTokenId);
 
-    // Create a unique channel name per market ID
-    const channelName = `orderbook-updates-${clobTokenId}`;
+    // Create a unique channel name per market ID and component instance
+    const channelName = `orderbook-updates-${clobTokenId}-${instanceIdRef.current}`;
     console.log(`[LiveOrderBook] Creating new channel: ${channelName} for market ${clobTokenId}`);
 
     // Set up realtime subscription with unique channel name
@@ -69,7 +83,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           filter: `market_id=eq.${clobTokenId}`,
         },
         (payload) => {
-          console.log('[LiveOrderBook] Received realtime update:', payload);
+          console.log('[LiveOrderBook] Received realtime update for market:', payload.new?.market_id);
           
           // Only process updates for the current market
           if (currentMarketRef.current !== clobTokenId) {
@@ -91,7 +105,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
                 best_ask: newData.best_ask,
                 spread: newData.spread,
               };
-              onOrderBookData(orderbookData);
+              setOrderbookData(orderbookData);
               setConnectionStatus("connected");
               setError(null);
             } else {
@@ -121,6 +135,8 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       }
       // Clear the current market reference
       currentMarketRef.current = null;
+      // Clear orderbook data
+      setOrderbookData(null);
     };
   }, [clobTokenId, isClosing, retryCount, onOrderBookData]);
 
@@ -149,7 +165,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
       if (data && data.orderbook) {
         console.log('[LiveOrderBook] Received orderbook data:', data.orderbook);
-        onOrderBookData(data.orderbook);
+        setOrderbookData(data.orderbook);
         setConnectionStatus("connected");
         setError(null);
       } else {
@@ -166,7 +182,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   if (isLoading && !isClosing) {
     return (
-      <div className="flex items-center justify-center py-4">
+      <div className="flex items-center justify-center py-8">
         <Loader2 className="w-6 h-6 animate-spin" />
         <span className="ml-2">
           {connectionStatus === "connecting" ? "Connecting to orderbook..." : "Loading orderbook..."}
@@ -177,7 +193,7 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
 
   if (error && !isClosing) {
     return (
-      <div className="text-center text-red-500 py-4">
+      <div className="text-center text-red-500 py-8">
         <div className="mb-2">{error}</div>
         <button 
           onClick={() => {

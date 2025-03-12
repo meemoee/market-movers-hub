@@ -15,7 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { useState, useEffect } from 'react';
 import { Input } from "@/components/ui/input";
-import { MultiRangeSlider } from "@/components/ui/multi-range-slider";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -302,12 +302,38 @@ export function TransactionDialog({
   const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
   const formatPercentage = (value: number) => `${value}%`;
 
+  // Function to render a consistent number of orderbook rows
+  const renderOrderbookRows = (data: Record<string, number>, isAsk: boolean, maxRows: number = 5) => {
+    const sortedEntries = Object.entries(data)
+      .sort(([priceA], [priceB]) => 
+        isAsk 
+          ? Number(priceA) - Number(priceB)  // Ascending for asks
+          : Number(priceB) - Number(priceA)  // Descending for bids
+      )
+      .slice(0, maxRows);
+    
+    // Fill with empty rows if needed
+    const rows = [...sortedEntries];
+    while (rows.length < maxRows) {
+      rows.push(['--', 0]);
+    }
+    
+    return rows.map(([price, size], index) => (
+      <div key={`${isAsk ? 'ask' : 'bid'}-${index}`} className="flex justify-between text-sm">
+        <span className={size > 0 ? (isAsk ? "text-red-500" : "text-green-500") : "text-muted-foreground"}>
+          {size > 0 ? `${(Number(price) * 100).toFixed(2)}¢` : "--"}
+        </span>
+        <span>{size > 0 ? size.toFixed(2) : "--"}</span>
+      </div>
+    ));
+  };
+
   return (
     <AlertDialog 
       open={selectedMarket !== null} 
       onOpenChange={handleClose}
     >
-      <AlertDialogContent>
+      <AlertDialogContent className="min-h-[650px] flex flex-col">
         <AlertDialogHeader>
           <div className="flex items-start gap-4 mb-4">
             {topMover && (
@@ -328,50 +354,50 @@ export function TransactionDialog({
               </>
             )}
           </div>
-          <div className="space-y-4">
-            <LiveOrderBook 
-              onOrderBookData={(data) => {
-                console.log('[TransactionDialog] Received orderbook data from LiveOrderBook:', data);
-                // Only update if we're not closing
-                if (!isClosing) {
-                  onOrderBookData(data);
-                }
-              }}
-              isLoading={isOrderBookLoading}
-              clobTokenId={selectedMarket?.clobTokenId}
-              isClosing={isClosing}
-            />
+          
+          <div className="space-y-4 overflow-y-auto flex-1">
+            <div className="h-16">
+              <LiveOrderBook 
+                onOrderBookData={onOrderBookData}
+                isLoading={isOrderBookLoading}
+                clobTokenId={selectedMarket?.clobTokenId}
+                isClosing={isClosing}
+              />
+            </div>
             
-            <div className="space-y-4 min-h-[280px]">
-              {orderBookData && (
+            <div className="space-y-4">
+              {isOrderBookLoading ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Bids</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                      {Array(5).fill(0).map((_, i) => (
+                        <Skeleton key={`bid-skeleton-${i}`} className="h-5 w-full" />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Asks</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                      {Array(5).fill(0).map((_, i) => (
+                        <Skeleton key={`ask-skeleton-${i}`} className="h-5 w-full" />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : orderBookData ? (
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <div className="text-sm font-medium">Bids</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                        {Object.entries(orderBookData.bids)
-                          .sort(([priceA], [priceB]) => Number(priceB) - Number(priceA))
-                          .slice(0, 5)
-                          .map(([price, size]) => (
-                            <div key={price} className="flex justify-between text-sm">
-                              <span className="text-green-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                              <span>{size.toFixed(2)}</span>
-                            </div>
-                          ))}
+                      <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                        {renderOrderbookRows(orderBookData.bids, false)}
                       </div>
                     </div>
                     <div className="space-y-2">
                       <div className="text-sm font-medium">Asks</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1">
-                        {Object.entries(orderBookData.asks)
-                          .sort(([priceA], [priceB]) => Number(priceA) - Number(priceB))
-                          .slice(0, 5)
-                          .map(([price, size]) => (
-                            <div key={price} className="flex justify-between text-sm">
-                              <span className="text-red-500">{(Number(price) * 100).toFixed(2)}¢</span>
-                              <span>{size.toFixed(2)}</span>
-                            </div>
-                          ))}
+                      <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                        {renderOrderbookRows(orderBookData.asks, true)}
                       </div>
                     </div>
                   </div>
@@ -379,83 +405,112 @@ export function TransactionDialog({
                     <div>
                       <div className="text-sm text-muted-foreground">Best Bid</div>
                       <div className="text-lg font-medium text-green-500">
-                        {(orderBookData.best_bid * 100).toFixed(2)}¢
+                        {orderBookData.best_bid ? `${(orderBookData.best_bid * 100).toFixed(2)}¢` : "--"}
                       </div>
                     </div>
                     <div>
                       <div className="text-sm text-muted-foreground">Best Ask</div>
                       <div className="text-lg font-medium text-red-500">
-                        {(orderBookData.best_ask * 100).toFixed(2)}¢
+                        {orderBookData.best_ask ? `${(orderBookData.best_ask * 100).toFixed(2)}¢` : "--"}
                       </div>
                     </div>
                   </div>
                   <div className="text-sm text-muted-foreground mb-4">
-                    Spread: {((orderBookData.best_ask - orderBookData.best_bid) * 100).toFixed(2)}¢
-                  </div>
-
-                  {/* Share Amount Box and Slider */}
-                  <div className="bg-accent/20 p-4 rounded-lg space-y-4">
-                    <div className="text-sm font-medium">Order Details</div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label htmlFor="amount" className="text-xs text-muted-foreground">Amount ($)</label>
-                        <Input
-                          id="amount"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={shareAmount}
-                          onChange={handleShareAmountChange}
-                          className="bg-background"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label htmlFor="size" className="text-xs text-muted-foreground">Size (shares)</label>
-                        <Input
-                          id="size"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={size}
-                          onChange={handleShareSizeChange}
-                          className="bg-background"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div className="flex justify-between">
-                        <span className="text-xs text-muted-foreground">Balance: {userBalance ? formatCurrency(userBalance) : 'Loading...'}</span>
-                        <span className="text-xs font-medium">{formatPercentage(Math.round(sharePercentage))}</span>
-                      </div>
-                      
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        step="1"
-                        value={sharePercentage}
-                        onChange={(e) => handleSharePercentageChange(parseInt(e.target.value))}
-                        className="w-full h-2 bg-accent rounded-lg appearance-none cursor-pointer"
-                      />
-                      
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>0%</span>
-                        <span>25%</span>
-                        <span>50%</span>
-                        <span>75%</span>
-                        <span>100%</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-between pt-2 border-t border-border">
-                      <span className="text-sm">Total Cost:</span>
-                      <span className="text-sm font-medium">${(size * orderBookData.best_ask).toFixed(2)}</span>
-                    </div>
+                    Spread: {orderBookData.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
                   </div>
                 </>
+              ) : (
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Bids</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                      {Array(5).fill(0).map((_, i) => (
+                        <div key={`empty-bid-${i}`} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">--</span>
+                          <span className="text-muted-foreground">--</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium">Asks</div>
+                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                      {Array(5).fill(0).map((_, i) => (
+                        <div key={`empty-ask-${i}`} className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">--</span>
+                          <span className="text-muted-foreground">--</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               )}
+
+              {/* Order Details Box - Fixed height */}
+              <div className="bg-accent/20 p-4 rounded-lg space-y-4 h-[250px]">
+                <div className="text-sm font-medium">Order Details</div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label htmlFor="amount" className="text-xs text-muted-foreground">Amount ($)</label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={shareAmount}
+                      onChange={handleShareAmountChange}
+                      className="bg-background"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="size" className="text-xs text-muted-foreground">Size (shares)</label>
+                    <Input
+                      id="size"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={size}
+                      onChange={handleShareSizeChange}
+                      className="bg-background"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-xs text-muted-foreground">Balance: {userBalance ? formatCurrency(userBalance) : 'Loading...'}</span>
+                    <span className="text-xs font-medium">{formatPercentage(Math.round(sharePercentage))}</span>
+                  </div>
+                  
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={sharePercentage}
+                    onChange={(e) => handleSharePercentageChange(parseInt(e.target.value))}
+                    className="w-full h-2 bg-accent rounded-lg appearance-none cursor-pointer"
+                  />
+                  
+                  <div className="flex justify-between text-xs text-muted-foreground">
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                    <span>75%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+                
+                <div className="flex justify-between pt-2 border-t border-border">
+                  <span className="text-sm">Total Cost:</span>
+                  <span className="text-sm font-medium">
+                    {orderBookData && orderBookData.best_ask ? 
+                      `$${(size * orderBookData.best_ask).toFixed(2)}` : 
+                      '--'}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </AlertDialogHeader>
