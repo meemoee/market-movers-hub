@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import {
   AlertDialog,
@@ -66,7 +65,6 @@ export function TransactionDialog({
   const [shareAmount, setShareAmount] = useState<number>(0);
   const [currentMarketId, setCurrentMarketId] = useState<string | null>(null);
 
-  // Effect to reset state when market changes
   useEffect(() => {
     if (selectedMarket?.id !== currentMarketId) {
       console.log('[TransactionDialog] Market changed, resetting state', {
@@ -74,25 +72,21 @@ export function TransactionDialog({
         current: selectedMarket?.id
       });
       
-      // Reset market-specific state
       setCurrentMarketId(selectedMarket?.id || null);
       setSize(1);
       setSharePercentage(10);
       setShareAmount(0);
       
-      // Clear orderbook data when market changes
       if (selectedMarket === null || (currentMarketId !== null && selectedMarket.id !== currentMarketId)) {
         onOrderBookData(null);
       }
     }
   }, [selectedMarket, currentMarketId, onOrderBookData]);
 
-  // Add effect to log when orderbook data changes
   useEffect(() => {
     console.log('[TransactionDialog] OrderBook data changed:', orderBookData);
   }, [orderBookData]);
 
-  // Add effect to log when market selection changes
   useEffect(() => {
     if (selectedMarket) {
       console.log('[TransactionDialog] Market selected:', {
@@ -104,7 +98,6 @@ export function TransactionDialog({
     }
   }, [selectedMarket]);
 
-  // Fetch user balance when dialog opens
   useEffect(() => {
     const fetchUserBalance = async () => {
       if (!selectedMarket) return;
@@ -130,7 +123,6 @@ export function TransactionDialog({
         if (data) {
           console.log('[TransactionDialog] User balance:', data.balance);
           setUserBalance(data.balance);
-          // Initialize share amount to 10% of balance
           updateShareAmount(10);
         }
       } catch (error) {
@@ -141,7 +133,6 @@ export function TransactionDialog({
     fetchUserBalance();
   }, [selectedMarket]);
 
-  // Update share amount when percentage or orderbook data changes
   useEffect(() => {
     updateShareAmount(sharePercentage);
   }, [sharePercentage, orderBookData]);
@@ -152,7 +143,6 @@ export function TransactionDialog({
     const maxAmount = userBalance * (percentage / 100);
     const price = orderBookData.best_ask;
     
-    // Calculate how many shares can be purchased with this amount at current price
     const shares = price > 0 ? (maxAmount / price) : 0;
     
     setSharePercentage(percentage);
@@ -176,11 +166,9 @@ export function TransactionDialog({
       return;
     }
     
-    // Calculate percentage of balance
     const percentage = Math.min((inputAmount / userBalance) * 100, 100);
     const price = orderBookData.best_ask;
     
-    // Calculate shares based on amount and price
     const shares = price > 0 ? (inputAmount / price) : 0;
     
     setShareAmount(inputAmount);
@@ -200,11 +188,9 @@ export function TransactionDialog({
       return;
     }
     
-    // Calculate dollar amount based on size and price
     const price = orderBookData.best_ask;
     const amount = inputSize * price;
     
-    // Calculate percentage of balance
     const percentage = userBalance ? Math.min((amount / userBalance) * 100, 100) : 0;
     
     setSize(inputSize);
@@ -302,8 +288,16 @@ export function TransactionDialog({
   const formatCurrency = (value: number) => `$${value.toFixed(2)}`;
   const formatPercentage = (value: number) => `${value}%`;
 
-  // Function to render a consistent number of orderbook rows
-  const renderOrderbookRows = (data: Record<string, number>, isAsk: boolean, maxRows: number = 5) => {
+  const renderOrderbookRows = (data: Record<string, number> | undefined, isAsk: boolean, maxRows: number = 5) => {
+    if (!data) {
+      return Array(maxRows).fill(0).map((_, index) => (
+        <div key={`${isAsk ? 'ask' : 'bid'}-empty-${index}`} className="flex justify-between text-sm opacity-80 transition-opacity duration-300">
+          <span className="text-muted-foreground">--</span>
+          <span className="text-muted-foreground">--</span>
+        </div>
+      ));
+    }
+
     const sortedEntries = Object.entries(data)
       .sort(([priceA], [priceB]) => 
         isAsk 
@@ -312,14 +306,16 @@ export function TransactionDialog({
       )
       .slice(0, maxRows);
     
-    // Fill with empty rows if needed
     const rows = [...sortedEntries];
     while (rows.length < maxRows) {
       rows.push(['--', 0]);
     }
     
     return rows.map(([price, size], index) => (
-      <div key={`${isAsk ? 'ask' : 'bid'}-${index}`} className="flex justify-between text-sm">
+      <div 
+        key={`${isAsk ? 'ask' : 'bid'}-${index}`} 
+        className="flex justify-between text-sm transition-all duration-300 ease-in-out"
+      >
         <span className={size > 0 ? (isAsk ? "text-red-500" : "text-green-500") : "text-muted-foreground"}>
           {size > 0 ? `${(Number(price) * 100).toFixed(2)}¢` : "--"}
         </span>
@@ -366,87 +362,52 @@ export function TransactionDialog({
             </div>
             
             <div className="space-y-4">
-              {isOrderBookLoading ? (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Bids</div>
-                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
-                      {Array(5).fill(0).map((_, i) => (
+              <div className="grid grid-cols-2 gap-4 transition-opacity duration-300">
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Bids</div>
+                  <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                    {isOrderBookLoading ? (
+                      Array(5).fill(0).map((_, i) => (
                         <Skeleton key={`bid-skeleton-${i}`} className="h-5 w-full" />
-                      ))}
-                    </div>
+                      ))
+                    ) : (
+                      renderOrderbookRows(orderBookData?.bids, false)
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Asks</div>
-                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
-                      {Array(5).fill(0).map((_, i) => (
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm font-medium">Asks</div>
+                  <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
+                    {isOrderBookLoading ? (
+                      Array(5).fill(0).map((_, i) => (
                         <Skeleton key={`ask-skeleton-${i}`} className="h-5 w-full" />
-                      ))}
-                    </div>
+                      ))
+                    ) : (
+                      renderOrderbookRows(orderBookData?.asks, true)
+                    )}
                   </div>
                 </div>
-              ) : orderBookData ? (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Bids</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
-                        {renderOrderbookRows(orderBookData.bids, false)}
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="text-sm font-medium">Asks</div>
-                      <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
-                        {renderOrderbookRows(orderBookData.asks, true)}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg">
-                    <div>
-                      <div className="text-sm text-muted-foreground">Best Bid</div>
-                      <div className="text-lg font-medium text-green-500">
-                        {orderBookData.best_bid ? `${(orderBookData.best_bid * 100).toFixed(2)}¢` : "--"}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Best Ask</div>
-                      <div className="text-lg font-medium text-red-500">
-                        {orderBookData.best_ask ? `${(orderBookData.best_ask * 100).toFixed(2)}¢` : "--"}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-sm text-muted-foreground mb-4">
-                    Spread: {orderBookData.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
-                  </div>
-                </>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Bids</div>
-                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
-                      {Array(5).fill(0).map((_, i) => (
-                        <div key={`empty-bid-${i}`} className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">--</span>
-                          <span className="text-muted-foreground">--</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-sm font-medium">Asks</div>
-                    <div className="bg-accent/20 p-3 rounded-lg space-y-1 h-[140px]">
-                      {Array(5).fill(0).map((_, i) => (
-                        <div key={`empty-ask-${i}`} className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">--</span>
-                          <span className="text-muted-foreground">--</span>
-                        </div>
-                      ))}
-                    </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 bg-accent/20 p-4 rounded-lg transition-opacity duration-300">
+                <div>
+                  <div className="text-sm text-muted-foreground">Best Bid</div>
+                  <div className="text-lg font-medium text-green-500 h-7">
+                    {orderBookData?.best_bid ? `${(orderBookData.best_bid * 100).toFixed(2)}¢` : "--"}
                   </div>
                 </div>
-              )}
+                <div>
+                  <div className="text-sm text-muted-foreground">Best Ask</div>
+                  <div className="text-lg font-medium text-red-500 h-7">
+                    {orderBookData?.best_ask ? `${(orderBookData.best_ask * 100).toFixed(2)}¢` : "--"}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="text-sm text-muted-foreground mb-4 h-5 transition-opacity duration-300">
+                Spread: {orderBookData?.spread ? `${(orderBookData.spread * 100).toFixed(2)}¢` : "--"}
+              </div>
 
-              {/* Order Details Box - Fixed height */}
               <div className="bg-accent/20 p-4 rounded-lg space-y-4 h-[250px]">
                 <div className="text-sm font-medium">Order Details</div>
                 

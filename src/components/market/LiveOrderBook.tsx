@@ -3,6 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useDebounce } from "@/hooks/use-debounce";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface OrderBookData {
   bids: Record<string, number>;
@@ -205,5 +206,11 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
     );
   }
 
-  return null;
+  // Instead of returning null, we'll return an empty or placeholder component
+  // This ensures a consistent render between updates
+  return (
+    <div className="hidden">
+      {/* Hidden component that ensures the component stays mounted */}
+    </div>
+  );
 }
