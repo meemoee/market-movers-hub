@@ -12,6 +12,16 @@ interface OrderBookData {
   spread: number;
 }
 
+// Add an interface for the Supabase realtime payload
+interface OrderbookPayload {
+  market_id: string;
+  bids: Record<string, number>;
+  asks: Record<string, number>;
+  best_bid: number;
+  best_ask: number;
+  spread: number;
+}
+
 interface LiveOrderBookProps {
   onOrderBookData: (data: OrderBookData | null) => void;
   isLoading: boolean;
@@ -95,7 +105,9 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
           }
           
           if (payload.new) {
-            const newData = payload.new as any;
+            // Type assertion to help TypeScript understand the structure
+            const newData = payload.new as OrderbookPayload;
+            
             // Validate that the update is for the current market
             if (newData.market_id === clobTokenId) {
               const orderbookData: OrderBookData = {
