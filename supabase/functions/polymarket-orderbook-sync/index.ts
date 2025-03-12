@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.0";
 
@@ -358,8 +359,8 @@ setInterval(async () => {
 // Setup for handling the table if it doesn't exist
 async function ensureOrderbookTable() {
   try {
-    // Check if table exists - FIX: Specify the table schema to avoid ambiguity
-    const { data, error } = await supabase.rpc('check_table_exists', { table_name: 'orderbook_data' });
+    // Check if table exists - using the updated function with the new parameter name
+    const { data, error } = await supabase.rpc('check_table_exists', { p_table_name: 'orderbook_data' });
     
     if (error) {
       console.error("Error checking if table exists:", error);

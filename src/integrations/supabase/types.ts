@@ -607,7 +607,7 @@ export type Database = {
       }
       check_table_exists: {
         Args: {
-          table_name: string
+          p_table_name: string
         }
         Returns: boolean
       }
