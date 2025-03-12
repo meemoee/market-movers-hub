@@ -37,45 +37,41 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       return;
     }
 
-    fetchInitialOrderbookData(clobTokenId);
+    fetchOrderbookSnapshot(clobTokenId);
   }, [clobTokenId, isClosing, retryCount]);
 
-  const fetchInitialOrderbookData = async (tokenId: string) => {
+  const fetchOrderbookSnapshot = async (tokenId: string) => {
     try {
-      console.log('[LiveOrderBook] Fetching initial orderbook data for token:', tokenId);
+      console.log('[LiveOrderBook] Fetching orderbook snapshot via WebSocket for token:', tokenId);
       setConnectionStatus("connecting");
       setError(null);
 
-      // Call the Supabase Edge Function to get initial data only
-      const { data, error } = await supabase.functions.invoke('get-orderbook', {
-        body: { tokenId }
+      // Call the Supabase Edge Function to get WebSocket snapshot
+      const { data, error } = await supabase.functions.invoke('polymarket-ws', {
+        body: { assetId: tokenId }
       });
 
       if (error) {
-        console.error('[LiveOrderBook] Error fetching orderbook data:', error);
+        console.error('[LiveOrderBook] Error fetching orderbook via WebSocket:', error);
         setConnectionStatus("error");
-        setError(`Failed to fetch orderbook data: ${error.message}`);
+        setError(`Failed to fetch orderbook: ${error.message}`);
         return;
       }
 
-      if (data) {
-        console.log('[LiveOrderBook] Received orderbook data:', data);
-        
-        // Handle both direct response and response from WebSocket endpoint
-        const orderbookData = data.orderbook ? data.orderbook : data;
-        
-        onOrderBookData(orderbookData);
+      if (data && data.orderbook) {
+        console.log('[LiveOrderBook] Received orderbook data from WebSocket:', data.orderbook);
+        onOrderBookData(data.orderbook);
         setConnectionStatus("connected");
         setError(null);
       } else {
-        console.error('[LiveOrderBook] No data received from orderbook endpoint');
+        console.error('[LiveOrderBook] No orderbook data received from WebSocket endpoint');
         setConnectionStatus("error");
-        setError('No data received from orderbook service');
+        setError('No data received from WebSocket orderbook service');
       }
     } catch (err) {
-      console.error('[LiveOrderBook] Error fetching orderbook data:', err);
+      console.error('[LiveOrderBook] Error fetching orderbook data via WebSocket:', err);
       setConnectionStatus("error");
-      setError('Failed to fetch orderbook data');
+      setError('Failed to fetch orderbook data via WebSocket');
     }
   };
 
