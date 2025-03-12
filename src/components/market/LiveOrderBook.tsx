@@ -22,16 +22,15 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<string>("disconnected");
   const [retryCount, setRetryCount] = useState(0);
-  // Use useRef for the interval ID with the correct type (NodeJS.Timeout | null)
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const subscriptionRef = useRef<{ unsubscribe: () => void } | null>(null);
 
   useEffect(() => {
     if (isClosing) {
-      console.log('[LiveOrderBook] Dialog is closing, clearing state and intervals');
+      console.log('[LiveOrderBook] Dialog is closing, clearing state and subscriptions');
       setError(null);
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
       }
       return;
     }
@@ -41,24 +40,54 @@ export function LiveOrderBook({ onOrderBookData, isLoading, clobTokenId, isClosi
       return;
     }
 
-    // Initial fetch
+    // Trigger initial fetch to populate data and establish WebSocket connection
     fetchOrderbookSnapshot(clobTokenId);
 
-    // Set up polling interval
-    const interval = setInterval(() => {
-      fetchOrderbookSnapshot(clobTokenId);
-    }, 3000);
+    // Set up realtime subscription
+    const channel = supabase
+      .channel('orderbook-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orderbook_data',
+          filter: `market_id=eq.${clobTokenId}`,
+        },
+        (payload) => {
+          console.log('[LiveOrderBook] Received realtime update:', payload);
+          if (payload.new) {
+            const newData = payload.new as any;
+            const orderbookData: OrderBookData = {
+              bids: newData.bids || {},
+              asks: newData.asks || {},
+              best_bid: newData.best_bid,
+              best_ask: newData.best_ask,
+              spread: newData.spread,
+            };
+            onOrderBookData(orderbookData);
+            setConnectionStatus("connected");
+            setError(null);
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('[LiveOrderBook] Subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('[LiveOrderBook] Successfully subscribed to realtime updates');
+        }
+      });
 
-    // Store the interval ID in the ref
-    pollIntervalRef.current = interval;
+    subscriptionRef.current = channel;
 
     return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
+      console.log('[LiveOrderBook] Cleaning up subscription');
+      if (subscriptionRef.current) {
+        subscriptionRef.current.unsubscribe();
+        subscriptionRef.current = null;
       }
     };
-  }, [clobTokenId, isClosing, retryCount]);
+  }, [clobTokenId, isClosing, retryCount, onOrderBookData]);
 
   const fetchOrderbookSnapshot = async (tokenId: string) => {
     try {

@@ -1,4 +1,6 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.23.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,7 +41,7 @@ async function initializeWebSocket(assetId: string) {
       globalWs.send(JSON.stringify(snapshotRequest));
     };
     
-    globalWs.onmessage = (event) => {
+    globalWs.onmessage = async (event) => {
       try {
         const data = event.data.toString();
         
@@ -61,6 +63,11 @@ async function initializeWebSocket(assetId: string) {
           if (event.event_type === "book") {
             console.log("Received orderbook update");
             latestOrderbook = processOrderbookSnapshot(event);
+            
+            // Store the orderbook in the database
+            if (latestOrderbook) {
+              await storeOrderbook(assetId, latestOrderbook);
+            }
           }
         }
       } catch (err) {
@@ -82,6 +89,37 @@ async function initializeWebSocket(assetId: string) {
     // Initial connection is considered successful after a short delay
     setTimeout(() => resolve(true), 1000);
   });
+}
+
+// Store orderbook in Supabase
+async function storeOrderbook(assetId: string, orderbook: any) {
+  try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
+    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") as string;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { error } = await supabase
+      .from('orderbook_data')
+      .upsert({
+        market_id: assetId,
+        timestamp: new Date().toISOString(),
+        bids: orderbook.bids,
+        asks: orderbook.asks,
+        best_bid: orderbook.best_bid,
+        best_ask: orderbook.best_ask,
+        spread: orderbook.spread
+      }, {
+        onConflict: 'market_id'
+      });
+    
+    if (error) {
+      console.error("Error storing orderbook data:", error);
+    } else {
+      console.log("Successfully stored orderbook data for", assetId);
+    }
+  } catch (err) {
+    console.error("Error in storeOrderbook:", err);
+  }
 }
 
 serve(async (req) => {
@@ -110,10 +148,34 @@ serve(async (req) => {
       await initializeWebSocket(assetId);
     }
 
-    // Return the latest orderbook data
+    // Look for existing data in the database
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") as string;
+    const supabaseKey = Deno.env.get("SUPABASE_ANON_KEY") as string;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    const { data: dbOrderbook, error: dbError } = await supabase
+      .from('orderbook_data')
+      .select('*')
+      .eq('market_id', assetId)
+      .single();
+    
+    if (dbError && dbError.code !== 'PGRST116') {
+      console.error("Error fetching orderbook from DB:", dbError);
+    }
+    
+    // Use database data if available, otherwise use the latest from WebSocket
+    const responseData = dbOrderbook || { orderbook: latestOrderbook };
+
+    // Return the orderbook data
     return new Response(JSON.stringify({ 
       status: "success", 
-      orderbook: latestOrderbook 
+      orderbook: dbOrderbook ? {
+        bids: dbOrderbook.bids,
+        asks: dbOrderbook.asks,
+        best_bid: dbOrderbook.best_bid,
+        best_ask: dbOrderbook.best_ask,
+        spread: dbOrderbook.spread
+      } : latestOrderbook 
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
