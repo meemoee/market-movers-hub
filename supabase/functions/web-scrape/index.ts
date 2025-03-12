@@ -154,8 +154,8 @@ serve(async (req) => {
           }
         };
         
-        // Use EdgeRuntime.waitUntil to continue processing even if the client disconnects
-        EdgeRuntime.waitUntil(processQueries());
+        // Start processing queries
+        processQueries();
       }
     });
     

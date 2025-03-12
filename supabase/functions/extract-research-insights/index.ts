@@ -182,7 +182,6 @@ ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed
 
 Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
-    // Use non-streaming mode for reliable JSON response
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -197,7 +196,7 @@ Remember to format your response as a valid JSON object with probability, areasF
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        stream: false, // Use non-streaming mode for reliable JSON responses
+        stream: true,
         temperature: 0.2,
         response_format: { type: "json_object" }
       }),
@@ -209,66 +208,33 @@ Remember to format your response as a valid JSON object with probability, areasF
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // For non-streaming response, get full data
-    const data = await response.json();
-    
-    // Extract the content from the response
-    const content = data.choices?.[0]?.message?.content || "{}";
-    console.log("Received complete response:", content.substring(0, 200) + "...");
-    
-    // Validate JSON before sending
-    try {
-      // Attempt to parse the JSON to ensure it's valid
-      JSON.parse(content);
-      
-      // If valid, return the JSON directly without SSE streaming
-      return new Response(content, {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    } catch (jsonError) {
-      console.error("Invalid JSON received from model:", jsonError);
-      
-      // Create a fallback JSON in case parsing fails
-      const fallbackResponse = JSON.stringify({
-        probability: "Unknown (JSON parsing error)",
-        areasForResearch: ["Research needed on model reliability", "Try refining your search queries"],
-        reasoning: {
-          evidenceFor: ["Unable to parse model response"],
-          evidenceAgainst: ["Unable to parse model response"]
-        }
-      });
-      
-      return new Response(fallbackResponse, {
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      });
-    }
-    
+    return new Response(response.body, {
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'text/event-stream',
+        'Connection': 'keep-alive',
+      }
+    });
   } catch (error) {
     console.error('Error in extract-research-insights:', error);
     
-    // Return a well-formed error response as JSON
-    const errorResponse = JSON.stringify({
-      error: error.message || 'Unknown error',
-      probability: "Error: Could not analyze",
-      areasForResearch: ["Error occurred during analysis"],
-      reasoning: {
-        evidenceFor: ["Error processing research data"],
-        evidenceAgainst: ["Error processing research data"]
+    return new Response(
+      JSON.stringify({ 
+        error: error.message || 'Unknown error',
+        probability: "Error: Could not analyze",
+        areasForResearch: [],
+        reasoning: {
+          evidenceFor: [],
+          evidenceAgainst: []
+        }
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
       }
-    });
-    
-    return new Response(errorResponse, {
-      status: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      }
-    });
+    );
   }
 });
