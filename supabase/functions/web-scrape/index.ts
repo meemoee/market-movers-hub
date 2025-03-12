@@ -154,8 +154,8 @@ serve(async (req) => {
           }
         };
         
-        // Start processing queries
-        processQueries();
+        // Start processing queries in the background using EdgeRuntime.waitUntil
+        EdgeRuntime.waitUntil(processQueries());
       }
     });
     
