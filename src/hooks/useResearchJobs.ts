@@ -1,3 +1,4 @@
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from "@/integrations/supabase/client"
 
@@ -162,7 +163,7 @@ export function useResearchJob(jobId: string | undefined) {
       return data as ResearchJob
     },
     enabled: !!jobId,
-    refetchInterval: (data) => {
+    refetchInterval: (data: ResearchJob | undefined) => {
       if (!data) return 5000
       return ['completed', 'failed'].includes(data.status) ? false : 3000
     }
