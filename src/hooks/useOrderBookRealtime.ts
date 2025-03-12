@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -66,8 +65,9 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
           setOrderBookData(orderBookData);
         }
 
-        // Subscribe to the orderbook_data table for this token
-        await supabase.functions.invoke('polymarket-orderbook-sync', {
+        // Instead of using the functions.invoke method, directly call the get-orderbook function
+        // This function should already exist and be properly deployed
+        await supabase.functions.invoke('get-orderbook', {
           method: 'POST',
           body: { 
             tokenId 
@@ -116,7 +116,7 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
     // Keep the subscription alive with heartbeats
     const heartbeatInterval = setInterval(async () => {
       try {
-        await supabase.functions.invoke('polymarket-orderbook-sync', {
+        await supabase.functions.invoke('get-orderbook', {
           method: 'POST',
           body: { 
             tokenId,
@@ -134,7 +134,7 @@ export const useOrderBookRealtime = (tokenId: string | undefined) => {
       clearInterval(heartbeatInterval);
       
       // Unsubscribe when component unmounts
-      supabase.functions.invoke('polymarket-orderbook-sync', {
+      supabase.functions.invoke('get-orderbook', {
         method: 'POST',
         body: { 
           tokenId,
