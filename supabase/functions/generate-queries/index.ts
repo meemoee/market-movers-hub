@@ -2,10 +2,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -14,418 +16,195 @@ serve(async (req) => {
   }
 
   try {
-    const requestData = await req.json();
-    const { 
-      query, 
-      marketId, 
-      marketDescription, 
-      question, 
-      previousResults = "", 
-      iteration = 1,
-      areasForResearch = [],
-      focusText = "",
-      previousQueries = [] // New parameter to track past queries
-    } = requestData;
+    const { query, marketId, previousResults, iteration, areasForResearch, previousAnalyses, focusText } = await req.json();
     
-    // Use either question or query parameter
-    const researchQuery = question || query || "";
-    const description = marketDescription || "";
+    console.log(`Generating queries for: ${query} with iteration: ${iteration || 1}`);
     
-    console.log("Received request for query generation:", { 
-      researchQuery, 
-      marketId, 
-      description,
-      previousResults: previousResults ? "present" : "absent",
-      iteration,
-      areasForResearch: Array.isArray(areasForResearch) ? areasForResearch.length : 0,
-      focusText: focusText ? focusText.substring(0, 100) + "..." : "none",
-      previousQueriesCount: Array.isArray(previousQueries) ? previousQueries.length : 0
-    });
-    
-    const openrouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
-    if (!openrouterApiKey) {
-      throw new Error('OPENROUTER_API_KEY is not set in environment variables');
+    if (!query) {
+      throw new Error("Query parameter is required");
     }
+
+    // Different prompts based on first iteration vs. subsequent ones
+    let systemPrompt, userPrompt;
     
-    let contextInfo = `
-      Market Question: ${researchQuery}
-      ${description ? `Market Description: ${description}` : ''}
-      ${marketId ? `Market ID: ${marketId}` : ''}
-    `;
-    
-    // Add research focus if provided
-    if (focusText) {
-      contextInfo += `
-        CRITICAL - Research Focus: ${focusText}
-        ALL generated queries MUST specifically target this focus area.
-      `;
-    }
-    
-    // Add previous queries to avoid repetition
-    if (Array.isArray(previousQueries) && previousQueries.length > 0) {
-      contextInfo += `
-        Previous Search Queries:
-        ${previousQueries.map((q, i) => `${i+1}. ${q}`).join('\n')}
-        
-        IMPORTANT: DO NOT generate queries that are similar to these previous queries.
-        Each new query should explore DIFFERENT angles or aspects not covered by previous queries.
-      `;
-    }
-    
-    // Add previous results and areas for research for iterations after the first
     if (iteration > 1 && previousResults) {
-      contextInfo += `
-        Previous Analysis: ${previousResults}
-      `;
+      systemPrompt = "You are a sophisticated AI research assistant specializing in generating effective search queries to find information for prediction markets.";
       
-      if (Array.isArray(areasForResearch) && areasForResearch.length > 0) {
-        contextInfo += `
-          Areas Needing Further Research: ${areasForResearch.join(', ')}
-        `;
-      }
-    }
-    
-    // Different prompts for initial vs subsequent iterations
-    let systemPrompt;
-    
-    if (iteration === 1) {
-      systemPrompt = `You are a research query generator for a prediction market platform. 
-      Given a prediction market question and description, generate 3 search queries that would help research this topic.
-      ${focusText ? `CRITICAL: Focus EXCLUSIVELY on researching: "${focusText}". ALL queries MUST directly address this specific aspect.` : ''}
+      userPrompt = `I'm researching this prediction market question: "${query}". 
       
-      CRITICAL GUIDELINES FOR QUERIES:
-      1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
-      2. Include specific entities, dates, events, or proper nouns from the original question
-      3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
-      4. Make each query a complete, standalone question or statement that contains ALL relevant context
-      5. If the original question asks about a future event, include timeframes or dates
-      6. Use precise terminology and specific entities mentioned in the original question
-      ${focusText ? `7. EVERY query must EXPLICITLY target the focus area: "${focusText}" - do not generate general queries about the broader topic` : ''}
-      
-      Focus on factual information that would help determine the likelihood of the event.
-      Output ONLY valid JSON in the following format:
-      {
-        "queries": [
-          "first search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}",
-          "second search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}", 
-          "third search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}"
-        ]
-      }`;
+Previous research found:
+${previousResults}
+
+${previousAnalyses ? `Previous analyses:\n${previousAnalyses}\n\n` : ''}
+
+${areasForResearch && areasForResearch.length > 0 ? 
+  `Areas identified for further research:\n${areasForResearch.join('\n')}\n\n` : 
+  ''}
+
+${focusText ? `With specific focus on: "${focusText}"\n\n` : ''}
+
+Based on this information, generate 5 NEW search queries that will help find additional information about aspects not yet covered or that need deeper investigation.
+
+Make each query:
+1. Self-contained with full context (a search engine should understand exactly what to search for)
+2. Focused on uncovering new information, not repeating what we already know
+3. Precise, specifying exact terms, entities, timeframes
+4. Designed to fill gaps in our current understanding
+5. Different from each other to cover various aspects
+
+Output a JSON object with this format:
+{ "queries": ["query1", "query2", "query3", "query4", "query5"] }`;
+
     } else {
-      systemPrompt = `You are a research query generator for a prediction market platform.
-      Based on previous analysis and identified areas needing further research, generate 3 NEW search queries that address knowledge gaps.
-      ${focusText ? `CRITICAL: Focus EXCLUSIVELY on researching: "${focusText}". ALL queries MUST directly address this specific aspect.` : ''}
+      // First iteration - initial queries
+      systemPrompt = "You are a sophisticated AI research assistant specializing in generating effective search queries to find information for prediction markets.";
       
-      CRITICAL GUIDELINES FOR QUERIES:
-      1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
-      2. Include specific entities, dates, events, or proper nouns from the original question
-      3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
-      4. Make each query a complete, standalone question or statement that contains ALL relevant context
-      5. If researching a future event, include timeframes or dates
-      6. Use precise terminology and specific entities mentioned in the original question
-      ${focusText ? `7. EVERY query must EXPLICITLY target the focus area: "${focusText}" - do not generate general queries about the broader topic` : ''}
-      8. NEVER repeat or closely resemble any previous queries - examine the provided list of previous queries and ensure yours are distinctly different
-      9. Target UNEXPLORED areas or angles identified in previous research
-      10. Prioritize filling knowledge gaps mentioned in "Areas Needing Further Research"
-      
-      Focus specifically on areas that need additional investigation based on previous research.
-      Each query should target a DIFFERENT aspect of the topic that hasn't been adequately covered.
-      DO NOT repeat previous queries or generate similar variants - create truly NEW lines of investigation.
-      Output ONLY valid JSON in the following format:
-      {
-        "queries": [
-          "first refined search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}",
-          "second refined search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}", 
-          "third refined search query with full context${focusText ? ` targeting specifically ${focusText}` : ''}"
-        ]
-      }`;
+      userPrompt = `Generate 5 search queries to thoroughly research this prediction market question: "${query}".
+
+${focusText ? `With specific focus on: "${focusText}"\n\n` : ''}
+
+Each query must be:
+1. Self-contained with complete context (a search engine should understand exactly what to search for without any other context)
+2. Precise, including specific terms, entities, and timeframes relevant to the question
+3. Comprehensive enough to gather substantive information
+4. Varied to cover different aspects (facts, analysis, history, expert opinions, statistics)
+5. Focused on retrieving the most relevant and useful information for making a prediction
+
+If the question involves time-sensitive predictions, include specific dates/timeframes in your queries.
+
+Output a JSON object with this format:
+{ "queries": ["query1", "query2", "query3", "query4", "query5"] }`;
     }
-    
-    console.log(`Sending request to OpenRouter with ${iteration > 1 ? 'refined' : 'initial'} query generation${focusText ? ` focused on: ${focusText.substring(0, 50)}...` : ''}`);
-    
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openrouterApiKey}`,
-        'HTTP-Referer': 'https://hunchex.app',
-        'X-Title': 'HunchEx',
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "http://localhost:5173",
+        "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.0-flash-lite-001',
+        model: "google/gemini-flash-1.5",
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: contextInfo }
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
+            content: userPrompt
+          }
         ],
         response_format: { type: "json_object" }
-      }),
+      })
     });
-    
+
     if (!response.ok) {
-      const errorData = await response.text();
-      console.error("OpenRouter API error:", errorData);
-      throw new Error(`OpenRouter API returned error: ${response.status} ${errorData}`);
+      throw new Error(`Error from OpenRouter API: ${response.status}`);
     }
-    
+
     const data = await response.json();
-    console.log("Received response from OpenRouter:", data);
+    const content = data.choices[0].message.content.trim();
     
-    let queries = [];
-    
+    let queries;
     try {
-      // Parse the JSON from the content field
-      const content = data.choices[0]?.message?.content;
-      console.log("Raw content from model:", content);
+      const parsedData = JSON.parse(content);
+      queries = parsedData.queries;
       
-      if (content) {
-        // Try to parse as JSON
-        try {
-          const parsedContent = JSON.parse(content);
-          queries = parsedContent.queries || [];
-          
-          // Check if queries contain undefined values and replace them if needed
-          if (queries.some(q => q === "undefined" || q === undefined)) {
-            console.log("Found undefined values in queries, using fallback queries");
-            queries = generateFallbackQueries(researchQuery, iteration, previousResults, focusText);
-          }
-        } catch (parseError) {
-          console.error("Error parsing JSON from model response:", parseError);
-          // If JSON parsing fails, try to extract queries with regex
-          const match = content.match(/"queries"\s*:\s*\[(.*?)\]/s);
-          if (match && match[1]) {
-            queries = match[1].split(',')
-              .map(q => q.trim().replace(/^"/, '').replace(/"$/, ''))
-              .filter(q => q.length > 0 && q !== "undefined");
-          }
-        }
-      }
-    } catch (parseError) {
-      console.error("Error extracting queries from model response:", parseError);
-    }
-    
-    // If extraction failed or no queries were found, fall back to smart fallback queries
-    if (!queries.length || queries.every(q => q === "undefined" || q === undefined)) {
-      console.log("Falling back to smart query generation");
-      queries = generateFallbackQueries(researchQuery, iteration, previousResults, focusText);
-    }
-    
-    // Clean up queries and ensure they contain sufficient context
-    queries = queries.map(q => {
-      let cleanQuery = q.trim();
-      
-      // Ensure the query has enough context by checking for common issues
-      if (!containsSufficientContext(cleanQuery, researchQuery)) {
-        cleanQuery = addContextToQuery(cleanQuery, researchQuery, focusText);
+      if (!Array.isArray(queries)) {
+        throw new Error("Queries must be an array");
       }
       
-      // Removing the length limit to ensure we get full queries
-      return cleanQuery;
-    });
-    
-    console.log("Final generated queries:", queries);
-    
-    // Return the result
+      // Ensure there are at least 3 queries
+      if (queries.length < 3) {
+        console.warn("Less than 3 queries returned, adding generic ones");
+        const genericQueries = [
+          `${query} latest information and developments`,
+          `${query} expert analysis and predictions`,
+          `${query} historical precedents and similar cases`
+        ];
+        queries = [...queries, ...genericQueries.slice(0, 5 - queries.length)];
+      }
+      
+      // Ensure there are at most 5 queries
+      if (queries.length > 5) {
+        queries = queries.slice(0, 5);
+      }
+      
+      // Clean and improve the queries
+      queries = queries.map(cleanQuery => {
+        // Add market ID suffix
+        let cleanQuery = cleanQuery.trim();
+        
+        // Ensure query has full context
+        cleanQuery = addContextToQuery(cleanQuery, query, focusText);
+      
+        // Removing the length limit to ensure we get full queries
+        return cleanQuery;
+      });
+      
+      console.log("Generated queries:", queries);
+    } catch (error) {
+      console.error("Error parsing queries:", error, "Raw content:", content);
+      // Fallback to generic queries
+      queries = [
+        `${query} latest developments and updates`,
+        `${query} expert analysis and predictions`,
+        `${query} historical precedents and similar cases`,
+        `${query} statistical data and probability estimates`,
+        `${query} critical factors affecting outcome`
+      ];
+      
+      if (focusText) {
+        queries = queries.map(q => `${q} regarding ${focusText}`);
+      }
+    }
+
     return new Response(JSON.stringify({ queries }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
-    
   } catch (error) {
-    console.error("Error in generate-queries function:", error);
+    console.error("Error generating queries:", error);
     
-    // Get the query from the request if possible
-    let query = "unknown";
-    let iteration = 1;
-    let focusText = "";
-    try {
-      const requestData = await req.json();
-      query = requestData.query || requestData.question || "unknown";
-      iteration = requestData.iteration || 1;
-      focusText = requestData.focusText || "";
-      const previousResults = requestData.previousResults || "";
-      
-      // Generate intelligent fallback queries
-      const fallbackQueries = generateFallbackQueries(query, iteration, previousResults, focusText);
-      
-      return new Response(JSON.stringify({ queries: fallbackQueries }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    } catch (parseError) {
-      // If we can't parse the request, use very basic fallback
-      console.error("Error parsing request in fallback:", parseError);
-      const basicFallbackQueries = generateBasicFallbackQueries(query, focusText);
-      
-      return new Response(JSON.stringify({ queries: basicFallbackQueries }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
   }
 });
 
-// Check if a query contains sufficient context
-function containsSufficientContext(query: string, originalQuestion: string): boolean {
-  // Extract key entities from original question
-  const keyEntities = extractKeyEntities(originalQuestion);
+// Helper function to ensure query has full context
+function addContextToQuery(query: string, originalQuestion: string, focusText?: string): string {
+  // Check if the query seems to be missing context
+  const hasPronouns = /\b(this|that|these|those|it|they)\b/i.test(query);
+  const hasVagueReferences = /\b(the question|the topic|the market|the prediction)\b/i.test(query);
   
-  // Check if the query contains vague terms
-  const vagueTerms = ["this", "it", "that", "these", "those", "the event", "the topic", "the question"];
-  const hasVagueTerms = vagueTerms.some(term => 
-    new RegExp(`\\b${term}\\b`, 'i').test(query)
-  );
-  
-  // Check if the query contains at least one key entity
-  const hasKeyEntity = keyEntities.some(entity => 
-    query.toLowerCase().includes(entity.toLowerCase())
-  );
-  
-  return hasKeyEntity && !hasVagueTerms;
-}
-
-// Add context to a query
-function addContextToQuery(query: string, originalQuestion: string, focusText: string = ""): string {
-  // Extract key entities and phrases from original question
-  const keyEntities = extractKeyEntities(originalQuestion);
-  
-  // If query already has sufficient length and seems detailed, just return it
-  if (query.length > 50 && keyEntities.some(entity => query.toLowerCase().includes(entity.toLowerCase()))) {
-    return query;
+  if (hasPronouns || hasVagueReferences) {
+    // Add original question context
+    if (focusText) {
+      return `${query} regarding "${originalQuestion}" with focus on ${focusText}`;
+    } else {
+      return `${query} regarding "${originalQuestion}"`;
+    }
   }
   
-  // Simplify original question to its core
-  const simplifiedQuestion = originalQuestion.split(/[.?!]/).filter(s => s.trim().length > 0)[0].trim();
+  // If the query doesn't mention the core question subject, add it
+  const questionWords = originalQuestion.toLowerCase().split(/\W+/).filter(w => w.length > 4);
+  const mainTerms = questionWords.filter(w => w.length > 6).slice(0, 3); // Take the longest few words as main terms
   
-  // Combine the query with context from the original question and focus if provided
-  if (focusText && !query.toLowerCase().includes(focusText.toLowerCase())) {
-    return `${query} regarding ${focusText} in context of ${simplifiedQuestion}`;
-  } else {
-    return `${query} regarding ${simplifiedQuestion}`;
-  }
-}
-
-// Extract key entities and phrases from text
-function extractKeyEntities(text: string): string[] {
-  // Basic extraction of proper nouns and important terms
-  const entities: string[] = [];
-  
-  // Find potential proper nouns (words starting with capital letters)
-  const properNouns = text.match(/\b[A-Z][a-z]+\b/g) || [];
-  entities.push(...properNouns);
-  
-  // Extract date references
-  const datePatterns = [
-    /\b\d{4}\b/g, // years
-    /\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\b\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}/gi, // full dates
-    /\b(?:20\d{2}|19\d{2})\b/g // 4-digit years
-  ];
-  
-  datePatterns.forEach(pattern => {
-    const matches = text.match(pattern) || [];
-    entities.push(...matches);
-  });
-  
-  // Get key terms (longer words are often more significant)
-  const words = text.split(/\s+/)
-    .filter(word => word.length > 5)
-    .map(word => word.replace(/[.,?!;:"'()]/g, ''))
-    .filter(word => word.length > 0);
-  
-  entities.push(...words);
-  
-  // Remove duplicates and return
-  return [...new Set(entities)];
-}
-
-// Helper function to generate intelligent fallback queries based on iteration
-function generateFallbackQueries(query: string, iteration: number, previousResults: string = "", focusText: string = ""): string[] {
-  // Clean up query text
-  const cleanQuery = query.trim();
-  
-  // Extract key terms (simple approach)
-  const words = cleanQuery.split(/\s+/).filter(word => 
-    word.length > 3 && 
-    !['this', 'that', 'will', 'with', 'from', 'have', 'been', 'were', 'when', 'what', 'where'].includes(word.toLowerCase())
-  );
-  
-  const keyEntities = extractKeyEntities(cleanQuery);
-  const keyTerms = keyEntities.length > 0 ? keyEntities.slice(0, 3).join(' ') : words.slice(0, 5).join(' ');
-  
-  // Add focus text to queries if provided
-  const focusPhrase = focusText ? ` specifically regarding ${focusText}` : '';
-  
-  if (iteration === 1) {
-    // First iteration - general exploration with full context
-    return [
-      `${cleanQuery}${focusPhrase} recent developments and current status`,
-      `${cleanQuery}${focusPhrase} expert analysis and predictions`,
-      `${cleanQuery}${focusPhrase} historical precedents and similar cases`
-    ];
-  } else if (iteration === 2) {
-    // Second iteration - more targeted based on topic
-    // Look for potential entities in the query
-    const potentialEntities = words.filter(word => 
-      word.length > 2 && word[0] === word[0].toUpperCase()
-    ).slice(0, 2).join(' ');
+  if (mainTerms.length > 0) {
+    const queryLower = query.toLowerCase();
+    const hasCoreTerms = mainTerms.some(term => queryLower.includes(term));
     
-    const entityPhrase = potentialEntities || keyTerms;
-    
-    return [
-      `${entityPhrase} latest data and statistics regarding ${focusText || cleanQuery}`,
-      `${cleanQuery}${focusPhrase} future outlook and probability assessments`,
-      `${cleanQuery}${focusPhrase} expert opinions and consensus view`
-    ];
-  } else {
-    // Third+ iteration - focus on specifics and filling gaps
-    // If we have previous results, extract some key terms
-    const prevTerms = previousResults 
-      ? extractKeyTermsFromText(previousResults) 
-      : keyTerms;
-    
-    return [
-      `${prevTerms} statistical analysis in context of ${focusText || cleanQuery}`,
-      `${cleanQuery}${focusPhrase} historical precedent and outcome patterns`,
-      `${cleanQuery}${focusPhrase} expert forecast methodology and confidence levels`
-    ];
-  }
-}
-
-// Helper to generate very basic fallback queries when everything else fails
-function generateBasicFallbackQueries(query: string, focusText: string = ""): string[] {
-  const cleanQuery = query.trim();
-  const focusPhrase = focusText ? ` specifically regarding ${focusText}` : '';
-  
-  return [
-    `${cleanQuery}${focusPhrase} comprehensive analysis`,
-    `${cleanQuery}${focusPhrase} recent developments and current status`,
-    `${cleanQuery}${focusPhrase} expert predictions and probability estimates`
-  ];
-}
-
-// Helper to extract key terms from previous analysis text
-function extractKeyTermsFromText(text: string): string {
-  // Simple extraction of capitalized multi-word phrases
-  const matches = text.match(/[A-Z][a-z]+ [A-Z][a-z]+/g) || [];
-  
-  if (matches.length > 0) {
-    return matches[0];
+    if (!hasCoreTerms) {
+      if (focusText) {
+        return `${query} related to "${originalQuestion}" focusing on ${focusText}`;
+      } else {
+        return `${query} related to "${originalQuestion}"`;
+      }
+    }
   }
   
-  // Fallback: find sentences with "need" or "missing" or "unclear"
-  const sentences = text.split(/[.!?]+/).filter(s => 
-    s.toLowerCase().includes('need') || 
-    s.toLowerCase().includes('missing') || 
-    s.toLowerCase().includes('unclear')
-  );
-  
-  if (sentences.length > 0) {
-    // Extract a few key words from the first relevant sentence
-    const words = sentences[0].split(/\s+/).filter(w => 
-      w.length > 4 && 
-      !['needs', 'needed', 'need', 'missing', 'unclear', 'would', 'should', 'could'].includes(w.toLowerCase())
-    ).slice(0, 3);
-    
-    return words.join(' ');
-  }
-  
-  // Final fallback: just return first 2-3 substantial words
-  const words = text.split(/\s+/).filter(w => w.length > 4).slice(0, 3);
-  return words.join(' ');
+  return query;
 }
