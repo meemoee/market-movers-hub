@@ -123,6 +123,14 @@ For markets already resolved (0% or 100%):
 - Focus on explaining WHY the outcome occurred or didn't occur
 - Identify the key factors that led to the final result
 
+The response should end with a JSON block containing:
+1. "probability": Your numerical assessment (e.g., "75%") or conclusion
+2. "areasForResearch": Array of specific topics needing further research
+3. "evidenceFor": Array of specific evidence points supporting the proposition
+4. "evidenceAgainst": Array of specific evidence points contradicting the proposition
+5. "historicalPrecedents": Array of relevant historical cases or examples
+6. "resolutionAnalysis": For resolved markets, explanation of outcome factors
+
 Be factual, precise, and evidence-based in your analysis. Cite specific examples, data points, and sources whenever possible.`;
 
     let prompt = `Here is the web content I've collected during research:
@@ -150,7 +158,19 @@ ${isMarketResolved ?
 ${marketPrice !== undefined && !isMarketResolved ? `6. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
 ${relatedMarkets && relatedMarkets.length > 0 ? `7. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 
-Ensure your analysis is factual, balanced, and directly addresses the market question. Include specific references to data, events, and sources from the content.`;
+Ensure your analysis is factual, balanced, and directly addresses the market question. Include specific references to data, events, and sources from the content.
+
+End your response with a structured JSON output capturing your analysis:
+\`\`\`json
+{
+  "probability": "your assessment (e.g., 75%)",
+  "areasForResearch": ["area1", "area2", ...],
+  "evidenceFor": ["specific point 1", "specific point 2", ...],
+  "evidenceAgainst": ["counterpoint 1", "counterpoint 2", ...],
+  "historicalPrecedents": ["precedent 1", "precedent 2", ...],
+  "resolutionAnalysis": "For resolved markets, explanation of why the outcome occurred or didn't"
+}
+\`\`\``;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',

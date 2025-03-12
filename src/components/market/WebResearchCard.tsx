@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -45,12 +46,18 @@ interface ResearchResult {
   title?: string;
 }
 
+// Updated the StreamingState interface to align with the one in InsightsDisplay
 interface StreamingState {
   rawText: string;
   parsedData: {
     probability: string;
     areasForResearch: string[];
-    reasoning?: string;
+    reasoning?: {
+      evidenceFor?: string[];
+      evidenceAgainst?: string[];
+      historicalPrecedents?: string[];
+      resolutionAnalysis?: string;
+    };
   } | null;
 }
 
@@ -972,12 +979,18 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       relatedMarkets: relatedMarkets || []
     };
     
+    // Initialize with structured reasoning format
     setStreamingState({
       rawText: '',
       parsedData: {
         probability: "Unknown (parsing error)",
         areasForResearch: ["Could not parse research areas due to format error."],
-        reasoning: "Error parsing model output."
+        reasoning: {
+          evidenceFor: ["Error parsing model output."],
+          evidenceAgainst: [],
+          historicalPrecedents: [],
+          resolutionAnalysis: "Error occurred during analysis."
+        }
       }
     });
 
@@ -1020,19 +1033,29 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             
             const parsedJson = JSON.parse(finalJson);
             
+            // Ensure the parsed JSON has the correct structure
+            const structuredReasoning = {
+              evidenceFor: Array.isArray(parsedJson.evidenceFor) ? parsedJson.evidenceFor : 
+                           (parsedJson.reasoning?.evidenceFor || []),
+              evidenceAgainst: Array.isArray(parsedJson.evidenceAgainst) ? parsedJson.evidenceAgainst : 
+                               (parsedJson.reasoning?.evidenceAgainst || []),
+              historicalPrecedents: Array.isArray(parsedJson.historicalPrecedents) ? parsedJson.historicalPrecedents :
+                                   (parsedJson.reasoning?.historicalPrecedents || []),
+              resolutionAnalysis: typeof parsedJson.resolutionAnalysis === 'string' ? parsedJson.resolutionAnalysis :
+                                 (parsedJson.reasoning?.resolutionAnalysis || "")
+            };
+            
             setStreamingState({
               rawText: finalJson,
               parsedData: {
                 probability: parsedJson.probability || "Unknown",
                 areasForResearch: Array.isArray(parsedJson.areasForResearch) ? parsedJson.areasForResearch : [],
-                reasoning: parsedJson.reasoning || ""
+                reasoning: structuredReasoning
               }
             });
             
             setProgress(prev => [...prev, `Extracted probability: ${parsedJson.probability || "Unknown"}`]);
-            if (parsedJson.reasoning) {
-              setProgress(prev => [...prev, `Reasoning: ${parsedJson.reasoning}`]);
-            }
+            setProgress(prev => [...prev, `Found ${structuredReasoning.evidenceFor.length} supporting evidence points and ${structuredReasoning.evidenceAgainst.length} contradicting points`]);
           } catch (e) {
             console.error('Final JSON parsing error:', e);
             
@@ -1041,7 +1064,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               parsedData: {
                 probability: "Unknown (parsing error)",
                 areasForResearch: ["Could not parse research areas due to format error."],
-                reasoning: "Error parsing model output."
+                reasoning: {
+                  evidenceFor: ["Error parsing model output."],
+                  evidenceAgainst: [],
+                  historicalPrecedents: [],
+                  resolutionAnalysis: "Error parsing model output."
+                }
               }
             });
           }
@@ -1078,7 +1106,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         parsedData: {
           probability: "Unknown (error occurred)",
           areasForResearch: ["Error occurred during analysis"],
-          reasoning: "An error occurred during analysis."
+          reasoning: {
+            evidenceFor: [],
+            evidenceAgainst: [],
+            historicalPrecedents: [],
+            resolutionAnalysis: "An error occurred during analysis."
+          }
         }
       });
     }
