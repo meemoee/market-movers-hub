@@ -163,7 +163,9 @@ export function useResearchJob(jobId: string | undefined) {
       return data as ResearchJob
     },
     enabled: !!jobId,
-    refetchInterval: (data: ResearchJob | undefined) => {
+    refetchInterval: (query) => {
+      // Get the data from the query
+      const data = query.state.data as ResearchJob | undefined
       if (!data) return 5000
       return ['completed', 'failed'].includes(data.status) ? false : 3000
     }
