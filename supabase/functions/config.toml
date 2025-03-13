@@ -45,7 +45,3 @@ verify_jwt = false
 [[functions]]
 name = "polymarket-ws"
 verify_jwt = false
-
-[[functions]]
-name = "get-job-status"
-verify_jwt = false

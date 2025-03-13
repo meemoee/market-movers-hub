@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -59,6 +60,7 @@ export function MarketDetails({
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
+  // Get the current market price from the price history
   const currentMarketPrice = priceHistory?.points && priceHistory.points.length > 0 
     ? priceHistory.points[priceHistory.points.length - 1].price 
     : undefined;
@@ -112,6 +114,7 @@ export function MarketDetails({
 
   const shouldShowQADisplay = marketId && question;
   
+  // Combine question with description to provide more context for web research
   const fullResearchContext = question ? 
     (description ? `${question} - ${description}` : question) : 
     (description || 'No description available');
@@ -156,7 +159,7 @@ export function MarketDetails({
       {description && (
         <div>
           <WebResearchCard 
-            marketQuestion={fullResearchContext} 
+            description={fullResearchContext} 
             marketId={marketId}
           />
         </div>
