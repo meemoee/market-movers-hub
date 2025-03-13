@@ -99,7 +99,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [loadedResearchId, setLoadedResearchId] = useState<string | null>(null)
   const [parentResearchId, setParentResearchId] = useState<string | null>(null)
   const [childResearches, setChildResearches] = useState<SavedResearch[]>([])
-  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const { toast } = useToast()
   const { data: relatedMarkets } = useRelatedMarkets(marketId);
 
@@ -221,8 +220,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     } else {
       setParentResearchId(null);
     }
-    
-    setCurrentJobId(null);
     
     setTimeout(() => {
       setIsLoadingSaved(false);
@@ -415,7 +412,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setLoadedResearchId(null);
     setParentResearchId(parentId);
     setFocusText(area);
-    setCurrentJobId(null);
     
     toast({
       title: "Research focus set",
@@ -445,7 +441,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     }
     
     setLoadedResearchId(null);
-    setCurrentJobId(null);
     
     setIsLoading(true);
     setProgress([]);
@@ -562,7 +557,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       console.log(`Market ID for web-scrape: ${marketId}`);
       console.log(`Market description: ${description.substring(0, 100)}${description.length > 100 ? '...' : ''}`);
       console.log(`Focus text for web-scrape: ${focusArea || 'none'}`);
-      console.log(`Current Job ID for iteration ${iteration}: ${currentJobId || 'none'}`);
       
       setCurrentQueries(queries);
       setCurrentQueryIndex(-1);
@@ -580,9 +574,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         marketId: marketId,
         marketDescription: description,
         query: description,
-        focusText: typeof focusArea === 'string' ? focusArea : null,
-        jobId: currentJobId,
-        iteration: iteration
+        focusText: typeof focusArea === 'string' ? focusArea : null
       };
 
       if (typeof focusArea === 'string' && focusArea) {
@@ -599,12 +591,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       }
 
       console.log("Received response from web-scrape function:", response)
-      
-      const jobId = response.data?.headers?.get('X-Research-Job-ID');
-      if (jobId && jobId !== 'none' && jobId !== currentJobId) {
-        console.log(`Setting current job ID to: ${jobId}`);
-        setCurrentJobId(jobId);
-      }
       
       const allContent: string[] = [...previousContent]
       const iterationResults: ResearchResult[] = []
@@ -698,7 +684,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
 
       console.log(`Results after stream processing for iteration ${iteration}:`, iterationResults.length)
       console.log("Content collected:", allContent.length, "items")
-      console.log(`Job ID after iteration ${iteration}:`, currentJobId);
 
       if (allContent.length === 0) {
         setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
@@ -756,9 +741,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         previousAnalyses: iterations.map(iter => iter.analysis).join('\n\n'),
         areasForResearch: streamingState.parsedData?.areasForResearch || [],
         marketPrice: marketPrice,
-        relatedMarkets: relatedMarkets || [],
-        jobId: currentJobId,
-        iteration: iteration
+        relatedMarkets: relatedMarkets || []
       };
 
       console.log(`Analyze payload for market ${marketId} includes ${relatedMarkets?.length || 0} related markets`);
@@ -1381,4 +1364,3 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
-
