@@ -597,6 +597,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      append_research_iteration: {
+        Args: {
+          job_id: string
+          iteration_data: Json
+        }
+        Returns: undefined
+      }
+      append_research_progress: {
+        Args: {
+          job_id: string
+          progress_entry: Json
+        }
+        Returns: undefined
+      }
       batch_insert_market_data: {
         Args: {
           event_records: Json
@@ -604,6 +618,12 @@ export type Database = {
           price_records: Json
         }
         Returns: undefined
+      }
+      check_research_job_complete: {
+        Args: {
+          job_id: string
+        }
+        Returns: boolean
       }
       check_table_exists: {
         Args: {
@@ -724,6 +744,21 @@ export type Database = {
         Returns: {
           market_id: string
         }[]
+      }
+      update_research_job_status: {
+        Args: {
+          job_id: string
+          new_status: string
+          error_msg?: string
+        }
+        Returns: undefined
+      }
+      update_research_results: {
+        Args: {
+          job_id: string
+          result_data: Json
+        }
+        Returns: undefined
       }
     }
     Enums: {

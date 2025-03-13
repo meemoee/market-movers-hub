@@ -5,9 +5,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ProgressDisplayProps {
   messages: string[]
+  jobId?: string
 }
 
-export function ProgressDisplay({ messages }: ProgressDisplayProps) {
+export function ProgressDisplay({ messages, jobId }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -36,18 +37,26 @@ export function ProgressDisplay({ messages }: ProgressDisplayProps) {
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
       <ScrollArea className="h-full">
         <div className="p-4 space-y-2">
+          {jobId && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+              <span>Job ID: {jobId}</span>
+              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+              <span>Processing in background</span>
+            </div>
+          )}
+          
           {messages.map((message, index) => (
             <div 
               key={`${index}-${message.substring(0, 20)}`}
               className={cn(
                 "flex items-center gap-3 py-1 text-sm",
-                index === messages.length - 1 ? "animate-pulse" : ""
+                index === messages.length - 1 && !jobId ? "animate-pulse" : ""
               )}
             >
-              {index === messages.length - 1 && (
+              {index === messages.length - 1 && !jobId && (
                 <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
               )}
-              <span className={index === messages.length - 1 ? "text-foreground" : "text-muted-foreground"}>
+              <span className={index === messages.length - 1 && !jobId ? "text-foreground" : "text-muted-foreground"}>
                 {message}
               </span>
             </div>
