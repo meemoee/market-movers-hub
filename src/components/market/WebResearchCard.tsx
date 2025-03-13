@@ -25,6 +25,7 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
   const [analysisResults, setAnalysisResults] = useState<{ [key: string]: any } | null>(null);
   const [currentProgress, setCurrentProgress] = useState<{ step: string; message: string; percentage?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progressMessages, setProgressMessages] = useState<string[]>([]);
 
   const handleStartResearch = async () => {
     try {
@@ -33,28 +34,37 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
       setSearchResults([]);
       setAnalysisResults(null);
       setCurrentProgress(null);
+      setProgressMessages(['Starting research...']);
 
-      const eventSource = new EventSource(
-        `${supabase.functions.url}/web-scrape?description=${encodeURIComponent(description)}&marketId=${encodeURIComponent(marketId)}`
-      );
+      // Get the full Edge Function URL instead of using .url directly
+      const functionsUrl = `${supabase.functions.url}/web-scrape?description=${encodeURIComponent(description)}&marketId=${encodeURIComponent(marketId)}`;
+      const eventSource = new EventSource(functionsUrl);
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         
         if (data.type === 'message') {
           console.log('Web research message:', data.message);
+          // Add message to progress messages
+          setProgressMessages(prev => [...prev, data.message]);
         } else if (data.type === 'progress') {
           setCurrentProgress(data.progress);
+          // Add progress message to messages array
+          if (data.progress && data.progress.message) {
+            setProgressMessages(prev => [...prev, data.progress.message]);
+          }
         } else if (data.type === 'results') {
           setSearchResults(data.data || []);
           setIsLoading(false);
           setIsAnalyzing(true);
+          setProgressMessages(prev => [...prev, 'Search complete. Analyzing results...']);
         } else if (data.type === 'error') {
           setError(data.message);
           setIsLoading(false);
           setIsAnalyzing(false);
           eventSource.close();
           toast.error(`Research error: ${data.message}`);
+          setProgressMessages(prev => [...prev, `Error: ${data.message}`]);
         }
       };
 
@@ -65,6 +75,7 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
         setIsAnalyzing(false);
         eventSource.close();
         toast.error('Research connection lost. Please try again.');
+        setProgressMessages(prev => [...prev, 'Connection error. Please try again later.']);
       };
 
       // When results are received, analyze them
@@ -87,11 +98,13 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
           
           setAnalysisResults(analysisData);
           setIsAnalyzing(false);
+          setProgressMessages(prev => [...prev, 'Analysis complete.']);
         } catch (error) {
           console.error('Analysis error:', error);
           setError('Failed to analyze research results.');
           setIsAnalyzing(false);
           toast.error('Analysis failed. Please try again.');
+          setProgressMessages(prev => [...prev, 'Analysis failed. Please try again.']);
         }
         
         eventSource.close();
@@ -103,6 +116,7 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
       setIsLoading(false);
       setIsAnalyzing(false);
       toast.error('Research failed to start. Please try again.');
+      setProgressMessages(prev => [...prev, 'Research failed to start. Please try again.']);
     }
   };
 
@@ -118,16 +132,16 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
         
         {error && <div className="text-sm text-destructive">{error}</div>}
         
-        {currentProgress && (
-          <ProgressDisplay progress={currentProgress} />
+        {currentProgress && progressMessages.length > 0 && (
+          <ProgressDisplay messages={progressMessages} />
         )}
         
         {searchResults.length > 0 && (
-          <SitePreviewList sites={searchResults} />
+          <SitePreviewList results={searchResults} />
         )}
         
         {analysisResults && (
-          <AnalysisDisplay analysis={analysisResults} />
+          <AnalysisDisplay content={JSON.stringify(analysisResults, null, 2)} />
         )}
       </CardContent>
     </Card>
