@@ -2,13 +2,15 @@
 import { cn } from "@/lib/utils"
 import { useEffect, useState, useRef, useLayoutEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Progress } from "@/components/ui/progress"
 
 interface ProgressDisplayProps {
   messages: string[]
   jobId?: string
+  progress?: number
 }
 
-export function ProgressDisplay({ messages, jobId }: ProgressDisplayProps) {
+export function ProgressDisplay({ messages, jobId, progress }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -38,10 +40,15 @@ export function ProgressDisplay({ messages, jobId }: ProgressDisplayProps) {
       <ScrollArea className="h-full">
         <div className="p-4 space-y-2">
           {jobId && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
-              <span>Job ID: {jobId}</span>
-              <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span>Processing in background</span>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>Job ID: {jobId}</span>
+                <div className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                <span>Processing in background</span>
+              </div>
+              {progress !== undefined && (
+                <Progress value={progress} className="h-2" />
+              )}
             </div>
           )}
           
