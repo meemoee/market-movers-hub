@@ -927,4 +927,152 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     const allQueries = iterations.flatMap(iter => iter.queries);
     
-    const insightsPayload
+    const insightsPayload = {
+      content: allContent.join('\n\n'),
+      analysis: finalAnalysis,
+      previousAnalyses,
+      allQueries,
+      marketId,
+      jobId: currentJobId
+    };
+    
+    try {
+      const { data: insightsData, error: insightsError } = await supabase.functions.invoke('extract-research-insights', {
+        body: JSON.stringify(insightsPayload)
+      });
+      
+      if (insightsError) {
+        console.error("Error from extract-research-insights:", insightsError);
+        throw new Error(`Error extracting insights: ${insightsError.message}`);
+      }
+      
+      const textDecoder = new TextDecoder();
+      const reader = new Response(insightsData.body).body?.getReader();
+      
+      if (!reader) {
+        throw new Error('Failed to get reader from insights response');
+      }
+      
+      let insightsRawText = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          console.log("Insights stream complete");
+          break;
+        }
+        
+        const chunk = textDecoder.decode(value);
+        
+        const lines = chunk.split('\n\n');
+        
+        for (const line of lines) {
+          if (line.trim() && line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
+            
+            try {
+              const { content } = cleanStreamContent(jsonStr);
+              
+              if (content) {
+                insightsRawText += content;
+                
+                setStreamingState(prev => {
+                  const updatedState = { ...prev, rawText: insightsRawText };
+                  
+                  try {
+                    // Try to parse the accumulated text as JSON
+                    if (isCompleteMarkdown(insightsRawText)) {
+                      const jsonStart = insightsRawText.indexOf('{');
+                      const jsonEnd = insightsRawText.lastIndexOf('}');
+                      
+                      if (jsonStart >= 0 && jsonEnd > jsonStart) {
+                        const jsonStr = insightsRawText.substring(jsonStart, jsonEnd + 1);
+                        const parsedData = JSON.parse(jsonStr);
+                        
+                        if (parsedData.probability && parsedData.areasForResearch) {
+                          updatedState.parsedData = parsedData;
+                        }
+                      }
+                    }
+                  } catch (e) {
+                    console.debug('Not yet valid JSON, continuing to collect stream');
+                  }
+                  
+                  return updatedState;
+                });
+              }
+            } catch (e) {
+              console.debug('Error parsing SSE data:', e);
+            }
+          }
+        }
+      }
+      
+      try {
+        // Final attempt to parse the completed stream
+        const jsonStart = insightsRawText.indexOf('{');
+        const jsonEnd = insightsRawText.lastIndexOf('}');
+        
+        if (jsonStart >= 0 && jsonEnd > jsonStart) {
+          const jsonStr = insightsRawText.substring(jsonStart, jsonEnd + 1);
+          const parsedData = JSON.parse(jsonStr);
+          
+          if (parsedData.probability && parsedData.areasForResearch) {
+            setStreamingState(prev => ({
+              ...prev,
+              parsedData
+            }));
+          }
+        }
+      } catch (e) {
+        console.error('Failed to parse final insights JSON:', e);
+      }
+      
+      setProgress(prev => [...prev, "Research complete! Probability and areas for further research extracted."]);
+      
+      // Auto-save the research after insights are extracted
+      await saveResearch();
+      
+    } catch (error) {
+      console.error("Error in extractInsights:", error);
+      setError(`Error extracting insights: ${error.message}`);
+      setIsLoading(false);
+    }
+  };
+
+  const handleNextIteration = () => {
+    const nextIteration = currentIteration + 1;
+    
+    if (nextIteration > maxIterations) {
+      setProgress(prev => [...prev, "Reached maximum iterations, completing research."]);
+      setIsLoading(false);
+      return;
+    }
+    
+    setCurrentIteration(nextIteration);
+    
+    setExpandedIterations(prev => [...prev, `iteration-${nextIteration}`]);
+    
+    const newIteration = {
+      iteration: nextIteration,
+      queries: currentQueries,
+      results: [],
+      analysis: ''
+    };
+    
+    setIterations(prev => {
+      const exists = prev.some(iter => iter.iteration === nextIteration);
+      return exists ? prev : [...prev, newIteration];
+    });
+    
+    analyzeResults();
+  };
+
+  return (
+    <div>
+      {/* Render the rest of the component's JSX */}
+    </div>
+  );
+}
