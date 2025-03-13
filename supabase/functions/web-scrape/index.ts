@@ -41,10 +41,55 @@ serve(async (req) => {
       start(controller) {
         const encoder = new TextEncoder();
         
+        // Create a research job
+        const createJob = async () => {
+          try {
+            const supabaseClient = createClient(
+              Deno.env.get('SUPABASE_URL') ?? '',
+              Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+              {
+                global: {
+                  headers: { Authorization: req.headers.get('Authorization')! },
+                }
+              }
+            );
+            
+            const { data: jobData, error: jobError } = await supabaseClient
+              .from('research_jobs')
+              .insert({
+                query: cleanedQueries.join(' | '),
+                market_id: marketId || null,
+                focus_text: focusText || null,
+                status: 'processing'
+              })
+              .select()
+              .single();
+            
+            if (jobError) {
+              console.error('Error creating job:', jobError);
+              throw new Error('Failed to create research job');
+            }
+            
+            return jobData.id;
+          } catch (error) {
+            console.error('Error in job creation:', error);
+            throw error;
+          }
+        };
+        
         const processQueries = async () => {
           let allResults = [];
+          let jobId = null;
           
           try {
+            // Create job and send job_created event
+            jobId = await createJob();
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'job_created',
+              jobId: jobId,
+              message: 'Research job created'
+            })}\n\n`));
+            
             for (const [index, query] of cleanedQueries.entries()) {
               // Send a message for each query
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
@@ -141,11 +186,68 @@ serve(async (req) => {
               }
             }
             
+            // Update job status to completed
+            if (jobId) {
+              const supabaseClient = createClient(
+                Deno.env.get('SUPABASE_URL') ?? '',
+                Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+                {
+                  global: {
+                    headers: { Authorization: req.headers.get('Authorization')! },
+                  }
+                }
+              );
+              
+              await supabaseClient.rpc('update_research_job_status', {
+                job_id: jobId,
+                new_status: 'completed'
+              });
+              
+              await supabaseClient.rpc('update_research_results', {
+                job_id: jobId,
+                result_data: allResults
+              });
+              
+              // Send job status update
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'job_status',
+                jobId: jobId,
+                status: 'completed'
+              })}\n\n`));
+            }
+            
             // Notify completion
             controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
             controller.close();
           } catch (error) {
             console.error("Error in processQueries:", error);
+            
+            // Update job status to failed if there was an error
+            if (jobId) {
+              const supabaseClient = createClient(
+                Deno.env.get('SUPABASE_URL') ?? '',
+                Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+                {
+                  global: {
+                    headers: { Authorization: req.headers.get('Authorization')! },
+                  }
+                }
+              );
+              
+              await supabaseClient.rpc('update_research_job_status', {
+                job_id: jobId,
+                new_status: 'failed',
+                error_msg: error.message
+              });
+              
+              // Send job status update
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'job_status',
+                jobId: jobId,
+                status: 'failed'
+              })}\n\n`));
+            }
+            
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'error',
               message: `Error in search processing: ${error.message}`
