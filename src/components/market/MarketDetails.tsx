@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -121,7 +122,7 @@ export function MarketDetails({
     },
     enabled: !!marketId,
     refetchInterval: (data) => {
-      if (data && data?.status && ['queued', 'processing'].includes(data.status)) {
+      if (data && typeof data === 'object' && data.status && ['queued', 'processing'].includes(data.status)) {
         return 5000;
       }
       return false;
