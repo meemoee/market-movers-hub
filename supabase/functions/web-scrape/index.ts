@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { SearchResponse, SSEMessage, JobUpdateParams } from "./types.ts"
@@ -14,14 +13,14 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Helper function to update job record
+// HELPER FUNCTION TO UPDATE JOB RECORD
 async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
   if (!jobId) return;
   
   try {
     console.log(`Updating job ${jobId} with:`, JSON.stringify(Object.keys(updates)));
     
-    // If progress_log is provided, use append_to_json_array RPC
+    // IF progress_log is provided, use append_to_json_array RPC
     if (updates.progress_log && updates.progress_log.length > 0) {
       for (const logEntry of updates.progress_log) {
         try {
@@ -39,8 +38,8 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
       delete updates.progress_log;
     }
     
-    // For iterations, get current iterations and append new ones if needed
-    if (updates.iterations) {
+    // For iterations, get current iterations first and then append new ones
+    if (updates.iterations && updates.iterations.length > 0) {
       try {
         // First get current iterations
         const { data: currentJob, error: getError } = await supabase
@@ -50,27 +49,37 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
           .single();
         
         if (!getError && currentJob) {
-          // Append new iterations to existing ones or initialize if null
-          const currentIterations = currentJob.iterations || [];
+          // Initialize the current iterations array if it's null
+          const currentIterations = Array.isArray(currentJob.iterations) ? currentJob.iterations : [];
           console.log(`Current iterations: ${currentIterations.length}, adding ${updates.iterations.length} new iterations`);
           
-          // Find if we're updating an existing iteration or adding a new one
-          const newIterations = [...currentIterations];
+          // Create a new array to hold the combined iterations
+          let newIterations = [...currentIterations];
           
+          // Process each new iteration
           updates.iterations.forEach(newIter => {
+            if (!newIter.iteration) {
+              console.log('Warning: Iteration missing iteration number:', newIter);
+              return;
+            }
+            
+            // Find if we're updating an existing iteration or adding a new one
             const existingIndex = newIterations.findIndex(
               existing => existing && existing.iteration === newIter.iteration
             );
             
             if (existingIndex >= 0) {
-              // Update existing iteration
+              // Update existing iteration, keeping existing results if the new iteration doesn't have any
+              const existingResults = newIterations[existingIndex].results || [];
+              const newResults = newIter.results || [];
+              
               newIterations[existingIndex] = {
                 ...newIterations[existingIndex],
                 ...newIter,
                 // Combine results from both
                 results: [
-                  ...(newIterations[existingIndex].results || []),
-                  ...(newIter.results || [])
+                  ...existingResults,
+                  ...newResults
                 ]
               };
             } else {
@@ -78,6 +87,9 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
               newIterations.push(newIter);
             }
           });
+          
+          // Sort the iterations array by iteration number for consistency
+          newIterations.sort((a, b) => (a.iteration || 0) - (b.iteration || 0));
           
           updates.iterations = newIterations;
           console.log(`Updated iterations array now has ${updates.iterations.length} items`);
@@ -97,11 +109,16 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
           .single();
         
         if (!getError && currentJob) {
-          const currentResults = currentJob.results || [];
+          const currentResults = Array.isArray(currentJob.results) ? currentJob.results : [];
           // Combine results, using URL as unique identifier
           const combinedResults = [...currentResults];
           
           updates.results.forEach(newResult => {
+            if (!newResult || !newResult.url) {
+              console.log('Warning: Result missing URL:', newResult);
+              return;
+            }
+            
             const existingIndex = combinedResults.findIndex(
               existing => existing && existing.url === newResult.url
             );
@@ -561,3 +578,4 @@ serve(async (req) => {
     );
   }
 });
+
