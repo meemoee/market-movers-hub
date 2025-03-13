@@ -123,7 +123,7 @@ export function MarketDetails({
     enabled: !!marketId,
     refetchInterval: (data) => {
       // Check if the job data exists and is still processing
-      if (data && data?.status && ['queued', 'processing'].includes(data.status)) {
+      if (data && ['queued', 'processing'].includes(data?.status || '')) {
         return 5000;
       }
       return false;
