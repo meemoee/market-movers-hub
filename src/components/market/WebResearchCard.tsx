@@ -29,7 +29,7 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
   const eventSourceRef = useRef<EventSource | null>(null);
   
   // Poll for job status if we have a jobId and are not streaming
-  const { data: jobData } = useQuery({
+  const { data: jobData, isLoading, isError } = useQuery({
     queryKey: ['job-status', jobId],
     queryFn: async () => {
       if (!jobId) return null;
