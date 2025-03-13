@@ -44,7 +44,10 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
     enabled: !!jobId && !isSearching,
     refetchInterval: (data) => {
       // Stop polling if job is completed or failed
-      return (data?.status === 'completed' || data?.status === 'failed') ? false : 5000;
+      if (data?.status === 'completed' || data?.status === 'failed') {
+        return false;
+      }
+      return 5000;
     },
     refetchOnWindowFocus: false
   });
