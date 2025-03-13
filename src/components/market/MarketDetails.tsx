@@ -122,7 +122,8 @@ export function MarketDetails({
     },
     enabled: !!marketId,
     refetchInterval: (data) => {
-      if (data && typeof data === 'object' && data.status && ['queued', 'processing'].includes(data.status)) {
+      // Here data is the actual research job data returned from queryFn
+      if (data && typeof data === 'object' && 'status' in data && ['queued', 'processing'].includes(data.status as string)) {
         return 5000;
       }
       return false;
