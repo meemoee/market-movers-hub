@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { description, marketId, iterations = 3 } = await req.json();
+    const { description, marketId, iterations = 3, job_id } = await req.json();
     
     if (!description) {
       return new Response(
@@ -45,20 +45,113 @@ Deno.serve(async (req) => {
     console.log(`Starting deep research for market ${marketId}`);
     console.log(`Description: ${description.substring(0, 100)}...`);
     console.log(`Iterations: ${iterations}`);
+    console.log(`Existing job ID: ${job_id || 'none'}`);
 
     const openRouter = new OpenRouter(Deno.env.get("OPENROUTER_API_KEY") || "");
     const model = DEFAULT_MODEL;
 
+    // Initialize or fetch existing research state
+    let researchState;
+    let researchJobId = job_id;
+    let startingIteration = 1;
+    
+    // Create Supabase client for database access
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+    const supabase = await import('https://esm.sh/@supabase/supabase-js@2').then(
+      module => module.createClient(supabaseUrl, supabaseKey)
+    );
+    
+    // If we have an existing job ID, check if it exists and get its state
+    if (researchJobId) {
+      console.log(`Fetching existing job ${researchJobId}`);
+      const { data: existingJob, error: jobError } = await supabase
+        .from('research_jobs')
+        .select('*')
+        .eq('id', researchJobId)
+        .single();
+        
+      if (jobError) {
+        console.error('Error fetching job:', jobError);
+        researchJobId = null; // Reset if not found
+      } else if (existingJob) {
+        console.log(`Found existing job, current iteration: ${existingJob.current_iteration}`);
+        startingIteration = (existingJob.current_iteration || 0) + 1;
+        
+        // Update the job status to indicate we're continuing
+        await supabase
+          .from('research_jobs')
+          .update({
+            status: 'processing',
+            progress_log: [...(existingJob.progress_log || []), {
+              timestamp: new Date().toISOString(),
+              status: 'processing',
+              message: `Continuing research at iteration ${startingIteration}`
+            }]
+          })
+          .eq('id', researchJobId);
+      }
+    }
+    
+    // If we don't have a valid job ID, create a new job
+    if (!researchJobId) {
+      console.log('Creating new research job');
+      const { data: newJob, error: createError } = await supabase
+        .from('research_jobs')
+        .insert({
+          market_id: marketId,
+          query: description,
+          status: 'processing',
+          max_iterations: iterations,
+          current_iteration: 0,
+          progress_log: [{
+            timestamp: new Date().toISOString(),
+            status: 'started',
+            message: 'Starting deep research'
+          }],
+          started_at: new Date().toISOString()
+        })
+        .select('id')
+        .single();
+        
+      if (createError) {
+        console.error('Error creating job:', createError);
+        throw new Error('Failed to create research job');
+      }
+      
+      researchJobId = newJob.id;
+      console.log(`Created new job with ID: ${researchJobId}`);
+    }
+
     // Initialize research state
-    const researchState = {
+    researchState = {
       intent: description,
       model,
       totalIterations: iterations,
-      iteration: 1,
+      iteration: startingIteration,
       findings: [],
       previousQueries: [],
       steps: [] as ResearchStep[]
     };
+    
+    // Update the job with the current iteration
+    await supabase
+      .from('research_jobs')
+      .update({
+        current_iteration: startingIteration,
+        status: 'processing',
+        progress_log: supabase.rpc('append_to_json_array', {
+          p_table: 'research_jobs',
+          p_column: 'progress_log',
+          p_id: researchJobId,
+          p_value: {
+            timestamp: new Date().toISOString(),
+            status: 'processing',
+            message: `Starting iteration ${startingIteration}`
+          }
+        })
+      })
+      .eq('id', researchJobId);
     
     // Formulate initial strategic query
     const initialQuery = await formInitialQuery(description, model, openRouter);
@@ -71,61 +164,102 @@ Deno.serve(async (req) => {
     
     console.log(`Initial query: ${initialQuery}`);
     
-    // Main research loop
-    while (researchState.iteration <= iterations) {
-      console.log(`Performing iteration ${researchState.iteration}/${iterations}`);
-      
-      // Perform research
-      const result = await performResearch(currentQuery, researchState, openRouter);
-      
-      // Store results
-      researchState.findings.push(result);
-      researchState.previousQueries.push(currentQuery);
-      
-      researchState.steps.push({
-        query: currentQuery,
-        results: `Research completed. Found ${result.keyFindings.length} key findings.`
-      });
-      
-      // Check if research should continue
-      if (researchState.iteration >= iterations || result.error) {
-        break;
-      }
-      
-      // Generate next query based on findings
-      currentQuery = await generateNextQuery(
-        description, 
-        researchState.previousQueries, 
-        result.keyFindings, 
-        model,
-        openRouter
-      );
-      
-      researchState.steps.push({
-        query: currentQuery,
-        results: "Generated follow-up query based on findings."
-      });
-      
-      // Increment iteration counter
-      researchState.iteration++;
-    }
+    // Main research loop - only run one iteration per call for job continuity
+    console.log(`Performing iteration ${researchState.iteration}`);
     
-    // Generate final report
-    console.log("Generating final report");
-    const finalReport = await generateFinalReport(researchState, openRouter);
+    // Perform research
+    const result = await performResearch(currentQuery, researchState, openRouter);
+    
+    // Store results
+    researchState.findings.push(result);
+    researchState.previousQueries.push(currentQuery);
     
     researchState.steps.push({
-      query: "Final synthesis",
-      results: "Generating comprehensive research report."
+      query: currentQuery,
+      results: `Research completed. Found ${result.keyFindings.length} key findings.`
     });
     
-    console.log("Research completed successfully");
+    // Update job with iteration results
+    const iterationData = {
+      iteration: researchState.iteration,
+      query: currentQuery,
+      findings: result.keyFindings,
+      timestamp: new Date().toISOString()
+    };
+    
+    await supabase
+      .from('research_jobs')
+      .update({
+        iterations: supabase.rpc('append_to_json_array', {
+          p_table: 'research_jobs',
+          p_column: 'iterations',
+          p_id: researchJobId,
+          p_value: iterationData
+        }),
+        current_iteration: researchState.iteration,
+        progress_log: supabase.rpc('append_to_json_array', {
+          p_table: 'research_jobs',
+          p_column: 'progress_log',
+          p_id: researchJobId,
+          p_value: {
+            timestamp: new Date().toISOString(),
+            status: 'iteration_complete',
+            message: `Completed iteration ${researchState.iteration}`
+          }
+        })
+      })
+      .eq('id', researchJobId);
+    
+    // If this is the final iteration, generate the report and mark as complete
+    let finalReport: ResearchReport | null = null;
+    if (researchState.iteration >= iterations) {
+      console.log("Generating final report for last iteration");
+      finalReport = await generateFinalReport(researchState, openRouter);
+      
+      await supabase
+        .from('research_jobs')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          analysis: finalReport.analysis,
+          progress_log: supabase.rpc('append_to_json_array', {
+            p_table: 'research_jobs',
+            p_column: 'progress_log',
+            p_id: researchJobId,
+            p_value: {
+              timestamp: new Date().toISOString(),
+              status: 'completed',
+              message: 'Research complete'
+            }
+          })
+        })
+        .eq('id', researchJobId);
+    }
+    
+    // Determine next steps
+    const nextQuery = researchState.iteration < iterations 
+      ? await generateNextQuery(description, researchState.previousQueries, result.keyFindings, model, openRouter)
+      : null;
+      
+    if (nextQuery) {
+      researchState.steps.push({
+        query: nextQuery,
+        results: "Generated follow-up query for next iteration."
+      });
+    }
+    
+    console.log("Research iteration completed successfully");
     
     return new Response(
       JSON.stringify({
         success: true,
         report: finalReport,
-        steps: researchState.steps
+        steps: researchState.steps,
+        job_id: researchJobId,
+        next_query: nextQuery,
+        current_iteration: researchState.iteration,
+        total_iterations: iterations,
+        is_complete: researchState.iteration >= iterations
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

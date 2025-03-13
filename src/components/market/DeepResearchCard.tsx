@@ -1,5 +1,4 @@
-
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Loader2, Search, FileText, RefreshCw } from 'lucide-react';
@@ -27,6 +26,8 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
   const [currentQuery, setCurrentQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  const jobIdRef = useRef<string | null>(null);
 
   const handleStartResearch = async () => {
     if (!description) {
@@ -44,14 +45,18 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       setError(null);
       setCurrentQuery(`Initial query for: ${description.substring(0, 30)}...`);
       
-      // Call the edge function
       const { data, error } = await supabase.functions.invoke<{
         success: boolean;
         report?: ResearchReport;
         steps?: { query: string; results: string }[];
         error?: string;
+        job_id?: string;
       }>('deep-research', {
-        body: { description, marketId }
+        body: { 
+          description, 
+          marketId,
+          job_id: jobIdRef.current
+        }
       });
       
       if (error) {
@@ -64,11 +69,14 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       
       console.log('Research data received:', data);
       
-      // Process research steps to show progress
+      if (data.job_id) {
+        jobIdRef.current = data.job_id;
+        console.log(`Using job ID: ${data.job_id}`);
+      }
+      
       if (data.steps && data.steps.length > 0) {
         setTotalIterations(data.steps.length);
         
-        // Simulate step-by-step progress for better UX
         let currentStep = 0;
         const interval = setInterval(() => {
           if (currentStep < data.steps!.length) {
@@ -78,15 +86,13 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
           } else {
             clearInterval(interval);
             
-            // Once all steps are processed, set the results
             if (data.report) {
               setResearchResults(data.report);
             }
             setIsLoading(false);
           }
-        }, 1000); // Update every second for visual effect
+        }, 1000);
       } else {
-        // If no steps are returned, just show the results
         if (data.report) {
           setResearchResults(data.report);
         }
@@ -110,6 +116,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     setIteration(0);
     setCurrentQuery('');
     setError(null);
+    jobIdRef.current = null;
   };
 
   return (
@@ -218,3 +225,4 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     </Card>
   );
 }
+

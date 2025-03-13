@@ -37,4 +37,5 @@ export interface JobUpdateParams {
   error_message?: string;
   completed_at?: string | null;
   updated_at?: string;
+  job_id?: string; // Added job_id to help track the primary job
 }
