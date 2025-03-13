@@ -1096,7 +1096,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         {analysis.length > 0 && (
           <AnalysisDisplay 
             content={analysis} 
-            isLoading={isAnalyzing}
+            isStreaming={isAnalyzing}
           />
         )}
         
