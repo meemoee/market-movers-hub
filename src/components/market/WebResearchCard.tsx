@@ -916,3 +916,363 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             // After completing text analysis, get structured insights
             try {
               setProgress(prev => [...prev, `Extracting structured insights...`]);
+              
+              // Invoke the extract-research-insights function to get structured data
+              const insightsPayload = {
+                analysis: analysisContent,
+                query: description,
+                marketId: marketId,
+                marketPrice: marketPrice
+              };
+              
+              console.log("Calling extract-research-insights with analysis length:", analysisContent.length);
+              
+              const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
+                body: JSON.stringify(insightsPayload)
+              });
+              
+              if (insightsResponse.error) {
+                console.error("Error from extract-research-insights:", insightsResponse.error);
+                throw new Error(insightsResponse.error.message || "Error extracting insights");
+              }
+              
+              try {
+                const insightsData = insightsResponse.data;
+                console.log("Received insights data:", insightsData);
+                
+                if (insightsData) {
+                  // Parse and validate the structured data
+                  let parsedInsights = insightsData;
+                  
+                  // Ensure we have valid insight data with areasForResearch as an array
+                  if (!parsedInsights.areasForResearch || !Array.isArray(parsedInsights.areasForResearch)) {
+                    console.warn("Invalid areasForResearch in insights response, using fallback", parsedInsights);
+                    parsedInsights.areasForResearch = ["More specific data needed", "Historical precedents", "Expert opinions"];
+                  }
+                  
+                  // Update the streaming state with the structured insights
+                  setStreamingState({
+                    rawText: JSON.stringify(parsedInsights, null, 2),
+                    parsedData: {
+                      probability: parsedInsights.probability || "Unable to determine",
+                      areasForResearch: parsedInsights.areasForResearch,
+                      reasoning: parsedInsights.reasoning
+                    }
+                  });
+                  
+                  // Save research after we have structured insights
+                  await saveResearch();
+                }
+              } catch (error) {
+                console.error("Error processing insights data:", error);
+                
+                // Create fallback insights if parsing fails
+                setStreamingState(prev => ({
+                  rawText: prev.rawText || JSON.stringify({
+                    probability: "Unable to determine from current data",
+                    areasForResearch: ["More specific data needed", "Historical precedents", "Expert opinions"]
+                  }, null, 2),
+                  parsedData: {
+                    probability: "Unable to determine from current data",
+                    areasForResearch: ["More specific data needed", "Historical precedents", "Expert opinions"]
+                  }
+                }));
+                
+                // Still try to save research with fallback data
+                await saveResearch();
+              }
+            } catch (error) {
+              console.error("Error extracting structured insights:", error);
+              
+              // Use fallback insights on error
+              setStreamingState({
+                rawText: JSON.stringify({
+                  probability: "Unable to determine",
+                  areasForResearch: ["More specific data needed", "Historical precedents", "Expert opinions"]
+                }, null, 2),
+                parsedData: {
+                  probability: "Unable to determine",
+                  areasForResearch: ["More specific data needed", "Historical precedents", "Expert opinions"]
+                }
+              });
+              
+              // Still try to save research with fallback data
+              await saveResearch();
+            }
+          }
+          
+          break;
+        }
+        
+        const chunk = textDecoder.decode(value);
+        const { content } = cleanStreamContent(chunk);
+        
+        if (content) {
+          analysisContent += content;
+          iterationAnalysis += content;
+          
+          // Only update state if the markdown is valid
+          if (isCompleteMarkdown(analysisContent) || !analysisContent.includes('```')) {
+            setAnalysis(analysisContent);
+            
+            // Update the current iteration's analysis
+            setIterations(prev => {
+              const updatedIterations = [...prev];
+              const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+              
+              if (currentIterIndex >= 0) {
+                updatedIterations[currentIterIndex] = {
+                  ...updatedIterations[currentIterIndex],
+                  analysis: iterationAnalysis
+                };
+              }
+              
+              return updatedIterations;
+            });
+          }
+        }
+      }
+      
+      // Consider next iteration if needed
+      if (iteration < maxIterations) {
+        // Generate new queries based on analysis and areas of uncertainty
+        setProgress(prev => [...prev, `Planning next iteration research areas...`]);
+        
+        // For now, just move to the next iteration with the same queries
+        // In future, could generate new queries based on analysis
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const nextIterationQueries = currentQueries.map(q => 
+          q.length > 10 ? q : `${description.split(' ').slice(0, 5).join(' ')} ${q}`
+        );
+        
+        await handleWebScrape(nextIterationQueries, iteration + 1, focusArea, [...allContent]);
+      } else {
+        // Final iteration complete
+        setProgress(prev => [...prev, `Research complete after ${iteration} iterations.`]);
+        setIsLoading(false);
+        setIsAnalyzing(false);
+      }
+      
+    } catch (error) {
+      console.error(`Error in processing results for iteration ${iteration}:`, error);
+      setError(`Error occurred during analysis: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsLoading(false);
+      setIsAnalyzing(false);
+    }
+  };
+
+  return (
+    <Card className="w-full mb-4 overflow-hidden">
+      <ResearchHeader 
+        isLoading={isLoading || isAnalyzing}
+        onSearch={() => handleResearch()}
+        marketPrice={marketPrice}
+      />
+      
+      {isLoading ? (
+        <div className="p-4 space-y-4">
+          <ProgressDisplay messages={progress} />
+          
+          {currentQueries.length > 0 && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 mb-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Current queries:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {currentQueries.map((query, i) => (
+                  <Badge 
+                    key={i} 
+                    variant={i === currentQueryIndex ? "default" : "outline"} 
+                    className="text-xs"
+                  >
+                    {query}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {error && (
+            <div className="p-3 border rounded-md bg-destructive/10 text-destructive">
+              {error}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="p-4 space-y-4">
+          {savedResearch && savedResearch.length > 0 && (
+            <div className="mb-4">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between" disabled={isLoadingSaved}>
+                    {isLoadingSaved ? (
+                      "Loading saved research..."
+                    ) : (
+                      <>
+                        <span>Saved Research ({savedResearch.length})</span>
+                        <ChevronDown className="h-4 w-4 opacity-50" />
+                      </>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-80 p-0" align="start">
+                  <ScrollArea className="h-80">
+                    <div className="p-2">
+                      {savedResearch.map((research) => (
+                        <Button
+                          key={research.id}
+                          variant="ghost"
+                          className="w-full justify-start h-auto py-2 px-2 mb-1"
+                          onClick={() => loadSavedResearch(research)}
+                        >
+                          <div className="flex flex-col items-start text-left">
+                            <div className="flex items-center gap-2 mb-1 w-full">
+                              <span className="font-medium truncate max-w-[200px]">
+                                {research.focus_text || research.query.substring(0, 40)}
+                              </span>
+                              {research.parent_research_id && (
+                                <Badge variant="outline" className="text-xs">Child</Badge>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(research.created_at), 'MMM d, h:mm a')}
+                            </span>
+                          </div>
+                        </Button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+            </div>
+          )}
+          
+          {parentResearch && (
+            <div className="flex items-center gap-2 mb-4 p-3 border rounded-md bg-muted/30">
+              <ArrowLeftCircle className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">Parent Research</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {parentResearch.query}
+                </p>
+              </div>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-8"
+                onClick={() => loadSavedResearch(parentResearch)}
+              >
+                View
+              </Button>
+            </div>
+          )}
+          
+          {results.length > 0 && (
+            <SitePreviewList 
+              results={results} 
+              isLoading={isAnalyzing} 
+            />
+          )}
+          
+          {analysis && (
+            <AnalysisDisplay 
+              analysis={analysis} 
+              isLoading={isAnalyzing}
+            />
+          )}
+          
+          {streamingState.parsedData && (
+            <InsightsDisplay 
+              insights={streamingState.parsedData} 
+              onResearchArea={handleResearchArea}
+            />
+          )}
+          
+          {childResearchList.length > 0 && (
+            <div className="space-y-2 mt-4">
+              <h3 className="text-sm font-medium">Related Research Focuses</h3>
+              <div className="grid gap-2">
+                {childResearchList.map(research => (
+                  <Button
+                    key={research.id}
+                    variant="outline"
+                    className="justify-start h-auto py-2"
+                    onClick={() => loadSavedResearch(research)}
+                  >
+                    <div className="text-left">
+                      <p className="font-medium">{research.focus_text}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(research.created_at), 'MMM d, h:mm a')}
+                      </p>
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {iterations.length > 0 && (
+            <div className="space-y-3 pt-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium">Research Iterations</h3>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="sm">
+                      <Settings className="h-4 w-4 mr-2" />
+                      <span>Settings</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Research Depth</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <div className="px-2 py-2">
+                      <div className="mb-1">
+                        <span className="text-xs font-medium">Max Iterations: {maxIterations}</span>
+                      </div>
+                      <Slider
+                        value={[maxIterations]}
+                        onValueChange={(values) => setMaxIterations(values[0])}
+                        min={1}
+                        max={5}
+                        step={1}
+                        className="w-48"
+                      />
+                    </div>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              
+              <div className="space-y-3">
+                {iterations.map((iter) => (
+                  <IterationCard
+                    key={`iteration-${iter.iteration}`}
+                    iteration={iter}
+                    isExpanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
+                    onToggle={() => {
+                      setExpandedIterations(prev => {
+                        const id = `iteration-${iter.iteration}`;
+                        if (prev.includes(id)) {
+                          return prev.filter(i => i !== id);
+                        } else {
+                          return [...prev, id];
+                        }
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {error && (
+            <div className="p-3 border rounded-md bg-destructive/10 text-destructive">
+              {error}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
