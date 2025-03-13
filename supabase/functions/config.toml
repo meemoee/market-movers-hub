@@ -45,3 +45,7 @@ verify_jwt = false
 [[functions]]
 name = "polymarket-ws"
 verify_jwt = false
+
+[[functions]]
+name = "create-research-job"
+verify_jwt = false

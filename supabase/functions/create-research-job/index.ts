@@ -1,6 +1,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
-import { EdgeRuntime } from 'edge-runtime'
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 // Define CORS headers
 const corsHeaders = {
@@ -129,7 +129,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-Deno.serve(async (req) => {
+serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -171,8 +171,13 @@ Deno.serve(async (req) => {
     
     const jobId = jobData.id
     
-    // Start the background process
-    EdgeRuntime.waitUntil(performWebResearch(jobId, query, marketId, maxIterations))
+    // Start the background process without EdgeRuntime
+    // Use standard Deno setTimeout for async operation instead
+    setTimeout(() => {
+      performWebResearch(jobId, query, marketId, maxIterations).catch(err => {
+        console.error(`Background research failed: ${err}`);
+      });
+    }, 0);
     
     // Return immediate response with job ID
     return new Response(
