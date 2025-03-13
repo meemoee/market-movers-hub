@@ -18,3 +18,9 @@ export interface SearchResponse {
     }>;
   };
 }
+
+// Add a helper RPC function to supabase to help us append to JSON arrays
+export interface AppendToJsonArrayParams {
+  p_array: string;
+  p_value: any;
+}

@@ -43,21 +43,22 @@ serve(async (req) => {
     
     // Create or update research job record if jobId is provided
     let researchJobId = jobId;
-    if (!researchJobId) {
-      try {
-        // Extract user ID from request auth header
-        const authHeader = req.headers.get('Authorization');
-        let userId = 'anonymous';
+    
+    try {
+      // Extract user ID from request auth header
+      const authHeader = req.headers.get('Authorization');
+      let userId = 'anonymous';
+      
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.slice(7);
+        const { data: userData, error: userError } = await supabase.auth.getUser(token);
         
-        if (authHeader && authHeader.startsWith('Bearer ')) {
-          const token = authHeader.slice(7);
-          const { data: userData, error: userError } = await supabase.auth.getUser(token);
-          
-          if (!userError && userData?.user) {
-            userId = userData.user.id;
-          }
+        if (!userError && userData?.user) {
+          userId = userData.user.id;
         }
-        
+      }
+      
+      if (!researchJobId) {
         // Create new research job
         const { data: jobData, error: jobError } = await supabase
           .from('research_jobs')
@@ -76,14 +77,17 @@ serve(async (req) => {
           
         if (jobError) {
           console.error('Error creating research job:', jobError);
-        } else {
+          console.error('Error details:', JSON.stringify(jobError));
+        } else if (jobData) {
           researchJobId = jobData.id;
           console.log(`Created research job with ID: ${researchJobId}`);
+        } else {
+          console.error('No job data returned after insertion');
         }
-      } catch (dbError) {
-        console.error('Database error creating job:', dbError);
-        // Continue with streaming even if job creation fails
       }
+    } catch (dbError) {
+      console.error('Database error creating job:', dbError);
+      console.error('Full error:', JSON.stringify(dbError));
     }
     
     // Create a readable stream for SSE
@@ -99,7 +103,7 @@ serve(async (req) => {
               // Update progress in database if we have a job ID
               if (researchJobId) {
                 try {
-                  await supabase
+                  const { error: updateError } = await supabase
                     .from('research_jobs')
                     .update({
                       progress_log: supabase.rpc('append_to_json_array', { 
@@ -110,12 +114,19 @@ serve(async (req) => {
                           message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
                         }
                       }),
-                      status: 'processing'
+                      status: 'processing',
+                      updated_at: new Date().toISOString()
                     })
                     .eq('id', researchJobId);
+                  
+                  if (updateError) {
+                    console.error('Error updating job progress:', updateError);
+                    console.error('Update error details:', JSON.stringify(updateError));
+                  } else {
+                    console.log(`Successfully updated progress for job ${researchJobId}, query ${index + 1}`);
+                  }
                 } catch (updateError) {
-                  console.error('Error updating job progress:', updateError);
-                  // Continue processing even if update fails
+                  console.error('Exception updating job progress:', updateError);
                 }
               }
               
@@ -208,16 +219,22 @@ serve(async (req) => {
                 // Update job with results in database if we have a job ID
                 if (researchJobId) {
                   try {
-                    await supabase
+                    const { error: resultsError } = await supabase
                       .from('research_jobs')
                       .update({
                         results: allResults,
                         updated_at: new Date().toISOString()
                       })
                       .eq('id', researchJobId);
+                    
+                    if (resultsError) {
+                      console.error('Error updating job results:', resultsError);
+                      console.error('Results error details:', JSON.stringify(resultsError));
+                    } else {
+                      console.log(`Successfully updated results for job ${researchJobId}, query ${index + 1}`);
+                    }
                   } catch (resultsError) {
-                    console.error('Error updating job results:', resultsError);
-                    // Continue processing even if update fails
+                    console.error('Exception updating job results:', resultsError);
                   }
                 }
                 
@@ -231,7 +248,7 @@ serve(async (req) => {
                 // Update job with error in database if we have a job ID
                 if (researchJobId) {
                   try {
-                    await supabase
+                    const { error: errorUpdateError } = await supabase
                       .from('research_jobs')
                       .update({
                         error_message: `Error searching for "${query}": ${error.message}`,
@@ -239,8 +256,12 @@ serve(async (req) => {
                         updated_at: new Date().toISOString()
                       })
                       .eq('id', researchJobId);
+                    
+                    if (errorUpdateError) {
+                      console.error('Error updating job error status:', errorUpdateError);
+                    }
                   } catch (errorUpdateError) {
-                    console.error('Error updating job error status:', errorUpdateError);
+                    console.error('Exception updating job error status:', errorUpdateError);
                   }
                 }
               }
@@ -249,7 +270,7 @@ serve(async (req) => {
             // Complete the job in the database if we have a job ID
             if (researchJobId) {
               try {
-                await supabase
+                const { error: completeError } = await supabase
                   .from('research_jobs')
                   .update({
                     status: 'completed',
@@ -262,11 +283,19 @@ serve(async (req) => {
                         status: 'completed',
                         message: 'Web search completed'
                       }
-                    })
+                    }),
+                    updated_at: new Date().toISOString()
                   })
                   .eq('id', researchJobId);
+                
+                if (completeError) {
+                  console.error('Error completing job:', completeError);
+                  console.error('Complete error details:', JSON.stringify(completeError));
+                } else {
+                  console.log(`Successfully completed job ${researchJobId}`);
+                }
               } catch (completeError) {
-                console.error('Error completing job:', completeError);
+                console.error('Exception completing job:', completeError);
               }
             }
             
@@ -284,7 +313,7 @@ serve(async (req) => {
             // Update job with error in database if we have a job ID
             if (researchJobId) {
               try {
-                await supabase
+                const { error: finalErrorError } = await supabase
                   .from('research_jobs')
                   .update({
                     status: 'error',
@@ -292,8 +321,12 @@ serve(async (req) => {
                     updated_at: new Date().toISOString()
                   })
                   .eq('id', researchJobId);
+                
+                if (finalErrorError) {
+                  console.error('Error updating final job error:', finalErrorError);
+                }
               } catch (finalErrorError) {
-                console.error('Error updating final job error:', finalErrorError);
+                console.error('Exception updating final job error:', finalErrorError);
               }
             }
           }
