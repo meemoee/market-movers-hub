@@ -7,6 +7,7 @@ export interface SSEMessage {
     title?: string;
     content: string;
   }>;
+  job_id?: string;
 }
 
 export interface SearchResponse {

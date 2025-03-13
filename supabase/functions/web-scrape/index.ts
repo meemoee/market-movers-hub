@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { SearchResponse, SSEMessage, JobUpdateParams } from "./types.ts"
@@ -257,7 +258,8 @@ serve(async (req) => {
               // Send a message for each query - keep existing streaming behavior
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                 type: 'message',
-                message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
+                message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`,
+                job_id: researchJobId
               })}\n\n`));
 
               try {
@@ -340,7 +342,8 @@ serve(async (req) => {
                 // Stream results for this query - keep existing streaming behavior
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'results',
-                  data: validResults
+                  data: validResults,
+                  job_id: researchJobId
                 })}\n\n`));
                 
                 // Update job with results in database if we have a job ID
@@ -358,7 +361,8 @@ serve(async (req) => {
                 console.error(`Error processing query "${query}":`, error);
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'error',
-                  message: `Error searching for "${query}": ${error.message}`
+                  message: `Error searching for "${query}": ${error.message}`,
+                  job_id: researchJobId
                 })}\n\n`));
                 
                 // Update job with error in database if we have a job ID
@@ -403,7 +407,8 @@ serve(async (req) => {
             console.error("Error in processQueries:", error);
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'error',
-              message: `Error in search processing: ${error.message}`
+              message: `Error in search processing: ${error.message}`,
+              job_id: researchJobId
             })}\n\n`));
             controller.close();
             
