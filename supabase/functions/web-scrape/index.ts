@@ -18,18 +18,22 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
   if (!jobId) return;
   
   try {
+    console.log(`Updating job ${jobId} with:`, JSON.stringify(Object.keys(updates)));
+    
     // If progress_log is provided, use append_to_json_array RPC
     if (updates.progress_log && updates.progress_log.length > 0) {
       for (const logEntry of updates.progress_log) {
         await supabase.rpc('append_to_json_array', {
-          p_array: 'progress_log',
+          p_table: 'research_jobs',
+          p_column: 'progress_log',
+          p_id: jobId,
           p_value: logEntry
         });
       }
       delete updates.progress_log;
     }
     
-    // For iterations, use direct update or append if needed
+    // For iterations, get current iterations and append new ones if needed
     if (updates.iterations) {
       // First get current iterations
       const { data: currentJob, error: getError } = await supabase
@@ -39,8 +43,72 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
         .single();
       
       if (!getError && currentJob) {
-        // Append new iterations to existing ones
-        updates.iterations = [...(currentJob.iterations || []), ...updates.iterations];
+        // Append new iterations to existing ones or initialize if null
+        const currentIterations = currentJob.iterations || [];
+        console.log(`Current iterations: ${currentIterations.length}, adding ${updates.iterations.length} new iterations`);
+        
+        // Find if we're updating an existing iteration or adding a new one
+        const newIterations = [...currentIterations];
+        
+        updates.iterations.forEach(newIter => {
+          const existingIndex = newIterations.findIndex(
+            existing => existing.iteration === newIter.iteration
+          );
+          
+          if (existingIndex >= 0) {
+            // Update existing iteration
+            newIterations[existingIndex] = {
+              ...newIterations[existingIndex],
+              ...newIter,
+              // Combine results from both
+              results: [
+                ...(newIterations[existingIndex].results || []),
+                ...(newIter.results || [])
+              ]
+            };
+          } else {
+            // Add new iteration
+            newIterations.push(newIter);
+          }
+        });
+        
+        updates.iterations = newIterations;
+        console.log(`Updated iterations array now has ${updates.iterations.length} items`);
+      }
+    }
+    
+    // For results, combine with existing results to avoid duplicates
+    if (updates.results && updates.results.length > 0) {
+      const { data: currentJob, error: getError } = await supabase
+        .from('research_jobs')
+        .select('results')
+        .eq('id', jobId)
+        .single();
+      
+      if (!getError && currentJob) {
+        const currentResults = currentJob.results || [];
+        // Combine results, using URL as unique identifier
+        const combinedResults = [...currentResults];
+        
+        updates.results.forEach(newResult => {
+          const existingIndex = combinedResults.findIndex(
+            existing => existing.url === newResult.url
+          );
+          
+          if (existingIndex >= 0) {
+            // Update existing result with newer content if available
+            combinedResults[existingIndex] = {
+              ...combinedResults[existingIndex],
+              ...newResult
+            };
+          } else {
+            // Add new result
+            combinedResults.push(newResult);
+          }
+        });
+        
+        updates.results = combinedResults;
+        console.log(`Combined results: ${updates.results.length} items`);
       }
     }
     
@@ -139,6 +207,7 @@ serve(async (req) => {
         }
       } else {
         // Update existing job with current iteration
+        console.log(`Updating existing job ${researchJobId} for iteration ${iteration}`);
         await updateJobRecord(researchJobId, {
           current_iteration: iteration,
           status: 'processing',
@@ -278,7 +347,7 @@ serve(async (req) => {
                 if (researchJobId) {
                   try {
                     await updateJobRecord(researchJobId, {
-                      results: allResults
+                      results: validResults
                     });
                   } catch (resultsError) {
                     console.error('Exception updating job results:', resultsError);
@@ -309,16 +378,17 @@ serve(async (req) => {
             // Update job with iteration data
             if (researchJobId) {
               try {
+                console.log(`Updating job ${researchJobId} with completed iteration ${iteration} data`);
                 await updateJobRecord(researchJobId, {
                   iterations: [iterationData],
                   current_iteration: iteration,
-                  status: 'completed',
-                  completed_at: new Date().toISOString(),
+                  status: iteration === 1 ? 'processing' : 'completed',
+                  completed_at: iteration === 1 ? null : new Date().toISOString(),
                   results: allResults,
                   progress_log: [{
                     timestamp: new Date().toISOString(),
-                    status: 'completed',
-                    message: 'Web search completed'
+                    status: iteration === 1 ? 'processing' : 'completed',
+                    message: `Web search ${iteration === 1 ? 'iteration complete' : 'completed'}`
                   }]
                 });
               } catch (completeError) {

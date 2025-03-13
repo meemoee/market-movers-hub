@@ -21,7 +21,9 @@ export interface SearchResponse {
 
 // Add a helper RPC function to supabase to help us append to JSON arrays
 export interface AppendToJsonArrayParams {
-  p_array: string;
+  p_table: string;
+  p_column: string;
+  p_id: string;
   p_value: any;
 }
 
@@ -33,6 +35,6 @@ export interface JobUpdateParams {
   results?: any[];
   analysis?: string;
   error_message?: string;
-  completed_at?: string;
+  completed_at?: string | null;
   updated_at?: string;
 }
