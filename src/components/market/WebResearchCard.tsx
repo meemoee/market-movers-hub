@@ -36,80 +36,78 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
       setCurrentProgress(null);
       setProgressMessages(['Starting research...']);
 
-      // Create the URL manually rather than accessing the protected property
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co';
-      const functionsUrl = `${supabaseUrl}/functions/v1/web-scrape?description=${encodeURIComponent(description)}&marketId=${encodeURIComponent(marketId)}`;
-      const eventSource = new EventSource(functionsUrl);
-
-      eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === 'message') {
-          console.log('Web research message:', data.message);
-          // Add message to progress messages
-          setProgressMessages(prev => [...prev, data.message]);
-        } else if (data.type === 'progress') {
-          setCurrentProgress(data.progress);
-          // Add progress message to messages array
-          if (data.progress && data.progress.message) {
-            setProgressMessages(prev => [...prev, data.progress.message]);
-          }
-        } else if (data.type === 'results') {
-          setSearchResults(data.data || []);
-          setIsLoading(false);
-          setIsAnalyzing(true);
-          setProgressMessages(prev => [...prev, 'Search complete. Analyzing results...']);
-        } else if (data.type === 'error') {
-          setError(data.message);
-          setIsLoading(false);
-          setIsAnalyzing(false);
-          eventSource.close();
-          toast.error(`Research error: ${data.message}`);
-          setProgressMessages(prev => [...prev, `Error: ${data.message}`]);
+      // Create the research job via the supabase client
+      const { data: jobResponse, error: jobError } = await supabase.functions.invoke('web-scrape', {
+        body: { 
+          description, 
+          marketId 
         }
-      };
-
-      eventSource.onerror = (err) => {
-        console.error('EventSource error:', err);
-        setError('Connection error. Please try again later.');
-        setIsLoading(false);
-        setIsAnalyzing(false);
-        eventSource.close();
-        toast.error('Research connection lost. Please try again.');
-        setProgressMessages(prev => [...prev, 'Connection error. Please try again later.']);
-      };
-
-      // When results are received, analyze them
-      eventSource.addEventListener('results', async (event) => {
-        const data = JSON.parse(event.data);
-        setSearchResults(data.data || []);
-        
-        try {
-          const { data: analysisData, error: analysisError } = await supabase.functions.invoke('analyze-web-content', {
-            body: { 
-              content: data.data,
-              prompt: description,
-              returnFormat: 'json'
-            }
-          });
-          
-          if (analysisError) {
-            throw analysisError;
-          }
-          
-          setAnalysisResults(analysisData);
-          setIsAnalyzing(false);
-          setProgressMessages(prev => [...prev, 'Analysis complete.']);
-        } catch (error) {
-          console.error('Analysis error:', error);
-          setError('Failed to analyze research results.');
-          setIsAnalyzing(false);
-          toast.error('Analysis failed. Please try again.');
-          setProgressMessages(prev => [...prev, 'Analysis failed. Please try again.']);
-        }
-        
-        eventSource.close();
       });
+
+      if (jobError) {
+        throw new Error(`Failed to start research: ${jobError.message}`);
+      }
+
+      if (!jobResponse || !jobResponse.jobId) {
+        throw new Error('Invalid response from research job creation');
+      }
+
+      // Poll for job status and updates
+      const pollInterval = setInterval(async () => {
+        try {
+          const { data: jobStatus, error: statusError } = await supabase.functions.invoke('get-job-status', {
+            body: { jobId: jobResponse.jobId }
+          });
+
+          if (statusError) {
+            throw statusError;
+          }
+
+          if (!jobStatus) {
+            return;
+          }
+
+          // Handle progress updates
+          if (jobStatus.progress) {
+            setCurrentProgress(jobStatus.progress);
+            if (jobStatus.progress.message) {
+              setProgressMessages(prev => [...prev, jobStatus.progress.message]);
+            }
+          }
+
+          // Handle search results
+          if (jobStatus.searchResults && jobStatus.searchResults.length > 0) {
+            setSearchResults(jobStatus.searchResults);
+          }
+
+          // Handle status changes
+          if (jobStatus.status === 'analyzing') {
+            setIsLoading(false);
+            setIsAnalyzing(true);
+            setProgressMessages(prev => [...prev, 'Search complete. Analyzing results...']);
+          } else if (jobStatus.status === 'completed') {
+            setIsLoading(false);
+            setIsAnalyzing(false);
+            setProgressMessages(prev => [...prev, 'Research completed.']);
+            
+            // Get the analysis results
+            if (jobStatus.analysis) {
+              setAnalysisResults(jobStatus.analysis);
+            }
+            
+            clearInterval(pollInterval);
+          } else if (jobStatus.status === 'failed') {
+            throw new Error(jobStatus.error || 'Research job failed');
+          }
+        } catch (err) {
+          console.error('Error polling job status:', err);
+          setError(err instanceof Error ? err.message : 'An unknown error occurred');
+          setIsLoading(false);
+          setIsAnalyzing(false);
+          clearInterval(pollInterval);
+          toast.error('Research polling failed. Please try again.');
+        }
+      }, 2000);
 
     } catch (err) {
       console.error('Research error:', err);

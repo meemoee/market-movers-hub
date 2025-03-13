@@ -49,3 +49,7 @@ verify_jwt = false
 [[functions]]
 name = "update-job-status"
 verify_jwt = false
+
+[[functions]]
+name = "get-job-status"
+verify_jwt = false
