@@ -24,92 +24,105 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
     // If progress_log is provided, use append_to_json_array RPC
     if (updates.progress_log && updates.progress_log.length > 0) {
       for (const logEntry of updates.progress_log) {
-        await supabase.rpc('append_to_json_array', {
-          p_table: 'research_jobs',
-          p_column: 'progress_log',
-          p_id: jobId,
-          p_value: logEntry
-        });
+        try {
+          await supabase.rpc('append_to_json_array', {
+            p_table: 'research_jobs',
+            p_column: 'progress_log',
+            p_id: jobId,
+            p_value: logEntry
+          });
+        } catch (rpcError) {
+          console.error('Error appending to progress_log:', rpcError);
+        }
       }
+      // Remove progress_log from direct update to avoid conflicts
       delete updates.progress_log;
     }
     
     // For iterations, get current iterations and append new ones if needed
     if (updates.iterations) {
-      // First get current iterations
-      const { data: currentJob, error: getError } = await supabase
-        .from('research_jobs')
-        .select('iterations, max_iterations')
-        .eq('id', jobId)
-        .single();
-      
-      if (!getError && currentJob) {
-        // Append new iterations to existing ones or initialize if null
-        const currentIterations = currentJob.iterations || [];
-        console.log(`Current iterations: ${currentIterations.length}, adding ${updates.iterations.length} new iterations`);
+      try {
+        // First get current iterations
+        const { data: currentJob, error: getError } = await supabase
+          .from('research_jobs')
+          .select('iterations, max_iterations')
+          .eq('id', jobId)
+          .single();
         
-        // Find if we're updating an existing iteration or adding a new one
-        const newIterations = [...currentIterations];
-        
-        updates.iterations.forEach(newIter => {
-          const existingIndex = newIterations.findIndex(
-            existing => existing.iteration === newIter.iteration
-          );
+        if (!getError && currentJob) {
+          // Append new iterations to existing ones or initialize if null
+          const currentIterations = currentJob.iterations || [];
+          console.log(`Current iterations: ${currentIterations.length}, adding ${updates.iterations.length} new iterations`);
           
-          if (existingIndex >= 0) {
-            // Update existing iteration
-            newIterations[existingIndex] = {
-              ...newIterations[existingIndex],
-              ...newIter,
-              // Combine results from both
-              results: [
-                ...(newIterations[existingIndex].results || []),
-                ...(newIter.results || [])
-              ]
-            };
-          } else {
-            // Add new iteration
-            newIterations.push(newIter);
-          }
-        });
-        
-        updates.iterations = newIterations;
-        console.log(`Updated iterations array now has ${updates.iterations.length} items`);
+          // Find if we're updating an existing iteration or adding a new one
+          const newIterations = [...currentIterations];
+          
+          updates.iterations.forEach(newIter => {
+            const existingIndex = newIterations.findIndex(
+              existing => existing && existing.iteration === newIter.iteration
+            );
+            
+            if (existingIndex >= 0) {
+              // Update existing iteration
+              newIterations[existingIndex] = {
+                ...newIterations[existingIndex],
+                ...newIter,
+                // Combine results from both
+                results: [
+                  ...(newIterations[existingIndex].results || []),
+                  ...(newIter.results || [])
+                ]
+              };
+            } else {
+              // Add new iteration
+              newIterations.push(newIter);
+            }
+          });
+          
+          updates.iterations = newIterations;
+          console.log(`Updated iterations array now has ${updates.iterations.length} items`);
+        }
+      } catch (iterError) {
+        console.error('Error updating iterations:', iterError);
       }
     }
     
     // For results, combine with existing results to avoid duplicates
     if (updates.results && updates.results.length > 0) {
-      const { data: currentJob, error: getError } = await supabase
-        .from('research_jobs')
-        .select('results')
-        .eq('id', jobId)
-        .single();
-      
-      if (!getError && currentJob) {
-        const currentResults = currentJob.results || [];
-        // Combine results, using URL as unique identifier
-        const combinedResults = [...currentResults];
+      try {
+        const { data: currentJob, error: getError } = await supabase
+          .from('research_jobs')
+          .select('results')
+          .eq('id', jobId)
+          .single();
         
-        updates.results.forEach(newResult => {
-          const existingIndex = combinedResults.findIndex(
-            existing => existing.url === newResult.url
-          );
+        if (!getError && currentJob) {
+          const currentResults = currentJob.results || [];
+          // Combine results, using URL as unique identifier
+          const combinedResults = [...currentResults];
           
-          if (existingIndex >= 0) {
-            // Update existing result with newer content if available
-            combinedResults[existingIndex] = {
-              ...combinedResults[existingIndex],
-              ...newResult
-            };
-          } else {
-            // Add new result
-            combinedResults.push(newResult);
-          }
-        });
-        
-        updates.results = combinedResults;
-        console.log(`Combined results: ${updates.results.length} items`);
+          updates.results.forEach(newResult => {
+            const existingIndex = combinedResults.findIndex(
+              existing => existing && existing.url === newResult.url
+            );
+            
+            if (existingIndex >= 0) {
+              // Update existing result with newer content if available
+              combinedResults[existingIndex] = {
+                ...combinedResults[existingIndex],
+                ...newResult
+              };
+            } else {
+              // Add new result
+              combinedResults.push(newResult);
+            }
+          });
+          
+          updates.results = combinedResults;
+          console.log(`Combined results: ${updates.results.length} items`);
+        }
+      } catch (resultsError) {
+        console.error('Error combining results:', resultsError);
       }
     }
     
@@ -117,16 +130,20 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
     let maxIterations = updates.max_iterations;
     let currentIteration = updates.current_iteration;
     
-    if (!maxIterations || !currentIteration) {
-      const { data: jobData, error: getJobError } = await supabase
-        .from('research_jobs')
-        .select('max_iterations, current_iteration')
-        .eq('id', jobId)
-        .single();
-        
-      if (!getJobError && jobData) {
-        maxIterations = maxIterations || jobData.max_iterations;
-        currentIteration = currentIteration || jobData.current_iteration;
+    if (maxIterations === undefined || currentIteration === undefined) {
+      try {
+        const { data: jobData, error: getJobError } = await supabase
+          .from('research_jobs')
+          .select('max_iterations, current_iteration')
+          .eq('id', jobId)
+          .single();
+          
+        if (!getJobError && jobData) {
+          maxIterations = maxIterations ?? jobData.max_iterations;
+          currentIteration = currentIteration ?? jobData.current_iteration;
+        }
+      } catch (fetchError) {
+        console.error('Error fetching job details:', fetchError);
       }
     }
     
@@ -142,22 +159,32 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
     }
     
     // Regular update for all other fields
-    const { error: updateError } = await supabase
-      .from('research_jobs')
-      .update({
+    try {
+      console.log(`Final update for job ${jobId}:`, {
         ...updates,
-        // Only set completed_at if we're explicitly completing the job
         completed_at: shouldComplete ? new Date().toISOString() : null,
         updated_at: new Date().toISOString()
-      })
-      .eq('id', jobId);
-    
-    if (updateError) {
-      console.error('Error updating job:', updateError);
-      console.error('Update error details:', JSON.stringify(updateError));
-    } else {
-      console.log(`Successfully updated job ${jobId} with:`, Object.keys(updates).join(', '));
-      console.log(`Job status: ${updates.status}, completed: ${shouldComplete}, final iteration: ${isFinalIteration}`);
+      });
+      
+      const { error: updateError } = await supabase
+        .from('research_jobs')
+        .update({
+          ...updates,
+          // Only set completed_at if we're explicitly completing the job
+          completed_at: shouldComplete ? new Date().toISOString() : null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+      
+      if (updateError) {
+        console.error('Error updating job:', updateError);
+        console.error('Update error details:', JSON.stringify(updateError));
+      } else {
+        console.log(`Successfully updated job ${jobId} with:`, Object.keys(updates).join(', '));
+        console.log(`Job status: ${updates.status}, completed: ${shouldComplete}, final iteration: ${isFinalIteration}`);
+      }
+    } catch (updateError) {
+      console.error('Exception during final update:', updateError);
     }
   } catch (error) {
     console.error('Exception updating job:', error);
@@ -172,17 +199,21 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId, focusText, jobId, iteration = 1, maxIterations = 3 } = await req.json();
+    const requestData = await req.json();
+    const { 
+      queries, 
+      marketId, 
+      focusText, 
+      jobId, 
+      iteration = 1, 
+      maxIterations = 3 
+    } = requestData;
     
     // Log incoming data for debugging
-    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}, jobId: ${jobId || 'none'}, iteration: ${iteration}, maxIterations: ${maxIterations}`);
+    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId || 'none'}, focusText: ${focusText ? focusText.substring(0, 50) + '...' : 'none'}, jobId: ${jobId || 'none'}, iteration: ${iteration}, maxIterations: ${maxIterations}`);
     
-    // Ensure queries don't have the market ID accidentally appended
-    const cleanedQueries = queries.map((query: string) => {
-      return query.replace(new RegExp(` ${marketId}$`), '').trim();
-    });
-    
-    if (!cleanedQueries || !Array.isArray(cleanedQueries) || cleanedQueries.length === 0) {
+    // Check if we have queries and they're in the right format
+    if (!queries || !Array.isArray(queries) || queries.length === 0) {
       return new Response(
         JSON.stringify({ error: 'Invalid queries parameter' }),
         { 
@@ -191,6 +222,11 @@ serve(async (req) => {
         }
       );
     }
+    
+    // Ensure queries don't have the market ID accidentally appended
+    const cleanedQueries = queries.map((query: string) => {
+      return query.replace(new RegExp(` ${marketId}$`), '').trim();
+    });
     
     // Create or update research job record if jobId is provided
     let researchJobId = jobId;
@@ -202,41 +238,50 @@ serve(async (req) => {
       
       if (authHeader && authHeader.startsWith('Bearer ')) {
         const token = authHeader.slice(7);
-        const { data: userData, error: userError } = await supabase.auth.getUser(token);
-        
-        if (!userError && userData?.user) {
-          userId = userData.user.id;
+        try {
+          const { data: userData, error: userError } = await supabase.auth.getUser(token);
+          
+          if (!userError && userData?.user) {
+            userId = userData.user.id;
+          }
+        } catch (authError) {
+          console.error('Auth error:', authError);
         }
       }
       
       if (!researchJobId) {
         // Create new research job
-        const { data: jobData, error: jobError } = await supabase
-          .from('research_jobs')
-          .insert({
-            user_id: userId,
-            query: cleanedQueries.join(', '),
-            market_id: marketId || null,
-            focus_text: focusText || null,
-            status: 'processing',
-            started_at: new Date().toISOString(),
-            current_iteration: iteration,
-            max_iterations: maxIterations,
-            progress_log: [{ timestamp: new Date().toISOString(), status: 'started', message: 'Beginning web search' }],
-            results: [],
-            iterations: []
-          })
-          .select('id')
-          .single();
-          
-        if (jobError) {
-          console.error('Error creating research job:', jobError);
-          console.error('Error details:', JSON.stringify(jobError));
-        } else if (jobData) {
-          researchJobId = jobData.id;
-          console.log(`Created research job with ID: ${researchJobId}`);
-        } else {
-          console.error('No job data returned after insertion');
+        console.log('Creating new research job');
+        try {
+          const { data: jobData, error: jobError } = await supabase
+            .from('research_jobs')
+            .insert({
+              user_id: userId,
+              query: cleanedQueries.join(', '),
+              market_id: marketId || null,
+              focus_text: focusText || null,
+              status: 'processing',
+              started_at: new Date().toISOString(),
+              current_iteration: iteration,
+              max_iterations: maxIterations,
+              progress_log: [{ timestamp: new Date().toISOString(), status: 'started', message: 'Beginning web search' }],
+              results: [],
+              iterations: []
+            })
+            .select('id')
+            .single();
+            
+          if (jobError) {
+            console.error('Error creating research job:', jobError);
+            console.error('Error details:', JSON.stringify(jobError));
+          } else if (jobData) {
+            researchJobId = jobData.id;
+            console.log(`Created research job with ID: ${researchJobId}`);
+          } else {
+            console.error('No job data returned after insertion');
+          }
+        } catch (createError) {
+          console.error('Exception creating job:', createError);
         }
       } else {
         // Update existing job with current iteration
@@ -253,8 +298,7 @@ serve(async (req) => {
         });
       }
     } catch (dbError) {
-      console.error('Database error creating job:', dbError);
-      console.error('Full error:', JSON.stringify(dbError));
+      console.error('Database error creating/updating job:', dbError);
     }
     
     // Create a readable stream for SSE
@@ -300,10 +344,19 @@ serve(async (req) => {
               try {
                 // Set a reasonable timeout for each search
                 const abortController = new AbortController();
-                const timeoutId = setTimeout(() => abortController.abort(), 10000); // 10 second timeout
+                const timeoutId = setTimeout(() => abortController.abort(), 15000); // 15 second timeout
                 
                 const braveApiKey = Deno.env.get('BRAVE_API_KEY');
-                const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`, {
+                if (!braveApiKey) {
+                  throw new Error('BRAVE_API_KEY is not set in environment variables');
+                }
+                
+                console.log(`Searching for: "${query}"`);
+                
+                const searchUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`;
+                console.log('Search URL:', searchUrl);
+                
+                const response = await fetch(searchUrl, {
                   headers: {
                     'Accept': 'application/json',
                     'Accept-Encoding': 'gzip',
@@ -315,18 +368,24 @@ serve(async (req) => {
                 clearTimeout(timeoutId);
                 
                 if (!response.ok) {
-                  throw new Error(`Brave search returned ${response.status}: ${await response.text()}`);
+                  const errorText = await response.text();
+                  console.error(`Brave search returned ${response.status}:`, errorText);
+                  throw new Error(`Brave search returned ${response.status}: ${errorText}`);
                 }
                 
                 const data: SearchResponse = await response.json();
                 const webPages = data.web?.results || [];
+                
+                console.log(`Found ${webPages.length} results for query: "${query}"`);
                 
                 // Get the content for each page
                 const pageResults = await Promise.all(webPages.map(async (page) => {
                   try {
                     // Use a timeout for each content fetch
                     const contentAbortController = new AbortController();
-                    const contentTimeoutId = setTimeout(() => contentAbortController.abort(), 5000); // 5 second timeout
+                    const contentTimeoutId = setTimeout(() => contentAbortController.abort(), 8000); // 8 second timeout
+                    
+                    console.log(`Fetching content for: ${page.url}`);
                     
                     const contentResponse = await fetch(page.url, {
                       signal: contentAbortController.signal
@@ -335,6 +394,7 @@ serve(async (req) => {
                     clearTimeout(contentTimeoutId);
                     
                     if (!contentResponse.ok) {
+                      console.log(`Content fetch failed for ${page.url}: ${contentResponse.status}`);
                       return {
                         url: page.url,
                         title: page.title,
