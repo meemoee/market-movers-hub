@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -61,7 +60,6 @@ export function MarketDetails({
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
-  // Get the current market price from the price history
   const currentMarketPrice = priceHistory?.points && priceHistory.points.length > 0 
     ? priceHistory.points[priceHistory.points.length - 1].price 
     : undefined;
@@ -99,12 +97,10 @@ export function MarketDetails({
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
-  // Get the latest research job for this market
   const { data: latestResearchJob } = useQuery({
     queryKey: ['latestResearchJob', marketId],
     queryFn: async () => {
       try {
-        // Get the most recent research job for this market
         const { data, error } = await supabase
           .from('research_jobs')
           .select('*')
@@ -125,11 +121,10 @@ export function MarketDetails({
     },
     enabled: !!marketId,
     refetchInterval: (data) => {
-      // Refetch if job is in progress
       if (data && ['queued', 'processing'].includes(data.status)) {
-        return 5000; // 5 seconds
+        return 5000;
       }
-      return false; // Don't refetch if job is completed or failed
+      return false;
     },
   });
 
@@ -149,7 +144,6 @@ export function MarketDetails({
 
   const shouldShowQADisplay = marketId && question;
   
-  // Combine question with description to provide more context for web research
   const fullResearchContext = question ? 
     (description ? `${question} - ${description}` : question) : 
     (description || 'No description available');
@@ -196,7 +190,7 @@ export function MarketDetails({
           <WebResearchCard 
             description={fullResearchContext} 
             marketId={marketId}
-            latestJob={latestResearchJob || undefined}
+            latestJob={latestResearchJob}
           />
         </div>
       )}

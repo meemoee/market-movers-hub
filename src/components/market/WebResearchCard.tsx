@@ -36,9 +36,9 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
       setCurrentProgress(null);
       setProgressMessages(['Starting research...']);
 
-      // Construct the fully qualified URL string instead of using the protected url property
-      const supabaseUrl = supabase.functions.url
-      const functionsUrl = `${supabaseUrl}/web-scrape?description=${encodeURIComponent(description)}&marketId=${encodeURIComponent(marketId)}`;
+      // Create the URL manually rather than accessing the protected property
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co';
+      const functionsUrl = `${supabaseUrl}/functions/v1/web-scrape?description=${encodeURIComponent(description)}&marketId=${encodeURIComponent(marketId)}`;
       const eventSource = new EventSource(functionsUrl);
 
       eventSource.onmessage = (event) => {
