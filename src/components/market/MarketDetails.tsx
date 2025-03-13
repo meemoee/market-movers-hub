@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -122,8 +121,7 @@ export function MarketDetails({
     },
     enabled: !!marketId,
     refetchInterval: (data) => {
-      // Check if the job data exists and is still processing
-      if (data && data.length > 0 && ['queued', 'processing'].includes(data[0]?.status || '')) {
+      if (data && data?.status && ['queued', 'processing'].includes(data.status)) {
         return 5000;
       }
       return false;
