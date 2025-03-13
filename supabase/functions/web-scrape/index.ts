@@ -1,12 +1,17 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { SearchResponse } from "./types.ts"
+import { SearchResponse, SSEMessage } from "./types.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -16,10 +21,10 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId, focusText } = await req.json();
+    const { queries, marketId, focusText, jobId } = await req.json();
     
     // Log incoming data for debugging
-    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}`);
+    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}, jobId: ${jobId || 'none'}`);
     
     // Ensure queries don't have the market ID accidentally appended
     const cleanedQueries = queries.map((query: string) => {
@@ -36,6 +41,51 @@ serve(async (req) => {
       );
     }
     
+    // Create or update research job record if jobId is provided
+    let researchJobId = jobId;
+    if (!researchJobId) {
+      try {
+        // Extract user ID from request auth header
+        const authHeader = req.headers.get('Authorization');
+        let userId = 'anonymous';
+        
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          const token = authHeader.slice(7);
+          const { data: userData, error: userError } = await supabase.auth.getUser(token);
+          
+          if (!userError && userData?.user) {
+            userId = userData.user.id;
+          }
+        }
+        
+        // Create new research job
+        const { data: jobData, error: jobError } = await supabase
+          .from('research_jobs')
+          .insert({
+            user_id: userId,
+            query: cleanedQueries.join(', '),
+            market_id: marketId || null,
+            focus_text: focusText || null,
+            status: 'processing',
+            started_at: new Date().toISOString(),
+            progress_log: [{ timestamp: new Date().toISOString(), status: 'started', message: 'Beginning web search' }],
+            results: []
+          })
+          .select('id')
+          .single();
+          
+        if (jobError) {
+          console.error('Error creating research job:', jobError);
+        } else {
+          researchJobId = jobData.id;
+          console.log(`Created research job with ID: ${researchJobId}`);
+        }
+      } catch (dbError) {
+        console.error('Database error creating job:', dbError);
+        // Continue with streaming even if job creation fails
+      }
+    }
+    
     // Create a readable stream for SSE
     const stream = new ReadableStream({
       start(controller) {
@@ -46,7 +96,30 @@ serve(async (req) => {
           
           try {
             for (const [index, query] of cleanedQueries.entries()) {
-              // Send a message for each query
+              // Update progress in database if we have a job ID
+              if (researchJobId) {
+                try {
+                  await supabase
+                    .from('research_jobs')
+                    .update({
+                      progress_log: supabase.rpc('append_to_json_array', { 
+                        p_array: 'progress_log',
+                        p_value: {
+                          timestamp: new Date().toISOString(),
+                          status: 'processing',
+                          message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
+                        }
+                      }),
+                      status: 'processing'
+                    })
+                    .eq('id', researchJobId);
+                } catch (updateError) {
+                  console.error('Error updating job progress:', updateError);
+                  // Continue processing even if update fails
+                }
+              }
+              
+              // Send a message for each query - keep existing streaming behavior
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                 type: 'message',
                 message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
@@ -126,11 +199,27 @@ serve(async (req) => {
                 const validResults = pageResults.filter(r => r.content && r.content.length > 0);
                 allResults = [...allResults, ...validResults];
                 
-                // Stream results for this query
+                // Stream results for this query - keep existing streaming behavior
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'results',
                   data: validResults
                 })}\n\n`));
+                
+                // Update job with results in database if we have a job ID
+                if (researchJobId) {
+                  try {
+                    await supabase
+                      .from('research_jobs')
+                      .update({
+                        results: allResults,
+                        updated_at: new Date().toISOString()
+                      })
+                      .eq('id', researchJobId);
+                  } catch (resultsError) {
+                    console.error('Error updating job results:', resultsError);
+                    // Continue processing even if update fails
+                  }
+                }
                 
               } catch (error) {
                 console.error(`Error processing query "${query}":`, error);
@@ -138,10 +227,50 @@ serve(async (req) => {
                   type: 'error',
                   message: `Error searching for "${query}": ${error.message}`
                 })}\n\n`));
+                
+                // Update job with error in database if we have a job ID
+                if (researchJobId) {
+                  try {
+                    await supabase
+                      .from('research_jobs')
+                      .update({
+                        error_message: `Error searching for "${query}": ${error.message}`,
+                        status: 'error',
+                        updated_at: new Date().toISOString()
+                      })
+                      .eq('id', researchJobId);
+                  } catch (errorUpdateError) {
+                    console.error('Error updating job error status:', errorUpdateError);
+                  }
+                }
               }
             }
             
-            // Notify completion
+            // Complete the job in the database if we have a job ID
+            if (researchJobId) {
+              try {
+                await supabase
+                  .from('research_jobs')
+                  .update({
+                    status: 'completed',
+                    completed_at: new Date().toISOString(),
+                    results: allResults,
+                    progress_log: supabase.rpc('append_to_json_array', { 
+                      p_array: 'progress_log',
+                      p_value: {
+                        timestamp: new Date().toISOString(),
+                        status: 'completed',
+                        message: 'Web search completed'
+                      }
+                    })
+                  })
+                  .eq('id', researchJobId);
+              } catch (completeError) {
+                console.error('Error completing job:', completeError);
+              }
+            }
+            
+            // Notify completion - keep existing streaming behavior
             controller.enqueue(encoder.encode(`data: [DONE]\n\n`));
             controller.close();
           } catch (error) {
@@ -151,6 +280,22 @@ serve(async (req) => {
               message: `Error in search processing: ${error.message}`
             })}\n\n`));
             controller.close();
+            
+            // Update job with error in database if we have a job ID
+            if (researchJobId) {
+              try {
+                await supabase
+                  .from('research_jobs')
+                  .update({
+                    status: 'error',
+                    error_message: `Error in search processing: ${error.message}`,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', researchJobId);
+              } catch (finalErrorError) {
+                console.error('Error updating final job error:', finalErrorError);
+              }
+            }
           }
         };
         
@@ -159,12 +304,14 @@ serve(async (req) => {
       }
     });
     
+    // Return the SSE stream along with the job ID for client reference
     return new Response(stream, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'X-Research-Job-ID': researchJobId || 'none'
       }
     });
     
