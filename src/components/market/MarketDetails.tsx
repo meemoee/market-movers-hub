@@ -8,6 +8,7 @@ import { WebResearchCard } from './WebResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
 import { toast } from 'sonner';
+import { DeepResearchCard } from './DeepResearchCard';
 
 interface MarketDetailsProps {
   description?: string;
@@ -98,6 +99,40 @@ export function MarketDetails({
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
+  // Get the latest research job for this market
+  const { data: latestResearchJob } = useQuery({
+    queryKey: ['latestResearchJob', marketId],
+    queryFn: async () => {
+      try {
+        // Get the most recent research job for this market
+        const { data, error } = await supabase
+          .from('research_jobs')
+          .select('*')
+          .eq('market_id', marketId)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (error) {
+          console.error('Research job query error:', error);
+          return null;
+        }
+
+        return data.length > 0 ? data[0] : null;
+      } catch (error) {
+        console.error('Error fetching research job:', error);
+        return null;
+      }
+    },
+    enabled: !!marketId,
+    refetchInterval: (data) => {
+      // Refetch if job is in progress
+      if (data && ['queued', 'processing'].includes(data.status)) {
+        return 5000; // 5 seconds
+      }
+      return false; // Don't refetch if job is completed or failed
+    },
+  });
+
   const isLoading = isPriceLoading || isEventsLoading;
 
   const formatLastUpdated = (timestamp?: number) => {
@@ -161,6 +196,7 @@ export function MarketDetails({
           <WebResearchCard 
             description={fullResearchContext} 
             marketId={marketId}
+            latestJob={latestResearchJob}
           />
         </div>
       )}

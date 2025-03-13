@@ -522,6 +522,83 @@ export type Database = {
           },
         ]
       }
+      research_jobs: {
+        Row: {
+          analysis: string | null
+          areas_for_research: Json | null
+          completed_at: string | null
+          created_at: string
+          current_iteration: number
+          error_message: string | null
+          focus_text: string | null
+          id: string
+          iterations: Json | null
+          market_id: string | null
+          max_iterations: number
+          parent_job_id: string | null
+          probability: string | null
+          progress_log: Json | null
+          query: string
+          results: Json | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          analysis?: string | null
+          areas_for_research?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          current_iteration?: number
+          error_message?: string | null
+          focus_text?: string | null
+          id?: string
+          iterations?: Json | null
+          market_id?: string | null
+          max_iterations?: number
+          parent_job_id?: string | null
+          probability?: string | null
+          progress_log?: Json | null
+          query: string
+          results?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          analysis?: string | null
+          areas_for_research?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          current_iteration?: number
+          error_message?: string | null
+          focus_text?: string | null
+          id?: string
+          iterations?: Json | null
+          market_id?: string | null
+          max_iterations?: number
+          parent_job_id?: string | null
+          probability?: string | null
+          progress_log?: Json | null
+          query?: string
+          results?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_jobs_parent_job_id_fkey"
+            columns: ["parent_job_id"]
+            isOneToOne: false
+            referencedRelation: "research_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       web_research: {
         Row: {
           analysis: string
@@ -597,6 +674,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      append_research_iteration: {
+        Args: {
+          job_id: string
+          iteration_data: Json
+        }
+        Returns: undefined
+      }
+      append_research_progress: {
+        Args: {
+          job_id: string
+          progress_entry: Json
+        }
+        Returns: undefined
+      }
       batch_insert_market_data: {
         Args: {
           event_records: Json
@@ -604,6 +695,12 @@ export type Database = {
           price_records: Json
         }
         Returns: undefined
+      }
+      check_research_job_complete: {
+        Args: {
+          job_id: string
+        }
+        Returns: boolean
       }
       check_table_exists: {
         Args: {
@@ -724,6 +821,21 @@ export type Database = {
         Returns: {
           market_id: string
         }[]
+      }
+      update_research_job_status: {
+        Args: {
+          job_id: string
+          new_status: string
+          error_msg?: string
+        }
+        Returns: undefined
+      }
+      update_research_results: {
+        Args: {
+          job_id: string
+          result_data: Json
+        }
+        Returns: undefined
       }
     }
     Enums: {
