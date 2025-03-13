@@ -936,3 +936,209 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             iteration,
             queries: currentQueries,
             results: iterationResults,
+            analysis: iterationAnalysis
+          });
+        }
+        
+        return updatedIterations;
+      });
+
+      // If job ID is provided, update the job status to completed
+      if (jobId) {
+        await supabase.rpc('update_research_job_status', {
+          job_id: jobId,
+          new_status: 'completed',
+          error_msg: null
+        });
+        console.log(`Updated job ${jobId} status to completed`);
+      }
+
+      // Auto-save research if we have meaningful results
+      if (allContent.length > 0 && iterationAnalysis) {
+        await saveResearch();
+      }
+
+      // If this isn't the final iteration, start the next one
+      if (iteration < maxIterations) {
+        // Extract key areas to research next from the analysis
+        const nextQueries = currentQueries.map(q => q); // Default to reusing current queries
+        
+        try {
+          // Try to generate new queries based on the analysis
+          if (iterationAnalysis.length > 100) {
+            setProgress(prev => [...prev, `Planning queries for iteration ${iteration + 1}...`]);
+            
+            const queryPayload = { 
+              query: description,
+              marketId: marketId,
+              marketDescription: description,
+              previousAnalysis: iterationAnalysis,
+              previousQueries: currentQueries,
+              question: description,
+              iteration: iteration + 1,
+              focusText: typeof focusArea === 'string' ? focusArea : null
+            };
+            
+            const { data: queriesData, error: queriesError } = await supabase.functions.invoke('generate-queries', {
+              body: JSON.stringify(queryPayload)
+            });
+
+            if (queriesError) {
+              console.error("Error generating follow-up queries:", queriesError);
+              throw new Error("Failed to generate follow-up queries");
+            }
+
+            if (queriesData?.queries && Array.isArray(queriesData.queries) && queriesData.queries.length > 0) {
+              console.log("Generated follow-up queries:", queriesData.queries);
+              
+              const cleanQueries = queriesData.queries.map(q => q.replace(new RegExp(` ${marketId}$`), ''));
+              setProgress(prev => [...prev, `Generated ${cleanQueries.length} queries for iteration ${iteration + 1}`]);
+              
+              // Start the next iteration with these new queries
+              await handleWebScrape(cleanQueries, iteration + 1, focusArea, allContent);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Error planning next iteration queries:", error);
+          // Fall back to using modified versions of current queries
+        }
+        
+        // If we reach here, use the current queries with some modifications
+        const modifiedQueries = currentQueries.map(q => {
+          // Modify slightly to get different results
+          if (q.includes("latest")) {
+            return q.replace("latest", "recent");
+          } else if (q.includes("news")) {
+            return q.replace("news", "updates");
+          } else {
+            return `${q} latest`;
+          }
+        });
+        
+        setProgress(prev => [...prev, `Starting iteration ${iteration + 1} with modified queries...`]);
+        await handleWebScrape(modifiedQueries, iteration + 1, focusArea, allContent);
+      } else {
+        setProgress(prev => [...prev, `Completed all ${maxIterations} iterations of research.`]);
+        setProgress(prev => [...prev, `Final analysis ready for review.`]);
+        
+        // Final iteration complete
+        setIsAnalyzing(false);
+        setIsLoading(false);
+      }
+    } catch (error) {
+      console.error(`Error analyzing content for iteration ${iteration}:`, error);
+      setError(`Error analyzing content: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsAnalyzing(false);
+      setIsLoading(false);
+      
+      // If job ID is provided, update the job status to failed
+      if (jobId) {
+        await supabase.rpc('update_research_job_status', {
+          job_id: jobId,
+          new_status: 'failed',
+          error_msg: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+  };
+
+  return (
+    <Card className="w-full p-0 overflow-hidden bg-card border shadow-sm">
+      <ResearchHeader
+        onResearch={() => handleResearch()}
+        isLoading={isLoading || isAnalyzing}
+        marketId={marketId}
+        description={description}
+        focusText={focusText}
+        parentResearch={parentResearch}
+      />
+      
+      <div className="flex flex-col gap-5 p-4">
+        <ProgressDisplay messages={progress} />
+        
+        {error && (
+          <div className="error-display p-3 bg-destructive/10 border border-destructive/20 text-destructive rounded-md">
+            {error}
+          </div>
+        )}
+        
+        {results.length > 0 && (
+          <SitePreviewList results={results} />
+        )}
+        
+        {iterations.length > 0 && (
+          <div className="iterations-container flex flex-col gap-2">
+            <h3 className="text-sm font-medium">Research Iterations</h3>
+            <div className="iterations-list space-y-2">
+              {iterations.map((iteration) => (
+                <IterationCard
+                  key={`iteration-${iteration.iteration}`}
+                  iteration={iteration}
+                  isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
+                  onToggleExpand={() => {
+                    setExpandedIterations(prev => 
+                      prev.includes(`iteration-${iteration.iteration}`)
+                        ? prev.filter(id => id !== `iteration-${iteration.iteration}`)
+                        : [...prev, `iteration-${iteration.iteration}`]
+                    );
+                  }}
+                  isStreaming={isAnalyzing && currentIteration === iteration.iteration}
+                  isCurrentIteration={currentIteration === iteration.iteration}
+                  maxIterations={maxIterations}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {analysis.length > 0 && (
+          <InsightsDisplay 
+            content={analysis} 
+            isLoading={isAnalyzing}
+            onResearchArea={handleResearchArea}
+            areasForResearch={streamingState.parsedData?.areasForResearch || []}
+          />
+        )}
+        
+        {savedResearch && savedResearch.length > 0 && !isLoading && (
+          <div className="saved-research border rounded-md p-4">
+            <h3 className="text-sm font-medium mb-2">Saved Research</h3>
+            <ScrollArea className="h-[200px]">
+              <div className="space-y-2">
+                {savedResearch.map((research, idx) => (
+                  <div 
+                    key={research.id}
+                    className={`saved-research-item p-3 border rounded-md cursor-pointer hover:bg-accent/30 transition-colors ${research.id === loadedResearchId ? 'bg-accent/20 border-accent' : ''}`}
+                    onClick={() => loadSavedResearch(research)}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(research.created_at), 'MMM d, yyyy h:mm a')}
+                        </span>
+                        {research.focus_text && (
+                          <Badge variant="outline" className="text-xs">
+                            Focus: {research.focus_text.substring(0, 20)}{research.focus_text.length > 20 ? '...' : ''}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-1 text-sm font-medium">
+                      {research.probability && (
+                        <span className="text-primary font-medium mr-2">
+                          {research.probability}
+                        </span>
+                      )}
+                      {research.query.substring(0, 100)}{research.query.length > 100 ? '...' : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
