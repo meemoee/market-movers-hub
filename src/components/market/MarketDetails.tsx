@@ -8,7 +8,6 @@ import { WebResearchCard } from './WebResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
 import { toast } from 'sonner';
-import { DeepResearchCard } from './DeepResearchCard';
 
 interface MarketDetailsProps {
   description?: string;
@@ -61,6 +60,7 @@ export function MarketDetails({
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
+  // Get the current market price from the price history
   const currentMarketPrice = priceHistory?.points && priceHistory.points.length > 0 
     ? priceHistory.points[priceHistory.points.length - 1].price 
     : undefined;
@@ -98,38 +98,6 @@ export function MarketDetails({
     retryDelay: attemptIndex => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 
-  const { data: latestResearchJob } = useQuery({
-    queryKey: ['latestResearchJob', marketId],
-    queryFn: async () => {
-      try {
-        const { data, error } = await supabase
-          .from('research_jobs')
-          .select('*')
-          .eq('market_id', marketId)
-          .order('created_at', { ascending: false })
-          .limit(1);
-
-        if (error) {
-          console.error('Research job query error:', error);
-          return null;
-        }
-
-        return data.length > 0 ? data[0] : null;
-      } catch (error) {
-        console.error('Error fetching research job:', error);
-        return null;
-      }
-    },
-    enabled: !!marketId,
-    refetchInterval: (data) => {
-      // Here data is the actual research job data returned from queryFn
-      if (data && typeof data === 'object' && 'status' in data && ['queued', 'processing'].includes(data.status as string)) {
-        return 5000;
-      }
-      return false;
-    },
-  });
-
   const isLoading = isPriceLoading || isEventsLoading;
 
   const formatLastUpdated = (timestamp?: number) => {
@@ -146,6 +114,7 @@ export function MarketDetails({
 
   const shouldShowQADisplay = marketId && question;
   
+  // Combine question with description to provide more context for web research
   const fullResearchContext = question ? 
     (description ? `${question} - ${description}` : question) : 
     (description || 'No description available');
@@ -192,7 +161,6 @@ export function MarketDetails({
           <WebResearchCard 
             description={fullResearchContext} 
             marketId={marketId}
-            latestJob={latestResearchJob}
           />
         </div>
       )}
