@@ -39,7 +39,7 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
       // First get current iterations
       const { data: currentJob, error: getError } = await supabase
         .from('research_jobs')
-        .select('iterations')
+        .select('iterations, max_iterations')
         .eq('id', jobId)
         .single();
       
@@ -113,9 +113,33 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
       }
     }
     
-    // Only mark as completed if explicitly requested
-    // This is the key change - don't automatically set completed_at when updating iterations
-    const shouldComplete = updates.status === 'completed';
+    // Check if this is the final iteration - get max_iterations if not provided
+    let maxIterations = updates.max_iterations;
+    let currentIteration = updates.current_iteration;
+    
+    if (!maxIterations || !currentIteration) {
+      const { data: jobData, error: getJobError } = await supabase
+        .from('research_jobs')
+        .select('max_iterations, current_iteration')
+        .eq('id', jobId)
+        .single();
+        
+      if (!getJobError && jobData) {
+        maxIterations = maxIterations || jobData.max_iterations;
+        currentIteration = currentIteration || jobData.current_iteration;
+      }
+    }
+    
+    // Only mark as completed if this is the final iteration or explicitly requested
+    const isFinalIteration = currentIteration !== undefined && 
+                             maxIterations !== undefined && 
+                             currentIteration >= maxIterations;
+    const shouldComplete = updates.status === 'completed' || isFinalIteration;
+    
+    // If it's the final iteration but status wasn't explicitly set, set it
+    if (isFinalIteration && !updates.status) {
+      updates.status = 'completed';
+    }
     
     // Regular update for all other fields
     const { error: updateError } = await supabase
@@ -123,7 +147,7 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
       .update({
         ...updates,
         // Only set completed_at if we're explicitly completing the job
-        completed_at: shouldComplete ? new Date().toISOString() : undefined,
+        completed_at: shouldComplete ? new Date().toISOString() : null,
         updated_at: new Date().toISOString()
       })
       .eq('id', jobId);
@@ -133,6 +157,7 @@ async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
       console.error('Update error details:', JSON.stringify(updateError));
     } else {
       console.log(`Successfully updated job ${jobId} with:`, Object.keys(updates).join(', '));
+      console.log(`Job status: ${updates.status}, completed: ${shouldComplete}, final iteration: ${isFinalIteration}`);
     }
   } catch (error) {
     console.error('Exception updating job:', error);
@@ -147,10 +172,10 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId, focusText, jobId, iteration = 1 } = await req.json();
+    const { queries, marketId, focusText, jobId, iteration = 1, maxIterations = 3 } = await req.json();
     
     // Log incoming data for debugging
-    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}, jobId: ${jobId || 'none'}, iteration: ${iteration}`);
+    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}, jobId: ${jobId || 'none'}, iteration: ${iteration}, maxIterations: ${maxIterations}`);
     
     // Ensure queries don't have the market ID accidentally appended
     const cleanedQueries = queries.map((query: string) => {
@@ -196,6 +221,7 @@ serve(async (req) => {
             status: 'processing',
             started_at: new Date().toISOString(),
             current_iteration: iteration,
+            max_iterations: maxIterations,
             progress_log: [{ timestamp: new Date().toISOString(), status: 'started', message: 'Beginning web search' }],
             results: [],
             iterations: []
@@ -217,6 +243,7 @@ serve(async (req) => {
         console.log(`Updating existing job ${researchJobId} for iteration ${iteration}`);
         await updateJobRecord(researchJobId, {
           current_iteration: iteration,
+          max_iterations: maxIterations,
           status: 'processing', // Always keep as processing until all iterations complete
           progress_log: [{ 
             timestamp: new Date().toISOString(), 
@@ -265,7 +292,9 @@ serve(async (req) => {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                 type: 'message',
                 message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`,
-                job_id: researchJobId
+                job_id: researchJobId,
+                iteration: iteration,
+                max_iterations: maxIterations
               })}\n\n`));
 
               try {
@@ -349,7 +378,9 @@ serve(async (req) => {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'results',
                   data: validResults,
-                  job_id: researchJobId
+                  job_id: researchJobId,
+                  iteration: iteration,
+                  max_iterations: maxIterations
                 })}\n\n`));
                 
                 // Update job with results in database if we have a job ID
@@ -368,7 +399,9 @@ serve(async (req) => {
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'error',
                   message: `Error searching for "${query}": ${error.message}`,
-                  job_id: researchJobId
+                  job_id: researchJobId,
+                  iteration: iteration,
+                  max_iterations: maxIterations
                 })}\n\n`));
                 
                 // Update job with error in database if we have a job ID
@@ -388,16 +421,15 @@ serve(async (req) => {
             // Update job with iteration data
             if (researchJobId) {
               try {
-                console.log(`Updating job ${researchJobId} with completed iteration ${iteration} data`);
+                console.log(`Updating job ${researchJobId} with completed iteration ${iteration} data (max: ${maxIterations})`);
                 
-                // Important change: Only mark as completed if this is the final iteration
-                // We can determine this from the max_iterations property or from a separate param
-                // For now, we'll just complete if iteration is > 1, this can be improved
-                const isFinalIteration = iteration > 1; // simplified logic for demo
+                // Determine if this is the final iteration
+                const isFinalIteration = iteration >= maxIterations;
                 
                 await updateJobRecord(researchJobId, {
                   iterations: [iterationData],
                   current_iteration: iteration,
+                  max_iterations: maxIterations,
                   // Only set to completed if it's the final iteration
                   status: isFinalIteration ? 'completed' : 'processing',
                   // Only set completed_at if it's the final iteration
@@ -422,7 +454,9 @@ serve(async (req) => {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({
               type: 'error',
               message: `Error in search processing: ${error.message}`,
-              job_id: researchJobId
+              job_id: researchJobId,
+              iteration: iteration,
+              max_iterations: maxIterations
             })}\n\n`));
             controller.close();
             

@@ -8,6 +8,8 @@ export interface SSEMessage {
     content: string;
   }>;
   job_id?: string;
+  iteration?: number;
+  max_iterations?: number;
 }
 
 export interface SearchResponse {
@@ -39,4 +41,5 @@ export interface JobUpdateParams {
   completed_at?: string | null;
   updated_at?: string;
   job_id?: string; // Added job_id to help track the primary job
+  max_iterations?: number; // Added to track total iterations
 }
