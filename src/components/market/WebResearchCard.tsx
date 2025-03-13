@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -73,38 +74,8 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
         eventSourceRef.current.close();
       }
 
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      if (!supabaseUrl) {
-        throw new Error('VITE_SUPABASE_URL is not defined');
-      }
-
-      const params = new URLSearchParams();
-      params.append('queries', marketQuestion);
-      if (marketId) params.append('marketId', marketId);
-      if (focusText) params.append('focusText', focusText);
-      
-      const { data: { session } } = await supabase.auth.getSession();
-      const authToken = session?.access_token;
-      
-      if (!authToken) {
-        throw new Error('No authentication token available');
-      }
-      
-      const sseUrl = `${supabaseUrl}/functions/v1/web-scrape?${params.toString()}`;
-
-      const eventSource = new EventSource(sseUrl, {
-        withCredentials: true,
-      });
-      
-      if ('withCredentials' in eventSource) {
-        console.log('EventSource supports credentials');
-      } else {
-        console.warn('EventSource does not support credentials, authentication may fail');
-      }
-      
-      eventSourceRef.current = eventSource;
-
-      await supabase.functions.invoke('web-scrape', {
+      // Call the web-scrape function directly with our parameters
+      const { data, error } = await supabase.functions.invoke('web-scrape', {
         body: {
           queries: [marketQuestion],
           marketId,
@@ -112,7 +83,38 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
         }
       });
       
+      if (error) {
+        throw error;
+      }
+      
       setMessages(prev => [...prev, `Started research for: ${marketQuestion}`]);
+
+      // Get the Supabase URL from client directly
+      const supabaseUrl = supabase.functions.url;
+      
+      // Prepare params for SSE connection
+      const params = new URLSearchParams();
+      params.append('queries', marketQuestion);
+      if (marketId) params.append('marketId', marketId);
+      if (focusText) params.append('focusText', focusText);
+      
+      // Get auth token for SSE
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token;
+      
+      if (!authToken) {
+        throw new Error('No authentication token available');
+      }
+      
+      // Create the SSE URL with the correct path
+      const sseUrl = `${supabaseUrl}/web-scrape?${params.toString()}`;
+      
+      // Create EventSource with auth
+      const eventSource = new EventSource(sseUrl, {
+        withCredentials: true,
+      });
+      
+      eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (event) => {
         try {
