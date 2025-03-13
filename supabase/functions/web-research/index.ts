@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
@@ -149,10 +148,8 @@ class WebScraper {
   private encoder: TextEncoder
   private writer: WritableStreamDefaultWriter<Uint8Array>
   private seenUrls: Set<string>
-  private jobId: string
-  private iterationNumber: number
 
-  constructor(bingApiKey: string, writer: WritableStreamDefaultWriter<Uint8Array>, jobId: string, iterationNumber: number) {
+  constructor(bingApiKey: string, writer: WritableStreamDefaultWriter<Uint8Array>) {
     if (!bingApiKey) {
       throw new Error('Bing API key is required')
     }
@@ -161,24 +158,10 @@ class WebScraper {
     this.encoder = new TextEncoder()
     this.writer = writer
     this.seenUrls = new Set()
-    this.jobId = jobId
-    this.iterationNumber = iterationNumber
   }
 
   private async sendUpdate(message: string) {
-    // Log progress in the database
-    try {
-      const progressEntry = {
-        timestamp: new Date().toISOString(),
-        message: message,
-        iteration: this.iterationNumber
-      };
-      
-      // Send to client
-      await this.writer.write(this.encoder.encode(`data: ${JSON.stringify({ message })}\n\n`))
-    } catch (error) {
-      console.error("Error sending update:", error)
-    }
+    await this.writer.write(this.encoder.encode(`data: ${JSON.stringify({ message })}\n\n`))
   }
 
   private async sendResults(results: any[]) {
@@ -301,15 +284,6 @@ class WebScraper {
     const subQueries = await generateSubQueries(query, focusText)
     await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
     
-    // Update the iteration data in the database
-    const iterationData = {
-      query: query,
-      focusText: focusText,
-      subQueries: subQueries,
-      startTime: new Date().toISOString(),
-      iteration: this.iterationNumber
-    };
-    
     // Process sub-queries in parallel with a concurrency limit
     const concurrencyLimit = 3
     const processSubquery = async (subQuery: string, index: number) => {
@@ -351,18 +325,7 @@ serve(async (req) => {
   }
 
   try {
-    const { query, focusText, jobId, iterationNumber = 1 } = await req.json()
-    
-    // Validate required parameters
-    if (!query) {
-      throw new Error('Query is required')
-    }
-    
-    if (!jobId) {
-      throw new Error('Job ID is required')
-    }
-
-    console.log(`Starting web research for job ${jobId}, iteration ${iterationNumber}, query: ${query}`)
+    const { query, focusText } = await req.json()
 
     if (!BING_API_KEY) {
       throw new Error('BING_API_KEY is not configured')
@@ -380,12 +343,8 @@ serve(async (req) => {
     // Start research asynchronously
     (async () => {
       try {
-        const scraper = new WebScraper(BING_API_KEY, writer, jobId, iterationNumber)
-        const results = await scraper.run(query, focusText)
-        
-        // Update job with results - nothing to do here as the results will be processed by the client
-        console.log(`Research complete for job ${jobId}, iteration ${iterationNumber}, found ${results.length} results`)
-        
+        const scraper = new WebScraper(BING_API_KEY, writer)
+        await scraper.run(query, focusText)
         await writer.close()
       } catch (error) {
         console.error("Error in web research:", error)

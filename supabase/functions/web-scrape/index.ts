@@ -16,20 +16,10 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId, focusText, jobId } = await req.json();
+    const { queries, marketId, focusText } = await req.json();
     
     // Log incoming data for debugging
-    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}, jobId: ${jobId}`);
-    
-    if (!jobId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing jobId parameter' }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400
-        }
-      );
-    }
+    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}`);
     
     // Ensure queries don't have the market ID accidentally appended
     const cleanedQueries = queries.map((query: string) => {
@@ -56,19 +46,13 @@ serve(async (req) => {
           
           try {
             for (const [index, query] of cleanedQueries.entries()) {
-              // Update progress in the database
-              const progressEntry = {
-                timestamp: new Date().toISOString(),
+              // Send a message for each query
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'message',
                 message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
-              };
-              
-              try {
-                // Send progress update to stream
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                  type: 'message',
-                  message: progressEntry.message
-                })}\n\n`));
+              })}\n\n`));
 
+              try {
                 // Set a reasonable timeout for each search
                 const abortController = new AbortController();
                 const timeoutId = setTimeout(() => abortController.abort(), 10000); // 10 second timeout
@@ -145,8 +129,7 @@ serve(async (req) => {
                 // Stream results for this query
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'results',
-                  data: validResults,
-                  query: query
+                  data: validResults
                 })}\n\n`));
                 
               } catch (error) {

@@ -6,14 +6,12 @@ import ReactMarkdown from 'react-markdown'
 interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
-  isLoading?: boolean
   maxHeight?: string | number
 }
 
 export function AnalysisDisplay({ 
   content, 
-  isStreaming = false,
-  isLoading = false,
+  isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -119,22 +117,22 @@ export function AnalysisDisplay({
         </div>
       </ScrollArea>
       
-      {(isStreaming || isLoading) && (
+      {isStreaming && (
         <div className="absolute bottom-2 right-2">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
-              {isLoading ? "Analyzing..." : streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
+              {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
             </span>
             <div className="flex space-x-1">
-              <div className={`w-2 h-2 rounded-full ${(isStreaming || isLoading) ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
-              <div className={`w-2 h-2 rounded-full ${(isStreaming || isLoading) ? 'bg-primary animate-pulse delay-75' : 'bg-muted-foreground'}`} />
-              <div className={`w-2 h-2 rounded-full ${(isStreaming || isLoading) ? 'bg-primary animate-pulse delay-150' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-75' : 'bg-muted-foreground'}`} />
+              <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse delay-150' : 'bg-muted-foreground'}`} />
             </div>
           </div>
         </div>
       )}
       
-      {!shouldAutoScroll && (isStreaming || isLoading) && (
+      {!shouldAutoScroll && isStreaming && (
         <button 
           onClick={() => {
             setShouldAutoScroll(true);
