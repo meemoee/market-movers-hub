@@ -89,8 +89,9 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
       
       setMessages(prev => [...prev, `Started research for: ${marketQuestion}`]);
 
-      // Get the Supabase URL from client directly
-      const supabaseUrl = supabase.functions.url;
+      // Use the SUPABASE_URL from our client config
+      const { SUPABASE_URL } = supabase.auth.getAutoRefreshToken();
+      const supabaseUrl = SUPABASE_URL.replace(/\/$/, '');
       
       // Prepare params for SSE connection
       const params = new URLSearchParams();
@@ -107,7 +108,7 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
       }
       
       // Create the SSE URL with the correct path
-      const sseUrl = `${supabaseUrl}/web-scrape?${params.toString()}`;
+      const sseUrl = `${supabaseUrl}/functions/v1/web-scrape?${params.toString()}`;
       
       // Create EventSource with auth
       const eventSource = new EventSource(sseUrl, {
