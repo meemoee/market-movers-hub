@@ -1,3 +1,4 @@
+
 import { useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
   
+  // Use a ref to maintain the job ID across research iterations
   const jobIdRef = useRef<string | null>(null);
 
   const handleStartResearch = async () => {
@@ -45,12 +47,17 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       setError(null);
       setCurrentQuery(`Initial query for: ${description.substring(0, 30)}...`);
       
+      // First call to deep-research, passing jobIdRef.current which will be null on first run
       const { data, error } = await supabase.functions.invoke<{
         success: boolean;
         report?: ResearchReport;
         steps?: { query: string; results: string }[];
         error?: string;
         job_id?: string;
+        current_iteration?: number;
+        total_iterations?: number;
+        is_complete?: boolean;
+        next_query?: string;
       }>('deep-research', {
         body: { 
           description, 
@@ -69,30 +76,47 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
       
       console.log('Research data received:', data);
       
+      // Store the job ID for subsequent calls
       if (data.job_id) {
         jobIdRef.current = data.job_id;
         console.log(`Using job ID: ${data.job_id}`);
       }
       
+      if (data.current_iteration) {
+        setIteration(data.current_iteration);
+      }
+      
+      if (data.total_iterations) {
+        setTotalIterations(data.total_iterations);
+      }
+      
+      // If we have steps, visualize them
       if (data.steps && data.steps.length > 0) {
-        setTotalIterations(data.steps.length);
-        
         let currentStep = 0;
         const interval = setInterval(() => {
           if (currentStep < data.steps!.length) {
-            setIteration(currentStep + 1);
             setCurrentQuery(data.steps![currentStep].query);
             currentStep++;
           } else {
             clearInterval(interval);
             
-            if (data.report) {
-              setResearchResults(data.report);
+            // If research is NOT complete, start the next iteration
+            if (data.is_complete === false && data.next_query) {
+              // Wait a moment before starting next iteration to show completion of current one
+              setTimeout(() => {
+                continuteResearch(data.next_query!);
+              }, 1500);
+            } else {
+              // Research is complete, show final results
+              if (data.report) {
+                setResearchResults(data.report);
+              }
+              setIsLoading(false);
             }
-            setIsLoading(false);
           }
         }, 1000);
       } else {
+        // If no steps but we have a report, show it
         if (data.report) {
           setResearchResults(data.report);
         }
@@ -108,6 +132,88 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
         description: err instanceof Error ? err.message : 'An unknown error occurred',
         variant: "destructive"
       });
+    }
+  };
+
+  // New function to continue research with subsequent iterations
+  const continuteResearch = async (nextQuery: string) => {
+    if (!jobIdRef.current) {
+      console.error('Cannot continue research: no job ID');
+      setError('Research job not properly initialized');
+      setIsLoading(false);
+      return;
+    }
+    
+    try {
+      // Increment iteration counter for UI
+      const nextIteration = iteration + 1;
+      setIteration(nextIteration);
+      setCurrentQuery(nextQuery);
+      
+      console.log(`Starting research iteration ${nextIteration} with job ID ${jobIdRef.current}`);
+      
+      // Call the same function but with the stored job ID to continue research
+      const { data, error } = await supabase.functions.invoke<{
+        success: boolean;
+        report?: ResearchReport;
+        steps?: { query: string; results: string }[];
+        error?: string;
+        job_id?: string;
+        current_iteration?: number;
+        is_complete?: boolean;
+        next_query?: string;
+      }>('deep-research', {
+        body: { 
+          description, 
+          marketId,
+          job_id: jobIdRef.current,
+          iteration: nextIteration
+        }
+      });
+      
+      if (error) {
+        throw new Error(`Edge function error: ${error.message}`);
+      }
+      
+      if (!data.success || data.error) {
+        throw new Error(data.error || 'Unknown error occurred');
+      }
+      
+      console.log(`Iteration ${nextIteration} data:`, data);
+      
+      if (data.steps && data.steps.length > 0) {
+        let currentStep = 0;
+        const interval = setInterval(() => {
+          if (currentStep < data.steps!.length) {
+            setCurrentQuery(data.steps![currentStep].query);
+            currentStep++;
+          } else {
+            clearInterval(interval);
+            
+            // If research is not complete, continue to next iteration
+            if (data.is_complete === false && data.next_query) {
+              setTimeout(() => {
+                continuteResearch(data.next_query!);
+              }, 1500);
+            } else {
+              // Research is complete, show final results
+              if (data.report) {
+                setResearchResults(data.report);
+              }
+              setIsLoading(false);
+            }
+          }
+        }, 1000);
+      } else {
+        if (data.report) {
+          setResearchResults(data.report);
+        }
+        setIsLoading(false);
+      }
+    } catch (err) {
+      console.error(`Error in research iteration ${iteration}:`, err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setIsLoading(false);
     }
   };
 
@@ -225,4 +331,3 @@ export function DeepResearchCard({ description, marketId }: DeepResearchCardProp
     </Card>
   );
 }
-
