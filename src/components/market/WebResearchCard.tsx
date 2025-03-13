@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,7 +27,6 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
   const { toast } = useToast();
   const eventSourceRef = useRef<EventSource | null>(null);
   
-  // Poll for job status if we have a jobId and are not streaming
   const { data: jobData, isLoading, isError } = useQuery({
     queryKey: ['job-status', jobId],
     queryFn: async () => {
@@ -43,8 +41,7 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
     },
     enabled: !!jobId && !isSearching,
     refetchInterval: (data) => {
-      // Stop polling if job is completed or failed
-      if (data && (data.status === 'completed' || data.status === 'failed')) {
+      if (data && ((data as any).status === 'completed' || (data as any).status === 'failed')) {
         return false;
       }
       return 5000;
@@ -52,14 +49,12 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
     refetchOnWindowFocus: false
   });
   
-  // Update job status from polling data
   useEffect(() => {
-    if (jobData && jobData.status) {
-      setJobStatus(jobData.status as 'processing' | 'completed' | 'failed');
+    if (jobData && (jobData as any).status) {
+      setJobStatus((jobData as any).status as 'processing' | 'completed' | 'failed');
       
-      // If we got results from polling, update them
-      if (jobData.results && jobData.results.length > 0 && onResultsChange) {
-        onResultsChange(jobData.results);
+      if ((jobData as any).results && (jobData as any).results.length > 0 && onResultsChange) {
+        onResultsChange((jobData as any).results);
       }
     }
   }, [jobData, onResultsChange]);
@@ -74,24 +69,20 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
       setJobStatus(null);
       setProgress(0);
       
-      // Close any existing event source
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
       }
 
-      // Get the Supabase URL from env
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       if (!supabaseUrl) {
         throw new Error('VITE_SUPABASE_URL is not defined');
       }
 
-      // Prepare query parameters
       const params = new URLSearchParams();
       params.append('queries', marketQuestion);
       if (marketId) params.append('marketId', marketId);
       if (focusText) params.append('focusText', focusText);
       
-      // Get the current session for the auth token
       const { data: { session } } = await supabase.auth.getSession();
       const authToken = session?.access_token;
       
@@ -99,18 +90,13 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
         throw new Error('No authentication token available');
       }
       
-      // Create the SSE URL with the correct path
       const sseUrl = `${supabaseUrl}/functions/v1/web-scrape?${params.toString()}`;
 
-      // Create a new EventSource with auth
       const eventSource = new EventSource(sseUrl, {
         withCredentials: true,
       });
       
-      // Add auth header through beforeopen if supported
-      // This is a workaround as EventSource doesn't support custom headers
       if ('withCredentials' in eventSource) {
-        // The browser will include credentials
         console.log('EventSource supports credentials');
       } else {
         console.warn('EventSource does not support credentials, authentication may fail');
@@ -118,7 +104,6 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
       
       eventSourceRef.current = eventSource;
 
-      // Also invoke the function to establish the job
       await supabase.functions.invoke('web-scrape', {
         body: {
           queries: [marketQuestion],
@@ -139,7 +124,6 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
           
           const data = JSON.parse(event.data);
           
-          // Handle different message types
           if (data.type === 'message' && data.message) {
             setMessages(prev => [...prev, data.message]);
           } 
@@ -157,17 +141,13 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
             }
           }
           else if (data.type === 'results' && data.data) {
-            // Add URLs to results
             const newResults = data.data;
             
-            // Calculate approximate progress
             if (newResults.length > 0) {
-              // Assume average of 50 results is "complete"
               const progressValue = Math.min(Math.round((newResults.length / 10) * 20) + progress, 95);
               setProgress(progressValue);
             }
             
-            // Notify parent component
             if (onResultsChange) {
               onResultsChange(newResults);
             }
@@ -210,7 +190,6 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
   };
 
   const resetSearch = () => {
-    // Close any existing event source
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -226,7 +205,6 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
     }
   };
   
-  // Clean up event source on unmount
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
