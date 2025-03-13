@@ -21,6 +21,25 @@ interface ResearchResult {
   title?: string;
 }
 
+// Define an interface for our research job data
+interface ResearchJob {
+  id: string;
+  market_id: string;
+  query: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  max_iterations: number;
+  current_iteration: number;
+  progress_log: string[];
+  iterations: any[];
+  results: any;
+  error_message?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+  updated_at: string;
+  user_id?: string;
+}
+
 export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -55,17 +74,18 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           return;
         }
         
-        console.log('Job status:', data.status);
+        const job = data as ResearchJob;
+        console.log('Job status:', job.status);
         
         // Update progress based on status
-        if (data.status === 'completed') {
+        if (job.status === 'completed') {
           setPolling(false);
           setProgressPercent(100);
           setProgress(prev => [...prev, 'Job completed successfully!']);
           
-          if (data.results) {
+          if (job.results) {
             try {
-              const parsedResults = JSON.parse(data.results);
+              const parsedResults = JSON.parse(job.results);
               if (parsedResults.data && Array.isArray(parsedResults.data)) {
                 setResults(parsedResults.data);
               }
@@ -78,22 +98,22 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           }
           
           clearInterval(pollInterval);
-        } else if (data.status === 'failed') {
+        } else if (job.status === 'failed') {
           setPolling(false);
-          setError(`Job failed: ${data.error_message || 'Unknown error'}`);
-          setProgress(prev => [...prev, `Job failed: ${data.error_message || 'Unknown error'}`]);
+          setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           clearInterval(pollInterval);
-        } else if (data.status === 'processing') {
+        } else if (job.status === 'processing') {
           // Calculate progress based on current_iteration and max_iterations
-          if (data.max_iterations && data.current_iteration !== undefined) {
-            const percent = Math.round((data.current_iteration / data.max_iterations) * 100);
+          if (job.max_iterations && job.current_iteration !== undefined) {
+            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
             setProgressPercent(percent);
           }
           
           // Add progress log entries if they exist
-          if (data.progress_log && Array.isArray(data.progress_log)) {
+          if (job.progress_log && Array.isArray(job.progress_log)) {
             // Only add new progress items
-            const newItems = data.progress_log.slice(progress.length);
+            const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
               setProgress(prev => [...prev, ...newItems]);
             }

@@ -522,6 +522,60 @@ export type Database = {
           },
         ]
       }
+      research_jobs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          current_iteration: number
+          error_message: string | null
+          id: string
+          iterations: Json
+          market_id: string
+          max_iterations: number
+          progress_log: Json
+          query: string
+          results: Json | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          current_iteration?: number
+          error_message?: string | null
+          id?: string
+          iterations?: Json
+          market_id: string
+          max_iterations?: number
+          progress_log?: Json
+          query: string
+          results?: Json | null
+          started_at?: string | null
+          status: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          current_iteration?: number
+          error_message?: string | null
+          id?: string
+          iterations?: Json
+          market_id?: string
+          max_iterations?: number
+          progress_log?: Json
+          query?: string
+          results?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       web_research: {
         Row: {
           analysis: string
@@ -604,13 +658,21 @@ export type Database = {
         }
         Returns: undefined
       }
-      append_research_progress: {
-        Args: {
-          job_id: string
-          progress_entry: Json
-        }
-        Returns: undefined
-      }
+      append_research_progress:
+        | {
+            Args: {
+              job_id: string
+              progress_entry: Json
+            }
+            Returns: undefined
+          }
+        | {
+            Args: {
+              job_id: string
+              progress_entry: string
+            }
+            Returns: undefined
+          }
       batch_insert_market_data: {
         Args: {
           event_records: Json
