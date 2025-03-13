@@ -522,6 +522,83 @@ export type Database = {
           },
         ]
       }
+      research_jobs: {
+        Row: {
+          analysis: string | null
+          areas_for_research: Json | null
+          completed_at: string | null
+          created_at: string
+          current_iteration: number
+          error_message: string | null
+          focus_text: string | null
+          id: string
+          iterations: Json | null
+          market_id: string | null
+          max_iterations: number
+          parent_job_id: string | null
+          probability: string | null
+          progress_log: Json | null
+          query: string
+          results: Json | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          analysis?: string | null
+          areas_for_research?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          current_iteration?: number
+          error_message?: string | null
+          focus_text?: string | null
+          id?: string
+          iterations?: Json | null
+          market_id?: string | null
+          max_iterations?: number
+          parent_job_id?: string | null
+          probability?: string | null
+          progress_log?: Json | null
+          query: string
+          results?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          analysis?: string | null
+          areas_for_research?: Json | null
+          completed_at?: string | null
+          created_at?: string
+          current_iteration?: number
+          error_message?: string | null
+          focus_text?: string | null
+          id?: string
+          iterations?: Json | null
+          market_id?: string | null
+          max_iterations?: number
+          parent_job_id?: string | null
+          probability?: string | null
+          progress_log?: Json | null
+          query?: string
+          results?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "research_jobs_parent_job_id_fkey"
+            columns: ["parent_job_id"]
+            isOneToOne: false
+            referencedRelation: "research_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       web_research: {
         Row: {
           analysis: string

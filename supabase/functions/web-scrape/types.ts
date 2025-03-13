@@ -8,3 +8,13 @@ export interface SSEMessage {
     content: string;
   }>;
 }
+
+export interface SearchResponse {
+  web?: {
+    results: Array<{
+      title: string;
+      url: string;
+      description: string;
+    }>;
+  };
+}
