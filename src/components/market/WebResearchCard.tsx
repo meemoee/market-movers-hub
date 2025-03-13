@@ -79,36 +79,55 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
         eventSourceRef.current.close();
       }
 
-      // Call the web-scrape function with Server-Sent Events
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/web-scrape`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabase.auth.getSession().then(res => res.data.session?.access_token)}`
-        },
-        body: JSON.stringify({
+      // Get the Supabase URL from env
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        throw new Error('VITE_SUPABASE_URL is not defined');
+      }
+
+      // Prepare query parameters
+      const params = new URLSearchParams();
+      params.append('queries', marketQuestion);
+      if (marketId) params.append('marketId', marketId);
+      if (focusText) params.append('focusText', focusText);
+      
+      // Get the current session for the auth token
+      const { data: { session } } = await supabase.auth.getSession();
+      const authToken = session?.access_token;
+      
+      if (!authToken) {
+        throw new Error('No authentication token available');
+      }
+      
+      // Create the SSE URL with the correct path
+      const sseUrl = `${supabaseUrl}/functions/v1/web-scrape?${params.toString()}`;
+
+      // Create a new EventSource with auth
+      const eventSource = new EventSource(sseUrl, {
+        withCredentials: true,
+      });
+      
+      // Add auth header through beforeopen if supported
+      // This is a workaround as EventSource doesn't support custom headers
+      if ('withCredentials' in eventSource) {
+        // The browser will include credentials
+        console.log('EventSource supports credentials');
+      } else {
+        console.warn('EventSource does not support credentials, authentication may fail');
+      }
+      
+      eventSourceRef.current = eventSource;
+
+      // Also invoke the function to establish the job
+      await supabase.functions.invoke('web-scrape', {
+        body: {
           queries: [marketQuestion],
           marketId,
           focusText
-        })
+        }
       });
-
-      if (!response.ok) {
-        throw new Error(`Error: ${response.status}`);
-      }
-
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Failed to get reader from response');
-
-      const results: Array<{
-        url: string;
-        title?: string;
-        content: string;
-      }> = [];
-
-      // Create a new EventSource
-      const eventSource = new EventSource(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/web-scrape?queries=${encodeURIComponent(marketQuestion)}&marketId=${encodeURIComponent(marketId)}${focusText ? `&focusText=${encodeURIComponent(focusText)}` : ''}`);
-      eventSourceRef.current = eventSource;
+      
+      setMessages(prev => [...prev, `Started research for: ${marketQuestion}`]);
 
       eventSource.onmessage = (event) => {
         try {
@@ -140,18 +159,17 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
           else if (data.type === 'results' && data.data) {
             // Add URLs to results
             const newResults = data.data;
-            results.push(...newResults);
             
             // Calculate approximate progress
-            if (results.length > 0) {
+            if (newResults.length > 0) {
               // Assume average of 50 results is "complete"
-              const progressValue = Math.min(Math.round((results.length / 50) * 100), 95);
+              const progressValue = Math.min(Math.round((newResults.length / 10) * 20) + progress, 95);
               setProgress(progressValue);
             }
             
             // Notify parent component
             if (onResultsChange) {
-              onResultsChange(results);
+              onResultsChange(newResults);
             }
           }
           else if (data.type === 'error') {
