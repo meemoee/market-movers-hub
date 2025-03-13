@@ -44,7 +44,7 @@ export function WebResearchCard({ marketId, marketQuestion, focusText, onResults
     enabled: !!jobId && !isSearching,
     refetchInterval: (data) => {
       // Stop polling if job is completed or failed
-      if (data?.status === 'completed' || data?.status === 'failed') {
+      if (data && (data.status === 'completed' || data.status === 'failed')) {
         return false;
       }
       return 5000;
