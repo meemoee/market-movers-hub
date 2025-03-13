@@ -710,10 +710,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   iterationResults.push(...parsed.data);
                   setResults(prev => {
                     const combined = [...prev, ...parsed.data];
-                    const uniqueResults = Array.from(
-                      new Map(combined.map(item => [item.url, item.title || item.url, item.content].join('|'), item => item)).values()
-                    );
-                    return uniqueResults;
+                    const uniqueMap = new Map<string, ResearchResult>();
+                    combined.forEach(item => {
+                      if (item && item.url) {
+                        uniqueMap.set(item.url, item);
+                      }
+                    });
+                    return Array.from(uniqueMap.values());
                   });
                   
                   parsed.data.forEach((result: ResearchResult) => {
@@ -969,11 +972,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 // Create fallback insights if parsing fails
                 setStreamingState(prev => ({
                   rawText: prev.rawText || JSON.stringify({
-                    probability: "Unable to determine from current data",
+                    probability: "Unable to determine",
                     areasForResearch: ["More specific data needed", "Historical precedents", "Expert opinions"]
                   }, null, 2),
                   parsedData: {
-                    probability: "Unable to determine from current data",
+                    probability: "Unable to determine",
                     areasForResearch: ["More specific data needed", "Historical precedents", "Expert opinions"]
                   }
                 }));
@@ -1066,8 +1069,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     <Card className="w-full mb-4 overflow-hidden">
       <ResearchHeader 
         isLoading={isLoading || isAnalyzing}
-        onSearch={() => handleResearch()}
-        marketPrice={marketPrice}
+        isAnalyzing={isAnalyzing}
+        onResearch={() => handleResearch()}
+        marketId={marketId}
+        description={description}
+        focusText={focusText}
+        parentResearch={parentResearch ? {
+          id: parentResearch.id,
+          focusText: parentResearch.focus_text,
+          onView: () => parentResearch && loadSavedResearch(parentResearch)
+        } : undefined}
       />
       
       {isLoading ? (
@@ -1170,23 +1181,32 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           )}
           
           {results.length > 0 && (
-            <SitePreviewList 
-              results={results} 
-              isLoading={isAnalyzing} 
-            />
+            <SitePreviewList results={results} />
           )}
           
           {analysis && (
             <AnalysisDisplay 
-              analysis={analysis} 
+              content={analysis} 
+              isStreaming={isAnalyzing}
               isLoading={isAnalyzing}
+              maxHeight="200px"
             />
           )}
           
           {streamingState.parsedData && (
             <InsightsDisplay 
-              insights={streamingState.parsedData} 
+              streamingState={streamingState}
               onResearchArea={handleResearchArea}
+              parentResearch={parentResearch ? {
+                id: parentResearch.id,
+                focusText: parentResearch.focus_text,
+                onView: () => parentResearch && loadSavedResearch(parentResearch)
+              } : undefined}
+              childResearches={childResearchList.map(research => ({
+                id: research.id,
+                focusText: research.focus_text || '',
+                onView: () => loadSavedResearch(research)
+              }))}
             />
           )}
           
@@ -1250,7 +1270,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                     key={`iteration-${iter.iteration}`}
                     iteration={iter}
                     isExpanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
-                    onToggle={() => {
+                    onToggleExpand={() => {
                       setExpandedIterations(prev => {
                         const id = `iteration-${iter.iteration}`;
                         if (prev.includes(id)) {
@@ -1260,6 +1280,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                         }
                       });
                     }}
+                    isStreaming={isAnalyzing && currentIteration === iter.iteration}
+                    isCurrentIteration={currentIteration === iter.iteration}
+                    maxIterations={maxIterations}
                   />
                 ))}
               </div>
