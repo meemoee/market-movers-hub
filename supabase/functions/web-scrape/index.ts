@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { SearchResponse, SSEMessage } from "./types.ts"
+import { SearchResponse, SSEMessage, JobUpdateParams } from "./types.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.8"
 
 const corsHeaders = {
@@ -13,6 +13,57 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
 const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Helper function to update job record
+async function updateJobRecord(jobId: string, updates: JobUpdateParams) {
+  if (!jobId) return;
+  
+  try {
+    // If progress_log is provided, use append_to_json_array RPC
+    if (updates.progress_log && updates.progress_log.length > 0) {
+      for (const logEntry of updates.progress_log) {
+        await supabase.rpc('append_to_json_array', {
+          p_array: 'progress_log',
+          p_value: logEntry
+        });
+      }
+      delete updates.progress_log;
+    }
+    
+    // For iterations, use direct update or append if needed
+    if (updates.iterations) {
+      // First get current iterations
+      const { data: currentJob, error: getError } = await supabase
+        .from('research_jobs')
+        .select('iterations')
+        .eq('id', jobId)
+        .single();
+      
+      if (!getError && currentJob) {
+        // Append new iterations to existing ones
+        updates.iterations = [...(currentJob.iterations || []), ...updates.iterations];
+      }
+    }
+    
+    // Regular update for all other fields
+    const { error: updateError } = await supabase
+      .from('research_jobs')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', jobId);
+    
+    if (updateError) {
+      console.error('Error updating job:', updateError);
+      console.error('Update error details:', JSON.stringify(updateError));
+    } else {
+      console.log(`Successfully updated job ${jobId} with:`, Object.keys(updates).join(', '));
+    }
+  } catch (error) {
+    console.error('Exception updating job:', error);
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -21,10 +72,10 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId, focusText, jobId } = await req.json();
+    const { queries, marketId, focusText, jobId, iteration = 1 } = await req.json();
     
     // Log incoming data for debugging
-    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}, jobId: ${jobId || 'none'}`);
+    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}, jobId: ${jobId || 'none'}, iteration: ${iteration}`);
     
     // Ensure queries don't have the market ID accidentally appended
     const cleanedQueries = queries.map((query: string) => {
@@ -69,8 +120,10 @@ serve(async (req) => {
             focus_text: focusText || null,
             status: 'processing',
             started_at: new Date().toISOString(),
+            current_iteration: iteration,
             progress_log: [{ timestamp: new Date().toISOString(), status: 'started', message: 'Beginning web search' }],
-            results: []
+            results: [],
+            iterations: []
           })
           .select('id')
           .single();
@@ -84,6 +137,17 @@ serve(async (req) => {
         } else {
           console.error('No job data returned after insertion');
         }
+      } else {
+        // Update existing job with current iteration
+        await updateJobRecord(researchJobId, {
+          current_iteration: iteration,
+          status: 'processing',
+          progress_log: [{ 
+            timestamp: new Date().toISOString(), 
+            status: 'processing', 
+            message: `Starting iteration ${iteration}` 
+          }]
+        });
       }
     } catch (dbError) {
       console.error('Database error creating job:', dbError);
@@ -97,34 +161,25 @@ serve(async (req) => {
         
         const processQueries = async () => {
           let allResults = [];
+          let iterationData = {
+            iteration: iteration,
+            queries: cleanedQueries,
+            results: [],
+            analysis: ''
+          };
           
           try {
             for (const [index, query] of cleanedQueries.entries()) {
               // Update progress in database if we have a job ID
               if (researchJobId) {
                 try {
-                  const { error: updateError } = await supabase
-                    .from('research_jobs')
-                    .update({
-                      progress_log: supabase.rpc('append_to_json_array', { 
-                        p_array: 'progress_log',
-                        p_value: {
-                          timestamp: new Date().toISOString(),
-                          status: 'processing',
-                          message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
-                        }
-                      }),
+                  await updateJobRecord(researchJobId, {
+                    progress_log: [{
+                      timestamp: new Date().toISOString(),
                       status: 'processing',
-                      updated_at: new Date().toISOString()
-                    })
-                    .eq('id', researchJobId);
-                  
-                  if (updateError) {
-                    console.error('Error updating job progress:', updateError);
-                    console.error('Update error details:', JSON.stringify(updateError));
-                  } else {
-                    console.log(`Successfully updated progress for job ${researchJobId}, query ${index + 1}`);
-                  }
+                      message: `Processing query ${index + 1}/${cleanedQueries.length}: ${query}`
+                    }]
+                  });
                 } catch (updateError) {
                   console.error('Exception updating job progress:', updateError);
                 }
@@ -210,6 +265,9 @@ serve(async (req) => {
                 const validResults = pageResults.filter(r => r.content && r.content.length > 0);
                 allResults = [...allResults, ...validResults];
                 
+                // Add to iteration data
+                iterationData.results = [...iterationData.results, ...validResults];
+                
                 // Stream results for this query - keep existing streaming behavior
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({
                   type: 'results',
@@ -219,20 +277,9 @@ serve(async (req) => {
                 // Update job with results in database if we have a job ID
                 if (researchJobId) {
                   try {
-                    const { error: resultsError } = await supabase
-                      .from('research_jobs')
-                      .update({
-                        results: allResults,
-                        updated_at: new Date().toISOString()
-                      })
-                      .eq('id', researchJobId);
-                    
-                    if (resultsError) {
-                      console.error('Error updating job results:', resultsError);
-                      console.error('Results error details:', JSON.stringify(resultsError));
-                    } else {
-                      console.log(`Successfully updated results for job ${researchJobId}, query ${index + 1}`);
-                    }
+                    await updateJobRecord(researchJobId, {
+                      results: allResults
+                    });
                   } catch (resultsError) {
                     console.error('Exception updating job results:', resultsError);
                   }
@@ -248,18 +295,10 @@ serve(async (req) => {
                 // Update job with error in database if we have a job ID
                 if (researchJobId) {
                   try {
-                    const { error: errorUpdateError } = await supabase
-                      .from('research_jobs')
-                      .update({
-                        error_message: `Error searching for "${query}": ${error.message}`,
-                        status: 'error',
-                        updated_at: new Date().toISOString()
-                      })
-                      .eq('id', researchJobId);
-                    
-                    if (errorUpdateError) {
-                      console.error('Error updating job error status:', errorUpdateError);
-                    }
+                    await updateJobRecord(researchJobId, {
+                      error_message: `Error searching for "${query}": ${error.message}`,
+                      status: 'error'
+                    });
                   } catch (errorUpdateError) {
                     console.error('Exception updating job error status:', errorUpdateError);
                   }
@@ -267,33 +306,21 @@ serve(async (req) => {
               }
             }
             
-            // Complete the job in the database if we have a job ID
+            // Update job with iteration data
             if (researchJobId) {
               try {
-                const { error: completeError } = await supabase
-                  .from('research_jobs')
-                  .update({
+                await updateJobRecord(researchJobId, {
+                  iterations: [iterationData],
+                  current_iteration: iteration,
+                  status: 'completed',
+                  completed_at: new Date().toISOString(),
+                  results: allResults,
+                  progress_log: [{
+                    timestamp: new Date().toISOString(),
                     status: 'completed',
-                    completed_at: new Date().toISOString(),
-                    results: allResults,
-                    progress_log: supabase.rpc('append_to_json_array', { 
-                      p_array: 'progress_log',
-                      p_value: {
-                        timestamp: new Date().toISOString(),
-                        status: 'completed',
-                        message: 'Web search completed'
-                      }
-                    }),
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', researchJobId);
-                
-                if (completeError) {
-                  console.error('Error completing job:', completeError);
-                  console.error('Complete error details:', JSON.stringify(completeError));
-                } else {
-                  console.log(`Successfully completed job ${researchJobId}`);
-                }
+                    message: 'Web search completed'
+                  }]
+                });
               } catch (completeError) {
                 console.error('Exception completing job:', completeError);
               }
@@ -313,18 +340,10 @@ serve(async (req) => {
             // Update job with error in database if we have a job ID
             if (researchJobId) {
               try {
-                const { error: finalErrorError } = await supabase
-                  .from('research_jobs')
-                  .update({
-                    status: 'error',
-                    error_message: `Error in search processing: ${error.message}`,
-                    updated_at: new Date().toISOString()
-                  })
-                  .eq('id', researchJobId);
-                
-                if (finalErrorError) {
-                  console.error('Error updating final job error:', finalErrorError);
-                }
+                await updateJobRecord(researchJobId, {
+                  status: 'error',
+                  error_message: `Error in search processing: ${error.message}`
+                });
               } catch (finalErrorError) {
                 console.error('Exception updating final job error:', finalErrorError);
               }

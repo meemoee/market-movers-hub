@@ -24,3 +24,15 @@ export interface AppendToJsonArrayParams {
   p_array: string;
   p_value: any;
 }
+
+export interface JobUpdateParams {
+  status?: string;
+  progress_log?: any[];
+  current_iteration?: number;
+  iterations?: any[];
+  results?: any[];
+  analysis?: string;
+  error_message?: string;
+  completed_at?: string;
+  updated_at?: string;
+}
