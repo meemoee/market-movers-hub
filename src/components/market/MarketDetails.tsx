@@ -196,7 +196,7 @@ export function MarketDetails({
           <WebResearchCard 
             description={fullResearchContext} 
             marketId={marketId}
-            latestJob={latestResearchJob}
+            latestJob={latestResearchJob || undefined}
           />
         </div>
       )}

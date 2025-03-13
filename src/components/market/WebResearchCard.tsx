@@ -36,8 +36,9 @@ export function WebResearchCard({ description, marketId, latestJob }: WebResearc
       setCurrentProgress(null);
       setProgressMessages(['Starting research...']);
 
-      // Get the full Edge Function URL instead of using .url directly
-      const functionsUrl = `${supabase.functions.url}/web-scrape?description=${encodeURIComponent(description)}&marketId=${encodeURIComponent(marketId)}`;
+      // Construct the fully qualified URL string instead of using the protected url property
+      const supabaseUrl = supabase.functions.url
+      const functionsUrl = `${supabaseUrl}/web-scrape?description=${encodeURIComponent(description)}&marketId=${encodeURIComponent(marketId)}`;
       const eventSource = new EventSource(functionsUrl);
 
       eventSource.onmessage = (event) => {
