@@ -6,9 +6,17 @@ interface ResearchHeaderProps {
   isLoading: boolean
   isAnalyzing: boolean
   onResearch: () => void
+  marketId?: string
+  description?: string
+  focusText?: string
+  parentResearch?: {
+    id: string;
+    focusText?: string;
+    onView?: () => void;
+  }
 }
 
-export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch, marketId, description, focusText, parentResearch }: ResearchHeaderProps) {
   // Ensure we call onResearch without any parameters to prevent passing the event object
   const handleResearchClick = () => {
     onResearch();

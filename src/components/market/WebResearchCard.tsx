@@ -1047,7 +1047,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     <Card className="w-full p-0 overflow-hidden bg-card border shadow-sm">
       <ResearchHeader
         onResearch={() => handleResearch()}
-        isLoading={isLoading || isAnalyzing}
+        isLoading={isLoading}
+        isAnalyzing={isAnalyzing}
         marketId={marketId}
         description={description}
         focusText={focusText}
@@ -1093,11 +1094,26 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         )}
         
         {analysis.length > 0 && (
-          <InsightsDisplay 
+          <AnalysisDisplay 
             content={analysis} 
             isLoading={isAnalyzing}
+          />
+        )}
+        
+        {streamingState.parsedData && (
+          <InsightsDisplay 
+            streamingState={streamingState}
             onResearchArea={handleResearchArea}
-            areasForResearch={streamingState.parsedData?.areasForResearch || []}
+            parentResearch={parentResearch ? {
+              id: parentResearch.id,
+              focusText: parentResearch.focus_text,
+              onView: () => loadSavedResearch(parentResearch)
+            } : undefined}
+            childResearches={childResearchList.map(research => ({
+              id: research.id,
+              focusText: research.focus_text || "Unknown focus",
+              onView: () => loadSavedResearch(research)
+            }))}
           />
         )}
         
