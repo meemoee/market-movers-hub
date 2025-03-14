@@ -659,9 +659,21 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       // Collect all queries used across iterations
       const allQueries = allIterations.flatMap(iter => iter.queries || []);
       
+      // Modify webContent to include iteration analyses prominently
+      const webContentWithAnalyses = [
+        // First add all previous analyses with proper formatting
+        ...previousAnalyses.map((analysis, idx) => 
+          `===== PREVIOUS ITERATION ${idx+1} ANALYSIS =====\n${analysis}\n==============================`
+        ),
+        // Then add the web results
+        ...allResults.map(r => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`)
+      ].join('\n\n');
+      
+      console.log(`Preparing web content with ${previousAnalyses.length} analyses prominently included`);
+      
       // Prepare payload with all the same information as non-background research
       const insightsPayload = {
-        webContent: allResults.map(r => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`).join('\n\n'),
+        webContent: webContentWithAnalyses,
         analysis: finalAnalysis,
         marketId: marketId,
         marketQuestion: query,
@@ -675,7 +687,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       console.log(`Sending extract-research-insights payload with:
         - ${allResults.length} web results
-        - ${previousAnalyses.length} previous analyses
+        - ${previousAnalyses.length} previous analyses (prominently included in webContent)
         - ${allQueries.length} queries
         - ${areasForResearch.length} areas for research
         - marketPrice: ${marketPrice || 'undefined'}
