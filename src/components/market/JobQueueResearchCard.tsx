@@ -476,6 +476,22 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
+  // Get a status icon for history items
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return <CheckCircle className="h-4 w-4 text-green-500 mr-2" />;
+      case 'failed':
+        return <AlertCircle className="h-4 w-4 text-red-500 mr-2" />;
+      case 'processing':
+        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin mr-2" />;
+      case 'queued':
+        return <Clock className="h-4 w-4 text-yellow-500 mr-2" />;
+      default:
+        return null;
+    }
+  };
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -526,7 +542,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
                   History
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[240px]">
+              <DropdownMenuContent align="end" className="w-[300px]">
                 {savedJobs.map((job) => (
                   <DropdownMenuItem
                     key={job.id}
@@ -535,14 +551,21 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
                     className="flex flex-col items-start py-2"
                   >
                     <div className="flex items-center w-full">
-                      <span className="font-medium">
-                        {job.status === 'completed' ? '✓ ' : 
-                        job.status === 'failed' ? '✗ ' : 
-                        job.status === 'processing' ? '⟳ ' : '⌛ '}
-                      </span>
-                      <span className="truncate flex-1 ml-1">
+                      {getStatusIcon(job.status)}
+                      <span className="font-medium truncate flex-1">
                         {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
                       </span>
+                      <Badge 
+                        variant="outline" 
+                        className={`ml-2 ${
+                          job.status === 'completed' ? 'bg-green-50 text-green-700' : 
+                          job.status === 'failed' ? 'bg-red-50 text-red-700' :
+                          job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
+                          'bg-yellow-50 text-yellow-700'
+                        }`}
+                      >
+                        {job.status}
+                      </Badge>
                     </div>
                     <span className="text-xs text-muted-foreground mt-1">
                       {formatDate(job.created_at)}
