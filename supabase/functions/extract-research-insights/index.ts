@@ -119,7 +119,7 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       ? `\nCRITICAL: This analysis is specifically focused on: "${focusText}"\nYou MUST ensure ALL evidence points directly address this specific focus area.\n`
       : '';
 
-    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
+    const systemPrompt = `You are an expert market analyst and probabilistic forecaster.${marketContext}${focusContext}
 Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
 
 CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:

@@ -238,7 +238,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             
             if (combinedContent.length > 0) {
               // Generate analysis for this iteration
-              const analysisText = await generateStructuredAnalysis(combinedContent, query, `Iteration ${i} analysis for "${query}"`);
+              const analysisText = await generateReadableAnalysis(combinedContent, query, `Iteration ${i} analysis for "${query}"`);
               
               // Update the iteration with the analysis
               const updatedIterations = [...iterationResults];
@@ -310,7 +310,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       if (allContent.length > 0) {
         // First generate the basic analysis using OpenRouter
-        finalAnalysis = await generateStructuredAnalysis(allContent, query, `Final comprehensive analysis for "${query}"`);
+        finalAnalysis = await generateReadableAnalysis(allContent, query, `Final comprehensive analysis for "${query}"`);
         
         // Now get structured insights from our extract-research-insights function
         try {
@@ -466,7 +466,77 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// New function to generate structured analysis using OpenRouter
+// New function to generate readable analysis using OpenRouter
+async function generateReadableAnalysis(content: string, query: string, analysisType: string): Promise<string> {
+  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+  
+  if (!openRouterKey) {
+    throw new Error('OPENROUTER_API_KEY is not set in environment');
+  }
+  
+  console.log(`Generating ${analysisType} using OpenRouter with readable format`);
+  
+  // Limit content length to avoid token limits
+  const contentLimit = 20000;
+  const truncatedContent = content.length > contentLimit 
+    ? content.substring(0, contentLimit) + "... [content truncated]" 
+    : content;
+  
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+      "X-Title": "Market Research App",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-1.5-flash",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert market research analyst and probabilistic forecaster. 
+Your task is to analyze the provided web research and provide a comprehensive analysis 
+based on the content. Focus on extracting key information, identifying patterns, and 
+summarizing the most important findings. Write your analysis in clear, well-structured 
+markdown format that is easy to read.`
+        },
+        {
+          role: "user",
+          content: `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
+
+Content to analyze:
+${truncatedContent}
+
+Please provide a comprehensive analysis that:
+1. Summarizes the key information found
+2. Identifies patterns or trends
+3. Highlights any conflicting information
+4. Notes areas where more research might be beneficial
+5. Provides context for understanding the topic better
+
+Format your response as a well-structured markdown document with clear sections and bullet points where appropriate.`
+        }
+      ],
+      temperature: 0.3
+    })
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+  }
+  
+  const data = await response.json();
+  
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+  }
+  
+  return data.choices[0].message.content;
+}
+
+// This function is only used for the final structured analysis in JSON format
 async function generateStructuredAnalysis(content: string, query: string, analysisType: string): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
