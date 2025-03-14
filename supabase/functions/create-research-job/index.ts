@@ -8,18 +8,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-interface ResearchJobRequest {
-  marketId: string;
-  query: string;
-  maxIterations?: number;
-  focusText?: string;
-  parentJobId?: string;
-  areasToResearch?: string[];
-}
-
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, parentJobId?: string, areasToResearch?: string[]) {
-  console.log(`Starting background research for job ${jobId}${focusText ? ` with focus on: "${focusText}"` : ''}`)
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number) {
+  console.log(`Starting background research for job ${jobId}`)
   
   try {
     const supabaseClient = createClient(
@@ -36,7 +27,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     // Log start
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify(`Starting research for: ${query}${focusText ? ` with focus on: "${focusText}"` : ''}`)
+      progress_entry: JSON.stringify(`Starting research for: ${query}`)
     })
     
     // Track all previous queries to avoid repetition
@@ -82,9 +73,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               marketDescription: query,
               question: query,
               iteration: i,
-              previousQueries,
-              focusText: focusText, // Pass focus text if available
-              areasForResearch: areasToResearch // Pass research areas if available
+              previousQueries
             })
           }
         );
@@ -354,11 +343,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               const analysisText = await generateAnalysis(
                 combinedContent, 
                 query, 
-                `Iteration ${i} analysis for "${query}"${focusText ? ` focused on "${focusText}"` : ''}`,
+                `Iteration ${i} analysis for "${query}"`,
                 marketPrice,
                 relatedMarkets,
-                areasForResearch,
-                focusText
+                areasForResearch
               );
               
               // Update the iteration with the analysis
@@ -367,10 +355,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               
               if (iterationIndex >= 0) {
                 updatedIterations[iterationIndex].analysis = analysisText;
-                
-                // Extract new areas for research
-                const newAreasForResearch = extractAreasForResearch(analysisText);
-                updatedIterations[iterationIndex].areas_for_research = newAreasForResearch;
                 
                 await supabaseClient
                   .from('research_jobs')
@@ -381,14 +365,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                   job_id: jobId,
                   progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
                 });
-                
-                // Log extracted areas for research
-                if (newAreasForResearch.length > 0) {
-                  await supabaseClient.rpc('append_research_progress', {
-                    job_id: jobId,
-                    progress_entry: JSON.stringify(`Identified ${newAreasForResearch.length} areas for further research: ${newAreasForResearch.join(", ")}`)
-                  });
-                }
               }
             }
           }
@@ -534,15 +510,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               }
             }
           }
-          
-          // Also check if the iteration has explicit areas_for_research field
-          if (iteration.areas_for_research && Array.isArray(iteration.areas_for_research)) {
-            for (const area of iteration.areas_for_research) {
-              if (!areasForResearch.includes(area)) {
-                areasForResearch.push(area);
-              }
-            }
-          }
         }
       } catch (areasError) {
         console.error(`Error extracting areas for research:`, areasError);
@@ -552,11 +519,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         finalAnalysis = await generateAnalysis(
           allContent, 
           query, 
-          `Final comprehensive analysis for "${query}"${focusText ? ` focused on "${focusText}"` : ''}`,
+          `Final comprehensive analysis for "${query}"`,
           marketPrice,
           relatedMarkets,
-          areasForResearch,
-          focusText
+          areasForResearch
         );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
@@ -571,14 +537,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       });
     }
     
-    // Extract areas for further research from the final analysis
-    const finalAreasForResearch = extractAreasForResearch(finalAnalysis);
-    
     // Create final results object with the text analysis
     const textAnalysisResults = {
       data: allResults,
-      analysis: finalAnalysis,
-      areasForResearch: finalAreasForResearch
+      analysis: finalAnalysis
     };
     
     // Now generate the structured insights with the extract-research-insights function
@@ -651,6 +613,44 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         console.error(`Error fetching related markets for ${marketId}:`, relatedError);
       }
       
+      // Get all areas for research that may have been identified in previous iterations
+      const areasForResearch = [];
+      try {
+        for (const iteration of allIterations) {
+          if (iteration.analysis) {
+            // Look for a section with "areas for further research" or similar
+            const analysisText = iteration.analysis.toLowerCase();
+            if (analysisText.includes("areas for further research") || 
+                analysisText.includes("further research needed") ||
+                analysisText.includes("additional research")) {
+              // Extract areas if possible
+              const lines = iteration.analysis.split('\n');
+              let inAreaSection = false;
+              
+              for (const line of lines) {
+                if (!inAreaSection) {
+                  if (line.toLowerCase().includes("areas for") || 
+                      line.toLowerCase().includes("further research") ||
+                      line.toLowerCase().includes("additional research")) {
+                    inAreaSection = true;
+                  }
+                } else if (line.trim().length === 0 || line.startsWith('#')) {
+                  inAreaSection = false;
+                } else if (line.startsWith('-') || line.startsWith('*') || 
+                           (line.match(/^\d+\.\s/) !== null)) {
+                  const area = line.replace(/^[-*\d.]\s+/, '').trim();
+                  if (area && !areasForResearch.includes(area)) {
+                    areasForResearch.push(area);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (areasError) {
+        console.error(`Error extracting areas for research:`, areasError);
+      }
+      
       // Prepare all previous analyses
       const previousAnalyses = allIterations
         .filter(iter => iter.analysis)
@@ -682,7 +682,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         queries: allQueries,
         areasForResearch: areasForResearch,
         marketPrice: marketPrice,
-        focusText: focusText, // Pass focus text
         relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined
       };
       
@@ -692,7 +691,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         - ${allQueries.length} queries
         - ${areasForResearch.length} areas for research
         - marketPrice: ${marketPrice || 'undefined'}
-        - focusText: ${focusText || 'undefined'}
         - ${relatedMarkets.length} related markets`);
       
       // Call the extract-research-insights function to get structured insights (without streaming)
@@ -780,88 +778,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       result_data: JSON.stringify(finalResults)
     });
     
-    // Check if this is the parent job
-    if (!parentJobId) {
-      // For parent jobs (that don't themselves have a parent), check if we should create child jobs
-      // for deeper research into specific areas
-      const shouldCreateChildJobs = finalAreasForResearch.length > 0 && !focusText;
-      
-      if (shouldCreateChildJobs) {
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Found ${finalAreasForResearch.length} specific areas that need deeper research. Will create child research jobs for them.`)
-        });
-        
-        // Store child job IDs to update parent job later
-        const childJobIds = [];
-        
-        // Create child jobs for each research area (limit to first 3 for performance)
-        const researchAreasToProcess = finalAreasForResearch.slice(0, 3);
-        
-        for (const area of researchAreasToProcess) {
-          try {
-            await supabaseClient.rpc('append_research_progress', {
-              job_id: jobId,
-              progress_entry: JSON.stringify(`Creating child research job for area: "${area}"`)
-            });
-            
-            // Create a child job record
-            const { data: childJobData, error: childJobError } = await supabaseClient
-              .from('research_jobs')
-              .insert({
-                market_id: marketId,
-                query: query, // Same query
-                status: 'queued',
-                max_iterations: 2, // Fewer iterations for child jobs
-                current_iteration: 0,
-                progress_log: [],
-                iterations: [],
-                parent_job_id: jobId, // Reference to parent
-                focus_text: area // Set the focus text to this research area
-              })
-              .select('id')
-              .single();
-              
-            if (childJobError) {
-              console.error(`Failed to create child job for area "${area}":`, childJobError);
-              continue;
-            }
-            
-            const childJobId = childJobData.id;
-            childJobIds.push(childJobId);
-            
-            await supabaseClient.rpc('append_research_progress', {
-              job_id: jobId,
-              progress_entry: JSON.stringify(`Created child research job (ID: ${childJobId}) for area: "${area}"`)
-            });
-            
-            // Start the child job asynchronously
-            setTimeout(() => {
-              performWebResearch(childJobId, query, marketId, 2, area, jobId)
-                .catch(err => {
-                  console.error(`Background research for child job ${childJobId} failed:`, err);
-                });
-            }, 1000 * (childJobIds.length)); // Stagger the start times
-            
-          } catch (childJobError) {
-            console.error(`Error creating child job for area "${area}":`, childJobError);
-          }
-        }
-        
-        // Update the parent job with child job IDs
-        if (childJobIds.length > 0) {
-          try {
-            await supabaseClient
-              .from('research_jobs')
-              .update({ child_job_ids: childJobIds })
-              .eq('id', jobId);
-          } catch (updateError) {
-            console.error(`Error updating parent job with child job IDs:`, updateError);
-          }
-        }
-      }
-    }
-    
     // Mark job as complete
     await supabaseClient.rpc('update_research_job_status', {
       job_id: jobId,
@@ -907,8 +823,7 @@ async function generateAnalysis(
   analysisType: string,
   marketPrice?: number,
   relatedMarkets?: any[],
-  areasForResearch?: string[],
-  focusText?: string
+  areasForResearch?: string[]
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -948,18 +863,11 @@ async function generateAnalysis(
     });
   }
   
-  // Add focus text to prompt if available
-  let focusInstruction = '';
-  if (focusText) {
-    focusInstruction = `\nIMPORTANT: Focus your analysis specifically on this aspect: "${focusText}". This is a targeted investigation, so concentrate your analysis on information directly relevant to this focus area.`;
-  }
-  
-  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"${focusText ? ` with a specific focus on: "${focusText}"` : ''}
+  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
 
 Content to analyze:
 ${truncatedContent}
 ${contextInfo}
-${focusInstruction}
 
 Please provide:
 
@@ -967,7 +875,6 @@ Please provide:
 2. Evidence Assessment: Evaluate the strength of evidence regarding the query.
 3. Probability Factors: What factors impact the likelihood of outcomes related to the query?
 4. Conclusions: Based solely on this information, what conclusions can we draw?
-5. Areas for Further Research: What specific aspects remain unclear or need more investigation?
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
   
@@ -1005,40 +912,6 @@ Present the analysis in a structured, concise format with clear sections and bul
   return data.choices[0].message.content;
 }
 
-// Function to extract areas for further research from analysis text
-function extractAreasForResearch(analysisText: string): string[] {
-  if (!analysisText) return [];
-  
-  const areasForResearch: string[] = [];
-  const lines = analysisText.split('\n');
-  let inAreaSection = false;
-  
-  for (const line of lines) {
-    const lowerLine = line.toLowerCase();
-    // Look for sections that indicate research areas
-    if (!inAreaSection) {
-      if (lowerLine.includes("areas for further research") || 
-          lowerLine.includes("further research needed") ||
-          lowerLine.includes("additional research") ||
-          lowerLine.includes("remains unclear") ||
-          lowerLine.includes("need more investigation")) {
-        inAreaSection = true;
-      }
-    } else if (line.trim().length === 0 || line.startsWith('#')) {
-      // End of section
-      inAreaSection = false;
-    } else if (line.startsWith('-') || line.startsWith('*') || (line.match(/^\d+\.\s/) !== null)) {
-      // Extract bulleted or numbered points
-      const area = line.replace(/^[-*\d.]\s+/, '').trim();
-      if (area && !areasForResearch.includes(area)) {
-        areasForResearch.push(area);
-      }
-    }
-  }
-  
-  return areasForResearch;
-}
-
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -1046,15 +919,7 @@ serve(async (req) => {
   }
   
   try {
-    const requestData = await req.json() as ResearchJobRequest;
-    const { 
-      marketId, 
-      query, 
-      maxIterations = 3, 
-      focusText,
-      parentJobId,
-      areasToResearch
-    } = requestData;
+    const { marketId, query, maxIterations = 3 } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -1078,9 +943,7 @@ serve(async (req) => {
         max_iterations: maxIterations,
         current_iteration: 0,
         progress_log: [],
-        iterations: [],
-        focus_text: focusText || null,
-        parent_job_id: parentJobId || null
+        iterations: []
       })
       .select('id')
       .single()
@@ -1094,7 +957,7 @@ serve(async (req) => {
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations, focusText, parentJobId, areasToResearch).catch(err => {
+      performWebResearch(jobId, query, marketId, maxIterations).catch(err => {
         console.error(`Background research failed: ${err}`);
       });
     }, 0);
