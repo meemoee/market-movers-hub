@@ -11,8 +11,11 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, Clock, History } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Label } from "@/components/ui/label"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -60,6 +63,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [structuredInsights, setStructuredInsights] = useState<any>(null)
   const [focusText, setFocusText] = useState<string>('')
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
+  const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
+  const [isLoadingJobs, setIsLoadingJobs] = useState(false)
   const { toast } = useToast()
 
   // Reset all state variables to their initial values
@@ -77,40 +82,35 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setStructuredInsights(null);
   }
 
-  // Fetch the most recent active job for this market on component mount
+  // Load saved research jobs for this market on component mount
   useEffect(() => {
-    const fetchExistingJob = async () => {
-      try {
-        // Look for the most recent job for this market
-        const { data, error } = await supabase
-          .from('research_jobs')
-          .select('*')
-          .eq('market_id', marketId)
-          .in('status', ['queued', 'processing', 'completed', 'failed'])
-          .order('created_at', { ascending: false })
-          .limit(1);
-        
-        if (error) {
-          console.error('Error fetching research jobs:', error);
-          return;
-        }
-        
-        if (data && data.length > 0) {
-          const job = data[0] as ResearchJob;
-          console.log('Found existing job:', job);
-          
-          loadJobData(job);
-        }
-      } catch (e) {
-        console.error('Error in fetchExistingJob:', e);
+    fetchSavedJobs();
+  }, [marketId]);
+
+  // Fetch saved research jobs for this market
+  const fetchSavedJobs = async () => {
+    try {
+      setIsLoadingJobs(true);
+      const { data, error } = await supabase
+        .from('research_jobs')
+        .select('*')
+        .eq('market_id', marketId)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching research jobs:', error);
+        return;
       }
-    };
-    
-    // Only fetch if we don't already have a job ID set
-    if (!jobId) {
-      fetchExistingJob();
+      
+      if (data && data.length > 0) {
+        setSavedJobs(data as ResearchJob[]);
+      }
+    } catch (e) {
+      console.error('Error in fetchSavedJobs:', e);
+    } finally {
+      setIsLoadingJobs(false);
     }
-  }, [marketId, jobId]);
+  };
 
   // Helper function to load job data consistently
   const loadJobData = (job: ResearchJob) => {
@@ -236,11 +236,18 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
             }
           }
           
+          // Refresh the list of saved jobs after completion
+          fetchSavedJobs();
+          
           clearInterval(pollInterval);
         } else if (job.status === 'failed') {
           setPolling(false);
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+          
+          // Refresh the list of saved jobs even if failed
+          fetchSavedJobs();
+          
           clearInterval(pollInterval);
         } else if (job.status === 'processing') {
           // Calculate progress based on current_iteration and max_iterations
@@ -319,6 +326,9 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         title: "Background Research Started",
         description: `Job ID: ${jobId}. You can close this window and check back later.`,
       });
+      
+      // Refresh the list of saved jobs after starting a new one
+      fetchSavedJobs();
       
     } catch (error) {
       console.error('Error in research job:', error);
@@ -407,6 +417,12 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     handleResearch(area);
   };
 
+  // Clear the current job display and return to the blank state
+  const handleClearDisplay = () => {
+    resetState();
+    setFocusText('');
+  };
+
   // Function to render status badge
   const renderStatusBadge = () => {
     if (!jobStatus) return null;
@@ -445,6 +461,21 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      }).format(date);
+    } catch (e) {
+      return 'Invalid date';
+    }
+  };
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -458,14 +489,70 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           </p>
         </div>
         
-        <Button 
-          onClick={() => handleResearch()} 
-          disabled={isLoading || polling}
-          className="flex items-center gap-2"
-        >
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isLoading ? "Starting..." : jobId && jobStatus !== 'completed' && jobStatus !== 'failed' ? "Job Running..." : "Start Research"}
-        </Button>
+        <div className="flex items-center gap-2">
+          {jobId ? (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleClearDisplay}
+              disabled={isLoading || isLoadingSaved}
+            >
+              New Research
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => handleResearch()} 
+              disabled={isLoading || polling}
+              className="flex items-center gap-2"
+            >
+              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isLoading ? "Starting..." : "Start Research"}
+            </Button>
+          )}
+          
+          {savedJobs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  disabled={isLoadingJobs || isLoading || isLoadingSaved}
+                >
+                  {isLoadingJobs ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
+                  ) : (
+                    <History className="h-4 w-4 mr-2" />
+                  )}
+                  History
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[240px]">
+                {savedJobs.map((job) => (
+                  <DropdownMenuItem
+                    key={job.id}
+                    onClick={() => loadSavedResearch(job.id)}
+                    disabled={isLoadingSaved}
+                    className="flex flex-col items-start py-2"
+                  >
+                    <div className="flex items-center w-full">
+                      <span className="font-medium">
+                        {job.status === 'completed' ? '✓ ' : 
+                        job.status === 'failed' ? '✗ ' : 
+                        job.status === 'processing' ? '⟳ ' : '⌛ '}
+                      </span>
+                      <span className="truncate flex-1 ml-1">
+                        {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
+                      </span>
+                    </div>
+                    <span className="text-xs text-muted-foreground mt-1">
+                      {formatDate(job.created_at)}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </div>
 
       {!jobId && (
@@ -492,12 +579,14 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         </div>
       )}
 
-      <ProgressDisplay 
-        messages={progress} 
-        jobId={jobId || undefined} 
-        progress={progressPercent}
-        status={jobStatus}
-      />
+      {jobId && (
+        <ProgressDisplay 
+          messages={progress} 
+          jobId={jobId || undefined} 
+          progress={progressPercent}
+          status={jobStatus}
+        />
+      )}
       
       {iterations.length > 0 && (
         <div className="border-t pt-4 w-full max-w-full space-y-2">
