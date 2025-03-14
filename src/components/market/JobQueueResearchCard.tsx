@@ -59,7 +59,23 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const [structuredInsights, setStructuredInsights] = useState<any>(null)
   const [focusText, setFocusText] = useState<string>('')
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const { toast } = useToast()
+
+  // Reset all state variables to their initial values
+  const resetState = () => {
+    setJobId(null);
+    setPolling(false);
+    setProgress([]);
+    setProgressPercent(0);
+    setResults([]);
+    setError(null);
+    setAnalysis('');
+    setIterations([]);
+    setExpandedIterations([]);
+    setJobStatus(null);
+    setStructuredInsights(null);
+  }
 
   // Fetch the most recent active job for this market on component mount
   useEffect(() => {
@@ -83,66 +99,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           const job = data[0] as ResearchJob;
           console.log('Found existing job:', job);
           
-          // Update state with the job details
-          setJobId(job.id);
-          setJobStatus(job.status);
-          
-          // Set progress percent based on current iteration
-          if (job.max_iterations && job.current_iteration !== undefined) {
-            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-            setProgressPercent(percent);
-            
-            // If the job is completed, set to 100%
-            if (job.status === 'completed') {
-              setProgressPercent(100);
-            }
-          }
-          
-          // Set progress log
-          if (job.progress_log && Array.isArray(job.progress_log)) {
-            setProgress(job.progress_log);
-          }
-          
-          // Start polling if the job is still active
-          if (job.status === 'queued' || job.status === 'processing') {
-            setPolling(true);
-          }
-          
-          // Set iterations data
-          if (job.iterations && Array.isArray(job.iterations)) {
-            setIterations(job.iterations);
-            
-            // Auto-expand the latest iteration
-            if (job.iterations.length > 0) {
-              setExpandedIterations([job.iterations.length]);
-            }
-          }
-          
-          // Set results if available
-          if (job.status === 'completed' && job.results) {
-            try {
-              const parsedResults = JSON.parse(job.results);
-              if (parsedResults.data && Array.isArray(parsedResults.data)) {
-                setResults(parsedResults.data);
-              }
-              if (parsedResults.analysis) {
-                setAnalysis(parsedResults.analysis);
-              }
-              if (parsedResults.structuredInsights) {
-                setStructuredInsights({
-                  parsedData: parsedResults.structuredInsights,
-                  rawText: JSON.stringify(parsedResults.structuredInsights)
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing job results:', e);
-            }
-          }
-          
-          // Set error if job failed
-          if (job.status === 'failed') {
-            setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-          }
+          loadJobData(job);
         }
       } catch (e) {
         console.error('Error in fetchExistingJob:', e);
@@ -154,6 +111,75 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       fetchExistingJob();
     }
   }, [marketId, jobId]);
+
+  // Helper function to load job data consistently
+  const loadJobData = (job: ResearchJob) => {
+    // Update state with the job details
+    setJobId(job.id);
+    setJobStatus(job.status);
+    
+    // Set progress percent based on current iteration
+    if (job.max_iterations && job.current_iteration !== undefined) {
+      const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
+      setProgressPercent(percent);
+      
+      // If the job is completed, set to 100%
+      if (job.status === 'completed') {
+        setProgressPercent(100);
+      }
+    }
+    
+    // Set progress log
+    if (job.progress_log && Array.isArray(job.progress_log)) {
+      setProgress(job.progress_log);
+    }
+    
+    // Start polling if the job is still active
+    if (job.status === 'queued' || job.status === 'processing') {
+      setPolling(true);
+    }
+    
+    // Set iterations data
+    if (job.iterations && Array.isArray(job.iterations)) {
+      setIterations(job.iterations);
+      
+      // Auto-expand the latest iteration
+      if (job.iterations.length > 0) {
+        setExpandedIterations([job.iterations.length]);
+      }
+    }
+    
+    // Set results if available
+    if (job.status === 'completed' && job.results) {
+      try {
+        const parsedResults = JSON.parse(job.results);
+        if (parsedResults.data && Array.isArray(parsedResults.data)) {
+          setResults(parsedResults.data);
+        }
+        if (parsedResults.analysis) {
+          setAnalysis(parsedResults.analysis);
+        }
+        if (parsedResults.structuredInsights) {
+          setStructuredInsights({
+            parsedData: parsedResults.structuredInsights,
+            rawText: JSON.stringify(parsedResults.structuredInsights)
+          });
+        }
+      } catch (e) {
+        console.error('Error parsing job results:', e);
+      }
+    }
+    
+    // Set error if job failed
+    if (job.status === 'failed') {
+      setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+    }
+
+    // Set focus text if available
+    if (job.focus_text) {
+      setFocusText(job.focus_text);
+    }
+  }
 
   // Poll for job status
   useEffect(() => {
@@ -251,18 +277,9 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   }, [jobId, polling, progress.length, expandedIterations]);
 
   const handleResearch = async (initialFocusText = '') => {
+    // Reset state before starting a new research
+    resetState();
     setIsLoading(true);
-    setJobId(null);
-    setPolling(false);
-    setProgress([]);
-    setProgressPercent(0);
-    setResults([]);
-    setError(null);
-    setAnalysis('');
-    setIterations([]);
-    setExpandedIterations([]);
-    setJobStatus(null);
-    setStructuredInsights(null);
 
     const useFocusText = initialFocusText || focusText;
 
@@ -320,6 +337,76 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     );
   };
 
+  // Load a saved research job
+  const loadSavedResearch = async (jobId: string) => {
+    try {
+      setIsLoadingSaved(true);
+      
+      // Reset state before loading a new research
+      resetState();
+      
+      const { data, error } = await supabase
+        .from('research_jobs')
+        .select('*')
+        .eq('id', jobId)
+        .single();
+        
+      if (error) {
+        console.error('Error loading saved research:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load saved research job.",
+          variant: "destructive"
+        });
+        setIsLoadingSaved(false);
+        return;
+      }
+      
+      if (!data) {
+        toast({
+          title: "Error",
+          description: "Research job not found.",
+          variant: "destructive"
+        });
+        setIsLoadingSaved(false);
+        return;
+      }
+      
+      const job = data as ResearchJob;
+      
+      // Load job data
+      loadJobData(job);
+      
+      toast({
+        title: "Research Loaded",
+        description: `Loaded research job ${job.focus_text ? `focused on: ${job.focus_text}` : ''}`,
+      });
+    } catch (e) {
+      console.error('Error loading saved research:', e);
+      toast({
+        title: "Error",
+        description: "An unexpected error occurred while loading the research job.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  };
+
+  const handleResearchArea = (area: string) => {
+    // Reset focus text input before starting new research with the selected area
+    setFocusText('');
+    
+    // Start a new research job with the selected area as the focus text
+    toast({
+      title: "Starting Focused Research",
+      description: `Creating new research job focused on: ${area}`,
+    });
+    
+    // Start research with the selected area
+    handleResearch(area);
+  };
+
   // Function to render status badge
   const renderStatusBadge = () => {
     if (!jobStatus) return null;
@@ -358,18 +445,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
-  const handleResearchArea = (area: string) => {
-    // Start a new research job with the selected area as the focus text
-    toast({
-      title: "Starting Focused Research",
-      description: `Creating new research job focused on: ${area}`,
-    });
-    
-    // Clear focus text input and start research with the selected area
-    setFocusText('');
-    handleResearch(area);
-  };
-
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -402,6 +477,12 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
             disabled={isLoading || polling}
             className="flex-1"
           />
+        </div>
+      )}
+
+      {focusText && jobId && (
+        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
+          <span className="font-medium">Research focus:</span> {focusText}
         </div>
       )}
 
