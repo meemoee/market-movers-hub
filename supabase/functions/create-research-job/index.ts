@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -9,8 +8,8 @@ const corsHeaders = {
 }
 
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number) {
-  console.log(`Starting background research for job ${jobId}`)
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string) {
+  console.log(`Starting background research for job ${jobId} ${focusText ? `with focus: "${focusText}"` : ''}`)
   
   try {
     const supabaseClient = createClient(
@@ -24,10 +23,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       new_status: 'processing'
     })
     
-    // Log start
+    // Log start including focus text if provided
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify(`Starting research for: ${query}`)
+      progress_entry: JSON.stringify(`Starting research for: ${query}${focusText ? ` (Focus: ${focusText})` : ''}`)
     })
     
     // Track all previous queries to avoid repetition
@@ -55,7 +54,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       try {
         await supabaseClient.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: JSON.stringify(`Generating search queries for iteration ${i}`)
+          progress_entry: JSON.stringify(`Generating search queries for iteration ${i}${focusText ? ` focusing on "${focusText}"` : ''}`)
         })
         
         // Call the generate-queries function to get real queries
@@ -72,6 +71,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               marketId: marketId,
               marketDescription: query,
               question: query,
+              focusText: focusText, // Include focus text parameter
               iteration: i,
               previousQueries
             })
@@ -919,7 +919,7 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3 } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -933,12 +933,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
     
-    // Create a new job record
+    // Create a new job record, now including focus_text
     const { data: jobData, error: jobError } = await supabaseClient
       .from('research_jobs')
       .insert({
         market_id: marketId,
         query: query,
+        focus_text: focusText, // Store focus text in the research job
         status: 'queued',
         max_iterations: maxIterations,
         current_iteration: 0,
@@ -957,7 +958,7 @@ serve(async (req) => {
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations).catch(err => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText).catch(err => {
         console.error(`Background research failed: ${err}`);
       });
     }, 0);

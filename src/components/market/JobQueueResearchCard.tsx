@@ -11,7 +11,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, Clock, Search } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 
 interface JobQueueResearchCardProps {
@@ -30,6 +30,7 @@ interface ResearchJob {
   id: string;
   market_id: string;
   query: string;
+  focus_text?: string;
   status: 'queued' | 'processing' | 'completed' | 'failed';
   max_iterations: number;
   current_iteration: number;
@@ -57,6 +58,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const [structuredInsights, setStructuredInsights] = useState<any>(null)
+  const [focusText, setFocusText] = useState('')
   const { toast } = useToast()
 
   // Fetch the most recent active job for this market on component mount
@@ -84,6 +86,11 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           // Update state with the job details
           setJobId(job.id);
           setJobStatus(job.status);
+          
+          // Set focus text if available
+          if (job.focus_text) {
+            setFocusText(job.focus_text);
+          }
           
           // Set progress percent based on current iteration
           if (job.max_iterations && job.current_iteration !== undefined) {
@@ -268,7 +275,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       const payload = {
         marketId,
         query: description,
-        maxIterations: 3
+        maxIterations: 3,
+        focusText: focusText.trim() || undefined
       };
       
       // Call the job creation endpoint
@@ -292,6 +300,10 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       setJobStatus('queued');
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
+      
+      if (focusText.trim()) {
+        setProgress(prev => [...prev, `Research focused on: "${focusText}"`]);
+      }
       
       toast({
         title: "Background Research Started",
@@ -374,6 +386,36 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
           {isLoading ? "Starting..." : jobId && jobStatus !== 'completed' && jobStatus !== 'failed' ? "Job Running..." : "Start Research"}
         </Button>
+      </div>
+
+      {/* Focus text input */}
+      <div className="flex flex-col space-y-2">
+        <label htmlFor="focusText" className="text-sm font-medium">
+          Focus Area (optional)
+        </label>
+        <div className="flex space-x-2">
+          <Input 
+            id="focusText"
+            placeholder="Enter specific focus for your research..."
+            value={focusText}
+            onChange={(e) => setFocusText(e.target.value)}
+            disabled={isLoading || polling}
+            className="flex-1"
+          />
+          <Button 
+            variant="outline" 
+            size="icon"
+            disabled={isLoading || polling}
+            onClick={() => setFocusText('')}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+        </div>
+        {focusText && (
+          <p className="text-xs text-muted-foreground">
+            Research will focus specifically on: "{focusText}"
+          </p>
+        )}
       </div>
 
       {error && (
