@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,6 +11,7 @@ import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { InsightsDisplay } from "./research/InsightsDisplay"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -24,7 +24,6 @@ interface ResearchResult {
   title?: string;
 }
 
-// Define an interface for our research job data
 interface ResearchJob {
   id: string;
   market_id: string;
@@ -55,13 +54,22 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
+  const [streamingState, setStreamingState] = useState<{
+    rawText: string;
+    parsedData: {
+      probability: string;
+      areasForResearch: string[];
+      reasoning?: any;
+    } | null;
+  }>({
+    rawText: '',
+    parsedData: null
+  });
   const { toast } = useToast()
 
-  // Fetch the most recent active job for this market on component mount
   useEffect(() => {
     const fetchExistingJob = async () => {
       try {
-        // Look for the most recent job for this market
         const { data, error } = await supabase
           .from('research_jobs')
           .select('*')
@@ -79,42 +87,34 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           const job = data[0] as ResearchJob;
           console.log('Found existing job:', job);
           
-          // Update state with the job details
           setJobId(job.id);
           setJobStatus(job.status);
           
-          // Set progress percent based on current iteration
           if (job.max_iterations && job.current_iteration !== undefined) {
             const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
             setProgressPercent(percent);
             
-            // If the job is completed, set to 100%
             if (job.status === 'completed') {
               setProgressPercent(100);
             }
           }
           
-          // Set progress log
           if (job.progress_log && Array.isArray(job.progress_log)) {
             setProgress(job.progress_log);
           }
           
-          // Start polling if the job is still active
           if (job.status === 'queued' || job.status === 'processing') {
             setPolling(true);
           }
           
-          // Set iterations data
           if (job.iterations && Array.isArray(job.iterations)) {
             setIterations(job.iterations);
             
-            // Auto-expand the latest iteration
             if (job.iterations.length > 0) {
               setExpandedIterations([job.iterations.length]);
             }
           }
           
-          // Set results if available
           if (job.status === 'completed' && job.results) {
             try {
               const parsedResults = JSON.parse(job.results);
@@ -124,12 +124,26 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               if (parsedResults.analysis) {
                 setAnalysis(parsedResults.analysis);
               }
+              
+              const probability = parsedResults.probability || null;
+              const areasForResearch = parsedResults.areasForResearch || [];
+              const reasoning = parsedResults.reasoning || null;
+              
+              if (probability || areasForResearch.length > 0 || reasoning) {
+                setStreamingState({
+                  rawText: job.results,
+                  parsedData: {
+                    probability,
+                    areasForResearch,
+                    reasoning
+                  }
+                });
+              }
             } catch (e) {
               console.error('Error parsing job results:', e);
             }
           }
           
-          // Set error if job failed
           if (job.status === 'failed') {
             setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           }
@@ -139,13 +153,11 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       }
     };
     
-    // Only fetch if we don't already have a job ID set
     if (!jobId) {
       fetchExistingJob();
     }
   }, [marketId, jobId]);
 
-  // Poll for job status
   useEffect(() => {
     if (!jobId || !polling) return;
     
@@ -171,10 +183,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         const job = data as ResearchJob;
         console.log('Job status:', job.status);
         
-        // Update job status
         setJobStatus(job.status);
         
-        // Update progress based on status
         if (job.status === 'completed') {
           setPolling(false);
           setProgressPercent(100);
@@ -189,6 +199,21 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               if (parsedResults.analysis) {
                 setAnalysis(parsedResults.analysis);
               }
+              
+              const probability = parsedResults.probability || null;
+              const areasForResearch = parsedResults.areasForResearch || [];
+              const reasoning = parsedResults.reasoning || null;
+              
+              if (probability || areasForResearch.length > 0 || reasoning) {
+                setStreamingState({
+                  rawText: job.results,
+                  parsedData: {
+                    probability,
+                    areasForResearch,
+                    reasoning
+                  }
+                });
+              }
             } catch (e) {
               console.error('Error parsing job results:', e);
             }
@@ -201,26 +226,21 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           clearInterval(pollInterval);
         } else if (job.status === 'processing') {
-          // Calculate progress based on current_iteration and max_iterations
           if (job.max_iterations && job.current_iteration !== undefined) {
             const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
             setProgressPercent(percent);
           }
           
-          // Add progress log entries if they exist
           if (job.progress_log && Array.isArray(job.progress_log)) {
-            // Only add new progress items
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
               setProgress(prev => [...prev, ...newItems]);
             }
           }
           
-          // Update iterations data
           if (job.iterations && Array.isArray(job.iterations)) {
             setIterations(job.iterations);
             
-            // If this is the first time we're seeing a new iteration, expand it
             if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
               setExpandedIterations(prev => [...prev, job.current_iteration]);
             }
@@ -256,7 +276,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         maxIterations: 3
       };
       
-      // Call the job creation endpoint
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
       });
@@ -270,7 +289,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         throw new Error("Invalid response from server - no job ID returned");
       }
       
-      // Store the job ID
       const jobId = response.data.jobId;
       setJobId(jobId);
       setPolling(true);
@@ -300,7 +318,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     );
   };
 
-  // Function to render status badge
   const renderStatusBadge = () => {
     if (!jobStatus) return null;
     
@@ -390,6 +407,13 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               />
             ))}
           </div>
+        </div>
+      )}
+      
+      {streamingState.parsedData && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
+          <InsightsDisplay streamingState={streamingState} />
         </div>
       )}
       

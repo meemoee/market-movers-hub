@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -300,6 +299,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     });
     
     let finalAnalysis = "";
+    let structuredInsights = null;
+    
     try {
       // Combine all content from the results
       const allContent = allResults
@@ -307,7 +308,97 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         .join('\n\n');
       
       if (allContent.length > 0) {
+        // First generate the basic analysis using OpenRouter
         finalAnalysis = await generateAnalysis(allContent, query, `Final comprehensive analysis for "${query}"`);
+        
+        // Now get structured insights from our extract-research-insights function
+        try {
+          // Get market question from database
+          const { data: marketData } = await supabaseClient
+            .from('markets')
+            .select('question')
+            .eq('id', marketId)
+            .single();
+            
+          const marketQuestion = marketData?.question || query;
+          
+          // Get previous iteration analyses
+          const previousAnalyses = allIterations
+            .filter(iter => iter.analysis)
+            .map(iter => iter.analysis);
+            
+          // Send data to the extract-research-insights function
+          await supabaseClient.rpc('append_research_progress', {
+            job_id: jobId,
+            progress_entry: JSON.stringify(`Extracting structured insights...`)
+          });
+          
+          const insightResponse = await fetch(
+            `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+              },
+              body: JSON.stringify({
+                webContent: allContent,
+                analysis: finalAnalysis,
+                marketId,
+                marketQuestion,
+                previousAnalyses,
+                iterations: allIterations,
+                queries: previousQueries
+              })
+            }
+          );
+          
+          if (insightResponse.ok) {
+            // For non-streaming response, we would just parse the JSON
+            // But since extract-research-insights returns a stream, we need to handle it differently
+            const reader = insightResponse.body?.getReader();
+            let insightsJsonStr = '';
+            
+            if (reader) {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = new TextDecoder().decode(value);
+                const lines = chunk.split('\n');
+                
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    const eventData = line.substring(6);
+                    try {
+                      // Try to parse each data chunk as JSON
+                      const parsedData = JSON.parse(eventData);
+                      if (!parsedData.error) {
+                        // Keep overwriting with latest data
+                        insightsJsonStr = eventData;
+                      }
+                    } catch (e) {
+                      // Not valid JSON, might be a partial chunk
+                    }
+                  }
+                }
+              }
+            }
+            
+            // Try to parse the final insights JSON
+            if (insightsJsonStr) {
+              try {
+                structuredInsights = JSON.parse(insightsJsonStr);
+              } catch (e) {
+                console.error('Error parsing insights JSON:', e);
+              }
+            }
+          } else {
+            console.error('Error from extract-research-insights:', await insightResponse.text());
+          }
+        } catch (insightsError) {
+          console.error('Error getting structured insights:', insightsError);
+        }
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
       }
@@ -324,7 +415,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     // Create final results object
     const finalResults = {
       data: allResults,
-      analysis: finalAnalysis
+      analysis: finalAnalysis,
+      probability: structuredInsights?.probability || null,
+      areasForResearch: structuredInsights?.areasForResearch || [],
+      reasoning: structuredInsights?.reasoning || null
     };
     
     // Update the job with results
