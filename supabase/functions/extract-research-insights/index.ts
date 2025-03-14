@@ -119,7 +119,7 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       ? `\nCRITICAL: This analysis is specifically focused on: "${focusText}"\nYou MUST ensure ALL evidence points directly address this specific focus area.\n`
       : '';
 
-    const systemPrompt = `You are an expert market analyst and probabilistic forecaster.${marketContext}${focusContext}
+    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
 Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
 
 CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
@@ -180,7 +180,7 @@ ${relatedMarkets && relatedMarkets.length > 0 ?
 ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 
   : ''}
 
-Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields containing evidenceFor and evidenceAgainst arrays.`;
+Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
