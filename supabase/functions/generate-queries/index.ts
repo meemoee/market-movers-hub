@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Generating queries for: "${query}" (iteration ${iteration})`);
+    console.log(`Previous analyses count: ${previousAnalyses.length}`);
 
     // Generate prompt based on iteration
     let prompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:

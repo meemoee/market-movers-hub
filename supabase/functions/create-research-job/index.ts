@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -262,40 +261,12 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               throw new Error(`Failed to analyze results: ${analyzeResponse.statusText}`);
             }
             
-            // Read the streaming response
-            const reader = analyzeResponse.body?.getReader();
-            let analysisText = '';
+            // FIX: Use direct JSON response instead of trying to read stream
+            const analyzeData = await analyzeResponse.json();
+            // Extract the analysis text (field depends on extract-research-insights structure)
+            const analysisText = analyzeData.text || analyzeData.analysis || JSON.stringify(analyzeData);
             
-            if (reader) {
-              while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                
-                const chunk = new TextDecoder().decode(value);
-                // Process SSE chunks
-                const lines = chunk.split('\n\n');
-                for (const line of lines) {
-                  if (line.startsWith('data: ')) {
-                    try {
-                      const data = JSON.parse(line.substring(6));
-                      if (data.text) {
-                        analysisText += data.text;
-                      }
-                    } catch (e) {
-                      // Skip parse errors
-                    }
-                  }
-                }
-              }
-            }
-            
-            // If we didn't get a proper analysis from streaming, use the response directly
-            if (!analysisText) {
-              const responseData = await analyzeResponse.json();
-              analysisText = responseData.reasoning && JSON.stringify(responseData.reasoning);
-            }
-            
-            // Add analysis to previous analyses array
+            // Add analysis to previous analyses array for next iteration
             previousAnalyses.push(analysisText);
             
             // Update the iteration with the analysis
