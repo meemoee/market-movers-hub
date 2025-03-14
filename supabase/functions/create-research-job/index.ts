@@ -8,7 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Mock function to simulate web research
+// Function to perform web research
 async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number) {
   console.log(`Starting background research for job ${jobId}`)
   
@@ -32,6 +32,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     
     // Track all previous queries to avoid repetition
     const previousQueries: string[] = [];
+    // Track all seen URLs to avoid duplicate content
+    const seenUrls = new Set<string>();
     
     // Simulate iterations
     for (let i = 1; i <= maxIterations; i++) {
@@ -101,6 +103,117 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           job_id: jobId,
           progress_entry: JSON.stringify(`Generated ${queries.length} search queries for iteration ${i}`)
         })
+        
+        // Process each query with Brave Search
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Executing Brave searches for iteration ${i}...`)
+        });
+        
+        let allResults = [];
+        
+        // Process each query sequentially
+        for (let j = 0; j < queries.length; j++) {
+          const currentQuery = queries[j];
+          
+          try {
+            // Call the brave-search function
+            const braveSearchResponse = await fetch(
+              `${Deno.env.get('SUPABASE_URL')}/functions/v1/brave-search`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+                },
+                body: JSON.stringify({
+                  query: currentQuery,
+                  count: 10 // Get 10 results per query
+                })
+              }
+            );
+            
+            if (!braveSearchResponse.ok) {
+              console.error(`Error searching for query "${currentQuery}": ${braveSearchResponse.statusText}`);
+              continue;
+            }
+            
+            const searchResults = await braveSearchResponse.json();
+            
+            // Extract web results
+            const webResults = searchResults.web?.results || [];
+            
+            // Log search results count
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Found ${webResults.length} results for "${currentQuery}"`)
+            });
+            
+            // Process results: fetch content from URLs
+            const validResults = [];
+            
+            for (const result of webResults) {
+              // Skip if we've seen this URL before
+              if (seenUrls.has(result.url)) continue;
+              
+              try {
+                // Add to seen URLs set
+                seenUrls.add(result.url);
+                
+                // Simplified content extraction
+                const processedResult = {
+                  url: result.url,
+                  title: result.title || '',
+                  content: result.description || '',
+                  source: 'brave_search'
+                };
+                
+                validResults.push(processedResult);
+                allResults.push(processedResult);
+              } catch (fetchError) {
+                console.error(`Error processing result URL ${result.url}:`, fetchError);
+              }
+            }
+            
+            // Update the iteration with these results
+            const currentIterationData = (await supabaseClient
+              .from('research_jobs')
+              .select('iterations')
+              .eq('id', jobId)
+              .single()).data?.iterations || [];
+            
+            // Find the current iteration
+            for (let k = 0; k < currentIterationData.length; k++) {
+              if (currentIterationData[k].iteration === i) {
+                // Add these results to the existing results
+                const updatedIterationData = [...currentIterationData];
+                const currentResults = updatedIterationData[k].results || [];
+                updatedIterationData[k].results = [...currentResults, ...validResults];
+                
+                // Update the database
+                await supabaseClient
+                  .from('research_jobs')
+                  .update({ iterations: updatedIterationData })
+                  .eq('id', jobId);
+                
+                break;
+              }
+            }
+            
+          } catch (queryError) {
+            console.error(`Error processing query "${currentQuery}":`, queryError);
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Error processing query "${currentQuery}": ${queryError.message}`)
+            });
+          }
+        }
+        
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
+        });
+        
       } catch (error) {
         console.error(`Error generating queries for job ${jobId}:`, error);
         await supabaseClient.rpc('append_research_progress', {
@@ -108,79 +221,71 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           progress_entry: JSON.stringify(`Error generating queries: ${error.message}`)
         });
       }
-      
-      // Simulate web scraping
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Completed web searches for iteration ${i}`)
-      })
-      
-      // Simulate analysis
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
-      })
     }
     
-    // Simulate final results
-    const mockResults = {
-      data: [
-        {
-          url: 'https://example.com/result1',
-          title: 'Example Result 1',
-          content: 'This is a simulated result for the research job.'
-        },
-        {
-          url: 'https://example.com/result2',
-          title: 'Example Result 2',
-          content: 'This is another simulated result with different information.'
-        }
-      ],
-      analysis: 'Based on the simulated research, we found interesting information that suggests...'
+    // Get all results from all iterations
+    const { data: jobData } = await supabaseClient
+      .from('research_jobs')
+      .select('iterations')
+      .eq('id', jobId)
+      .single();
+    
+    const allIterations = jobData?.iterations || [];
+    
+    // Collect all results from all iterations
+    const allResults = [];
+    for (const iteration of allIterations) {
+      if (iteration.results && Array.isArray(iteration.results)) {
+        allResults.push(...iteration.results);
+      }
     }
+    
+    // Create final results object
+    const finalResults = {
+      data: allResults,
+      analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`
+    };
     
     // Update the job with results
     await supabaseClient.rpc('update_research_results', {
       job_id: jobId,
-      result_data: JSON.stringify(mockResults)
-    })
+      result_data: JSON.stringify(finalResults)
+    });
     
     // Mark job as complete
     await supabaseClient.rpc('update_research_job_status', {
       job_id: jobId,
       new_status: 'completed'
-    })
+    });
     
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
       progress_entry: JSON.stringify('Research completed successfully!')
-    })
+    });
     
-    console.log(`Completed background research for job ${jobId}`)
+    console.log(`Completed background research for job ${jobId}`);
   } catch (error) {
-    console.error(`Error in background job ${jobId}:`, error)
+    console.error(`Error in background job ${jobId}:`, error);
     
     try {
       const supabaseClient = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      )
+      );
       
       // Mark job as failed
       await supabaseClient.rpc('update_research_job_status', {
         job_id: jobId,
         new_status: 'failed',
         error_msg: error.message || 'Unknown error'
-      })
+      });
       
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
         progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
-      })
+      });
     } catch (e) {
-      console.error(`Failed to update job ${jobId} status:`, e)
+      console.error(`Failed to update job ${jobId} status:`, e);
     }
   }
 }
