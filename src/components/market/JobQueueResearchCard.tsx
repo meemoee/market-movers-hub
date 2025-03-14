@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -11,7 +10,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, History } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, Clock, History, Target } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -28,7 +27,6 @@ interface ResearchResult {
   title?: string;
 }
 
-// Define an interface for our research job data
 interface ResearchJob {
   id: string;
   market_id: string;
@@ -67,7 +65,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
   const { toast } = useToast()
 
-  // Reset all state variables to their initial values
   const resetState = () => {
     setJobId(null);
     setPolling(false);
@@ -82,12 +79,10 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setStructuredInsights(null);
   }
 
-  // Load saved research jobs for this market on component mount
   useEffect(() => {
     fetchSavedJobs();
   }, [marketId]);
 
-  // Fetch saved research jobs for this market
   const fetchSavedJobs = async () => {
     try {
       setIsLoadingJobs(true);
@@ -103,7 +98,22 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       }
       
       if (data && data.length > 0) {
-        setSavedJobs(data as ResearchJob[]);
+        const processedJobs = data.map(job => {
+          let probability = null;
+          if (job.status === 'completed' && job.results) {
+            try {
+              const parsedResults = JSON.parse(job.results);
+              if (parsedResults.structuredInsights && parsedResults.structuredInsights.probability) {
+                probability = parsedResults.structuredInsights.probability;
+              }
+            } catch (e) {
+              console.error('Error parsing job results for probability:', e);
+            }
+          }
+          return { ...job, probability };
+        });
+        
+        setSavedJobs(processedJobs as ResearchJob[]);
       }
     } catch (e) {
       console.error('Error in fetchSavedJobs:', e);
@@ -112,44 +122,35 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
-  // Helper function to load job data consistently
   const loadJobData = (job: ResearchJob) => {
-    // Update state with the job details
     setJobId(job.id);
     setJobStatus(job.status);
     
-    // Set progress percent based on current iteration
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
       setProgressPercent(percent);
       
-      // If the job is completed, set to 100%
       if (job.status === 'completed') {
         setProgressPercent(100);
       }
     }
     
-    // Set progress log
     if (job.progress_log && Array.isArray(job.progress_log)) {
       setProgress(job.progress_log);
     }
     
-    // Start polling if the job is still active
     if (job.status === 'queued' || job.status === 'processing') {
       setPolling(true);
     }
     
-    // Set iterations data
     if (job.iterations && Array.isArray(job.iterations)) {
       setIterations(job.iterations);
       
-      // Auto-expand the latest iteration
       if (job.iterations.length > 0) {
         setExpandedIterations([job.iterations.length]);
       }
     }
     
-    // Set results if available
     if (job.status === 'completed' && job.results) {
       try {
         const parsedResults = JSON.parse(job.results);
@@ -170,18 +171,15 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       }
     }
     
-    // Set error if job failed
     if (job.status === 'failed') {
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
     }
 
-    // Set focus text if available
     if (job.focus_text) {
       setFocusText(job.focus_text);
     }
   }
 
-  // Poll for job status
   useEffect(() => {
     if (!jobId || !polling) return;
     
@@ -207,10 +205,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         const job = data as ResearchJob;
         console.log('Job status:', job.status);
         
-        // Update job status
         setJobStatus(job.status);
         
-        // Update progress based on status
         if (job.status === 'completed') {
           setPolling(false);
           setProgressPercent(100);
@@ -236,7 +232,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
             }
           }
           
-          // Refresh the list of saved jobs after completion
           fetchSavedJobs();
           
           clearInterval(pollInterval);
@@ -245,31 +240,25 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           
-          // Refresh the list of saved jobs even if failed
           fetchSavedJobs();
           
           clearInterval(pollInterval);
         } else if (job.status === 'processing') {
-          // Calculate progress based on current_iteration and max_iterations
           if (job.max_iterations && job.current_iteration !== undefined) {
             const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
             setProgressPercent(percent);
           }
           
-          // Add progress log entries if they exist
           if (job.progress_log && Array.isArray(job.progress_log)) {
-            // Only add new progress items
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
               setProgress(prev => [...prev, ...newItems]);
             }
           }
           
-          // Update iterations data
           if (job.iterations && Array.isArray(job.iterations)) {
             setIterations(job.iterations);
             
-            // If this is the first time we're seeing a new iteration, expand it
             if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
               setExpandedIterations(prev => [...prev, job.current_iteration]);
             }
@@ -284,7 +273,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   }, [jobId, polling, progress.length, expandedIterations]);
 
   const handleResearch = async (initialFocusText = '') => {
-    // Reset state before starting a new research
     resetState();
     setIsLoading(true);
 
@@ -300,7 +288,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         focusText: useFocusText.trim() || undefined
       };
       
-      // Call the job creation endpoint
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
       });
@@ -314,7 +301,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         throw new Error("Invalid response from server - no job ID returned");
       }
       
-      // Store the job ID
       const jobId = response.data.jobId;
       setJobId(jobId);
       setPolling(true);
@@ -327,7 +313,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         description: `Job ID: ${jobId}. You can close this window and check back later.`,
       });
       
-      // Refresh the list of saved jobs after starting a new one
       fetchSavedJobs();
       
     } catch (error) {
@@ -347,12 +332,10 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     );
   };
 
-  // Load a saved research job
   const loadSavedResearch = async (jobId: string) => {
     try {
       setIsLoadingSaved(true);
       
-      // Reset state before loading a new research
       resetState();
       
       const { data, error } = await supabase
@@ -384,7 +367,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       
       const job = data as ResearchJob;
       
-      // Load job data
       loadJobData(job);
       
       toast({
@@ -404,26 +386,21 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   };
 
   const handleResearchArea = (area: string) => {
-    // Reset focus text input before starting new research with the selected area
     setFocusText('');
     
-    // Start a new research job with the selected area as the focus text
     toast({
       title: "Starting Focused Research",
       description: `Creating new research job focused on: ${area}`,
     });
     
-    // Start research with the selected area
     handleResearch(area);
   };
 
-  // Clear the current job display and return to the blank state
   const handleClearDisplay = () => {
     resetState();
     setFocusText('');
   };
 
-  // Function to render status badge
   const renderStatusBadge = () => {
     if (!jobStatus) return null;
     
@@ -476,7 +453,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
-  // Get a status icon for history items
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -542,7 +518,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
                   History
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[300px]">
+              <DropdownMenuContent align="end" className="w-[340px]">
                 {savedJobs.map((job) => (
                   <DropdownMenuItem
                     key={job.id}
@@ -567,6 +543,14 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
                         {job.status}
                       </Badge>
                     </div>
+                    {job.probability && (
+                      <div className="flex items-center mt-1">
+                        <Target className="h-3 w-3 text-primary mr-1" />
+                        <span className="text-xs font-medium">
+                          Probability: {job.probability}
+                        </span>
+                      </div>
+                    )}
                     <span className="text-xs text-muted-foreground mt-1">
                       {formatDate(job.created_at)}
                     </span>
@@ -658,3 +642,4 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     </Card>
   );
 }
+
