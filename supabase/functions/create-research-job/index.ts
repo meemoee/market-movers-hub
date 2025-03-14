@@ -69,7 +69,9 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             },
             body: JSON.stringify({
               query,
-              marketId,
+              marketId: marketId,
+              marketDescription: query,
+              question: query,
               iteration: i,
               previousQueries
             })
@@ -335,6 +337,136 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     
     let structuredInsights = null;
     try {
+      // Get market price for the given market ID
+      let marketPrice = undefined;
+      try {
+        const { data: priceData } = await supabaseClient
+          .from('market_prices')
+          .select('last_traded_price')
+          .eq('market_id', marketId)
+          .order('timestamp', { ascending: false })
+          .limit(1);
+          
+        if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
+          marketPrice = Math.round(priceData[0].last_traded_price * 100);
+          console.log(`Found market price for ${marketId}: ${marketPrice}%`);
+        }
+      } catch (priceError) {
+        console.error(`Error fetching market price for ${marketId}:`, priceError);
+      }
+      
+      // Try to get related markets
+      const relatedMarkets = [];
+      try {
+        const { data: relatedData } = await supabaseClient
+          .from('related_markets')
+          .select('related_market_id, relationship_strength')
+          .eq('market_id', marketId)
+          .order('relationship_strength', { ascending: false })
+          .limit(5);
+          
+        if (relatedData && relatedData.length > 0) {
+          for (const relation of relatedData) {
+            try {
+              // Get market details
+              const { data: marketData } = await supabaseClient
+                .from('markets')
+                .select('question')
+                .eq('id', relation.related_market_id)
+                .single();
+                
+              // Get market price
+              const { data: priceData } = await supabaseClient
+                .from('market_prices')
+                .select('last_traded_price')
+                .eq('market_id', relation.related_market_id)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+                
+              if (marketData && priceData && priceData.length > 0) {
+                relatedMarkets.push({
+                  market_id: relation.related_market_id,
+                  question: marketData.question,
+                  probability: priceData[0].last_traded_price
+                });
+              }
+            } catch (relatedError) {
+              console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
+            }
+          }
+        }
+      } catch (relatedError) {
+        console.error(`Error fetching related markets for ${marketId}:`, relatedError);
+      }
+      
+      // Get all areas for research that may have been identified in previous iterations
+      const areasForResearch = [];
+      try {
+        for (const iteration of allIterations) {
+          if (iteration.analysis) {
+            // Look for a section with "areas for further research" or similar
+            const analysisText = iteration.analysis.toLowerCase();
+            if (analysisText.includes("areas for further research") || 
+                analysisText.includes("further research needed") ||
+                analysisText.includes("additional research")) {
+              // Extract areas if possible
+              const lines = iteration.analysis.split('\n');
+              let inAreaSection = false;
+              
+              for (const line of lines) {
+                if (!inAreaSection) {
+                  if (line.toLowerCase().includes("areas for") || 
+                      line.toLowerCase().includes("further research") ||
+                      line.toLowerCase().includes("additional research")) {
+                    inAreaSection = true;
+                  }
+                } else if (line.trim().length === 0 || line.startsWith('#')) {
+                  inAreaSection = false;
+                } else if (line.startsWith('-') || line.startsWith('*') || 
+                           (line.match(/^\d+\.\s/) !== null)) {
+                  const area = line.replace(/^[-*\d.]\s+/, '').trim();
+                  if (area && !areasForResearch.includes(area)) {
+                    areasForResearch.push(area);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (areasError) {
+        console.error(`Error extracting areas for research:`, areasError);
+      }
+      
+      // Prepare all previous analyses
+      const previousAnalyses = allIterations
+        .filter(iter => iter.analysis)
+        .map(iter => iter.analysis);
+      
+      // Collect all queries used across iterations
+      const allQueries = allIterations.flatMap(iter => iter.queries || []);
+      
+      // Prepare payload with all the same information as non-background research
+      const insightsPayload = {
+        webContent: allResults.map(r => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`).join('\n\n'),
+        analysis: finalAnalysis,
+        marketId: marketId,
+        marketQuestion: query,
+        previousAnalyses: previousAnalyses,
+        iterations: allIterations,
+        queries: allQueries,
+        areasForResearch: areasForResearch,
+        marketPrice: marketPrice,
+        relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined
+      };
+      
+      console.log(`Sending extract-research-insights payload with:
+        - ${allResults.length} web results
+        - ${previousAnalyses.length} previous analyses
+        - ${allQueries.length} queries
+        - ${areasForResearch.length} areas for research
+        - marketPrice: ${marketPrice || 'undefined'}
+        - ${relatedMarkets.length} related markets`);
+      
       // Call the extract-research-insights function to get structured insights (without streaming)
       const extractInsightsResponse = await fetch(
         `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
@@ -344,11 +476,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
           },
-          body: JSON.stringify({
-            webContent: allResults.map(r => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`).join('\n\n'),
-            analysis: finalAnalysis,
-            marketQuestion: query
-          })
+          body: JSON.stringify(insightsPayload)
         }
       );
       
