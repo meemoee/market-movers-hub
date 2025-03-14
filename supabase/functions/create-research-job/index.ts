@@ -214,6 +214,59 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
         });
         
+        // After each iteration, analyze the collected data using OpenRouter
+        try {
+          const iterationResults = (await supabaseClient
+            .from('research_jobs')
+            .select('iterations')
+            .eq('id', jobId)
+            .single()).data?.iterations || [];
+          
+          // Find the current iteration's results
+          const currentIterationData = iterationResults.find(iter => iter.iteration === i);
+          
+          if (currentIterationData && currentIterationData.results && currentIterationData.results.length > 0) {
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Analyzing ${currentIterationData.results.length} results for iteration ${i}...`)
+            });
+            
+            // Combine all content from the results
+            const combinedContent = currentIterationData.results
+              .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
+              .join('\n\n');
+            
+            if (combinedContent.length > 0) {
+              // Generate analysis for this iteration
+              const analysisText = await generateAnalysis(combinedContent, query, `Iteration ${i} analysis for "${query}"`);
+              
+              // Update the iteration with the analysis
+              const updatedIterations = [...iterationResults];
+              const iterationIndex = updatedIterations.findIndex(iter => iter.iteration === i);
+              
+              if (iterationIndex >= 0) {
+                updatedIterations[iterationIndex].analysis = analysisText;
+                
+                await supabaseClient
+                  .from('research_jobs')
+                  .update({ iterations: updatedIterations })
+                  .eq('id', jobId);
+                
+                await supabaseClient.rpc('append_research_progress', {
+                  job_id: jobId,
+                  progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
+                });
+              }
+            }
+          }
+        } catch (analysisError) {
+          console.error(`Error analyzing iteration ${i} results:`, analysisError);
+          await supabaseClient.rpc('append_research_progress', {
+            job_id: jobId,
+            progress_entry: JSON.stringify(`Error analyzing iteration ${i} results: ${analysisError.message}`)
+          });
+        }
+        
       } catch (error) {
         console.error(`Error generating queries for job ${jobId}:`, error);
         await supabaseClient.rpc('append_research_progress', {
@@ -240,10 +293,38 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       }
     }
     
+    // Generate final analysis with OpenRouter
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Generating final analysis of ${allResults.length} total results...`)
+    });
+    
+    let finalAnalysis = "";
+    try {
+      // Combine all content from the results
+      const allContent = allResults
+        .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
+        .join('\n\n');
+      
+      if (allContent.length > 0) {
+        finalAnalysis = await generateAnalysis(allContent, query, `Final comprehensive analysis for "${query}"`);
+      } else {
+        finalAnalysis = `No content was collected for analysis regarding "${query}".`;
+      }
+    } catch (analysisError) {
+      console.error(`Error generating final analysis for job ${jobId}:`, analysisError);
+      finalAnalysis = `Error generating analysis: ${analysisError.message}`;
+      
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error generating final analysis: ${analysisError.message}`)
+      });
+    }
+    
     // Create final results object
     const finalResults = {
       data: allResults,
-      analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`
+      analysis: finalAnalysis
     };
     
     // Update the job with results
@@ -288,6 +369,70 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       console.error(`Failed to update job ${jobId} status:`, e);
     }
   }
+}
+
+// Function to generate analysis using OpenRouter
+async function generateAnalysis(content: string, query: string, analysisType: string): Promise<string> {
+  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+  
+  if (!openRouterKey) {
+    throw new Error('OPENROUTER_API_KEY is not set in environment');
+  }
+  
+  console.log(`Generating ${analysisType} using OpenRouter`);
+  
+  // Limit content length to avoid token limits
+  const contentLimit = 20000;
+  const truncatedContent = content.length > contentLimit 
+    ? content.substring(0, contentLimit) + "... [content truncated]" 
+    : content;
+  
+  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
+
+Content to analyze:
+${truncatedContent}
+
+Please provide:
+
+1. Key Facts and Insights: What are the most important pieces of information relevant to the query?
+2. Evidence Assessment: Evaluate the strength of evidence regarding the query.
+3. Probability Factors: What factors impact the likelihood of outcomes related to the query?
+4. Conclusions: Based solely on this information, what conclusions can we draw?
+
+Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
+  
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+      "X-Title": "Market Research App",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-flash-1.5",
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.3
+    })
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+  }
+  
+  const data = await response.json();
+  
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+  }
+  
+  return data.choices[0].message.content;
 }
 
 serve(async (req) => {

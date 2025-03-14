@@ -9,6 +9,7 @@ import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
+import { IterationCard } from "./research/IterationCard"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -49,6 +50,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [analysis, setAnalysis] = useState('')
   const [jobId, setJobId] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
+  const [iterations, setIterations] = useState<any[]>([])
+  const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const { toast } = useToast()
 
   // Poll for job status
@@ -118,6 +121,16 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               setProgress(prev => [...prev, ...newItems]);
             }
           }
+          
+          // Update iterations data
+          if (job.iterations && Array.isArray(job.iterations)) {
+            setIterations(job.iterations);
+            
+            // If this is the first time we're seeing a new iteration, expand it
+            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+              setExpandedIterations(prev => [...prev, job.current_iteration]);
+            }
+          }
         }
       } catch (e) {
         console.error('Error in poll interval:', e);
@@ -125,7 +138,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length]);
+  }, [jobId, polling, progress.length, expandedIterations]);
 
   const handleResearch = async () => {
     setIsLoading(true);
@@ -136,6 +149,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setResults([]);
     setError(null);
     setAnalysis('');
+    setIterations([]);
+    setExpandedIterations([]);
 
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
@@ -180,6 +195,14 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
+  const toggleIterationExpand = (iteration: number) => {
+    setExpandedIterations(prev => 
+      prev.includes(iteration) 
+        ? prev.filter(i => i !== iteration) 
+        : [...prev, iteration]
+    );
+  };
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -210,6 +233,25 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         progress={progressPercent}
       />
       
+      {iterations.length > 0 && (
+        <div className="border-t pt-4 w-full max-w-full space-y-2">
+          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
+          <div className="space-y-2">
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={iteration.iteration}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(iteration.iteration)}
+                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                maxIterations={3}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      
       {results.length > 0 && (
         <>
           <div className="border-t pt-4 w-full max-w-full">
@@ -219,7 +261,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           
           {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Analysis</h3>
+              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
               <AnalysisDisplay content={analysis} />
             </div>
           )}
