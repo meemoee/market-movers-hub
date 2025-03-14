@@ -25,9 +25,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   
   // Use useLayoutEffect to ensure scroll happens before browser paint
   useLayoutEffect(() => {
-    // Only scroll within the component itself
     if (messagesEndRef.current && scrollAreaRef.current) {
-      // Using direct DOM manipulation for container-confined scrolling
       const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;

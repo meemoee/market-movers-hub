@@ -57,6 +57,94 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const { toast } = useToast()
 
+  // Fetch the most recent active job for this market on component mount
+  useEffect(() => {
+    const fetchExistingJob = async () => {
+      try {
+        // Look for the most recent job for this market
+        const { data, error } = await supabase
+          .from('research_jobs')
+          .select('*')
+          .eq('market_id', marketId)
+          .in('status', ['queued', 'processing', 'completed', 'failed'])
+          .order('created_at', { ascending: false })
+          .limit(1);
+        
+        if (error) {
+          console.error('Error fetching research jobs:', error);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          const job = data[0] as ResearchJob;
+          console.log('Found existing job:', job);
+          
+          // Update state with the job details
+          setJobId(job.id);
+          setJobStatus(job.status);
+          
+          // Set progress percent based on current iteration
+          if (job.max_iterations && job.current_iteration !== undefined) {
+            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
+            setProgressPercent(percent);
+            
+            // If the job is completed, set to 100%
+            if (job.status === 'completed') {
+              setProgressPercent(100);
+            }
+          }
+          
+          // Set progress log
+          if (job.progress_log && Array.isArray(job.progress_log)) {
+            setProgress(job.progress_log);
+          }
+          
+          // Start polling if the job is still active
+          if (job.status === 'queued' || job.status === 'processing') {
+            setPolling(true);
+          }
+          
+          // Set iterations data
+          if (job.iterations && Array.isArray(job.iterations)) {
+            setIterations(job.iterations);
+            
+            // Auto-expand the latest iteration
+            if (job.iterations.length > 0) {
+              setExpandedIterations([job.iterations.length]);
+            }
+          }
+          
+          // Set results if available
+          if (job.status === 'completed' && job.results) {
+            try {
+              const parsedResults = JSON.parse(job.results);
+              if (parsedResults.data && Array.isArray(parsedResults.data)) {
+                setResults(parsedResults.data);
+              }
+              if (parsedResults.analysis) {
+                setAnalysis(parsedResults.analysis);
+              }
+            } catch (e) {
+              console.error('Error parsing job results:', e);
+            }
+          }
+          
+          // Set error if job failed
+          if (job.status === 'failed') {
+            setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+          }
+        }
+      } catch (e) {
+        console.error('Error in fetchExistingJob:', e);
+      }
+    };
+    
+    // Only fetch if we don't already have a job ID set
+    if (!jobId) {
+      fetchExistingJob();
+    }
+  }, [marketId, jobId]);
+
   // Poll for job status
   useEffect(() => {
     if (!jobId || !polling) return;
