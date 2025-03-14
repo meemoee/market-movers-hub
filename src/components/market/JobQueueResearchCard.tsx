@@ -250,7 +250,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     return () => clearInterval(pollInterval);
   }, [jobId, polling, progress.length, expandedIterations]);
 
-  const handleResearch = async () => {
+  const handleResearch = async (initialFocusText = '') => {
     setIsLoading(true);
     setJobId(null);
     setPolling(false);
@@ -264,6 +264,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setJobStatus(null);
     setStructuredInsights(null);
 
+    const useFocusText = initialFocusText || focusText;
+
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
       
@@ -271,7 +273,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         marketId,
         query: description,
         maxIterations: 3,
-        focusText: focusText.trim() || undefined
+        focusText: useFocusText.trim() || undefined
       };
       
       // Call the job creation endpoint
@@ -356,6 +358,18 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
+  const handleResearchArea = (area: string) => {
+    // Start a new research job with the selected area as the focus text
+    toast({
+      title: "Starting Focused Research",
+      description: `Creating new research job focused on: ${area}`,
+    });
+    
+    // Clear focus text input and start research with the selected area
+    setFocusText('');
+    handleResearch(area);
+  };
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -370,7 +384,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         </div>
         
         <Button 
-          onClick={handleResearch} 
+          onClick={() => handleResearch()} 
           disabled={isLoading || polling}
           className="flex items-center gap-2"
         >
@@ -426,7 +440,10 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       {structuredInsights && structuredInsights.parsedData && (
         <div className="border-t pt-4 w-full max-w-full">
           <h3 className="text-lg font-medium mb-2">Research Insights</h3>
-          <InsightsDisplay streamingState={structuredInsights} />
+          <InsightsDisplay 
+            streamingState={structuredInsights} 
+            onResearchArea={handleResearchArea}
+          />
         </div>
       )}
       
