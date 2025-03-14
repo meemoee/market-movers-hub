@@ -180,7 +180,7 @@ ${relatedMarkets && relatedMarkets.length > 0 ?
 ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 
   : ''}
 
-Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
+Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields containing evidenceFor and evidenceAgainst arrays.`;
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',

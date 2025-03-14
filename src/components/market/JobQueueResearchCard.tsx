@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -42,6 +43,11 @@ interface ResearchJob {
   user_id?: string;
 }
 
+interface ReasoningData {
+  evidenceFor?: string[];
+  evidenceAgainst?: string[];
+}
+
 export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
@@ -59,7 +65,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     parsedData: {
       probability: string;
       areasForResearch: string[];
-      reasoning?: any;
+      reasoning?: ReasoningData | any;
     } | null;
   }>({
     rawText: '',
@@ -117,21 +123,30 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           
           if (job.status === 'completed' && job.results) {
             try {
-              const parsedResults = JSON.parse(job.results);
+              const parsedResults = typeof job.results === 'string' ? JSON.parse(job.results) : job.results;
+              
               if (parsedResults.data && Array.isArray(parsedResults.data)) {
                 setResults(parsedResults.data);
               }
+              
               if (parsedResults.analysis) {
                 setAnalysis(parsedResults.analysis);
               }
               
+              // Process probability and reasoning data for InsightsDisplay
               const probability = parsedResults.probability || null;
               const areasForResearch = parsedResults.areasForResearch || [];
               const reasoning = parsedResults.reasoning || null;
               
               if (probability || areasForResearch.length > 0 || reasoning) {
+                console.log('Setting structured insights:', {
+                  probability,
+                  areasForResearch: areasForResearch.length,
+                  reasoning: reasoning ? 'present' : 'absent'
+                });
+                
                 setStreamingState({
-                  rawText: job.results,
+                  rawText: typeof job.results === 'string' ? job.results : JSON.stringify(job.results),
                   parsedData: {
                     probability,
                     areasForResearch,
@@ -192,21 +207,30 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           
           if (job.results) {
             try {
-              const parsedResults = JSON.parse(job.results);
+              const parsedResults = typeof job.results === 'string' ? JSON.parse(job.results) : job.results;
+              
               if (parsedResults.data && Array.isArray(parsedResults.data)) {
                 setResults(parsedResults.data);
               }
+              
               if (parsedResults.analysis) {
                 setAnalysis(parsedResults.analysis);
               }
               
+              // Process structured insights for InsightsDisplay
               const probability = parsedResults.probability || null;
               const areasForResearch = parsedResults.areasForResearch || [];
               const reasoning = parsedResults.reasoning || null;
               
               if (probability || areasForResearch.length > 0 || reasoning) {
+                console.log('Setting completed structured insights:', {
+                  probability,
+                  areasForResearch: areasForResearch.length,
+                  reasoning: reasoning ? 'present' : 'absent'
+                });
+                
                 setStreamingState({
-                  rawText: job.results,
+                  rawText: typeof job.results === 'string' ? job.results : JSON.stringify(job.results),
                   parsedData: {
                     probability,
                     areasForResearch,
@@ -266,6 +290,10 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
+    setStreamingState({
+      rawText: '',
+      parsedData: null
+    });
 
     try {
       setProgress(prev => [...prev, "Starting research job..."]);

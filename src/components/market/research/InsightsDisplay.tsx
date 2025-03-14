@@ -15,7 +15,7 @@ interface StreamingState {
   parsedData: {
     probability: string;
     areasForResearch: string[];
-    reasoning?: ReasoningData | string;
+    reasoning?: ReasoningData | any; // Support both structured and string formats
   } | null;
 }
 
@@ -90,10 +90,10 @@ export function InsightsDisplay({
       // Do nothing with this case, will use the old rendering logic
     } else {
       // New format: object with evidenceFor and evidenceAgainst arrays
-      if (reasoning.evidenceFor) {
+      if (reasoning.evidenceFor && Array.isArray(reasoning.evidenceFor)) {
         evidenceFor.push(...reasoning.evidenceFor);
       }
-      if (reasoning.evidenceAgainst) {
+      if (reasoning.evidenceAgainst && Array.isArray(reasoning.evidenceAgainst)) {
         evidenceAgainst.push(...reasoning.evidenceAgainst);
       }
     }

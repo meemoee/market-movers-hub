@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -237,7 +238,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             
             if (combinedContent.length > 0) {
               // Generate analysis for this iteration
-              const analysisText = await generateAnalysis(combinedContent, query, `Iteration ${i} analysis for "${query}"`);
+              const analysisText = await generateStructuredAnalysis(combinedContent, query, `Iteration ${i} analysis for "${query}"`);
               
               // Update the iteration with the analysis
               const updatedIterations = [...iterationResults];
@@ -309,7 +310,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       if (allContent.length > 0) {
         // First generate the basic analysis using OpenRouter
-        finalAnalysis = await generateAnalysis(allContent, query, `Final comprehensive analysis for "${query}"`);
+        finalAnalysis = await generateStructuredAnalysis(allContent, query, `Final comprehensive analysis for "${query}"`);
         
         // Now get structured insights from our extract-research-insights function
         try {
@@ -465,15 +466,15 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// Function to generate analysis using OpenRouter
-async function generateAnalysis(content: string, query: string, analysisType: string): Promise<string> {
+// New function to generate structured analysis using OpenRouter
+async function generateStructuredAnalysis(content: string, query: string, analysisType: string): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
   if (!openRouterKey) {
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter`);
+  console.log(`Generating ${analysisType} using OpenRouter with structured format`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -481,19 +482,49 @@ async function generateAnalysis(content: string, query: string, analysisType: st
     ? content.substring(0, contentLimit) + "... [content truncated]" 
     : content;
   
-  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
+  const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.
+Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
+
+CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
+1. Historical Precedents: Always cite specific historical events, statistics, or past occurrences that inform your estimate
+2. Key Conditions: Identify and analyze the specific conditions that must be met for the event to occur
+3. Impact Factors: List the major factors that could positively or negatively impact the probability
+4. Evidence Quality: Assess the reliability and relevance of your sources
+5. Uncertainty: Acknowledge key areas of uncertainty and how they affect your estimate
+6. Competitive Analysis: When relevant, analyze competitor positions and market dynamics
+7. Timeline Considerations: Account for time-dependent factors and how they affect probability
+
+Format your analysis as a JSON object with:
+{
+  "probability": "X%" (numerical percentage with % sign),
+  "areasForResearch": ["area 1", "area 2", "area 3", ...] (specific research areas as an array of strings),
+  "reasoning": {
+    "evidenceFor": [
+      "Detailed point 1 supporting the event happening, with specific examples, statistics, or historical precedents",
+      "Detailed point 2 supporting the event happening"
+      // Add multiple points as needed
+    ],
+    "evidenceAgainst": [
+      "Detailed point 1 against the event happening, with specific examples, statistics, or historical precedents",
+      "Detailed point 2 against the event happening"
+      // Add multiple points as needed
+    ]
+  }
+}`;
+  
+  const userPrompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
 
 Content to analyze:
 ${truncatedContent}
 
 Please provide:
 
-1. Key Facts and Insights: What are the most important pieces of information relevant to the query?
-2. Evidence Assessment: Evaluate the strength of evidence regarding the query.
-3. Probability Factors: What factors impact the likelihood of outcomes related to the query?
-4. Conclusions: Based solely on this information, what conclusions can we draw?
+1. A specific probability estimate for the query
+2. Key areas where more research is needed
+3. Evidence supporting the event/outcome happening
+4. Evidence against the event/outcome happening
 
-Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
+Present your analysis in the required JSON format with probability, areasForResearch, and reasoning fields as specified.`;
   
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
@@ -504,14 +535,19 @@ Present the analysis in a structured, concise format with clear sections and bul
       "X-Title": "Market Research App",
     },
     body: JSON.stringify({
-      model: "google/gemini-flash-1.5",
+      model: "google/gemini-1.5-flash",
       messages: [
         {
+          role: "system",
+          content: systemPrompt
+        },
+        {
           role: "user",
-          content: prompt
+          content: userPrompt
         }
       ],
-      temperature: 0.3
+      temperature: 0.3,
+      response_format: { type: "json_object" }
     })
   });
   
