@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -261,7 +262,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               throw new Error(`Failed to analyze results: ${analyzeResponse.statusText}`);
             }
             
-            // FIX: Use direct JSON response instead of trying to read stream
+            // Use direct JSON response instead of trying to read stream
             const analyzeData = await analyzeResponse.json();
             // Extract the analysis text (field depends on extract-research-insights structure)
             const analysisText = analyzeData.text || analyzeData.analysis || JSON.stringify(analyzeData);
@@ -335,7 +336,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     const finalResults = {
       data: allResults,
       analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`,
-      iterationAnalyses: previousAnalyses
+      iterationAnalyses: previousAnalyses  // Add all analyses to the final results
     };
     
     // Update the job with results
