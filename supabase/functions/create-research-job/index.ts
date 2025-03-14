@@ -284,11 +284,36 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               return iter;
             });
             
+            // Log the updated iteration data to verify analysis is included
+            console.log(`Updated iteration ${i} with analysis of length: ${analysisText.length}`);
+            console.log(`First 100 chars of analysis: ${analysisText.substring(0, 100)}`);
+            
             // Update the database with the analysis
-            await supabaseClient
+            const { error: updateError } = await supabaseClient
               .from('research_jobs')
               .update({ iterations: updatedIterationData })
               .eq('id', jobId);
+              
+            if (updateError) {
+              console.error(`Error updating iteration ${i} with analysis:`, updateError);
+              throw new Error(`Failed to update iteration with analysis: ${updateError.message}`);
+            }
+            
+            // Verify the update was successful
+            const { data: verifyData, error: verifyError } = await supabaseClient
+              .from('research_jobs')
+              .select('iterations')
+              .eq('id', jobId)
+              .single();
+              
+            if (verifyError) {
+              console.error(`Error verifying iteration ${i} update:`, verifyError);
+            } else {
+              const verifiedIteration = verifyData.iterations.find((iter: any) => iter.iteration === i);
+              if (verifiedIteration) {
+                console.log(`Verified iteration ${i} analysis length: ${verifiedIteration.analysis ? verifiedIteration.analysis.length : 0}`);
+              }
+            }
               
             await supabaseClient.rpc('append_research_progress', {
               job_id: jobId,
@@ -337,10 +362,19 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     
     // Ensure we have analyses from all iterations
     const iterationAnalyses = allIterations
-      .filter(iteration => iteration.analysis)
+      .filter(iteration => iteration.analysis && iteration.analysis.length > 0)
       .map(iteration => iteration.analysis);
     
     console.log(`Collected ${iterationAnalyses.length} iteration analyses for final results`);
+    
+    // Log all iterations to debug analysis
+    console.log(`All iterations analysis check:`);
+    allIterations.forEach((iter: any, index: number) => {
+      console.log(`Iteration ${iter.iteration} analysis length: ${iter.analysis ? iter.analysis.length : 0}`);
+      if (iter.analysis) {
+        console.log(`Iteration ${iter.iteration} analysis preview: ${iter.analysis.substring(0, 50)}...`);
+      }
+    });
     
     // Create final results object
     const finalResults = {

@@ -95,6 +95,13 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               if (parsedResults.analysis) {
                 setAnalysis(parsedResults.analysis);
               }
+              
+              // Log the iteration analyses to verify we're getting them
+              if (parsedResults.iterationAnalyses && Array.isArray(parsedResults.iterationAnalyses)) {
+                console.log(`Received ${parsedResults.iterationAnalyses.length} iteration analyses in results`);
+              } else {
+                console.log('No iteration analyses in results');
+              }
             } catch (e) {
               console.error('Error parsing job results:', e);
             }
@@ -132,6 +139,11 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
             queries: iteration.queries || [],
             analysis: iteration.analysis || ""
           }));
+          
+          // Log all iterations to verify analysis field
+          processedIterations.forEach(iter => {
+            console.log(`Iteration ${iter.iteration} analysis length: ${iter.analysis ? iter.analysis.length : 0}`);
+          });
           
           setIterations(processedIterations);
           
