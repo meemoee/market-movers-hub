@@ -9,6 +9,7 @@ import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
+import { IterationCard } from "./research/IterationCard"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -49,6 +50,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [analysis, setAnalysis] = useState('')
   const [jobId, setJobId] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
+  const [iterations, setIterations] = useState<any[]>([])
+  const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const { toast } = useToast()
 
   // Poll for job status
@@ -119,13 +122,34 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
             }
           }
         }
+        
+        // Update iterations data
+        if (job.iterations && Array.isArray(job.iterations)) {
+          // Process iterations to add any missing properties
+          const processedIterations = job.iterations.map(iteration => ({
+            ...iteration,
+            results: iteration.results || [],
+            queries: iteration.queries || [],
+            analysis: iteration.analysis || ""
+          }));
+          
+          setIterations(processedIterations);
+          
+          // Auto expand the current iteration
+          if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+            setExpandedIterations(prev => 
+              [...prev.filter(i => i !== job.current_iteration - 1), job.current_iteration]
+            );
+          }
+        }
+        
       } catch (e) {
         console.error('Error in poll interval:', e);
       }
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length]);
+  }, [jobId, polling, progress.length, expandedIterations]);
 
   const handleResearch = async () => {
     setIsLoading(true);
@@ -136,6 +160,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setResults([]);
     setError(null);
     setAnalysis('');
+    setIterations([]);
+    setExpandedIterations([]);
 
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
@@ -180,6 +206,14 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
+  const toggleIterationExpand = (iterationNumber: number) => {
+    setExpandedIterations(prev => 
+      prev.includes(iterationNumber)
+        ? prev.filter(i => i !== iterationNumber)
+        : [...prev, iterationNumber]
+    );
+  };
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -210,20 +244,37 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         progress={progressPercent}
       />
       
-      {results.length > 0 && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
+      {iterations.length > 0 && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
+          <div className="space-y-2">
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={iteration.iteration}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(iteration.iteration)}
+                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                isStreaming={polling && iteration.iteration === iterations[iterations.length - 1]?.iteration}
+                isCurrentIteration={iteration.iteration === iterations[iterations.length - 1]?.iteration}
+                maxIterations={iterations[iterations.length - 1]?.iteration || 3}
+              />
+            ))}
           </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
-        </>
+        </div>
+      )}
+      
+      {results.length > 0 && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">All Search Results</h3>
+          <SitePreviewList results={results} />
+        </div>
+      )}
+      
+      {analysis && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
+          <AnalysisDisplay content={analysis} />
+        </div>
       )}
     </Card>
   );

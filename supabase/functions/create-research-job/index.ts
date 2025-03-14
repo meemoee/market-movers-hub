@@ -34,6 +34,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     const previousQueries: string[] = [];
     // Track all seen URLs to avoid duplicate content
     const seenUrls = new Set<string>();
+    // Track previous analyses to inform future iterations
+    const previousAnalyses: string[] = [];
     
     // Simulate iterations
     for (let i = 1; i <= maxIterations; i++) {
@@ -71,7 +73,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               query,
               marketId,
               iteration: i,
-              previousQueries
+              previousQueries,
+              previousAnalyses  // Pass previous analyses to inform query generation
             })
           }
         );
@@ -214,6 +217,123 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
         });
         
+        // NEW: Analyze the results of this iteration
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Analyzing results for iteration ${i}...`)
+        });
+        
+        // Get all results collected so far for this iteration
+        const { data: currentJob } = await supabaseClient
+          .from('research_jobs')
+          .select('iterations')
+          .eq('id', jobId)
+          .single();
+          
+        const iterationResults = currentJob?.iterations?.find((iter: any) => iter.iteration === i)?.results || [];
+        
+        if (iterationResults.length > 0) {
+          try {
+            // Combine all content from this iteration
+            const combinedContent = iterationResults
+              .map((result: any) => `URL: ${result.url}\nTitle: ${result.title}\nContent: ${result.content}`)
+              .join('\n\n');
+            
+            // Call extract-research-insights with the combined content
+            const analyzeResponse = await fetch(
+              `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+                },
+                body: JSON.stringify({
+                  webContent: combinedContent,
+                  analysis: "",
+                  marketId,
+                  marketQuestion: query,
+                  previousAnalyses
+                })
+              }
+            );
+            
+            if (!analyzeResponse.ok) {
+              throw new Error(`Failed to analyze results: ${analyzeResponse.statusText}`);
+            }
+            
+            // Read the streaming response
+            const reader = analyzeResponse.body?.getReader();
+            let analysisText = '';
+            
+            if (reader) {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                const chunk = new TextDecoder().decode(value);
+                // Process SSE chunks
+                const lines = chunk.split('\n\n');
+                for (const line of lines) {
+                  if (line.startsWith('data: ')) {
+                    try {
+                      const data = JSON.parse(line.substring(6));
+                      if (data.text) {
+                        analysisText += data.text;
+                      }
+                    } catch (e) {
+                      // Skip parse errors
+                    }
+                  }
+                }
+              }
+            }
+            
+            // If we didn't get a proper analysis from streaming, use the response directly
+            if (!analysisText) {
+              const responseData = await analyzeResponse.json();
+              analysisText = responseData.reasoning && JSON.stringify(responseData.reasoning);
+            }
+            
+            // Add analysis to previous analyses array
+            previousAnalyses.push(analysisText);
+            
+            // Update the iteration with the analysis
+            const updatedIterationData = currentJob.iterations.map((iter: any) => {
+              if (iter.iteration === i) {
+                return {
+                  ...iter,
+                  analysis: analysisText
+                };
+              }
+              return iter;
+            });
+            
+            // Update the database with the analysis
+            await supabaseClient
+              .from('research_jobs')
+              .update({ iterations: updatedIterationData })
+              .eq('id', jobId);
+              
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
+            });
+            
+          } catch (analysisError) {
+            console.error(`Error analyzing results for iteration ${i}:`, analysisError);
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Error analyzing results: ${analysisError.message}`)
+            });
+          }
+        } else {
+          await supabaseClient.rpc('append_research_progress', {
+            job_id: jobId,
+            progress_entry: JSON.stringify(`No results to analyze for iteration ${i}`)
+          });
+        }
+        
       } catch (error) {
         console.error(`Error generating queries for job ${jobId}:`, error);
         await supabaseClient.rpc('append_research_progress', {
@@ -243,7 +363,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     // Create final results object
     const finalResults = {
       data: allResults,
-      analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`
+      analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`,
+      iterationAnalyses: previousAnalyses
     };
     
     // Update the job with results
