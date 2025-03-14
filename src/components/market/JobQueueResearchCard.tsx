@@ -12,6 +12,7 @@ import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react"
+import { InsightsDisplay } from "./research/InsightsDisplay"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -55,6 +56,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
+  const [structuredInsights, setStructuredInsights] = useState<any>(null)
   const { toast } = useToast()
 
   // Fetch the most recent active job for this market on component mount
@@ -124,6 +126,12 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               if (parsedResults.analysis) {
                 setAnalysis(parsedResults.analysis);
               }
+              if (parsedResults.structuredInsights) {
+                setStructuredInsights({
+                  parsedData: parsedResults.structuredInsights,
+                  rawText: JSON.stringify(parsedResults.structuredInsights)
+                });
+              }
             } catch (e) {
               console.error('Error parsing job results:', e);
             }
@@ -189,6 +197,12 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               if (parsedResults.analysis) {
                 setAnalysis(parsedResults.analysis);
               }
+              if (parsedResults.structuredInsights) {
+                setStructuredInsights({
+                  parsedData: parsedResults.structuredInsights,
+                  rawText: JSON.stringify(parsedResults.structuredInsights)
+                });
+              }
             } catch (e) {
               console.error('Error parsing job results:', e);
             }
@@ -246,6 +260,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
+    setStructuredInsights(null);
 
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
@@ -390,6 +405,13 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
               />
             ))}
           </div>
+        </div>
+      )}
+      
+      {structuredInsights && structuredInsights.parsedData && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
+          <InsightsDisplay streamingState={structuredInsights} />
         </div>
       )}
       

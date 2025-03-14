@@ -321,13 +321,109 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       });
     }
     
-    // Create final results object
-    const finalResults = {
+    // Create final results object with the text analysis
+    const textAnalysisResults = {
       data: allResults,
       analysis: finalAnalysis
     };
     
-    // Update the job with results
+    // Now generate the structured insights with the extract-research-insights function
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Generating structured insights with probability assessment...`)
+    });
+    
+    let structuredInsights = null;
+    try {
+      // Call the extract-research-insights function to get structured analysis with probability
+      const extractInsightsResponse = await fetch(
+        `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify({
+            webContent: allResults.map(r => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`).join('\n\n'),
+            analysis: finalAnalysis,
+            marketQuestion: query
+          })
+        }
+      );
+      
+      if (!extractInsightsResponse.ok) {
+        throw new Error(`Failed to extract insights: ${extractInsightsResponse.statusText}`);
+      }
+      
+      // Since extract-research-insights returns a stream, we need to process it
+      const reader = extractInsightsResponse.body?.getReader();
+      if (!reader) {
+        throw new Error('Failed to get response reader');
+      }
+      
+      let structuredJson = '';
+      let done = false;
+      const decoder = new TextDecoder();
+      
+      // Read the stream until complete
+      while (!done) {
+        const { value, done: doneReading } = await reader.read();
+        done = doneReading;
+        
+        if (value) {
+          const chunk = decoder.decode(value, { stream: !done });
+          
+          // Process SSE data chunks
+          const lines = chunk.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data:')) {
+              const jsonStr = line.substring(5).trim();
+              try {
+                const data = JSON.parse(jsonStr);
+                
+                // If we got a full JSON object with probability, that's our final result
+                if (data && !data.message && data.probability) {
+                  structuredJson = jsonStr;
+                  done = true;
+                  break;
+                }
+              } catch (e) {
+                // Skip invalid JSON (could be partial chunks)
+              }
+            }
+          }
+        }
+      }
+      
+      // Parse the final JSON result
+      if (structuredJson) {
+        structuredInsights = JSON.parse(structuredJson);
+        
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.probability}`)
+        });
+      } else {
+        throw new Error('Failed to extract valid structured insights');
+      }
+      
+    } catch (insightsError) {
+      console.error(`Error extracting structured insights for job ${jobId}:`, insightsError);
+      
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error extracting structured insights: ${insightsError.message}`)
+      });
+    }
+    
+    // Combine text analysis and structured insights
+    const finalResults = {
+      ...textAnalysisResults,
+      structuredInsights: structuredInsights
+    };
+    
+    // Update the job with final results
     await supabaseClient.rpc('update_research_results', {
       job_id: jobId,
       result_data: JSON.stringify(finalResults)
