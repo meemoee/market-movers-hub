@@ -5,7 +5,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 interface GenerateQueriesRequest {
   query: string;
   marketId: string;
-  focusText?: string;
   iteration?: number;
   previousQueries?: string[];
 }
@@ -30,7 +29,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const requestData: GenerateQueriesRequest = await req.json();
-    const { query, marketId, focusText, iteration = 1, previousQueries = [] } = requestData;
+    const { query, marketId, iteration = 1, previousQueries = [] } = requestData;
 
     if (!query) {
       return new Response(
@@ -42,19 +41,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Generating queries for: "${query}" ${focusText ? `with focus on "${focusText}"` : ''} (iteration ${iteration})`);
+    console.log(`Generating queries for: "${query}" (iteration ${iteration})`);
 
     // Generate prompt based on iteration
     let prompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
-${query}`;
+${query}
 
-    // Add focus text if provided
-    if (focusText) {
-      prompt += `\n\nCRITICAL: Focus specifically on this aspect: "${focusText}"
-Your queries MUST be designed to gather information SPECIFICALLY about this focus area, not just the general topic.`;
-    }
-
-    prompt += `\n\nCRITICAL GUIDELINES FOR QUERIES:
+CRITICAL GUIDELINES FOR QUERIES:
 1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
 2. Include specific entities, dates, events, or proper nouns from the original question
 3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
@@ -144,11 +137,6 @@ ${previousQueries.join('\n')}`;
         `${query} statistical data and probability estimates`,
         `${query} future outlook and critical factors`
       ];
-
-      // Add focus text to fallback queries if provided
-      if (focusText) {
-        queries = queries.map(q => `${q} focusing specifically on ${focusText}`);
-      }
     }
 
     console.log(`Generated ${queries.length} queries:`, queries);
