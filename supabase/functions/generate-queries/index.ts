@@ -7,6 +7,8 @@ interface GenerateQueriesRequest {
   marketId: string;
   iteration?: number;
   previousQueries?: string[];
+  focusText?: string; // Added support for focus text
+  areasForResearch?: string[]; // Added support for areas to research
 }
 
 Deno.serve(async (req) => {
@@ -29,7 +31,14 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const requestData: GenerateQueriesRequest = await req.json();
-    const { query, marketId, iteration = 1, previousQueries = [] } = requestData;
+    const { 
+      query, 
+      marketId, 
+      iteration = 1, 
+      previousQueries = [],
+      focusText = null,
+      areasForResearch = []
+    } = requestData;
 
     if (!query) {
       return new Response(
@@ -41,7 +50,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Generating queries for: "${query}" (iteration ${iteration})`);
+    console.log(`Generating queries for: "${query}" (iteration ${iteration})${focusText ? ` with focus on: "${focusText}"` : ''}`);
 
     // Generate prompt based on iteration
     let prompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
@@ -56,6 +65,20 @@ CRITICAL GUIDELINES FOR QUERIES:
 6. Use precise terminology and specific entities mentioned in the original question
 
 Focus on different aspects that would be relevant for market research.`;
+
+    // Add focus text if available
+    if (focusText) {
+      prompt += `\n\nVERY IMPORTANT: Your queries should specifically focus on this aspect of the topic:
+"${focusText}"
+
+Make sure ALL generated queries directly address this specific focus area.`;
+    }
+
+    // Add areas for research if available
+    if (areasForResearch.length > 0) {
+      prompt += `\n\nPrioritize generating queries about these specific areas that need more research:
+${areasForResearch.map(area => `- ${area}`).join('\n')}`;
+    }
 
     // Adjust prompt based on iteration
     if (iteration > 1) {
@@ -137,6 +160,17 @@ ${previousQueries.join('\n')}`;
         `${query} statistical data and probability estimates`,
         `${query} future outlook and critical factors`
       ];
+
+      // If we have a focus text, add focused fallback queries
+      if (focusText) {
+        queries = [
+          `${focusText} in relation to ${query} - latest information`,
+          `${focusText} specific analysis regarding ${query}`,
+          `How does ${focusText} affect the outcome of ${query}`,
+          `Statistical data about ${focusText} in the context of ${query}`,
+          `Expert opinions on ${focusText} for ${query}`
+        ];
+      }
     }
 
     console.log(`Generated ${queries.length} queries:`, queries);
