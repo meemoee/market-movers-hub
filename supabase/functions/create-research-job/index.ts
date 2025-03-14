@@ -239,8 +239,115 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               .join('\n\n');
             
             if (combinedContent.length > 0) {
-              // Generate analysis for this iteration
-              const analysisText = await generateAnalysis(combinedContent, query, `Iteration ${i} analysis for "${query}"`);
+              // Get market price for context
+              let marketPrice = undefined;
+              try {
+                const { data: priceData } = await supabaseClient
+                  .from('market_prices')
+                  .select('last_traded_price')
+                  .eq('market_id', marketId)
+                  .order('timestamp', { ascending: false })
+                  .limit(1);
+                  
+                if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
+                  marketPrice = Math.round(priceData[0].last_traded_price * 100);
+                  console.log(`Found market price for ${marketId}: ${marketPrice}%`);
+                }
+              } catch (priceError) {
+                console.error(`Error fetching market price for ${marketId}:`, priceError);
+              }
+              
+              // Try to get related markets for context
+              const relatedMarkets = [];
+              try {
+                const { data: relatedData } = await supabaseClient
+                  .from('related_markets')
+                  .select('related_market_id, relationship_strength')
+                  .eq('market_id', marketId)
+                  .order('relationship_strength', { ascending: false })
+                  .limit(5);
+                  
+                if (relatedData && relatedData.length > 0) {
+                  for (const relation of relatedData) {
+                    try {
+                      // Get market details
+                      const { data: marketData } = await supabaseClient
+                        .from('markets')
+                        .select('question')
+                        .eq('id', relation.related_market_id)
+                        .single();
+                        
+                      // Get market price
+                      const { data: priceData } = await supabaseClient
+                        .from('market_prices')
+                        .select('last_traded_price')
+                        .eq('market_id', relation.related_market_id)
+                        .order('timestamp', { ascending: false })
+                        .limit(1);
+                        
+                      if (marketData && priceData && priceData.length > 0) {
+                        relatedMarkets.push({
+                          market_id: relation.related_market_id,
+                          question: marketData.question,
+                          probability: priceData[0].last_traded_price
+                        });
+                      }
+                    } catch (relatedError) {
+                      console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
+                    }
+                  }
+                }
+              } catch (relatedError) {
+                console.error(`Error fetching related markets for ${marketId}:`, relatedError);
+              }
+              
+              // Collect areas for research that may have been identified in previous iterations
+              const areasForResearch = [];
+              try {
+                for (const iteration of iterationResults) {
+                  if (iteration.analysis) {
+                    // Look for a section with "areas for further research" or similar
+                    const analysisText = iteration.analysis.toLowerCase();
+                    if (analysisText.includes("areas for further research") || 
+                        analysisText.includes("further research needed") ||
+                        analysisText.includes("additional research")) {
+                      // Extract areas if possible
+                      const lines = iteration.analysis.split('\n');
+                      let inAreaSection = false;
+                      
+                      for (const line of lines) {
+                        if (!inAreaSection) {
+                          if (line.toLowerCase().includes("areas for") || 
+                              line.toLowerCase().includes("further research") ||
+                              line.toLowerCase().includes("additional research")) {
+                            inAreaSection = true;
+                          }
+                        } else if (line.trim().length === 0 || line.startsWith('#')) {
+                          inAreaSection = false;
+                        } else if (line.startsWith('-') || line.startsWith('*') || 
+                                   (line.match(/^\d+\.\s/) !== null)) {
+                          const area = line.replace(/^[-*\d.]\s+/, '').trim();
+                          if (area && !areasForResearch.includes(area)) {
+                            areasForResearch.push(area);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (areasError) {
+                console.error(`Error extracting areas for research:`, areasError);
+              }
+              
+              // Generate analysis for this iteration with market context
+              const analysisText = await generateAnalysis(
+                combinedContent, 
+                query, 
+                `Iteration ${i} analysis for "${query}"`,
+                marketPrice,
+                relatedMarkets,
+                areasForResearch
+              );
               
               // Update the iteration with the analysis
               const updatedIterations = [...iterationResults];
@@ -308,8 +415,115 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
         .join('\n\n');
       
+      // Get market price for final analysis
+      let marketPrice = undefined;
+      try {
+        const { data: priceData } = await supabaseClient
+          .from('market_prices')
+          .select('last_traded_price')
+          .eq('market_id', marketId)
+          .order('timestamp', { ascending: false })
+          .limit(1);
+          
+        if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
+          marketPrice = Math.round(priceData[0].last_traded_price * 100);
+          console.log(`Found market price for final analysis ${marketId}: ${marketPrice}%`);
+        }
+      } catch (priceError) {
+        console.error(`Error fetching market price for final analysis ${marketId}:`, priceError);
+      }
+      
+      // Try to get related markets for final analysis
+      const relatedMarkets = [];
+      try {
+        const { data: relatedData } = await supabaseClient
+          .from('related_markets')
+          .select('related_market_id, relationship_strength')
+          .eq('market_id', marketId)
+          .order('relationship_strength', { ascending: false })
+          .limit(5);
+          
+        if (relatedData && relatedData.length > 0) {
+          for (const relation of relatedData) {
+            try {
+              // Get market details
+              const { data: marketData } = await supabaseClient
+                .from('markets')
+                .select('question')
+                .eq('id', relation.related_market_id)
+                .single();
+                
+              // Get market price
+              const { data: priceData } = await supabaseClient
+                .from('market_prices')
+                .select('last_traded_price')
+                .eq('market_id', relation.related_market_id)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+                
+              if (marketData && priceData && priceData.length > 0) {
+                relatedMarkets.push({
+                  market_id: relation.related_market_id,
+                  question: marketData.question,
+                  probability: priceData[0].last_traded_price
+                });
+              }
+            } catch (relatedError) {
+              console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
+            }
+          }
+        }
+      } catch (relatedError) {
+        console.error(`Error fetching related markets for final analysis ${marketId}:`, relatedError);
+      }
+      
+      // Get all areas for research that may have been identified in previous iterations
+      const areasForResearch = [];
+      try {
+        for (const iteration of allIterations) {
+          if (iteration.analysis) {
+            // Look for a section with "areas for further research" or similar
+            const analysisText = iteration.analysis.toLowerCase();
+            if (analysisText.includes("areas for further research") || 
+                analysisText.includes("further research needed") ||
+                analysisText.includes("additional research")) {
+              // Extract areas if possible
+              const lines = iteration.analysis.split('\n');
+              let inAreaSection = false;
+              
+              for (const line of lines) {
+                if (!inAreaSection) {
+                  if (line.toLowerCase().includes("areas for") || 
+                      line.toLowerCase().includes("further research") ||
+                      line.toLowerCase().includes("additional research")) {
+                    inAreaSection = true;
+                  }
+                } else if (line.trim().length === 0 || line.startsWith('#')) {
+                  inAreaSection = false;
+                } else if (line.startsWith('-') || line.startsWith('*') || 
+                           (line.match(/^\d+\.\s/) !== null)) {
+                  const area = line.replace(/^[-*\d.]\s+/, '').trim();
+                  if (area && !areasForResearch.includes(area)) {
+                    areasForResearch.push(area);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (areasError) {
+        console.error(`Error extracting areas for research:`, areasError);
+      }
+      
       if (allContent.length > 0) {
-        finalAnalysis = await generateAnalysis(allContent, query, `Final comprehensive analysis for "${query}"`);
+        finalAnalysis = await generateAnalysis(
+          allContent, 
+          query, 
+          `Final comprehensive analysis for "${query}"`,
+          marketPrice,
+          relatedMarkets,
+          areasForResearch
+        );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
       }
@@ -591,7 +805,14 @@ async function performWebResearch(jobId: string, query: string, marketId: string
 }
 
 // Function to generate analysis using OpenRouter
-async function generateAnalysis(content: string, query: string, analysisType: string): Promise<string> {
+async function generateAnalysis(
+  content: string, 
+  query: string, 
+  analysisType: string,
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  areasForResearch?: string[]
+): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
   if (!openRouterKey) {
@@ -606,10 +827,35 @@ async function generateAnalysis(content: string, query: string, analysisType: st
     ? content.substring(0, contentLimit) + "... [content truncated]" 
     : content;
   
+  // Add market context to the prompt
+  let contextInfo = '';
+  
+  if (marketPrice !== undefined) {
+    contextInfo += `\nCurrent market prediction: ${marketPrice}% probability\n`;
+  }
+  
+  if (relatedMarkets && relatedMarkets.length > 0) {
+    contextInfo += '\nRelated markets:\n';
+    relatedMarkets.forEach(market => {
+      if (market.question && market.probability !== undefined) {
+        const probability = Math.round(market.probability * 100);
+        contextInfo += `- ${market.question}: ${probability}% probability\n`;
+      }
+    });
+  }
+  
+  if (areasForResearch && areasForResearch.length > 0) {
+    contextInfo += '\nAreas identified for further research:\n';
+    areasForResearch.forEach(area => {
+      contextInfo += `- ${area}\n`;
+    });
+  }
+  
   const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
 
 Content to analyze:
 ${truncatedContent}
+${contextInfo}
 
 Please provide:
 
