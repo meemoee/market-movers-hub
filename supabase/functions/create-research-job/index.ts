@@ -361,8 +361,42 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.probability}`)
+        progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`)
       });
+      
+      // Extract the actual insights from the OpenRouter response
+      if (structuredInsights.choices && 
+          structuredInsights.choices[0] && 
+          structuredInsights.choices[0].message && 
+          structuredInsights.choices[0].message.content) {
+        
+        // Get the actual insights content from the API response
+        try {
+          // If it's a string (JSON string), parse it
+          if (typeof structuredInsights.choices[0].message.content === 'string') {
+            structuredInsights = JSON.parse(structuredInsights.choices[0].message.content);
+          } else {
+            // If it's already an object, use it directly
+            structuredInsights = structuredInsights.choices[0].message.content;
+          }
+          
+          console.log(`Successfully extracted structured insights with probability: ${structuredInsights.probability}`);
+        } catch (parseError) {
+          console.error(`Error parsing insights JSON: ${parseError.message}`);
+          
+          // If parsing fails, store the raw content
+          structuredInsights = {
+            probability: "Error: Could not parse",
+            rawContent: structuredInsights.choices[0].message.content
+          };
+        }
+      } else {
+        console.error("Invalid structure in insights response:", structuredInsights);
+        structuredInsights = {
+          probability: "Error: Invalid response format",
+          error: "The AI response did not contain expected data"
+        };
+      }
       
     } catch (insightsError) {
       console.error(`Error extracting structured insights for job ${jobId}:`, insightsError);
@@ -371,6 +405,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         job_id: jobId,
         progress_entry: JSON.stringify(`Error extracting structured insights: ${insightsError.message}`)
       });
+      
+      structuredInsights = {
+        probability: "Error: Failed to generate",
+        error: insightsError.message
+      };
     }
     
     // Combine text analysis and structured insights
