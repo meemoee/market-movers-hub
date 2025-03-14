@@ -10,6 +10,8 @@ import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
+import { Badge } from "@/components/ui/badge"
+import { Loader2, CheckCircle, AlertCircle, Clock } from "lucide-react"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -52,6 +54,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [polling, setPolling] = useState(false)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
+  const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const { toast } = useToast()
 
   // Poll for job status
@@ -79,6 +82,9 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         
         const job = data as ResearchJob;
         console.log('Job status:', job.status);
+        
+        // Update job status
+        setJobStatus(job.status);
         
         // Update progress based on status
         if (job.status === 'completed') {
@@ -151,6 +157,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setAnalysis('');
     setIterations([]);
     setExpandedIterations([]);
+    setJobStatus(null);
 
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
@@ -179,6 +186,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       const jobId = response.data.jobId;
       setJobId(jobId);
       setPolling(true);
+      setJobStatus('queued');
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       
@@ -190,6 +198,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     } catch (error) {
       console.error('Error in research job:', error);
       setError(`Error occurred during research job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setJobStatus('failed');
     } finally {
       setIsLoading(false);
     }
@@ -203,11 +212,52 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     );
   };
 
+  // Function to render status badge
+  const renderStatusBadge = () => {
+    if (!jobStatus) return null;
+    
+    switch (jobStatus) {
+      case 'queued':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 text-yellow-700 border-yellow-200">
+            <Clock className="h-3 w-3" />
+            <span>Queued</span>
+          </Badge>
+        );
+      case 'processing':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Processing</span>
+          </Badge>
+        );
+      case 'completed':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 text-green-700 border-green-200">
+            <CheckCircle className="h-3 w-3" />
+            <span>Completed</span>
+          </Badge>
+        );
+      case 'failed':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-red-50 text-red-700 border-red-200">
+            <AlertCircle className="h-3 w-3" />
+            <span>Failed</span>
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
         <div className="space-y-2">
-          <h2 className="text-xl font-semibold">Background Job Research</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Background Job Research</h2>
+            {renderStatusBadge()}
+          </div>
           <p className="text-sm text-muted-foreground">
             This research continues in the background even if you close your browser.
           </p>
@@ -216,8 +266,10 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         <Button 
           onClick={handleResearch} 
           disabled={isLoading || polling}
+          className="flex items-center gap-2"
         >
-          {isLoading ? "Starting..." : jobId ? "Job Running..." : "Start Research"}
+          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+          {isLoading ? "Starting..." : jobId && jobStatus !== 'completed' && jobStatus !== 'failed' ? "Job Running..." : "Start Research"}
         </Button>
       </div>
 
@@ -231,6 +283,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         messages={progress} 
         jobId={jobId || undefined} 
         progress={progressPercent}
+        status={jobStatus}
       />
       
       {iterations.length > 0 && (
