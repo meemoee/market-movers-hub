@@ -7,7 +7,6 @@ interface GenerateQueriesRequest {
   marketId: string;
   iteration?: number;
   previousQueries?: string[];
-  previousAnalyses?: string[]; // Add support for previous analyses
 }
 
 Deno.serve(async (req) => {
@@ -30,7 +29,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const requestData: GenerateQueriesRequest = await req.json();
-    const { query, marketId, iteration = 1, previousQueries = [], previousAnalyses = [] } = requestData;
+    const { query, marketId, iteration = 1, previousQueries = [] } = requestData;
 
     if (!query) {
       return new Response(
@@ -43,7 +42,6 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Generating queries for: "${query}" (iteration ${iteration})`);
-    console.log(`Previous analyses count: ${previousAnalyses.length}`);
 
     // Generate prompt based on iteration
     let prompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
@@ -59,18 +57,8 @@ CRITICAL GUIDELINES FOR QUERIES:
 
 Focus on different aspects that would be relevant for market research.`;
 
-    // Adjust prompt based on iteration and previous analyses
-    if (iteration > 1 && previousAnalyses.length > 0) {
-      // Get the most recent analysis to inform the next queries
-      const latestAnalysis = previousAnalyses[previousAnalyses.length - 1];
-      
-      prompt += `\n\nThis is iteration ${iteration}. Based on previous searches and analysis, dig deeper and focus on more specific aspects or angles that haven't been covered yet.
-
-Previous analysis has identified these insights:
-${latestAnalysis}
-
-Generate search queries that specifically address gaps in our knowledge or explore areas mentioned in the analysis that need more investigation.`;
-    } else if (iteration > 1) {
+    // Adjust prompt based on iteration
+    if (iteration > 1) {
       prompt += `\n\nThis is iteration ${iteration}. Based on previous searches, dig deeper and focus on more specific aspects or angles that haven't been covered yet.`;
     }
 

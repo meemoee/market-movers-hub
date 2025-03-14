@@ -34,8 +34,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     const previousQueries: string[] = [];
     // Track all seen URLs to avoid duplicate content
     const seenUrls = new Set<string>();
-    // Track previous analyses to inform future iterations
-    const previousAnalyses: string[] = [];
     
     // Simulate iterations
     for (let i = 1; i <= maxIterations; i++) {
@@ -73,8 +71,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               query,
               marketId,
               iteration: i,
-              previousQueries,
-              previousAnalyses  // Pass previous analyses to inform query generation
+              previousQueries
             })
           }
         );
@@ -93,8 +90,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         const iterationData = {
           iteration: i,
           queries: queries,
-          results: [],
-          analysis: ""  // Initialize with empty analysis
+          results: []
         };
         
         // Append the iteration data to the research job
@@ -218,122 +214,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
         });
         
-        // NEW: Analyze the results of this iteration
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Analyzing results for iteration ${i}...`)
-        });
-        
-        // Get all results collected so far for this iteration
-        const { data: currentJob } = await supabaseClient
-          .from('research_jobs')
-          .select('iterations')
-          .eq('id', jobId)
-          .single();
-          
-        const iterationResults = currentJob?.iterations?.find((iter: any) => iter.iteration === i)?.results || [];
-        
-        if (iterationResults.length > 0) {
-          try {
-            // Combine all content from this iteration
-            const combinedContent = iterationResults
-              .map((result: any) => `URL: ${result.url}\nTitle: ${result.title}\nContent: ${result.content}`)
-              .join('\n\n');
-            
-            // Call extract-research-insights with the combined content
-            const analyzeResponse = await fetch(
-              `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-                },
-                body: JSON.stringify({
-                  webContent: combinedContent,
-                  analysis: "",
-                  marketId,
-                  marketQuestion: query,
-                  previousAnalyses
-                })
-              }
-            );
-            
-            if (!analyzeResponse.ok) {
-              throw new Error(`Failed to analyze results: ${analyzeResponse.statusText}`);
-            }
-            
-            // Use direct JSON response instead of trying to read stream
-            const analyzeData = await analyzeResponse.json();
-            // Extract the analysis text (field depends on extract-research-insights structure)
-            const analysisText = analyzeData.text || analyzeData.analysis || JSON.stringify(analyzeData);
-            
-            console.log(`Got analysis text for iteration ${i}:`, analysisText.substring(0, 100) + '...');
-            
-            // Add analysis to previous analyses array for next iteration
-            previousAnalyses.push(analysisText);
-            
-            // Update the iteration with the analysis
-            const updatedIterationData = currentJob.iterations.map((iter: any) => {
-              if (iter.iteration === i) {
-                return {
-                  ...iter,
-                  analysis: analysisText
-                };
-              }
-              return iter;
-            });
-            
-            // Log the updated iteration data to verify analysis is included
-            console.log(`Updated iteration ${i} with analysis of length: ${analysisText.length}`);
-            console.log(`First 100 chars of analysis: ${analysisText.substring(0, 100)}`);
-            
-            // Update the database with the analysis
-            const { error: updateError } = await supabaseClient
-              .from('research_jobs')
-              .update({ iterations: updatedIterationData })
-              .eq('id', jobId);
-              
-            if (updateError) {
-              console.error(`Error updating iteration ${i} with analysis:`, updateError);
-              throw new Error(`Failed to update iteration with analysis: ${updateError.message}`);
-            }
-            
-            // Verify the update was successful
-            const { data: verifyData, error: verifyError } = await supabaseClient
-              .from('research_jobs')
-              .select('iterations')
-              .eq('id', jobId)
-              .single();
-              
-            if (verifyError) {
-              console.error(`Error verifying iteration ${i} update:`, verifyError);
-            } else {
-              const verifiedIteration = verifyData.iterations.find((iter: any) => iter.iteration === i);
-              if (verifiedIteration) {
-                console.log(`Verified iteration ${i} analysis length: ${verifiedIteration.analysis ? verifiedIteration.analysis.length : 0}`);
-              }
-            }
-              
-            await supabaseClient.rpc('append_research_progress', {
-              job_id: jobId,
-              progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
-            });
-            
-          } catch (analysisError) {
-            console.error(`Error analyzing results for iteration ${i}:`, analysisError);
-            await supabaseClient.rpc('append_research_progress', {
-              job_id: jobId,
-              progress_entry: JSON.stringify(`Error analyzing results: ${analysisError.message}`)
-            });
-          }
-        } else {
-          await supabaseClient.rpc('append_research_progress', {
-            job_id: jobId,
-            progress_entry: JSON.stringify(`No results to analyze for iteration ${i}`)
-          });
-        }
-        
       } catch (error) {
         console.error(`Error generating queries for job ${jobId}:`, error);
         await supabaseClient.rpc('append_research_progress', {
@@ -360,30 +240,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       }
     }
     
-    // Ensure we have analyses from all iterations
-    const iterationAnalyses = allIterations
-      .filter(iteration => iteration.analysis && iteration.analysis.length > 0)
-      .map(iteration => iteration.analysis);
-    
-    console.log(`Collected ${iterationAnalyses.length} iteration analyses for final results`);
-    
-    // Log all iterations to debug analysis
-    console.log(`All iterations analysis check:`);
-    allIterations.forEach((iter: any, index: number) => {
-      console.log(`Iteration ${iter.iteration} analysis length: ${iter.analysis ? iter.analysis.length : 0}`);
-      if (iter.analysis) {
-        console.log(`Iteration ${iter.iteration} analysis preview: ${iter.analysis.substring(0, 50)}...`);
-      }
-    });
-    
     // Create final results object
     const finalResults = {
       data: allResults,
-      analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`,
-      iterationAnalyses: iterationAnalyses.length > 0 ? iterationAnalyses : previousAnalyses  // Ensure we have iteration analyses
+      analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`
     };
-    
-    console.log(`Final results contain ${finalResults.iterationAnalyses.length} iteration analyses`);
     
     // Update the job with results
     await supabaseClient.rpc('update_research_results', {
