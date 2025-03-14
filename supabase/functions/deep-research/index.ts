@@ -1,536 +1,305 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { Queue } from "https://deno.land/x/queue@v1.2.1/mod.ts";
 
-import { corsHeaders } from '../_shared/cors.ts';
-import { OpenRouter } from './openRouter.ts';
+// Environment variables
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
 
-interface ResearchReport {
-  title: string;
-  executiveSummary: string;
-  keyFindings: string[];
-  analysis: string;
-  conclusion: string;
-}
+// Supabase client
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-interface ResearchStep {
+// Constants
+const MAX_CONCURRENT_JOBS = 3;
+
+// Define the queue
+const jobQueue = new Queue({ concurrency: MAX_CONCURRENT_JOBS });
+
+interface ResearchJob {
+  id: string;
+  market_id: string;
   query: string;
-  results: string;
+  focus_text?: string;
+  status: string;
+  current_iteration: number;
+  max_iterations: number;
+  iterations: any[];
+  progress_log: any[];
+  created_at: string;
 }
 
-// Default model to use
-const DEFAULT_MODEL = 'google/gemini-2.0-flash-001';
+// Listen for new research jobs
+async function listenForNewJobs(): Promise<void> {
+  console.log('Listening for new research jobs...');
+  
+  supabaseClient
+    .channel('research_jobs')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'research_jobs' },
+      async (payload) => {
+        const job = payload.new as ResearchJob;
+        console.log(`Received new job: ${job.id}`);
+        
+        // Add the job to the queue
+        jobQueue.add(() => processResearchJob(job));
+      }
+    )
+    .subscribe();
+}
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight request
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: corsHeaders,
-    });
-  }
-
+// Main research job processing function
+async function processResearchJob(job: ResearchJob): Promise<void> {
   try {
-    const { description, marketId, iterations = 3 } = await req.json();
+    console.log(`Starting to process job ${job.id}, query: "${job.query}"`);
     
-    if (!description) {
-      return new Response(
-        JSON.stringify({ 
-          success: false, 
-          error: 'Missing market description' 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400 
-        }
-      );
+    // Update job status to processing
+    await updateJobStatus(job.id, 'processing');
+    
+    // Extract previous queries from all iterations if any
+    const previousQueries = job.iterations.flatMap((iteration: any) => 
+      iteration.queries || []
+    );
+    
+    // Generate search queries for this iteration
+    console.log(`Generating queries for iteration ${job.current_iteration + 1}`);
+    const searchQueries = await generateQueries(job.query, job.market_id, job.focus_text, job.current_iteration + 1, previousQueries);
+    
+    // Log the generated queries
+    console.log(`Generated queries: ${JSON.stringify(searchQueries)}`);
+    
+    // Web research for each query
+    const researchResults = [];
+    for (const searchQuery of searchQueries) {
+      console.log(`Starting web research for query: "${searchQuery}"`);
+      
+      // Invoke the web-research function
+      const webResearchResult = await webResearch(job.market_id, searchQuery, job.focus_text);
+      
+      // Log the web research result
+      console.log(`Web research result: ${JSON.stringify(webResearchResult)}`);
+      
+      researchResults.push(webResearchResult);
     }
-
-    console.log(`Starting deep research for market ${marketId}`);
-    console.log(`Description: ${description.substring(0, 100)}...`);
-    console.log(`Iterations: ${iterations}`);
-
-    const openRouter = new OpenRouter(Deno.env.get("OPENROUTER_API_KEY") || "");
-    const model = DEFAULT_MODEL;
-
-    // Initialize research state
-    const researchState = {
-      intent: description,
-      model,
-      totalIterations: iterations,
-      iteration: 1,
-      findings: [],
-      previousQueries: [],
-      steps: [] as ResearchStep[]
+    
+    // Consolidate research results
+    const consolidatedAnalysis = consolidateResearch(researchResults);
+    
+    // Log the consolidated analysis
+    console.log(`Consolidated analysis: ${JSON.stringify(consolidatedAnalysis)}`);
+    
+    // Update iterations and progress log
+    const iterationData = {
+      iteration: job.current_iteration + 1,
+      queries: searchQueries,
+      results: researchResults,
+      analysis: consolidatedAnalysis
     };
     
-    // Formulate initial strategic query
-    const initialQuery = await formInitialQuery(description, model, openRouter);
-    let currentQuery = initialQuery;
+    await appendResearchIteration(job.id, iterationData);
+    await appendResearchProgress(job.id, `Completed iteration ${job.current_iteration + 1}`);
     
-    researchState.steps.push({
-      query: initialQuery,
-      results: "Initial query formulated. Starting research..."
-    });
-    
-    console.log(`Initial query: ${initialQuery}`);
-    
-    // Main research loop
-    while (researchState.iteration <= iterations) {
-      console.log(`Performing iteration ${researchState.iteration}/${iterations}`);
-      
-      // Perform research
-      const result = await performResearch(currentQuery, researchState, openRouter);
-      
-      // Store results
-      researchState.findings.push(result);
-      researchState.previousQueries.push(currentQuery);
-      
-      researchState.steps.push({
-        query: currentQuery,
-        results: `Research completed. Found ${result.keyFindings.length} key findings.`
-      });
-      
-      // Check if research should continue
-      if (researchState.iteration >= iterations || result.error) {
-        break;
-      }
-      
-      // Generate next query based on findings
-      currentQuery = await generateNextQuery(
-        description, 
-        researchState.previousQueries, 
-        result.keyFindings, 
-        model,
-        openRouter
-      );
-      
-      researchState.steps.push({
-        query: currentQuery,
-        results: "Generated follow-up query based on findings."
-      });
-      
-      // Increment iteration counter
-      researchState.iteration++;
-    }
-    
-    // Generate final report
-    console.log("Generating final report");
-    const finalReport = await generateFinalReport(researchState, openRouter);
-    
-    researchState.steps.push({
-      query: "Final synthesis",
-      results: "Generating comprehensive research report."
-    });
-    
-    console.log("Research completed successfully");
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        report: finalReport,
-        steps: researchState.steps
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
-    
-  } catch (error) {
-    console.error(`Error in deep-research function: ${error.message}`);
-    
-    return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: `Internal server error: ${error.message}` 
-      }),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
-      }
-    );
-  }
-});
-
-/**
- * Formulate an optimal initial query based on research intent
- */
-async function formInitialQuery(intent: string, model: string, openRouter: OpenRouter): Promise<string> {
-  console.log(`Formulating strategic initial query...`);
-  
-  try {
-    const systemPrompt = `You are an expert search query formulator. Create the most effective initial search query that will:
-1. Target the most essential information about the topic
-2. Be specific enough to find relevant results
-3. Use 5-10 words maximum with precise terminology
-
-Return ONLY the query text with no explanations or formatting.`;
-
-    const response = await openRouter.complete(model, [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Create the best initial search query for: "${intent}"` }
-    ], 60, 0.3);
-
-    const initialQuery = response.replace(/^["']|["']$/g, '') // Remove quotes
-      .replace(/\.$/, ''); // Remove trailing period
-    
-    console.log(`Initial query formulated: "${initialQuery}"`);
-    return initialQuery;
-  } catch (error) {
-    console.error(`Failed to formulate initial query: ${error.message}`);
-    return intent; // Fall back to original intent
-  }
-}
-
-/**
- * Generate a strategic follow-up query based on findings
- */
-async function generateNextQuery(
-  intent: string, 
-  previousQueries: string[], 
-  keyFindings: string[], 
-  model: string,
-  openRouter: OpenRouter
-): Promise<string> {
-  console.log(`Generating strategic follow-up query...`);
-  
-  const recentFindings = keyFindings
-    .slice(-3)
-    .map((f, i) => `${i+1}. ${f}`)
-    .join('\n');
-    
-  const previousQueriesText = previousQueries
-    .slice(-3)
-    .map((q, i) => `${i+1}. "${q}"`)
-    .join('\n');
-  
-  try {
-    const systemPrompt = `You generate strategic follow-up search queries for research. 
-RESPOND WITH ONLY THE QUERY TEXT - NO EXPLANATIONS OR QUOTES.`;
-
-    const userPrompt = `RESEARCH QUESTION: "${intent}"
-
-PREVIOUS QUERIES:
-${previousQueriesText}
-
-RECENT FINDINGS:
-${recentFindings}
-
-Based on what we've learned, create the MOST EFFECTIVE follow-up search query that will:
-
-1. Focus on the most important remaining unknown aspect
-2. Be different enough from previous queries
-3. Use precise language that would appear in relevant sources
-4. Contain 5-10 words maximum
-5. Help directly answer the original research question
-
-Return only the query text with no explanations.`;
-
-    const response = await openRouter.complete(model, [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ], 60, 0.4);
-
-    const nextQuery = response.replace(/^["']|["']$/g, '') // Remove quotes
-      .replace(/\.$/, ''); // Remove trailing period
-    
-    console.log(`Follow-up query generated: "${nextQuery}"`);
-    return nextQuery;
-  } catch (error) {
-    console.error(`Query generation failed: ${error.message}`);
-    // Simple fallback strategy
-    return `${intent.split(' ').slice(0, 3).join(' ')} additional information`;
-  }
-}
-
-/**
- * Perform a research iteration
- */
-async function performResearch(query: string, researchState: any, openRouter: OpenRouter) {
-  console.log(`[Iteration ${researchState.iteration}/${researchState.totalIterations}] Searching: "${query}"`);
-  
-  // Create a brief research context from previous findings
-  let researchContext = '';
-  if (researchState.findings.length > 0) {
-    const previousFindings = researchState.findings
-      .slice(-1)[0]
-      .keyFindings
-      .slice(0, 3)
-      .map((f: string, i: number) => `${i+1}. ${f}`)
-      .join('\n');
-      
-    if (previousFindings) {
-      researchContext = `\nPREVIOUS FINDINGS:\n${previousFindings}`;
-    }
-  }
-  
-  // System prompt
-  const systemPrompt = `You are a precise research assistant investigating: "${researchState.intent}"
-
-Current iteration: ${researchState.iteration} of ${researchState.totalIterations}
-Current query: "${query}"
-${researchContext}
-
-Your task is to:
-1. Search for and analyze information relevant to the query
-2. Identify NEW facts and information about the topic
-3. Focus on directly answering the original research question
-4. Provide specific, detailed, factual information
-5. CITE SOURCES using markdown links [title](url) whenever possible
-
-RESPOND IN THIS FORMAT:
-1. First, provide a DETAILED ANALYSIS of the search results (1-2 paragraphs)
-2. Then, list KEY FINDINGS as numbered points (precise, specific facts)
-3. ${researchState.iteration < researchState.totalIterations ? 'Finally, state the most important unanswered question based on these findings' : 'Finally, provide a comprehensive SUMMARY of all findings related to the original question'}
-
-IMPORTANT:
-- Focus on NEW information in each iteration
-- Be objective and factual
-- Cite sources wherever possible 
-- Make each key finding specific and self-contained`;
-
-  try {
-    // The ":online" suffix is for web search, if available on OpenRouter
-    const onlineModel = `${researchState.model}:online`;
-    
-    const response = await openRouter.complete(onlineModel, [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Search for information on: "${query}"` }
-    ], 1200, 0.3);
-    
-    // Process the content to extract structured data
-    const result = processContent(response, query);
-    result.iteration = researchState.iteration;
-    
-    return result;
-  } catch (error) {
-    console.error(`Research failed: ${error.message}`);
-    // Try again without the :online suffix if it failed
-    try {
-      console.log("Retrying without web search...");
-      const response = await openRouter.complete(researchState.model, [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Based on your knowledge, provide information on: "${query}"` }
-      ], 1200, 0.3);
-      
-      // Process the content to extract structured data
-      const result = processContent(response, query);
-      result.iteration = researchState.iteration;
-      
-      return result;
-    } catch (retryError) {
-      console.error(`Retry also failed: ${retryError.message}`);
-      return {
-        iteration: researchState.iteration,
-        query,
-        analysis: `Error occurred during research: ${error.message}`,
-        keyFindings: ["Error in analysis"],
-        importantQuestion: '',
-        finalSummary: '',
-        sources: [],
-        error: true
-      };
-    }
-  }
-}
-
-/**
- * Process content to extract structured information
- */
-function processContent(content: string, query: string) {
-  // Initialize result object
-  const result = {
-    query,
-    analysis: '',
-    keyFindings: [] as string[],
-    importantQuestion: '',
-    finalSummary: '',
-    sources: [] as {url: string, label: string}[],
-    error: false
-  };
-  
-  try {
-    // Extract analysis section (everything before "KEY FINDINGS")
-    const analysisSplit = content.split(/KEY FINDINGS/i);
-    if (analysisSplit.length > 1) {
-      result.analysis = analysisSplit[0].trim();
+    // Check if the job is complete
+    if (job.current_iteration + 1 >= job.max_iterations) {
+      console.log(`Job ${job.id} complete`);
+      await updateJobStatus(job.id, 'completed');
+      await updateResearchResults(job.id, consolidatedAnalysis);
     } else {
-      result.analysis = content.trim();
-      return result; // Early return if we can't parse properly
+      // Update job status to pending and increment iteration
+      console.log(`Job ${job.id} not complete, updating to pending and incrementing iteration`);
+      await updateJobStatus(job.id, 'pending', job.current_iteration + 1);
     }
-    
-    // Extract key findings
-    const findingRegex = /\d+\.\s+(.+?)(?=\d+\.|IMPORTANT QUESTION|SUMMARY|$)/gs;
-    let restContent = analysisSplit.slice(1).join('KEY FINDINGS');
-    let findingMatch;
-    
-    while ((findingMatch = findingRegex.exec(restContent)) !== null) {
-      const finding = findingMatch[1].trim();
-      if (finding) {
-        result.keyFindings.push(finding);
-      }
-    }
-    
-    // Extract important question or final summary
-    const questionMatch = content.match(/IMPORTANT QUESTION[:\s]*([^\n]+)/i);
-    if (questionMatch && questionMatch[1]) {
-      result.importantQuestion = questionMatch[1].trim();
-    }
-    
-    const summaryMatch = content.match(/SUMMARY[:\s]*([\s\S]+)/i);
-    if (summaryMatch && summaryMatch[1]) {
-      result.finalSummary = summaryMatch[1].trim();
-    }
-    
-    // Extract sources from markdown links
-    const sourceRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
-    let sourceMatch;
-    
-    while ((sourceMatch = sourceRegex.exec(content)) !== null) {
-      const [_, label, url] = sourceMatch;
-      
-      if (url && isValidUrl(url)) {
-        result.sources.push({
-          url,
-          label: label || url
-        });
-      }
-    }
-    
-    return result;
   } catch (error) {
-    console.error(`Content processing failed: ${error.message}`);
-    result.error = true;
-    return result;
+    console.error(`Error processing job ${job.id}:`, error);
+    await updateJobStatus(job.id, 'failed', undefined, error.message);
   }
 }
 
-/**
- * Check if a string is a valid URL
- */
-function isValidUrl(url: string): boolean {
+// Function to generate search queries
+async function generateQueries(
+  query: string,
+  marketId: string,
+  focusText?: string,
+  iteration = 1,
+  previousQueries: string[] = []
+): Promise<string[]> {
   try {
-    new URL(url);
-    return true;
-  } catch (e) {
-    return false;
+    console.log(`Generating queries for: "${query}" ${focusText ? `with focus on "${focusText}"` : ''} (iteration ${iteration})`);
+    
+    const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/generate-queries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({
+        query,
+        marketId,
+        focusText,
+        iteration,
+        previousQueries
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to generate queries: ${response.status} ${await response.text()}`);
+    }
+    
+    const data = await response.json();
+    return data.queries || [];
+  } catch (error) {
+    console.error('Error generating queries:', error);
+    
+    // Return fallback queries if API call fails
+    return [
+      `${query} latest developments`,
+      `${query} expert analysis`,
+      `${query} historical data`,
+      `${query} statistics and probabilities`,
+      `${query} future projections`
+    ];
   }
 }
 
-/**
- * Generate final research report
- */
-async function generateFinalReport(researchState: any, openRouter: OpenRouter): Promise<ResearchReport> {
-  console.log('Generating final research synthesis...');
+// Function to perform web research
+async function webResearch(marketId: string, query: string, focusText?: string): Promise<any> {
+  try {
+    const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/web-research`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+      },
+      body: JSON.stringify({
+        marketId,
+        query,
+        focusText
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to perform web research: ${response.status} ${await response.text()}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('Error performing web research:', error);
+    return { error: error.message };
+  }
+}
+
+// Function to consolidate research results
+function consolidateResearch(results: any[]): any {
+  // Basic consolidation logic - can be expanded
+  const allSources = results.flatMap(result => result.sources || []);
+  const allAnalysis = results.map(result => result.analysis).join('\n');
   
-  // Prepare findings summary
-  const allFindings = researchState.findings
-    .flatMap((f: any) => f.keyFindings)
-    .map((f: string, i: number) => `${i+1}. ${f}`)
-    .join('\n');
-  
-  // Generate final report
+  return {
+    sources: allSources,
+    analysis: allAnalysis
+  };
+}
+
+// Function to update job status
+async function updateJobStatus(jobId: string, newStatus: string, currentIteration?: number, errorMsg?: string): Promise<void> {
   try {
-    const systemPrompt = `You are a research synthesis expert creating a comprehensive final report.`;
+    const { error } = await supabaseClient
+      .from('research_jobs')
+      .update({ status: newStatus, current_iteration: currentIteration, error_message: errorMsg })
+      .eq('id', jobId);
     
-    const userPrompt = `RESEARCH QUESTION: "${researchState.intent}"
-
-FINDINGS FROM ALL ITERATIONS:
-${allFindings}
-
-Create a comprehensive research report with these sections:
-1. TITLE - Clear, informative title for the report
-2. EXECUTIVE SUMMARY - Brief overview of key conclusions (1-2 paragraphs)
-3. KEY FINDINGS - 5-7 most important findings (numbered list)
-4. DETAILED ANALYSIS - Comprehensive analysis of findings (2 paragraphs)
-5. CONCLUSION - Final answer to the research question (1 paragraph)
-
-Make the report clear, factual, and directly answer the original research question.`;
-
-    const fullReport = await openRouter.complete(researchState.model, [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt }
-    ], 1500, 0.3);
+    if (error) {
+      throw new Error(`Failed to update job status: ${error.message}`);
+    }
     
-    console.log("Final report generated");
-    
-    // Parse the report into sections
-    return parseReportToStructure(fullReport);
+    console.log(`Job ${jobId} status updated to ${newStatus}`);
   } catch (error) {
-    console.error(`Final report generation failed: ${error.message}`);
-    
-    // Return a basic error report
-    return {
-      title: "Research Synthesis Error",
-      executiveSummary: `Error generating final report: ${error.message}`,
-      keyFindings: ["Error occurred during research synthesis"],
-      analysis: "Unable to complete research analysis due to an error.",
-      conclusion: "Research synthesis failed to complete."
-    };
+    console.error('Error updating job status:', error);
   }
 }
 
-/**
- * Parse the full report text into a structured report object
- */
-function parseReportToStructure(reportText: string): ResearchReport {
+// Function to append research iteration
+async function appendResearchIteration(jobId: string, iterationData: any): Promise<void> {
   try {
-    // Extract title
-    const titleMatch = reportText.match(/^#?\s*(.*?)(?:\n|$)/);
-    const title = titleMatch ? titleMatch[1].trim() : "Research Report";
+    const { error } = await supabaseClient.rpc(
+      'append_research_iteration',
+      { job_id: jobId, iteration_data: iterationData }
+    );
     
-    // Extract executive summary
-    const execSummaryMatch = reportText.match(/EXECUTIVE SUMMARY:?([\s\S]*?)(?=KEY FINDINGS|$)/i);
-    const executiveSummary = execSummaryMatch ? execSummaryMatch[1].trim() : "";
-    
-    // Extract key findings
-    const keyFindingsMatch = reportText.match(/KEY FINDINGS:?([\s\S]*?)(?=DETAILED ANALYSIS|ANALYSIS|$)/i);
-    let keyFindings: string[] = [];
-    
-    if (keyFindingsMatch && keyFindingsMatch[1]) {
-      const findingsText = keyFindingsMatch[1].trim();
-      const findingRegex = /\d+\.\s+(.+?)(?=\d+\.|$)/gs;
-      let findingMatch;
-      
-      while ((findingMatch = findingRegex.exec(findingsText)) !== null) {
-        keyFindings.push(findingMatch[1].trim());
-      }
+    if (error) {
+      throw new Error(`Failed to append research iteration: ${error.message}`);
     }
     
-    // Extract analysis
-    const analysisMatch = reportText.match(/(?:DETAILED ANALYSIS|ANALYSIS):?([\s\S]*?)(?=CONCLUSION|$)/i);
-    const analysis = analysisMatch ? analysisMatch[1].trim() : "";
-    
-    // Extract conclusion
-    const conclusionMatch = reportText.match(/CONCLUSION:?([\s\S]*?)(?=LIMITATIONS|FURTHER RESEARCH|$)/i);
-    const conclusion = conclusionMatch ? conclusionMatch[1].trim() : "";
-    
-    // If we couldn't parse the sections properly, use a simpler approach
-    if (!executiveSummary && !analysis && !conclusion) {
-      const parts = reportText.split('\n\n');
-      
-      return {
-        title: title,
-        executiveSummary: parts[0] || "Research completed.",
-        keyFindings: keyFindings.length > 0 ? keyFindings : ["No specific findings extracted"],
-        analysis: parts.length > 1 ? parts[1] : "Analysis not available.",
-        conclusion: parts.length > 2 ? parts[2] : "See executive summary."
-      };
-    }
-    
-    return {
-      title,
-      executiveSummary,
-      keyFindings: keyFindings.length > 0 ? keyFindings : ["No structured findings available"],
-      analysis,
-      conclusion
-    };
+    console.log(`Appended research iteration to job ${jobId}`);
   } catch (error) {
-    console.error(`Error parsing report structure: ${error.message}`);
-    
-    // Return a basic structure if parsing fails
-    return {
-      title: "Research Synthesis",
-      executiveSummary: "A synthesis of the research findings.",
-      keyFindings: ["Error parsing structured findings"],
-      analysis: "Error parsing analysis section.",
-      conclusion: "See executive summary."
-    };
+    console.error('Error appending research iteration:', error);
   }
 }
+
+// Function to append research progress
+async function appendResearchProgress(jobId: string, progressEntry: string): Promise<void> {
+  try {
+    const { error } = await supabaseClient.rpc(
+      'append_research_progress',
+      { job_id: jobId, progress_entry: progressEntry }
+    );
+    
+    if (error) {
+      throw new Error(`Failed to append research progress: ${error.message}`);
+    }
+    
+    console.log(`Appended research progress to job ${jobId}`);
+  } catch (error) {
+    console.error('Error appending research progress:', error);
+  }
+}
+
+// Function to update research results
+async function updateResearchResults(jobId: string, resultData: any): Promise<void> {
+  try {
+    const { error } = await supabaseClient
+      .from('research_jobs')
+      .update({ results: resultData })
+      .eq('id', jobId);
+    
+    if (error) {
+      throw new Error(`Failed to update research results: ${error.message}`);
+    }
+    
+    console.log(`Updated research results for job ${jobId}`);
+  } catch (error) {
+    console.error('Error updating research results:', error);
+  }
+}
+
+// Start the job listener
+listenForNewJobs();
+
+serve(async (req) => {
+  const upgrade = req.headers.get("upgrade") || "";
+  if (upgrade.toLowerCase() != "websocket") {
+    return new Response("Expected a websocket");
+  }
+
+  const { socket, response } = Deno.upgradeWebSocket(req);
+
+  socket.onopen = () => {
+    console.log("WebSocket connected");
+  };
+
+  socket.onmessage = (ev) => {
+    console.log("WebSocket message:", ev.data);
+    socket.send(ev.data);
+  };
+
+  socket.onerror = (ev) => {
+    console.error("WebSocket error:", ev.error);
+  };
+
+  socket.onclose = () => {
+    console.log("WebSocket closed");
+  };
+
+  return response;
+});

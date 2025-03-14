@@ -1,477 +1,122 @@
 
-import { useState, useEffect } from 'react'
-import { Card } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { supabase } from "@/integrations/supabase/client"
-import { ProgressDisplay } from "./research/ProgressDisplay"
-import { SitePreviewList } from "./research/SitePreviewList"
-import { AnalysisDisplay } from "./research/AnalysisDisplay"
-import { useToast } from "@/components/ui/use-toast"
-import { SSEMessage } from "supabase/functions/web-scrape/types"
-import { IterationCard } from "./research/IterationCard"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, Search } from "lucide-react"
-import { InsightsDisplay } from "./research/InsightsDisplay"
+import { useState } from 'react';
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { 
+  Card, 
+  CardContent, 
+  CardDescription, 
+  CardFooter, 
+  CardHeader, 
+  CardTitle 
+} from "@/components/ui/card";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { LoaderCircle } from "lucide-react";
 
 interface JobQueueResearchCardProps {
-  description: string;
   marketId: string;
+  question: string;
+  onSuccess?: (jobId: string) => void;
 }
 
-interface ResearchResult {
-  url: string;
-  content: string;
-  title?: string;
-}
+export function JobQueueResearchCard({ marketId, question, onSuccess }: JobQueueResearchCardProps) {
+  const [query, setQuery] = useState(question);
+  const [focusText, setFocusText] = useState<string>("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-// Define an interface for our research job data
-interface ResearchJob {
-  id: string;
-  market_id: string;
-  query: string;
-  focus_text?: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  max_iterations: number;
-  current_iteration: number;
-  progress_log: string[];
-  iterations: any[];
-  results: any;
-  error_message?: string;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-  updated_at: string;
-  user_id?: string;
-}
-
-export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [progress, setProgress] = useState<string[]>([])
-  const [progressPercent, setProgressPercent] = useState<number>(0)
-  const [results, setResults] = useState<ResearchResult[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [analysis, setAnalysis] = useState('')
-  const [jobId, setJobId] = useState<string | null>(null)
-  const [polling, setPolling] = useState(false)
-  const [iterations, setIterations] = useState<any[]>([])
-  const [expandedIterations, setExpandedIterations] = useState<number[]>([])
-  const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
-  const [structuredInsights, setStructuredInsights] = useState<any>(null)
-  const [focusText, setFocusText] = useState('')
-  const { toast } = useToast()
-
-  // Fetch the most recent active job for this market on component mount
-  useEffect(() => {
-    const fetchExistingJob = async () => {
-      try {
-        // Look for the most recent job for this market
-        const { data, error } = await supabase
-          .from('research_jobs')
-          .select('*')
-          .eq('market_id', marketId)
-          .in('status', ['queued', 'processing', 'completed', 'failed'])
-          .order('created_at', { ascending: false })
-          .limit(1);
-        
-        if (error) {
-          console.error('Error fetching research jobs:', error);
-          return;
-        }
-        
-        if (data && data.length > 0) {
-          const job = data[0] as ResearchJob;
-          console.log('Found existing job:', job);
-          
-          // Update state with the job details
-          setJobId(job.id);
-          setJobStatus(job.status);
-          
-          // Set focus text if available
-          if (job.focus_text) {
-            setFocusText(job.focus_text);
-          }
-          
-          // Set progress percent based on current iteration
-          if (job.max_iterations && job.current_iteration !== undefined) {
-            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-            setProgressPercent(percent);
-            
-            // If the job is completed, set to 100%
-            if (job.status === 'completed') {
-              setProgressPercent(100);
-            }
-          }
-          
-          // Set progress log
-          if (job.progress_log && Array.isArray(job.progress_log)) {
-            setProgress(job.progress_log);
-          }
-          
-          // Start polling if the job is still active
-          if (job.status === 'queued' || job.status === 'processing') {
-            setPolling(true);
-          }
-          
-          // Set iterations data
-          if (job.iterations && Array.isArray(job.iterations)) {
-            setIterations(job.iterations);
-            
-            // Auto-expand the latest iteration
-            if (job.iterations.length > 0) {
-              setExpandedIterations([job.iterations.length]);
-            }
-          }
-          
-          // Set results if available
-          if (job.status === 'completed' && job.results) {
-            try {
-              const parsedResults = JSON.parse(job.results);
-              if (parsedResults.data && Array.isArray(parsedResults.data)) {
-                setResults(parsedResults.data);
-              }
-              if (parsedResults.analysis) {
-                setAnalysis(parsedResults.analysis);
-              }
-              if (parsedResults.structuredInsights) {
-                setStructuredInsights({
-                  parsedData: parsedResults.structuredInsights,
-                  rawText: JSON.stringify(parsedResults.structuredInsights)
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing job results:', e);
-            }
-          }
-          
-          // Set error if job failed
-          if (job.status === 'failed') {
-            setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-          }
-        }
-      } catch (e) {
-        console.error('Error in fetchExistingJob:', e);
-      }
-    };
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     
-    // Only fetch if we don't already have a job ID set
-    if (!jobId) {
-      fetchExistingJob();
+    if (!query.trim()) {
+      toast.error("Please enter a research question");
+      return;
     }
-  }, [marketId, jobId]);
-
-  // Poll for job status
-  useEffect(() => {
-    if (!jobId || !polling) return;
     
-    const pollInterval = setInterval(async () => {
-      try {
-        console.log(`Polling for job status: ${jobId}`);
-        const { data, error } = await supabase
-          .from('research_jobs')
-          .select('*')
-          .eq('id', jobId)
-          .single();
-          
-        if (error) {
-          console.error('Error polling job status:', error);
-          return;
-        }
-        
-        if (!data) {
-          console.log('No job data found');
-          return;
-        }
-        
-        const job = data as ResearchJob;
-        console.log('Job status:', job.status);
-        
-        // Update job status
-        setJobStatus(job.status);
-        
-        // Update progress based on status
-        if (job.status === 'completed') {
-          setPolling(false);
-          setProgressPercent(100);
-          setProgress(prev => [...prev, 'Job completed successfully!']);
-          
-          if (job.results) {
-            try {
-              const parsedResults = JSON.parse(job.results);
-              if (parsedResults.data && Array.isArray(parsedResults.data)) {
-                setResults(parsedResults.data);
-              }
-              if (parsedResults.analysis) {
-                setAnalysis(parsedResults.analysis);
-              }
-              if (parsedResults.structuredInsights) {
-                setStructuredInsights({
-                  parsedData: parsedResults.structuredInsights,
-                  rawText: JSON.stringify(parsedResults.structuredInsights)
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing job results:', e);
-            }
-          }
-          
-          clearInterval(pollInterval);
-        } else if (job.status === 'failed') {
-          setPolling(false);
-          setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-          clearInterval(pollInterval);
-        } else if (job.status === 'processing') {
-          // Calculate progress based on current_iteration and max_iterations
-          if (job.max_iterations && job.current_iteration !== undefined) {
-            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-            setProgressPercent(percent);
-          }
-          
-          // Add progress log entries if they exist
-          if (job.progress_log && Array.isArray(job.progress_log)) {
-            // Only add new progress items
-            const newItems = job.progress_log.slice(progress.length);
-            if (newItems.length > 0) {
-              setProgress(prev => [...prev, ...newItems]);
-            }
-          }
-          
-          // Update iterations data
-          if (job.iterations && Array.isArray(job.iterations)) {
-            setIterations(job.iterations);
-            
-            // If this is the first time we're seeing a new iteration, expand it
-            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-              setExpandedIterations(prev => [...prev, job.current_iteration]);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Error in poll interval:', e);
-      }
-    }, 3000);
+    setIsSubmitting(true);
     
-    return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations]);
-
-  const handleResearch = async () => {
-    setIsLoading(true);
-    setJobId(null);
-    setPolling(false);
-    setProgress([]);
-    setProgressPercent(0);
-    setResults([]);
-    setError(null);
-    setAnalysis('');
-    setIterations([]);
-    setExpandedIterations([]);
-    setJobStatus(null);
-    setStructuredInsights(null);
-
     try {
-      setProgress(prev => [...prev, "Starting research job..."]);
-      
-      const payload = {
-        marketId,
-        query: description,
-        maxIterations: 3,
-        focusText: focusText.trim() || undefined
-      };
-      
-      // Call the job creation endpoint
-      const response = await supabase.functions.invoke('create-research-job', {
-        body: JSON.stringify(payload)
+      const { data, error } = await supabase.functions.invoke('create-research-job', {
+        body: {
+          marketId,
+          query: query.trim(),
+          focusText: focusText.trim(),
+          maxIterations: 3
+        }
       });
       
-      if (response.error) {
-        console.error("Error creating research job:", response.error);
-        throw new Error(`Error creating research job: ${response.error.message}`);
+      if (error) {
+        console.error('Error creating research job:', error);
+        toast.error('Failed to create research job');
+        return;
       }
       
-      if (!response.data || !response.data.jobId) {
-        throw new Error("Invalid response from server - no job ID returned");
+      toast.success('Research job created successfully');
+      if (onSuccess && data?.job?.id) {
+        onSuccess(data.job.id);
       }
       
-      // Store the job ID
-      const jobId = response.data.jobId;
-      setJobId(jobId);
-      setPolling(true);
-      setJobStatus('queued');
-      setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
-      setProgress(prev => [...prev, `Background processing started...`]);
-      
-      if (focusText.trim()) {
-        setProgress(prev => [...prev, `Research focused on: "${focusText}"`]);
-      }
-      
-      toast({
-        title: "Background Research Started",
-        description: `Job ID: ${jobId}. You can close this window and check back later.`,
-      });
+      // Reset form
+      setQuery(question);
+      setFocusText("");
       
     } catch (error) {
-      console.error('Error in research job:', error);
-      setError(`Error occurred during research job: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setJobStatus('failed');
+      console.error('Error submitting research job:', error);
+      toast.error('An unexpected error occurred');
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
-
-  const toggleIterationExpand = (iteration: number) => {
-    setExpandedIterations(prev => 
-      prev.includes(iteration) 
-        ? prev.filter(i => i !== iteration) 
-        : [...prev, iteration]
-    );
-  };
-
-  // Function to render status badge
-  const renderStatusBadge = () => {
-    if (!jobStatus) return null;
-    
-    switch (jobStatus) {
-      case 'queued':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 text-yellow-700 border-yellow-200">
-            <Clock className="h-3 w-3" />
-            <span>Queued</span>
-          </Badge>
-        );
-      case 'processing':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Processing</span>
-          </Badge>
-        );
-      case 'completed':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 text-green-700 border-green-200">
-            <CheckCircle className="h-3 w-3" />
-            <span>Completed</span>
-          </Badge>
-        );
-      case 'failed':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-red-50 text-red-700 border-red-200">
-            <AlertCircle className="h-3 w-3" />
-            <span>Failed</span>
-          </Badge>
-        );
-      default:
-        return null;
-    }
-  };
-
+  
   return (
-    <Card className="p-4 space-y-4 w-full max-w-full">
-      <div className="flex items-center justify-between w-full max-w-full">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold">Background Job Research</h2>
-            {renderStatusBadge()}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            This research continues in the background even if you close your browser.
-          </p>
-        </div>
-        
-        <Button 
-          onClick={handleResearch} 
-          disabled={isLoading || polling}
-          className="flex items-center gap-2"
-        >
-          {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-          {isLoading ? "Starting..." : jobId && jobStatus !== 'completed' && jobStatus !== 'failed' ? "Job Running..." : "Start Research"}
-        </Button>
-      </div>
-
-      {/* Focus text input */}
-      <div className="flex flex-col space-y-2">
-        <label htmlFor="focusText" className="text-sm font-medium">
-          Focus Area (optional)
-        </label>
-        <div className="flex space-x-2">
-          <Input 
-            id="focusText"
-            placeholder="Enter specific focus for your research..."
-            value={focusText}
-            onChange={(e) => setFocusText(e.target.value)}
-            disabled={isLoading || polling}
-            className="flex-1"
-          />
-          <Button 
-            variant="outline" 
-            size="icon"
-            disabled={isLoading || polling}
-            onClick={() => setFocusText('')}
-          >
-            <Search className="h-4 w-4" />
-          </Button>
-        </div>
-        {focusText && (
-          <p className="text-xs text-muted-foreground">
-            Research will focus specifically on: "{focusText}"
-          </p>
-        )}
-      </div>
-
-      {error && (
-        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
-          {error}
-        </div>
-      )}
-
-      <ProgressDisplay 
-        messages={progress} 
-        jobId={jobId || undefined} 
-        progress={progressPercent}
-        status={jobStatus}
-      />
-      
-      {iterations.length > 0 && (
-        <div className="border-t pt-4 w-full max-w-full space-y-2">
-          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
+    <Card className="mb-6">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-xl font-semibold">Create Research Job</CardTitle>
+        <CardDescription>
+          Submit a request for in-depth research on this market. The system will automatically search and analyze relevant information.
+        </CardDescription>
+      </CardHeader>
+      <form onSubmit={handleSubmit}>
+        <CardContent className="space-y-4">
           <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={3}
-              />
-            ))}
+            <Label htmlFor="query">Research Question</Label>
+            <Textarea
+              id="query"
+              placeholder="What do you want to research about this market?"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="h-20"
+              required
+            />
           </div>
-        </div>
-      )}
-      
-      {structuredInsights && structuredInsights.parsedData && (
-        <div className="border-t pt-4 w-full max-w-full">
-          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
-          <InsightsDisplay streamingState={structuredInsights} />
-        </div>
-      )}
-      
-      {results.length > 0 && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
+          <div className="space-y-2">
+            <Label htmlFor="focus">Focus Area (Optional)</Label>
+            <Input
+              id="focus"
+              placeholder="Specific aspect to focus on (e.g., 'recent developments', 'expert opinions')"
+              value={focusText}
+              onChange={(e) => setFocusText(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Narrow your research to a specific aspect of the question
+            </p>
           </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
-        </>
-      )}
+        </CardContent>
+        <CardFooter>
+          <Button type="submit" disabled={isSubmitting} className="w-full">
+            {isSubmitting ? (
+              <>
+                <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              'Submit Research Job'
+            )}
+          </Button>
+        </CardFooter>
+      </form>
     </Card>
   );
 }
