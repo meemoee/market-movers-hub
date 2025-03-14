@@ -30,6 +30,9 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       progress_entry: JSON.stringify(`Starting research for: ${query}`)
     })
     
+    // Track all previous queries to avoid repetition
+    const previousQueries: string[] = [];
+    
     // Simulate iterations
     for (let i = 1; i <= maxIterations; i++) {
       console.log(`Processing iteration ${i} for job ${jobId}`)
@@ -46,12 +49,65 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         progress_entry: JSON.stringify(`Starting iteration ${i} of ${maxIterations}`)
       })
       
-      // Simulate query generation
-      await new Promise(resolve => setTimeout(resolve, 2000))
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Generated search queries for iteration ${i}`)
-      })
+      // Generate search queries
+      try {
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Generating search queries for iteration ${i}`)
+        })
+        
+        // Call the generate-queries function to get real queries
+        const generateQueriesResponse = await fetch(
+          `${Deno.env.get('SUPABASE_URL')}/functions/v1/generate-queries`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+            },
+            body: JSON.stringify({
+              query,
+              marketId,
+              iteration: i,
+              previousQueries
+            })
+          }
+        );
+        
+        if (!generateQueriesResponse.ok) {
+          throw new Error(`Failed to generate queries: ${generateQueriesResponse.statusText}`);
+        }
+        
+        const { queries } = await generateQueriesResponse.json();
+        console.log(`Generated ${queries.length} queries for iteration ${i}:`, queries);
+        
+        // Add generated queries to previous queries to avoid repetition
+        previousQueries.push(...queries);
+        
+        // Store the queries in the iteration data
+        const iterationData = {
+          iteration: i,
+          queries: queries,
+          results: []
+        };
+        
+        // Append the iteration data to the research job
+        await supabaseClient.rpc('append_research_iteration', {
+          job_id: jobId,
+          iteration_data: iterationData
+        });
+        
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Generated ${queries.length} search queries for iteration ${i}`)
+        })
+      } catch (error) {
+        console.error(`Error generating queries for job ${jobId}:`, error);
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Error generating queries: ${error.message}`)
+        });
+      }
       
       // Simulate web scraping
       await new Promise(resolve => setTimeout(resolve, 3000))
