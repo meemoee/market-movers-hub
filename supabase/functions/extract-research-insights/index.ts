@@ -182,6 +182,7 @@ ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed
 
 Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
+    // Non-streaming version for background jobs
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -196,7 +197,8 @@ Remember to format your response as a valid JSON object with probability, areasF
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        stream: true,
+        // For background jobs, don't stream
+        stream: false,
         temperature: 0.2,
         response_format: { type: "json_object" }
       }),
@@ -208,11 +210,12 @@ Remember to format your response as a valid JSON object with probability, areasF
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    return new Response(response.body, {
+    // Parse the response as JSON and return it
+    const results = await response.json();
+    return new Response(JSON.stringify(results), {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Connection': 'keep-alive',
+        'Content-Type': 'application/json',
       }
     });
   } catch (error) {
