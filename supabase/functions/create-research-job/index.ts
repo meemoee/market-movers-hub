@@ -93,7 +93,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         const iterationData = {
           iteration: i,
           queries: queries,
-          results: []
+          results: [],
+          analysis: ""  // Initialize with empty analysis
         };
         
         // Append the iteration data to the research job
@@ -267,6 +268,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             // Extract the analysis text (field depends on extract-research-insights structure)
             const analysisText = analyzeData.text || analyzeData.analysis || JSON.stringify(analyzeData);
             
+            console.log(`Got analysis text for iteration ${i}:`, analysisText.substring(0, 100) + '...');
+            
             // Add analysis to previous analyses array for next iteration
             previousAnalyses.push(analysisText);
             
@@ -332,12 +335,21 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       }
     }
     
+    // Ensure we have analyses from all iterations
+    const iterationAnalyses = allIterations
+      .filter(iteration => iteration.analysis)
+      .map(iteration => iteration.analysis);
+    
+    console.log(`Collected ${iterationAnalyses.length} iteration analyses for final results`);
+    
     // Create final results object
     const finalResults = {
       data: allResults,
       analysis: `Based on ${allResults.length} search results across ${maxIterations} iterations, we found information related to "${query}".`,
-      iterationAnalyses: previousAnalyses  // Add all analyses to the final results
+      iterationAnalyses: iterationAnalyses.length > 0 ? iterationAnalyses : previousAnalyses  // Ensure we have iteration analyses
     };
+    
+    console.log(`Final results contain ${finalResults.iterationAnalyses.length} iteration analyses`);
     
     // Update the job with results
     await supabaseClient.rpc('update_research_results', {
