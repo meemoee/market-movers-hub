@@ -42,6 +42,7 @@ interface ResearchJob {
   completed_at?: string;
   updated_at: string;
   user_id?: string;
+  focus_text?: string;
 }
 
 export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
@@ -57,6 +58,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const [structuredInsights, setStructuredInsights] = useState<any>(null)
+  const [focusText, setFocusText] = useState<string>('')
   const { toast } = useToast()
 
   // Fetch the most recent active job for this market on component mount
@@ -268,7 +270,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
       const payload = {
         marketId,
         query: description,
-        maxIterations: 3
+        maxIterations: 3,
+        focusText: focusText.trim() || undefined
       };
       
       // Call the job creation endpoint
@@ -375,6 +378,18 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           {isLoading ? "Starting..." : jobId && jobStatus !== 'completed' && jobStatus !== 'failed' ? "Job Running..." : "Start Research"}
         </Button>
       </div>
+
+      {!jobId && (
+        <div className="flex items-center gap-2 w-full">
+          <Input
+            placeholder="Add an optional focus area for your research..."
+            value={focusText}
+            onChange={(e) => setFocusText(e.target.value)}
+            disabled={isLoading || polling}
+            className="flex-1"
+          />
+        </div>
+      )}
 
       {error && (
         <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">

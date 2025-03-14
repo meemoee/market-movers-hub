@@ -7,6 +7,7 @@ interface GenerateQueriesRequest {
   marketId: string;
   iteration?: number;
   previousQueries?: string[];
+  focusText?: string;
 }
 
 Deno.serve(async (req) => {
@@ -29,7 +30,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const requestData: GenerateQueriesRequest = await req.json();
-    const { query, marketId, iteration = 1, previousQueries = [] } = requestData;
+    const { query, marketId, iteration = 1, previousQueries = [], focusText } = requestData;
 
     if (!query) {
       return new Response(
@@ -42,6 +43,9 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Generating queries for: "${query}" (iteration ${iteration})`);
+    if (focusText) {
+      console.log(`With focus area: "${focusText}"`);
+    }
 
     // Generate prompt based on iteration
     let prompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
@@ -56,6 +60,14 @@ CRITICAL GUIDELINES FOR QUERIES:
 6. Use precise terminology and specific entities mentioned in the original question
 
 Focus on different aspects that would be relevant for market research.`;
+
+    // Add focus text if provided
+    if (focusText && focusText.trim()) {
+      prompt += `\n\nThe user has provided the following FOCUS AREA that should guide your queries:
+"${focusText.trim()}"
+
+Ensure that most of your queries specifically address this focus area while still maintaining full context.`;
+    }
 
     // Adjust prompt based on iteration
     if (iteration > 1) {
@@ -137,6 +149,12 @@ ${previousQueries.join('\n')}`;
         `${query} statistical data and probability estimates`,
         `${query} future outlook and critical factors`
       ];
+      
+      // If focus text exists, add it to a couple of queries
+      if (focusText && focusText.trim()) {
+        queries[1] = `${query} ${focusText.trim()} analysis and implications`;
+        queries[3] = `${focusText.trim()} impact on ${query}`;
+      }
     }
 
     console.log(`Generated ${queries.length} queries:`, queries);

@@ -9,7 +9,7 @@ const corsHeaders = {
 }
 
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number) {
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string) {
   console.log(`Starting background research for job ${jobId}`)
   
   try {
@@ -29,6 +29,13 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       job_id: jobId,
       progress_entry: JSON.stringify(`Starting research for: ${query}`)
     })
+    
+    if (focusText) {
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Research focus: ${focusText}`)
+      })
+    }
     
     // Track all previous queries to avoid repetition
     const previousQueries: string[] = [];
@@ -73,7 +80,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               marketDescription: query,
               question: query,
               iteration: i,
-              previousQueries
+              previousQueries,
+              focusText
             })
           }
         );
@@ -919,7 +927,7 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3 } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -943,7 +951,8 @@ serve(async (req) => {
         max_iterations: maxIterations,
         current_iteration: 0,
         progress_log: [],
-        iterations: []
+        iterations: [],
+        focus_text: focusText
       })
       .select('id')
       .single()
@@ -957,7 +966,7 @@ serve(async (req) => {
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations).catch(err => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText).catch(err => {
         console.error(`Background research failed: ${err}`);
       });
     }, 0);

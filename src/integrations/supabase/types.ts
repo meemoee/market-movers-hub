@@ -528,6 +528,7 @@ export type Database = {
           created_at: string
           current_iteration: number
           error_message: string | null
+          focus_text: string | null
           id: string
           iterations: Json
           market_id: string
@@ -545,6 +546,7 @@ export type Database = {
           created_at?: string
           current_iteration?: number
           error_message?: string | null
+          focus_text?: string | null
           id?: string
           iterations?: Json
           market_id: string
@@ -562,6 +564,7 @@ export type Database = {
           created_at?: string
           current_iteration?: number
           error_message?: string | null
+          focus_text?: string | null
           id?: string
           iterations?: Json
           market_id?: string
