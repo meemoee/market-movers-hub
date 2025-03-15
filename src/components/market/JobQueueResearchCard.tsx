@@ -190,31 +190,29 @@ export function JobQueueResearchCard({
     if (isNaN(probability)) {
       return null;
     }
-
-    const bidProbability = bestBid;
-    const askProbability = bestAsk;
-    
-    const inferredProbability = 1 - probability;
     
     const THRESHOLD = 0.05;
     
     const opportunities = [];
     
-    if (probability > bidProbability + THRESHOLD) {
+    if (probability > bestBid + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[0],
         predictedProbability: probability,
-        marketPrice: bidProbability,
-        difference: (probability - bidProbability).toFixed(2)
+        marketPrice: bestBid,
+        difference: (probability - bestBid).toFixed(2)
       });
     }
     
-    if (inferredProbability > (1 - askProbability) + THRESHOLD) {
+    const inferredProbability = 1 - probability;
+    const noMarketPrice = bestAsk ? 1 - bestAsk : undefined;
+    
+    if (inferredProbability > (noMarketPrice || 0) + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[1] || "NO",
         predictedProbability: inferredProbability,
-        marketPrice: 1 - askProbability,
-        difference: (inferredProbability - (1 - askProbability)).toFixed(2)
+        marketPrice: noMarketPrice,
+        difference: (inferredProbability - (noMarketPrice || 0)).toFixed(2)
       });
     }
     
