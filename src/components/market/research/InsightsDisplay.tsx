@@ -1,3 +1,4 @@
+
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -163,22 +164,28 @@ export function InsightsDisplay({
           
           {goodBuyOpportunities && goodBuyOpportunities.length > 0 && (
             <div className="mt-4 space-y-3">
-              {goodBuyOpportunities.map((opportunity, index) => (
-                <div key={index} className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-500" />
-                      <span className="font-medium text-green-700 dark:text-green-400">
-                        Good Buy: {opportunity.outcome}
-                      </span>
+              {goodBuyOpportunities.map((opportunity, index) => {
+                // Calculate the potential multiplier
+                const potentialMultiplier = opportunity.predictedProbability / opportunity.marketPrice;
+                const formattedMultiplier = potentialMultiplier.toFixed(1);
+                
+                return (
+                  <div key={index} className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        <span className="font-medium text-green-700 dark:text-green-400">
+                          Good Buy: {opportunity.outcome}
+                        </span>
+                      </div>
+                      <Badge className="bg-green-600">{formattedMultiplier}x potential</Badge>
                     </div>
-                    <Badge className="bg-green-600">+{(parseFloat(opportunity.difference) * 100).toFixed(0)}%</Badge>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      Research suggests {(opportunity.predictedProbability * 100).toFixed(0)}% probability vs market price of {(opportunity.marketPrice * 100).toFixed(0)}%
+                    </div>
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    Research suggests {(opportunity.predictedProbability * 100).toFixed(0)}% probability vs market price of {(opportunity.marketPrice * 100).toFixed(0)}%
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
           
