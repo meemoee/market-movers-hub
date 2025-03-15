@@ -44,12 +44,18 @@ export function useResearchJob(jobId?: string, marketId?: string) {
       
       if (data) {
         setJob(data as ResearchJob);
-        setProgress(data.progress_log || []);
+        
+        // Ensure progress_log is always an array before setting it
+        if (Array.isArray(data.progress_log)) {
+          setProgress(data.progress_log);
+        } else {
+          setProgress([]);
+        }
         
         // Calculate progress percentage
         if (data.status === 'completed') {
           setProgressPercent(100);
-        } else if (data.progress_log && data.progress_log.length > 0) {
+        } else if (Array.isArray(data.progress_log) && data.progress_log.length > 0) {
           // For simplicity, estimate progress based on log length
           // In a real app, you might want to track progress more accurately
           const estimatedProgress = Math.min(Math.floor((data.progress_log.length / 10) * 100), 95);
