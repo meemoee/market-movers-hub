@@ -137,6 +137,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
+      // Fix: Explicitly convert any non-string items to strings
       setProgress(job.progress_log.map(entry => String(entry)));
     }
     
