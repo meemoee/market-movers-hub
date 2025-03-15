@@ -75,13 +75,13 @@ export function TopMoversHeader({
 
   return (
     <div className="p-4 w-full relative">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between w-full gap-4">
-        <div className="flex items-center flex-wrap">
-          <h2 className="text-xl sm:text-2xl font-bold whitespace-nowrap">What happened in the last</h2>
-          <div className="relative -ml-1">
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center flex-shrink-1">
+          <h2 className={`${isMobile ? 'text-lg' : 'text-xl sm:text-2xl'} font-bold whitespace-nowrap mr-1`}>What happened in the last</h2>
+          <div className="relative">
             <button
               onClick={() => setIsTimeIntervalDropdownOpen(!isTimeIntervalDropdownOpen)}
-              className="flex items-center gap-1 px-2 py-1.5 rounded-full hover:bg-accent/20 transition-colors text-xl sm:text-2xl font-bold"
+              className={`flex items-center gap-1 px-2 py-1 rounded-full hover:bg-accent/20 transition-colors ${isMobile ? 'text-lg' : 'text-xl sm:text-2xl'} font-bold`}
             >
               <span>{timeIntervals.find(i => i.value === selectedInterval)?.label.replace('minutes', 'mins')}</span>
               <ChevronDown className="w-4 h-4" />
@@ -92,7 +92,7 @@ export function TopMoversHeader({
                 {timeIntervals.map((interval) => (
                   <button
                     key={interval.value}
-                    className="w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors text-xl sm:text-2xl font-bold whitespace-nowrap"
+                    className={`w-full px-4 py-2 text-left hover:bg-accent/50 transition-colors ${isMobile ? 'text-lg' : 'text-xl sm:text-2xl'} font-bold whitespace-nowrap`}
                     onClick={() => {
                       setIsTimeIntervalDropdownOpen(false);
                       onIntervalChange(interval.value);
@@ -106,10 +106,10 @@ export function TopMoversHeader({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex-shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-accent/20 transition-colors">
+              <button className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-accent/20 transition-colors">
                 <SlidersHorizontal className="w-4 h-4" />
                 <span className="text-sm">Filters</span>
               </button>
