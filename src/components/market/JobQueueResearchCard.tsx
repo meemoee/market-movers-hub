@@ -213,9 +213,6 @@ export function JobQueueResearchCard({
     
     const opportunities = [];
     
-    // Use bestAsk instead of bestBid for comparing buy opportunities of the "Yes" outcome
-    // This is the correct value to use for detecting good buy opportunities since it's what 
-    // a user would pay when buying the Yes outcome with a market order
     if (probability > bestAsk + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[0],
@@ -226,7 +223,6 @@ export function JobQueueResearchCard({
     }
     
     const inferredProbability = 1 - probability;
-    // Use noBestAsk directly if available for comparing buy opportunities of the "No" outcome
     const noAskPrice = noBestAsk !== undefined ? noBestAsk : 1 - bestBid;
     
     if (inferredProbability > noAskPrice + THRESHOLD) {
@@ -283,16 +279,32 @@ export function JobQueueResearchCard({
         
         setJobStatus(job.status);
         
-        if (job.status === 'completed') {
-          setPolling(false);
-          setProgressPercent(100);
-          setProgress(prev => [...prev, 'Job completed successfully!']);
+        if (job.max_iterations && job.current_iteration !== undefined) {
+          const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
+          setProgressPercent(percent);
           
-          // Send email notification if enabled and not already sent
-          if (enableNotification && notificationEmail && !job.notification_sent) {
-            console.log(`Sending email notification to ${notificationEmail} for job ${job.id}`);
-            sendEmailNotification(job.id, notificationEmail);
+          if (job.status === 'completed') {
+            setProgressPercent(100);
           }
+        }
+        
+        if (job.progress_log && Array.isArray(job.progress_log)) {
+          const newItems = job.progress_log.slice(progress.length);
+          if (newItems.length > 0) {
+            setProgress(prev => [...prev, ...newItems]);
+          }
+        }
+        
+        if (job.iterations && Array.isArray(job.iterations)) {
+          setIterations(job.iterations);
+          
+          if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+            setExpandedIterations(prev => [...prev, job.current_iteration]);
+          }
+        }
+        
+        if (job.status === 'completed') {
+          setProgress(prev => [...prev, 'Job completed successfully!']);
           
           if (job.results) {
             try {
@@ -321,37 +333,35 @@ export function JobQueueResearchCard({
             }
           }
           
-          fetchSavedJobs();
+          if (enableNotification && notificationEmail && !job.notification_sent) {
+            console.log(`Sending email notification to ${notificationEmail} for job ${job.id}`);
+            try {
+              await sendEmailNotification(job.id, notificationEmail);
+              console.log('Email notification sent successfully');
+              
+              setTimeout(() => {
+                fetchSavedJobs();
+                setPolling(false);
+                clearInterval(pollInterval);
+              }, 2000);
+              
+              return;
+            } catch (err) {
+              console.error('Failed to send email notification:', err);
+            }
+          }
           
-          clearInterval(pollInterval);
-        } else if (job.status === 'failed') {
+          fetchSavedJobs();
           setPolling(false);
+          clearInterval(pollInterval);
+        } 
+        else if (job.status === 'failed') {
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           
           fetchSavedJobs();
-          
+          setPolling(false);
           clearInterval(pollInterval);
-        } else if (job.status === 'processing') {
-          if (job.max_iterations && job.current_iteration !== undefined) {
-            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-            setProgressPercent(percent);
-          }
-          
-          if (job.progress_log && Array.isArray(job.progress_log)) {
-            const newItems = job.progress_log.slice(progress.length);
-            if (newItems.length > 0) {
-              setProgress(prev => [...prev, ...newItems]);
-            }
-          }
-          
-          if (job.iterations && Array.isArray(job.iterations)) {
-            setIterations(job.iterations);
-            
-            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-              setExpandedIterations(prev => [...prev, job.current_iteration]);
-            }
-          }
         }
       } catch (e) {
         console.error('Error in poll interval:', e);
@@ -439,7 +449,7 @@ export function JobQueueResearchCard({
           description: `Could not send email notification: ${response.error.message}`,
           variant: "destructive"
         });
-        return;
+        throw new Error(`Error sending notification: ${response.error.message}`);
       }
       
       console.log("Notification response:", response);
@@ -449,7 +459,6 @@ export function JobQueueResearchCard({
         description: `Email notification sent to ${email}`,
       });
       
-      // Mark as sent in local state
       setSavedJobs(prev => 
         prev.map(job => 
           job.id === jobId 
@@ -458,6 +467,7 @@ export function JobQueueResearchCard({
         )
       );
       
+      return true;
     } catch (error) {
       console.error('Error sending notification:', error);
       toast({
@@ -465,6 +475,7 @@ export function JobQueueResearchCard({
         description: `Failed to send email notification: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive"
       });
+      throw error;
     } finally {
       setIsSendingNotification(false);
     }
