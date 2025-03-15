@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,7 +11,6 @@ import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { PlayIcon, PauseIcon, Trash2Icon, InfoIcon, StopCircleIcon } from 'lucide-react'
 import { useToast } from "@/components/ui/use-toast"
-import { Json } from '@/integrations/supabase/types'
 import { format } from 'date-fns'
 import { useResearchJob } from '@/hooks/useResearchJob'
 import { ensureString } from '@/utils/progressUtils'
@@ -51,7 +49,6 @@ export function JobQueueResearchCard({
   const isCompleted = job?.status === 'completed';
   const isFailed = job?.status === 'failed';
   
-  // Convert progress log items to strings for display
   const progressStrings = progress?.map(item => ensureString(item)) || [];
   
   const handleStartJob = async () => {
@@ -152,7 +149,6 @@ export function JobQueueResearchCard({
     }
   };
   
-  // Auto refresh job status periodically while the job is active
   useEffect(() => {
     if (!job?.id || !isActive) return;
     
@@ -163,7 +159,6 @@ export function JobQueueResearchCard({
     return () => clearInterval(interval);
   }, [job?.id, isActive, refreshJob]);
   
-  // Render a placeholder while creating a job
   if (!job && isJobStartedLocally) {
     return (
       <Card className="p-4 space-y-4 w-full">
@@ -178,7 +173,6 @@ export function JobQueueResearchCard({
     );
   }
   
-  // Render start button if no job exists
   if (!job && !isJobStartedLocally) {
     return (
       <Card className="p-4 space-y-4 w-full">
@@ -200,7 +194,6 @@ export function JobQueueResearchCard({
     );
   }
   
-  // Display error if job couldn't be loaded
   if (error) {
     return (
       <Card className="p-4 space-y-4 w-full">
