@@ -24,7 +24,7 @@ export default function MobileHeader({ toggleSidebar }: MobileHeaderProps) {
         <img 
           src="/hunchex-logo.svg" 
           alt="Hunchex" 
-          className="h-8"
+          className="h-12 hover:opacity-80 transition-opacity"
         />
       </a>
 
