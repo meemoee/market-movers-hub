@@ -80,13 +80,25 @@ serve(async (req) => {
               if (!braveResponse.ok) {
                 const errorText = await braveResponse.text();
                 console.error(`[Background][${jobId}] Brave search failed: ${braveResponse.status} ${errorText}`);
+                console.log(`[Background][${jobId}] Brave search error details:`, {
+                  status: braveResponse.status,
+                  errorText,
+                  query,
+                  queryIndex: queryIndex + 1,
+                  totalQueries: cleanedQueries.length
+                });
                 continue; // Skip to next query on failure
               }
               
               const braveData: BraveSearchResult = await braveResponse.json();
               const webPages = braveData.web?.results || [];
               
-              console.log(`[Background][${jobId}] Found ${webPages.length} pages for query: ${query}`);
+              console.log(`[Background][${jobId}] Found ${webPages.length} pages for query: ${query}`, {
+                resultCount: webPages.length,
+                queryIndex: queryIndex + 1,
+                totalQueries: cleanedQueries.length,
+                urls: webPages.map(p => p.url)
+              });
               
               // Get the content for each page with exponential backoff for failures
               const pageResults = await Promise.all(webPages.map(async (page) => {
@@ -106,7 +118,11 @@ serve(async (req) => {
                     clearTimeout(contentTimeoutId);
                     
                     if (!contentResponse.ok) {
-                      console.log(`[Background][${jobId}] Failed to fetch content for ${page.url}, using description`);
+                      console.log(`[Background][${jobId}] Failed to fetch content for ${page.url}, using description`, {
+                        status: contentResponse.status,
+                        url: page.url,
+                        fallbackContentLength: page.description.length
+                      });
                       return {
                         url: page.url,
                         title: page.title,
@@ -123,6 +139,13 @@ serve(async (req) => {
                       .replace(/\s{2,}/g, ' ')
                       .trim();
                     
+                    const contentLength = text.length;
+                    console.log(`[Background][${jobId}] Successfully fetched content from ${page.url}`, {
+                      url: page.url,
+                      contentLength,
+                      truncated: contentLength > 15000
+                    });
+                    
                     return {
                       url: page.url,
                       title: page.title,
@@ -132,7 +155,11 @@ serve(async (req) => {
                     retries++;
                     
                     if (error.name === 'AbortError' || retries > MAX_CONTENT_RETRIES) {
-                      console.log(`[Background][${jobId}] Fetch timeout or max retries for ${page.url}, using description`);
+                      console.log(`[Background][${jobId}] Fetch timeout or max retries for ${page.url}, using description`, {
+                        errorType: error.name === 'AbortError' ? 'timeout' : 'maxRetries',
+                        url: page.url,
+                        retries
+                      });
                       return {
                         url: page.url,
                         title: page.title,
@@ -140,7 +167,13 @@ serve(async (req) => {
                       };
                     }
                     
-                    console.error(`[Background][${jobId}] Error fetching content for ${page.url}, retry ${retries}/${MAX_CONTENT_RETRIES}:`, error);
+                    console.error(`[Background][${jobId}] Error fetching content for ${page.url}, retry ${retries}/${MAX_CONTENT_RETRIES}:`, {
+                      errorMessage: error.message,
+                      errorName: error.name,
+                      url: page.url,
+                      retryCount: retries,
+                      backoffDelay: contentBackoffDelay
+                    });
                     await new Promise(resolve => setTimeout(resolve, contentBackoffDelay));
                     contentBackoffDelay *= 2; // Exponential backoff
                   }
@@ -158,7 +191,12 @@ serve(async (req) => {
               const validResults = pageResults.filter(r => r.content && r.content.length > 0);
               allResults = [...allResults, ...validResults];
               
-              console.log(`[Background][${jobId}] Processed query ${queryIndex + 1}/${cleanedQueries.length} with ${validResults.length} valid results`);
+              console.log(`[Background][${jobId}] Processed query ${queryIndex + 1}/${cleanedQueries.length} with ${validResults.length} valid results`, {
+                validResultCount: validResults.length,
+                totalResultCount: pageResults.length,
+                invalidCount: pageResults.length - validResults.length,
+                cumulativeResults: allResults.length
+              });
               
               // Add delay between individual requests within a chunk
               if (index < queryChunk.length - 1) {
@@ -167,20 +205,40 @@ serve(async (req) => {
               }
               
             } catch (error) {
-              console.error(`[Background][${jobId}] Error processing query "${query}":`, error);
+              console.error(`[Background][${jobId}] Error processing query "${query}":`, {
+                errorMessage: error.message,
+                errorName: error.name,
+                errorStack: error.stack,
+                query,
+                queryIndex: queryIndex + 1
+              });
             }
           }
           
           // Add delay between chunks
           if (chunkIndex < queryChunks.length - 1) {
-            console.log(`[Background][${jobId}] Completed chunk ${chunkIndex + 1}/${queryChunks.length}. Waiting ${DELAY_BETWEEN_CHUNKS_MS}ms before next chunk`);
+            console.log(`[Background][${jobId}] Completed chunk ${chunkIndex + 1}/${queryChunks.length}. Waiting ${DELAY_BETWEEN_CHUNKS_MS}ms before next chunk`, {
+              completedChunks: chunkIndex + 1,
+              totalChunks: queryChunks.length,
+              delayMs: DELAY_BETWEEN_CHUNKS_MS,
+              resultsCollectedSoFar: allResults.length
+            });
             await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHUNKS_MS));
           }
         }
         
-        console.log(`[Background][${jobId}] All queries processed. Total results: ${allResults.length}`);
+        console.log(`[Background][${jobId}] All queries processed. Total results: ${allResults.length}`, {
+          totalResults: allResults.length,
+          totalQueries: cleanedQueries.length,
+          averageResultsPerQuery: (allResults.length / cleanedQueries.length).toFixed(2),
+          processingTimeMs: Date.now() - new Date().getTime()
+        });
       } catch (error) {
-        console.error(`[Background][${jobId}] Error in background processing:`, error);
+        console.error(`[Background][${jobId}] Error in background processing:`, {
+          errorMessage: error.message,
+          errorName: error.name,
+          errorStack: error.stack
+        });
       }
     };
 
@@ -201,7 +259,11 @@ serve(async (req) => {
     );
     
   } catch (error) {
-    console.error("Error in web-scrape function:", error);
+    console.error("Error in web-scrape function:", {
+      errorMessage: error.message,
+      errorName: error.name,
+      errorStack: error.stack
+    });
     return new Response(
       JSON.stringify({ error: error.message }),
       { 

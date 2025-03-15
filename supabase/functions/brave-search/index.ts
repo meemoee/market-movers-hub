@@ -34,7 +34,10 @@ async function executeBraveSearch(url: string, apiKey: string): Promise<Response
       // Track this request in our pool
       braveRequestPool.trackRequest();
       
-      console.log(`Making Brave API request (attempt ${retries + 1})`);
+      console.log(`Making Brave API request (attempt ${retries + 1})`, {
+        requestUrl: url.replace(/q=.*?&/, 'q=[REDACTED]&'), // Log URL with query redacted for privacy
+        poolMetrics: braveRequestPool.getMetrics().currentLoad
+      });
       
       // Make the request to Brave Search API with proper headers
       const response = await fetch(url, {
@@ -47,32 +50,57 @@ async function executeBraveSearch(url: string, apiKey: string): Promise<Response
         },
       });
       
+      // Log response status
+      console.log(`Brave API response status: ${response.status}`, {
+        statusCode: response.status,
+        statusText: response.statusText,
+        retryAttempt: retries
+      });
+      
       // Check for rate limiting
       if (response.status === 429) {
         retries++;
-        console.log(`Rate limited by Brave API, retry ${retries}/${MAX_RETRIES}`);
+        console.log(`Rate limited by Brave API, retry ${retries}/${MAX_RETRIES}`, {
+          rateExceeded: true,
+          retryCount: retries,
+          poolStatus: braveRequestPool.getMetrics()
+        });
         
         // Check for rate limit headers
         const rateInfo = braveRequestPool.parseRateLimitHeaders(response.headers);
         if (rateInfo.reset > 0) {
           const waitTime = rateInfo.reset * 1000 - Date.now();
           if (waitTime > 0) {
-            console.log(`Waiting for rate limit reset: ${waitTime}ms`);
+            console.log(`Waiting for rate limit reset: ${waitTime}ms`, {
+              waitTimeMs: waitTime,
+              resetTimestamp: new Date(rateInfo.reset * 1000).toISOString()
+            });
             await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 30000))); // Wait for reset or max 30 seconds
           }
         } else {
           // Exponential backoff if no reset header
-          console.log(`Applying exponential backoff: ${backoffDelay}ms`);
+          console.log(`Applying exponential backoff: ${backoffDelay}ms`, { backoffDelayMs: backoffDelay });
           await new Promise(resolve => setTimeout(resolve, backoffDelay));
           backoffDelay *= 2; // Exponential backoff
         }
         continue; // Try again
       }
       
+      // If not rate limited but response ok, parse rate limit headers anyway for monitoring
+      if (response.ok) {
+        braveRequestPool.parseRateLimitHeaders(response.headers);
+      }
+      
       return response;
     } catch (error) {
       retries++;
-      console.error(`Error during Brave search request, retry ${retries}/${MAX_RETRIES}:`, error);
+      console.error(`Error during Brave search request, retry ${retries}/${MAX_RETRIES}:`, {
+        errorMessage: error.message,
+        errorName: error.name,
+        retryCount: retries,
+        backoffDelayMs: backoffDelay,
+        poolStatus: braveRequestPool.getMetrics().currentLoad
+      });
       
       if (retries <= MAX_RETRIES) {
         await new Promise(resolve => setTimeout(resolve, backoffDelay));
@@ -118,7 +146,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Executing Brave search for query: "${query}"`);
+    console.log(`Executing Brave search for query: "${query}"`, {
+      queryLength: query.length,
+      requestedCount: count,
+      offset,
+      currentPoolMetrics: braveRequestPool.getMetrics()
+    });
 
     const params: BraveSearchParams = {
       q: query,
@@ -143,7 +176,11 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`Brave API error ${response.status}: ${errorText}`);
+      console.error(`Brave API error ${response.status}: ${errorText}`, {
+        statusCode: response.status,
+        errorText,
+        poolMetrics: braveRequestPool.getMetrics()
+      });
       
       return new Response(
         JSON.stringify({ 
@@ -158,7 +195,14 @@ Deno.serve(async (req) => {
     }
 
     const data = await response.json();
-    console.log(`Brave search success: Found ${data.web?.results?.length || 0} results`);
+    const resultCount = data.web?.results?.length || 0;
+    
+    console.log(`Brave search success: Found ${resultCount} results`, {
+      resultCount,
+      querySuccess: true,
+      responseTimeMs: Date.now() - parseInt(response.headers.get('date') || '0'),
+      poolMetricsAfter: braveRequestPool.getMetrics()
+    });
 
     return new Response(
       JSON.stringify(data),
@@ -167,7 +211,12 @@ Deno.serve(async (req) => {
       }
     );
   } catch (error) {
-    console.error("Brave search error:", error.message);
+    console.error("Brave search error:", {
+      errorMessage: error.message,
+      errorName: error.name,
+      errorStack: error.stack,
+      poolMetrics: braveRequestPool.getMetrics()
+    });
     
     return new Response(
       JSON.stringify({ error: `Brave search error: ${error.message}` }),
