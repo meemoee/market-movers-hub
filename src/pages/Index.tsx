@@ -52,7 +52,7 @@ export default function Index() {
         />
       </div>
       
-      <main className={`container mx-auto ${isMobile ? 'pr-0' : 'xl:pr-[400px]'} px-4 relative z-10 overflow-x-hidden`}>
+      <main className={`container mx-auto ${isMobile ? 'pr-0' : 'xl:pr-[400px]'} ${isMobile ? 'px-0' : 'px-4'} relative z-10 overflow-x-hidden`}>
         <div className="relative flex max-w-[1280px] mx-auto justify-center overflow-x-hidden">
           {isMobile && isSidebarOpen && (
             <div 

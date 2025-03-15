@@ -11,6 +11,7 @@ import { InsightPostBox } from './market/InsightPostBox';
 import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface TimeInterval {
   label: string;
@@ -115,6 +116,7 @@ export default function TopMoversList({
   const debouncedVolumeRange = useDebounce(volumeRange, 300);
   const { toast } = useToast();
   const { marketId } = useParams();
+  const isMobile = useIsMobile();
 
   const topMoversQuery = useTopMovers(
     selectedInterval, 
