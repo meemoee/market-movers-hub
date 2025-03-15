@@ -35,7 +35,7 @@ interface ResearchJob {
   status: 'queued' | 'processing' | 'completed' | 'failed';
   max_iterations: number;
   current_iteration: number;
-  progress_log: string[];
+  progress_log: Array<string | number | boolean | object>; // Updated to reflect actual possible types
   iterations: any[];
   results: any;
   error_message?: string;
