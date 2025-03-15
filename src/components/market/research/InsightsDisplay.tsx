@@ -2,7 +2,7 @@
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle, ShoppingBag } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface ReasoningData {
@@ -34,13 +34,17 @@ interface InsightsDisplayProps {
     onView?: () => void;
   };
   childResearches?: ResearchChild[];
+  bestBidPrice?: number;
+  bestAskPrice?: number;
 }
 
 export function InsightsDisplay({ 
   streamingState, 
   onResearchArea, 
   parentResearch,
-  childResearches 
+  childResearches,
+  bestBidPrice,
+  bestAskPrice 
 }: InsightsDisplayProps) {
   // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
@@ -98,6 +102,22 @@ export function InsightsDisplay({
       }
     }
   }
+
+  // Calculate if there are any good buy opportunities
+  const extractedProbabilityNum = !hasErrorInProbability ? 
+    parseInt(probability.replace('%', ''), 10) : null;
+
+  // Determine if YES is a good buy (probability > ask price)
+  const isYesGoodBuy = !hasErrorInProbability && 
+    extractedProbabilityNum !== null && 
+    bestAskPrice !== undefined && 
+    extractedProbabilityNum > bestAskPrice * 100;
+
+  // Determine if NO is a good buy ((100 - probability) > ask price)
+  const isNoGoodBuy = !hasErrorInProbability && 
+    extractedProbabilityNum !== null && 
+    bestAskPrice !== undefined && 
+    (100 - extractedProbabilityNum) > bestAskPrice * 100;
   
   return (
     <div className="space-y-5">
@@ -156,6 +176,36 @@ export function InsightsDisplay({
                 : 'likelihood based on research'}
             </div>
           </div>
+          
+          {/* Good Buy Opportunities Section */}
+          {(isYesGoodBuy || isNoGoodBuy) && bestAskPrice !== undefined && (
+            <div className="mt-4 border-t pt-4 border-accent/20">
+              <div className="flex items-center gap-2 mb-3">
+                <ShoppingBag className="h-4 w-4 text-green-500" />
+                <span className="text-sm font-medium">
+                  Potential Buy Opportunities
+                </span>
+              </div>
+              <div className="space-y-2">
+                {isYesGoodBuy && (
+                  <div className="flex items-center justify-between bg-green-500/10 p-2 rounded-md border border-green-500/20">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">YES @ {(bestAskPrice * 100).toFixed(0)}%</span>
+                    </div>
+                    <Badge className="bg-green-500 hover:bg-green-600">Good Buy</Badge>
+                  </div>
+                )}
+                {isNoGoodBuy && (
+                  <div className="flex items-center justify-between bg-green-500/10 p-2 rounded-md border border-green-500/20">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium">NO @ {(bestAskPrice * 100).toFixed(0)}%</span>
+                    </div>
+                    <Badge className="bg-green-500 hover:bg-green-600">Good Buy</Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           
           {/* Display structured evidence if available */}
           {(evidenceFor.length > 0 || evidenceAgainst.length > 0) && (

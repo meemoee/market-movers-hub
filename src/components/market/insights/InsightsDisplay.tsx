@@ -1,5 +1,5 @@
 
-import { Target, ArrowDown, AlertCircle, ExternalLink, TrendingUp, ChevronRight, Check, X } from "lucide-react";
+import { Target, ArrowDown, AlertCircle, ExternalLink, TrendingUp, ChevronRight, Check, X, ShoppingBag } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,8 @@ interface InsightsDisplayProps {
   onResearchArea?: (area: string) => void;
   parentResearch?: ParentResearch;
   childResearches?: ChildResearch[];
+  bestBidPrice?: number;
+  bestAskPrice?: number;
 }
 
 export function InsightsDisplay({ 
@@ -45,7 +47,9 @@ export function InsightsDisplay({
   streamingState,
   onResearchArea,
   parentResearch,
-  childResearches
+  childResearches,
+  bestBidPrice,
+  bestAskPrice
 }: InsightsDisplayProps) {
   const getProbabilityColor = (prob: string) => {
     const numericProb = parseInt(prob.replace('%', ''))
@@ -76,6 +80,25 @@ export function InsightsDisplay({
     }
   }
 
+  // Calculate if there are any good buy opportunities
+  const isValidProbability = displayProbability && !displayProbability.toLowerCase().includes('unknown') && 
+    !displayProbability.toLowerCase().includes('error');
+    
+  const extractedProbabilityNum = isValidProbability ? 
+    parseInt(displayProbability.replace('%', ''), 10) : null;
+
+  // Determine if YES is a good buy (probability > ask price)
+  const isYesGoodBuy = isValidProbability && 
+    extractedProbabilityNum !== null && 
+    bestAskPrice !== undefined && 
+    extractedProbabilityNum > bestAskPrice * 100;
+
+  // Determine if NO is a good buy ((100 - probability) > ask price)
+  const isNoGoodBuy = isValidProbability && 
+    extractedProbabilityNum !== null && 
+    bestAskPrice !== undefined && 
+    (100 - extractedProbabilityNum) > bestAskPrice * 100;
+
   return (
     <div className="space-y-4 bg-accent/5 rounded-md p-4 overflow-hidden">
       <div className={`space-y-4 p-3 rounded-lg ${getProbabilityColor(displayProbability)}`}>
@@ -85,6 +108,37 @@ export function InsightsDisplay({
             Probability: {displayProbability}
           </span>
         </div>
+        
+        {/* Good Buy Opportunities Section */}
+        {(isYesGoodBuy || isNoGoodBuy) && bestAskPrice !== undefined && (
+          <>
+            <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                <ShoppingBag className="h-4 w-4 text-green-500" />
+                Potential Buy Opportunities:
+              </div>
+              <div className="space-y-2 pl-2">
+                {isYesGoodBuy && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">YES @ {(bestAskPrice * 100).toFixed(0)}%</span>
+                    </div>
+                    <Badge className="bg-green-500 hover:bg-green-600">Good Buy</Badge>
+                  </div>
+                )}
+                {isNoGoodBuy && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">NO @ {(bestAskPrice * 100).toFixed(0)}%</span>
+                    </div>
+                    <Badge className="bg-green-500 hover:bg-green-600">Good Buy</Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
         
         {Array.isArray(displayAreas) && 
          displayAreas.length > 0 && (
