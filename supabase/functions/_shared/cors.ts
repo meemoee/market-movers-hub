@@ -12,7 +12,7 @@ const global = globalThis as any;
 if (!global.braveRequestPool) {
   global.braveRequestPool = {
     requests: [],
-    maxConcurrent: 2,
+    maxConcurrent: 15, // Increased from 2 to 15 requests per second
     windowMs: 1000, // 1 second window
   };
 }
