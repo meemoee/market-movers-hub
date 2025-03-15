@@ -83,6 +83,10 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState<string>('')
   const [enableNotification, setEnableNotification] = useState(false)
   const [isSendingNotification, setIsSendingNotification] = useState(false)
+  const [notificationStatus, setNotificationStatus] = useState<'pending' | 'sending' | 'sent' | 'failed' | null>(null)
+  const [notificationAttempts, setNotificationAttempts] = useState(0)
+  const MAX_NOTIFICATION_ATTEMPTS = 3
+
   const { toast } = useToast()
 
   const resetState = () => {
@@ -99,6 +103,8 @@ export function JobQueueResearchCard({
     setStructuredInsights(null);
     setNotificationEmail('');
     setEnableNotification(false);
+    setNotificationStatus(null);
+    setNotificationAttempts(0);
   }
 
   useEffect(() => {
@@ -136,6 +142,14 @@ export function JobQueueResearchCard({
     if (job.notification_email) {
       setNotificationEmail(job.notification_email);
       setEnableNotification(true);
+      
+      if (job.notification_sent) {
+        setNotificationStatus('sent');
+      } else if (job.status === 'completed') {
+        setNotificationStatus('pending');
+      } else {
+        setNotificationStatus(null);
+      }
     }
     
     if (job.max_iterations && job.current_iteration !== undefined) {
@@ -334,26 +348,62 @@ export function JobQueueResearchCard({
           }
           
           if (enableNotification && notificationEmail && !job.notification_sent) {
-            console.log(`Sending email notification to ${notificationEmail} for job ${job.id}`);
-            try {
-              await sendEmailNotification(job.id, notificationEmail);
-              console.log('Email notification sent successfully');
+            console.log(`Job completed, checking notification status for email ${notificationEmail}`);
+            
+            if (notificationStatus !== 'sending' && notificationStatus !== 'sent') {
+              setNotificationStatus('sending');
+              setProgress(prev => [...prev, `Sending email notification to ${notificationEmail}...`]);
               
-              setTimeout(() => {
-                fetchSavedJobs();
-                setPolling(false);
-                clearInterval(pollInterval);
-              }, 2000);
-              
-              return;
-            } catch (err) {
-              console.error('Failed to send email notification:', err);
+              try {
+                setNotificationAttempts(prev => prev + 1);
+                await sendEmailNotification(job.id, notificationEmail);
+                
+                setNotificationStatus('sent');
+                setProgress(prev => [...prev, `Email notification sent successfully to ${notificationEmail}`]);
+                
+                setTimeout(() => {
+                  fetchSavedJobs();
+                  
+                  setPolling(false);
+                  clearInterval(pollInterval);
+                }, 2000);
+                
+                return;
+              } catch (err) {
+                console.error('Failed to send email notification:', err);
+                
+                if (notificationAttempts >= MAX_NOTIFICATION_ATTEMPTS) {
+                  setNotificationStatus('failed');
+                  setProgress(prev => [...prev, `Failed to send email notification after ${MAX_NOTIFICATION_ATTEMPTS} attempts`]);
+                  
+                  toast({
+                    title: "Notification Failed",
+                    description: `Could not send notification email after multiple attempts. You can try again manually.`,
+                    variant: "destructive"
+                  });
+                  
+                  fetchSavedJobs();
+                  setPolling(false);
+                  clearInterval(pollInterval);
+                  return;
+                } else {
+                  setProgress(prev => [...prev, `Notification attempt ${notificationAttempts} failed, will retry...`]);
+                  
+                  return;
+                }
+              }
             }
+          } else if (job.notification_sent) {
+            setNotificationStatus('sent');
+            
+            fetchSavedJobs();
+            setPolling(false);
+            clearInterval(pollInterval);
+          } else {
+            fetchSavedJobs();
+            setPolling(false);
+            clearInterval(pollInterval);
           }
-          
-          fetchSavedJobs();
-          setPolling(false);
-          clearInterval(pollInterval);
         } 
         else if (job.status === 'failed') {
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
@@ -369,7 +419,7 @@ export function JobQueueResearchCard({
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, enableNotification, notificationEmail]);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, enableNotification, notificationEmail, notificationStatus, notificationAttempts]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -412,6 +462,7 @@ export function JobQueueResearchCard({
       
       if (enableNotification && notificationEmail) {
         setProgress(prev => [...prev, `Email notification will be sent to ${notificationEmail} when research completes`]);
+        setNotificationStatus('pending');
       }
       
       toast({
@@ -431,7 +482,9 @@ export function JobQueueResearchCard({
   };
 
   const sendEmailNotification = async (jobId: string, email: string) => {
-    if (!jobId || !email) return;
+    if (!jobId || !email) {
+      throw new Error('Missing required parameters: jobId and email are required');
+    }
     
     try {
       setIsSendingNotification(true);
@@ -452,7 +505,17 @@ export function JobQueueResearchCard({
         throw new Error(`Error sending notification: ${response.error.message}`);
       }
       
-      console.log("Notification response:", response);
+      console.log("Notification response:", response.data);
+      
+      if (response.data && response.data.alreadySent) {
+        console.log("Notification was already sent previously");
+        toast({
+          title: "Notification Already Sent",
+          description: `Email was previously sent to ${email}`,
+        });
+        setNotificationStatus('sent');
+        return true;
+      }
       
       toast({
         title: "Notification Sent",
@@ -478,6 +541,34 @@ export function JobQueueResearchCard({
       throw error;
     } finally {
       setIsSendingNotification(false);
+    }
+  };
+
+  const retryNotification = async () => {
+    if (!jobId || !notificationEmail) {
+      toast({
+        title: "Cannot Retry",
+        description: "Missing job ID or email address",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    try {
+      setNotificationStatus('sending');
+      setProgress(prev => [...prev, `Retrying email notification to ${notificationEmail}...`]);
+      
+      await sendEmailNotification(jobId, notificationEmail);
+      
+      setNotificationStatus('sent');
+      setProgress(prev => [...prev, `Email notification successfully sent to ${notificationEmail}`]);
+      
+      setTimeout(() => {
+        fetchSavedJobs();
+      }, 2000);
+    } catch (error) {
+      setNotificationStatus('failed');
+      console.error('Retry failed:', error);
     }
   };
 
@@ -595,6 +686,43 @@ export function JobQueueResearchCard({
     }
   };
 
+  const renderNotificationBadge = () => {
+    if (!notificationStatus) return null;
+    
+    switch (notificationStatus) {
+      case 'pending':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 text-yellow-700 border-yellow-200">
+            <Clock className="h-3 w-3" />
+            <span>Notification Pending</span>
+          </Badge>
+        );
+      case 'sending':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            <span>Sending Notification</span>
+          </Badge>
+        );
+      case 'sent':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 text-green-700 border-green-200">
+            <CheckCircle className="h-3 w-3" />
+            <span>Notification Sent</span>
+          </Badge>
+        );
+      case 'failed':
+        return (
+          <Badge variant="outline" className="flex items-center gap-1 bg-red-50 text-red-700 border-red-200">
+            <AlertCircle className="h-3 w-3" />
+            <span>Notification Failed</span>
+          </Badge>
+        );
+      default:
+        return null;
+    }
+  };
+
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
@@ -632,6 +760,7 @@ export function JobQueueResearchCard({
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-semibold">Background Job Research</h2>
             {renderStatusBadge()}
+            {notificationStatus && renderNotificationBadge()}
           </div>
           <p className="text-sm text-muted-foreground">
             This research continues in the background even if you close your browser.
@@ -713,6 +842,13 @@ export function JobQueueResearchCard({
                             P: {probability}
                           </Badge>
                         )}
+                        {job.notification_email && (
+                          <Badge variant="outline" className={`text-xs ml-1 ${
+                            job.notification_sent ? 'bg-green-50 text-green-700' : 'bg-yellow-50 text-yellow-700'
+                          }`}>
+                            {job.notification_sent ? 'Notified' : 'Pending'}
+                          </Badge>
+                        )}
                       </div>
                     </DropdownMenuItem>
                   );
@@ -780,6 +916,20 @@ export function JobQueueResearchCard({
           <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
           <span className="font-medium">Email notification:</span> 
           <span className="ml-1">{notificationEmail}</span>
+          {notificationStatus === 'failed' && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="ml-auto"
+              disabled={isSendingNotification}
+              onClick={retryNotification}
+            >
+              {isSendingNotification ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+              ) : null}
+              Retry
+            </Button>
+          )}
         </div>
       )}
 
@@ -848,7 +998,7 @@ export function JobQueueResearchCard({
         </>
       )}
       
-      {jobStatus === 'completed' && !notificationEmail && (
+      {jobStatus === 'completed' && notificationStatus !== 'sent' && notificationStatus !== 'sending' && (
         <div className="border-t pt-4">
           <div className="bg-accent/10 p-3 rounded-md">
             <h4 className="text-sm font-medium mb-2 flex items-center">
