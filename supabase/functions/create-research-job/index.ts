@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -929,6 +928,8 @@ serve(async (req) => {
   try {
     const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
     
+    console.log(`Create research job request received: marketId=${marketId}, focusText=${focusText}, notificationEmail=${notificationEmail || 'none'}`);
+    
     if (!marketId || !query) {
       return new Response(
         JSON.stringify({ error: 'marketId and query are required' }),
@@ -960,10 +961,12 @@ serve(async (req) => {
       .single()
     
     if (jobError) {
+      console.error(`Failed to create job: ${jobError.message}`);
       throw new Error(`Failed to create job: ${jobError.message}`)
     }
     
     const jobId = jobData.id
+    console.log(`Created job with ID ${jobId}, notification email: ${notificationEmail || 'none'}`);
     
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead

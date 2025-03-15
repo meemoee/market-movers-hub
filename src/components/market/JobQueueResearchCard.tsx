@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -291,6 +290,7 @@ export function JobQueueResearchCard({
           
           // Send email notification if enabled and not already sent
           if (enableNotification && notificationEmail && !job.notification_sent) {
+            console.log(`Sending email notification to ${notificationEmail} for job ${job.id}`);
             sendEmailNotification(job.id, notificationEmail);
           }
           
@@ -374,8 +374,11 @@ export function JobQueueResearchCard({
         marketId,
         query: description,
         maxIterations: 3,
-        focusText: useFocusText.trim() || undefined
+        focusText: useFocusText.trim() || undefined,
+        notificationEmail: enableNotification && notificationEmail ? notificationEmail : undefined
       };
+      
+      console.log("Research payload:", payload);
       
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
@@ -397,13 +400,7 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       
-      // If notification is enabled, save the email to the job
       if (enableNotification && notificationEmail) {
-        await supabase
-          .from('research_jobs')
-          .update({ notification_email: notificationEmail })
-          .eq('id', jobId);
-        
         setProgress(prev => [...prev, `Email notification will be sent to ${notificationEmail} when research completes`]);
       }
       
@@ -429,6 +426,8 @@ export function JobQueueResearchCard({
     try {
       setIsSendingNotification(true);
       
+      console.log(`Calling send-research-notification for job ${jobId} to email ${email}`);
+      
       const response = await supabase.functions.invoke('send-research-notification', {
         body: JSON.stringify({ jobId, email })
       });
@@ -442,6 +441,8 @@ export function JobQueueResearchCard({
         });
         return;
       }
+      
+      console.log("Notification response:", response);
       
       toast({
         title: "Notification Sent",

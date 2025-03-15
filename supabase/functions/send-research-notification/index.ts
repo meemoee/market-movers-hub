@@ -20,8 +20,11 @@ serve(async (req) => {
   }
   
   try {
+    console.log("Research notification function called");
+    
     const resend = new Resend(Deno.env.get('RESEND_API_KEY'));
     if (!resend) {
+      console.error('RESEND_API_KEY is not configured');
       throw new Error('RESEND_API_KEY is not configured');
     }
     
@@ -30,9 +33,13 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
     
-    const { jobId, email }: ResearchNotificationPayload = await req.json();
+    const payload = await req.json();
+    console.log("Received payload:", JSON.stringify(payload));
+    
+    const { jobId, email }: ResearchNotificationPayload = payload;
     
     if (!jobId || !email) {
+      console.error('Missing required fields:', { jobId, email });
       return new Response(
         JSON.stringify({ error: 'Job ID and email are required' }),
         { 
@@ -41,6 +48,8 @@ serve(async (req) => {
         }
       );
     }
+    
+    console.log(`Preparing to send notification for job ${jobId} to ${email}`);
     
     // Get job data
     const { data: job, error: jobError } = await supabase
@@ -59,6 +68,8 @@ serve(async (req) => {
         }
       );
     }
+    
+    console.log(`Found job data:`, JSON.stringify(job));
     
     // Get market data for more context
     const { data: market, error: marketError } = await supabase
@@ -86,6 +97,8 @@ serve(async (req) => {
         console.error('Error parsing job results:', e);
       }
     }
+    
+    console.log(`Preparing email with focus: ${focusText}, probability: ${probability}`);
     
     // Send email
     const { data: emailResult, error: emailError } = await resend.emails.send({
@@ -116,13 +129,15 @@ serve(async (req) => {
     if (emailError) {
       console.error('Error sending email:', emailError);
       return new Response(
-        JSON.stringify({ error: 'Failed to send email notification' }),
+        JSON.stringify({ error: 'Failed to send email notification', details: emailError }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         }
       );
     }
+    
+    console.log(`Email sent successfully to ${email}`);
     
     // Update job to mark notification as sent
     const { error: updateError } = await supabase
