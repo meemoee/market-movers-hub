@@ -16,7 +16,6 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
-  const [maxScrollHeight, setMaxScrollHeight] = useState<number>(0)
   
   useEffect(() => {
     if (messages.length > 0) {
@@ -29,25 +28,10 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
     if (messagesEndRef.current && scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollContainer) {
-        // Store max scroll height to ensure we don't lose auto-scroll position
-        const newScrollHeight = scrollContainer.scrollHeight;
-        if (newScrollHeight > maxScrollHeight) {
-          setMaxScrollHeight(newScrollHeight);
-          scrollContainer.scrollTop = newScrollHeight;
-        }
-      }
-    }
-  }, [messages, maxScrollHeight]);
-
-  // Auto-scroll on status change as well
-  useEffect(() => {
-    if (scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
-  }, [status]);
+  }, [messages]);
 
   if (!messages.length) return null
   
@@ -68,20 +52,6 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
     }
   };
   
-  // Calculate progress bar color based on status
-  const getProgressBarClass = () => {
-    if (!status) return "";
-    
-    switch (status) {
-      case 'completed':
-        return "bg-green-100";
-      case 'failed':
-        return "bg-red-100";
-      default:
-        return "";
-    }
-  };
-  
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
       <ScrollArea className="h-full">
@@ -95,8 +65,6 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
                   ? 'Complete' 
                   : status === 'failed' 
                   ? 'Failed'
-                  : status === 'queued'
-                  ? 'Queued'
                   : 'Processing in background'}</span>
               </div>
               {progress !== undefined && (
@@ -104,31 +72,30 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
                   value={progress} 
                   className={cn(
                     "h-2",
-                    getProgressBarClass()
+                    status === 'completed' ? "bg-green-100" : 
+                    status === 'failed' ? "bg-red-100" : ""
                   )} 
                 />
               )}
             </div>
           )}
           
-          <div className="space-y-1">
-            {messages.map((message, index) => (
-              <div 
-                key={`${index}-${message.substring(0, 20)}`}
-                className={cn(
-                  "flex items-center gap-3 py-1 text-sm",
-                  index === messages.length - 1 && !jobId ? "animate-pulse" : ""
-                )}
-              >
-                {index === messages.length - 1 && !jobId && (
-                  <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
-                )}
-                <span className={index === messages.length - 1 && !jobId ? "text-foreground" : "text-muted-foreground"}>
-                  {message}
-                </span>
-              </div>
-            ))}
-          </div>
+          {messages.map((message, index) => (
+            <div 
+              key={`${index}-${message.substring(0, 20)}`}
+              className={cn(
+                "flex items-center gap-3 py-1 text-sm",
+                index === messages.length - 1 && !jobId ? "animate-pulse" : ""
+              )}
+            >
+              {index === messages.length - 1 && !jobId && (
+                <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              )}
+              <span className={index === messages.length - 1 && !jobId ? "text-foreground" : "text-muted-foreground"}>
+                {message}
+              </span>
+            </div>
+          ))}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>
