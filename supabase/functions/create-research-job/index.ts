@@ -1,12 +1,6 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-
-// Define CORS headers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { corsHeaders, handleCors, createCorsResponse } from '../_shared/cors.ts'
 
 // Function to perform web research
 async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string) {
@@ -27,13 +21,13 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     // Log start
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify(`Starting research for: ${query}`)
+      progress_entry: `Starting research for: ${query}`
     })
     
     if (focusText) {
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Research focus: ${focusText}`)
+        progress_entry: `Research focus: ${focusText}`
       })
     }
     
@@ -55,14 +49,14 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       // Add progress log for this iteration
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Starting iteration ${i} of ${maxIterations}`)
+        progress_entry: `Starting iteration ${i} of ${maxIterations}`
       })
       
       // Generate search queries
       try {
         await supabaseClient.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: JSON.stringify(`Generating search queries for iteration ${i}`)
+          progress_entry: `Generating search queries for iteration ${i}`
         })
         
         // Call the generate-queries function to get real queries
@@ -111,13 +105,13 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         
         await supabaseClient.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: JSON.stringify(`Generated ${queries.length} search queries for iteration ${i}`)
+          progress_entry: `Generated ${queries.length} search queries for iteration ${i}`
         })
         
         // Process each query with Brave Search
         await supabaseClient.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: JSON.stringify(`Executing Brave searches for iteration ${i}...`)
+          progress_entry: `Executing Brave searches for iteration ${i}...`
         });
         
         let allResults = [];
@@ -156,7 +150,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             // Log search results count
             await supabaseClient.rpc('append_research_progress', {
               job_id: jobId,
-              progress_entry: JSON.stringify(`Found ${webResults.length} results for "${currentQuery}"`)
+              progress_entry: `Found ${webResults.length} results for "${currentQuery}"`
             });
             
             // Process results: fetch content from URLs
@@ -214,14 +208,14 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             console.error(`Error processing query "${currentQuery}":`, queryError);
             await supabaseClient.rpc('append_research_progress', {
               job_id: jobId,
-              progress_entry: JSON.stringify(`Error processing query "${currentQuery}": ${queryError.message}`)
+              progress_entry: `Error processing query "${currentQuery}": ${queryError.message}`
             });
           }
         }
         
         await supabaseClient.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
+          progress_entry: `Completed searches for iteration ${i} with ${allResults.length} total results`
         });
         
         // After each iteration, analyze the collected data using OpenRouter
@@ -238,7 +232,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           if (currentIterationData && currentIterationData.results && currentIterationData.results.length > 0) {
             await supabaseClient.rpc('append_research_progress', {
               job_id: jobId,
-              progress_entry: JSON.stringify(`Analyzing ${currentIterationData.results.length} results for iteration ${i}...`)
+              progress_entry: `Analyzing ${currentIterationData.results.length} results for iteration ${i}...`
             });
             
             // Combine all content from the results
@@ -371,7 +365,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 
                 await supabaseClient.rpc('append_research_progress', {
                   job_id: jobId,
-                  progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
+                  progress_entry: `Completed analysis for iteration ${i}`
                 });
               }
             }
@@ -380,7 +374,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           console.error(`Error analyzing iteration ${i} results:`, analysisError);
           await supabaseClient.rpc('append_research_progress', {
             job_id: jobId,
-            progress_entry: JSON.stringify(`Error analyzing iteration ${i} results: ${analysisError.message}`)
+            progress_entry: `Error analyzing iteration ${i} results: ${analysisError.message}`
           });
         }
         
@@ -388,7 +382,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         console.error(`Error generating queries for job ${jobId}:`, error);
         await supabaseClient.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: JSON.stringify(`Error generating queries: ${error.message}`)
+          progress_entry: `Error generating queries: ${error.message}`
         });
       }
     }
@@ -413,7 +407,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     // Generate final analysis with OpenRouter
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify(`Generating final analysis of ${allResults.length} total results...`)
+      progress_entry: `Generating final analysis of ${allResults.length} total results...`
     });
     
     let finalAnalysis = "";
@@ -541,7 +535,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Error generating final analysis: ${analysisError.message}`)
+        progress_entry: `Error generating final analysis: ${analysisError.message}`
       });
     }
     
@@ -554,7 +548,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     // Now generate the structured insights with the extract-research-insights function
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify(`Generating structured insights with probability assessment...`)
+      progress_entry: `Generating structured insights with probability assessment...`
     });
     
     let structuredInsights = null;
@@ -723,7 +717,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`)
+        progress_entry: `Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`
       });
       
       // Extract the actual insights from the OpenRouter response
@@ -765,7 +759,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Error extracting structured insights: ${insightsError.message}`)
+        progress_entry: `Error extracting structured insights: ${insightsError.message}`
       });
       
       structuredInsights = {
@@ -794,7 +788,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify('Research completed successfully!')
+      progress_entry: 'Research completed successfully!'
     });
     
     console.log(`Completed background research for job ${jobId}`);
@@ -816,7 +810,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
-        progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
+        progress_entry: `Research failed: ${error.message || 'Unknown error'}`
       });
     } catch (e) {
       console.error(`Failed to update job ${jobId} status:`, e);
@@ -921,19 +915,15 @@ Present the analysis in a structured, concise format with clear sections and bul
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  // Handle CORS preflight requests using our shared helper
+  const corsResponse = handleCors(req);
+  if (corsResponse) return corsResponse;
   
   try {
     const { marketId, query, maxIterations = 3, focusText } = await req.json()
     
     if (!marketId || !query) {
-      return new Response(
-        JSON.stringify({ error: 'marketId and query are required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      return createCorsResponse({ error: 'marketId and query are required' }, 400);
     }
     
     const supabaseClient = createClient(
@@ -972,22 +962,16 @@ serve(async (req) => {
     }, 0);
     
     // Return immediate response with job ID
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Research job started', 
-        jobId: jobId 
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
+    return createCorsResponse({ 
+      success: true, 
+      message: 'Research job started', 
+      jobId: jobId 
+    });
   } catch (error) {
     console.error('Error:', error)
-    return new Response(
-      JSON.stringify({ error: error.message || 'Unknown error' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    return createCorsResponse(
+      { error: error.message || 'Unknown error' },
+      500
+    );
   }
 })

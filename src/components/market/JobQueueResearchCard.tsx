@@ -7,14 +7,11 @@ import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
-import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock, History, Target } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Label } from "@/components/ui/label"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -34,7 +31,7 @@ interface ResearchJob {
   status: 'queued' | 'processing' | 'completed' | 'failed';
   max_iterations: number;
   current_iteration: number;
-  progress_log: string[];
+  progress_log: any[];
   iterations: any[];
   results: any;
   error_message?: string;
@@ -123,6 +120,22 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
   };
 
+  const sanitizeProgressEntries = (entries: any[]): string[] => {
+    if (!entries || !Array.isArray(entries)) return [];
+    return entries.map(entry => {
+      if (typeof entry === 'string') return entry;
+      if (typeof entry === 'number') return String(entry);
+      if (typeof entry === 'object') {
+        try {
+          return JSON.stringify(entry);
+        } catch (e) {
+          return String(entry);
+        }
+      }
+      return String(entry);
+    });
+  };
+
   const loadJobData = (job: ResearchJob) => {
     setJobId(job.id);
     setJobStatus(job.status);
@@ -137,7 +150,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
-      setProgress(job.progress_log.map(entry => String(entry)));
+      setProgress(sanitizeProgressEntries(job.progress_log));
     }
     
     if (job.status === 'queued' || job.status === 'processing') {
@@ -251,9 +264,12 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           }
           
           if (job.progress_log && Array.isArray(job.progress_log)) {
-            const newItems = job.progress_log.slice(progress.length);
+            const currentLength = progress.length;
+            
+            const newItems = sanitizeProgressEntries(job.progress_log.slice(currentLength));
+            
             if (newItems.length > 0) {
-              setProgress(prev => [...prev, ...newItems.map(item => String(item))]);
+              setProgress(prev => [...prev, ...newItems]);
             }
           }
           
@@ -289,9 +305,13 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
         focusText: useFocusText.trim() || undefined
       };
       
+      console.log('Sending research job payload:', payload);
+      
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
       });
+      
+      console.log('Research job response:', response);
       
       if (response.error) {
         console.error("Error creating research job:", response.error);
