@@ -65,6 +65,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
+  const [bestBidPrice, setBestBidPrice] = useState<number | undefined>(undefined)
+  const [bestAskPrice, setBestAskPrice] = useState<number | undefined>(undefined)
   const { toast } = useToast()
 
   // Reset all state variables to their initial values
@@ -80,12 +82,41 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    setBestBidPrice(undefined);
+    setBestAskPrice(undefined);
   }
 
   // Load saved research jobs for this market on component mount
   useEffect(() => {
     fetchSavedJobs();
+    fetchOrderbookData();
   }, [marketId]);
+
+  // Fetch orderbook data for the market to get best bid/ask prices
+  const fetchOrderbookData = async () => {
+    try {
+      const response = await supabase.functions.invoke('get-orderbook', {
+        body: JSON.stringify({ marketId })
+      });
+
+      if (response.data) {
+        const orderbook = response.data;
+        console.log('Fetched orderbook data:', orderbook);
+        
+        if (orderbook.bids && orderbook.bids.length > 0) {
+          // Best bid price is the highest bid price
+          setBestBidPrice(parseFloat(orderbook.bids[0][0]));
+        }
+        
+        if (orderbook.asks && orderbook.asks.length > 0) {
+          // Best ask price is the lowest ask price
+          setBestAskPrice(parseFloat(orderbook.asks[0][0]));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching orderbook data:', error);
+    }
+  };
 
   // Fetch saved research jobs for this market
   const fetchSavedJobs = async () => {
@@ -160,10 +191,18 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           setAnalysis(parsedResults.analysis);
         }
         if (parsedResults.structuredInsights) {
-          setStructuredInsights({
-            parsedData: parsedResults.structuredInsights,
+          // Check if we have bid/ask prices in the structuredInsights
+          const insightsWithPrices = {
+            parsedData: {
+              ...parsedResults.structuredInsights,
+              bestBidPrice: parsedResults.bestBidPrice || bestBidPrice,
+              bestAskPrice: parsedResults.bestAskPrice || bestAskPrice
+            },
             rawText: JSON.stringify(parsedResults.structuredInsights)
-          });
+          };
+          
+          setStructuredInsights(insightsWithPrices);
+          console.log('Setting structured insights with prices:', insightsWithPrices);
         }
       } catch (e) {
         console.error('Error parsing job results:', e);
@@ -226,10 +265,17 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
                 setAnalysis(parsedResults.analysis);
               }
               if (parsedResults.structuredInsights) {
-                setStructuredInsights({
-                  parsedData: parsedResults.structuredInsights,
+                // Include market prices in structuredInsights
+                const insightsWithPrices = {
+                  parsedData: {
+                    ...parsedResults.structuredInsights,
+                    bestBidPrice: parsedResults.bestBidPrice || bestBidPrice,
+                    bestAskPrice: parsedResults.bestAskPrice || bestAskPrice
+                  },
                   rawText: JSON.stringify(parsedResults.structuredInsights)
-                });
+                };
+                setStructuredInsights(insightsWithPrices);
+                console.log('Setting structured insights with prices on completion:', insightsWithPrices);
               }
             } catch (e) {
               console.error('Error parsing job results:', e);
@@ -293,12 +339,19 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
       
+      // Ensure we have the latest orderbook data
+      await fetchOrderbookData();
+      
       const payload = {
         marketId,
         query: description,
         maxIterations: 3,
-        focusText: useFocusText.trim() || undefined
+        focusText: useFocusText.trim() || undefined,
+        bestBidPrice,
+        bestAskPrice
       };
+      
+      console.log('Creating research job with payload:', payload);
       
       // Call the job creation endpoint
       const response = await supabase.functions.invoke('create-research-job', {
@@ -636,6 +689,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           <InsightsDisplay 
             streamingState={structuredInsights} 
             onResearchArea={handleResearchArea}
+            bestBidPrice={bestBidPrice}
+            bestAskPrice={bestAskPrice}
           />
         </div>
       )}
