@@ -80,7 +80,8 @@ export function TopMoversContent({
                 final_last_traded_price: mover.final_last_traded_price,
                 final_best_ask: mover.final_best_ask,
                 final_best_bid: mover.final_best_bid,
-                final_no_best_ask: mover.final_no_best_ask, // Pass the No price if available
+                final_no_best_ask: mover.final_no_best_ask,
+                final_no_best_bid: mover.final_no_best_bid, // Pass the No bid price if available
                 description: mover.description,
                 outcomes: mover.outcomes || ["Yes", "No"],
                 event_id: mover.event_id,

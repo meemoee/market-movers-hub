@@ -21,7 +21,8 @@ interface JobQueueResearchCardProps {
   marketId: string;
   bestBid?: number;
   bestAsk?: number;
-  noBestAsk?: number; // Add this property to receive the No outcome price
+  noBestAsk?: number; 
+  noBestBid?: number; // Add this property to receive the No outcome bid price
   outcomes?: string[];
 }
 
@@ -55,7 +56,8 @@ export function JobQueueResearchCard({
   marketId, 
   bestBid, 
   bestAsk, 
-  noBestAsk, // Use the passed No price
+  noBestAsk,
+  noBestBid, // Use the passed No bid price
   outcomes 
 }: JobQueueResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
@@ -207,8 +209,9 @@ export function JobQueueResearchCard({
     }
     
     const inferredProbability = 1 - probability;
-    // Use noBestAsk directly if available, otherwise fall back to the calculated price
-    const noBidPrice = noBestAsk !== undefined ? noBestAsk : 1 - bestAsk;
+    // Use noBestBid directly if available for comparing buy opportunities of the "No" outcome
+    // This is the correct value to use for detecting good buy opportunities
+    const noBidPrice = noBestBid !== undefined ? noBestBid : 1 - bestAsk;
     
     if (inferredProbability > noBidPrice + THRESHOLD) {
       opportunities.push({
@@ -319,7 +322,7 @@ export function JobQueueResearchCard({
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestAsk, outcomes]);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();

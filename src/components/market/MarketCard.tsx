@@ -16,7 +16,8 @@ interface Market {
   final_last_traded_price: number;
   final_best_ask: number;
   final_best_bid: number;
-  final_no_best_ask?: number;  // Add this field for the No best ask price
+  final_no_best_ask?: number;  
+  final_no_best_bid?: number;  // Add this field for the No best bid price
   description?: string;
   outcomes?: string[];
   event_id?: string;
@@ -76,6 +77,8 @@ export function MarketCard({
           eventId={market.event_id}
           bestBid={market.final_best_bid}
           bestAsk={market.final_best_ask}
+          noBestBid={market.final_no_best_bid} // Pass this to the MarketDetails
+          noBestAsk={market.final_no_best_ask} // Pass this to the MarketDetails
           outcomes={market.outcomes}
         />
       )}
