@@ -1,5 +1,5 @@
 
-import { corsHeaders } from "../_shared/cors.ts";
+import { corsHeaders, braveRequestPool } from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 const braveApiUrl = "https://api.search.brave.com/res/v1/web/search";
@@ -18,6 +18,72 @@ interface SearchRequest {
   query: string;
   count?: number;
   offset?: number;
+}
+
+// Execute a Brave search with rate limiting and retries
+async function executeBraveSearch(url: string, apiKey: string): Promise<Response> {
+  const MAX_RETRIES = 3;
+  let retries = 0;
+  let backoffDelay = 2000; // Start with 2 second backoff
+  
+  while (retries <= MAX_RETRIES) {
+    try {
+      // Wait until we can make a request according to our pool
+      await braveRequestPool.waitForAvailableSlot();
+      
+      // Track this request in our pool
+      braveRequestPool.trackRequest();
+      
+      console.log(`Making Brave API request (attempt ${retries + 1})`);
+      
+      // Make the request to Brave Search API with proper headers
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Accept": "application/json",
+          "Accept-Encoding": "gzip",
+          "X-Subscription-Token": apiKey,
+          "x-deno-subhost": "brave-search", // Required header for Deno Deploy
+        },
+      });
+      
+      // Check for rate limiting
+      if (response.status === 429) {
+        retries++;
+        console.log(`Rate limited by Brave API, retry ${retries}/${MAX_RETRIES}`);
+        
+        // Check for rate limit headers
+        const rateInfo = braveRequestPool.parseRateLimitHeaders(response.headers);
+        if (rateInfo.reset > 0) {
+          const waitTime = rateInfo.reset * 1000 - Date.now();
+          if (waitTime > 0) {
+            console.log(`Waiting for rate limit reset: ${waitTime}ms`);
+            await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 30000))); // Wait for reset or max 30 seconds
+          }
+        } else {
+          // Exponential backoff if no reset header
+          console.log(`Applying exponential backoff: ${backoffDelay}ms`);
+          await new Promise(resolve => setTimeout(resolve, backoffDelay));
+          backoffDelay *= 2; // Exponential backoff
+        }
+        continue; // Try again
+      }
+      
+      return response;
+    } catch (error) {
+      retries++;
+      console.error(`Error during Brave search request, retry ${retries}/${MAX_RETRIES}:`, error);
+      
+      if (retries <= MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, backoffDelay));
+        backoffDelay *= 2; // Exponential backoff
+      } else {
+        throw error; // Rethrow if max retries exceeded
+      }
+    }
+  }
+  
+  throw new Error(`Failed to execute Brave search after ${MAX_RETRIES} retries`);
 }
 
 Deno.serve(async (req) => {
@@ -72,15 +138,8 @@ Deno.serve(async (req) => {
 
     const url = `${braveApiUrl}?${searchParams.toString()}`;
 
-    // Make the request to Brave Search API with proper headers
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Accept": "application/json",
-        "X-Subscription-Token": BRAVE_API_KEY,
-        "x-deno-subhost": "brave-search", // Required header for Deno Deploy
-      },
-    });
+    // Use our new executeBraveSearch function with pooling and retries
+    const response = await executeBraveSearch(url, BRAVE_API_KEY);
 
     if (!response.ok) {
       const errorText = await response.text();

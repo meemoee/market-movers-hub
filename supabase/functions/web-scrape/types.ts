@@ -9,3 +9,13 @@ export interface SSEMessage {
     content: string;
   }>;
 }
+
+export interface BraveSearchResult {
+  web?: {
+    results?: Array<{
+      url: string;
+      title: string;
+      description: string;
+    }>;
+  };
+}

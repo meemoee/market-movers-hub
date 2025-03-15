@@ -2,7 +2,14 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { corsHeaders } from "../_shared/cors.ts"
-import { SSEMessage } from "./types.ts"
+import { SSEMessage, BraveSearchResult } from "./types.ts"
+
+// Constants for request management
+const CHUNK_SIZE = 2; // Process 2 queries at a time
+const DELAY_BETWEEN_CHUNKS_MS = 1500; // 1.5 second delay between chunks
+const DELAY_BETWEEN_REQUESTS_MS = 350; // 350ms between individual requests
+const MAX_CONTENT_RETRIES = 2; // Max retries for content fetching
+const FETCH_TIMEOUT_MS = 5000; // 5 second timeout for content fetches
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -41,12 +48,6 @@ serve(async (req) => {
       let allResults = [];
       
       try {
-        // Rate limiting implementation
-        // Create chunks of queries to process with rate limiting
-        const CHUNK_SIZE = 5; // Process 5 queries at a time
-        const DELAY_BETWEEN_CHUNKS_MS = 1000; // 1 second delay between chunks
-        const DELAY_BETWEEN_REQUESTS_MS = 200; // 200ms between individual requests (5 per second)
-        
         // Split queries into chunks
         const queryChunks = [];
         for (let i = 0; i < cleanedQueries.length; i += CHUNK_SIZE) {
@@ -65,94 +66,38 @@ serve(async (req) => {
             console.log(`[Background][${jobId}] Processing query ${queryIndex + 1}/${cleanedQueries.length}: ${query}`);
 
             try {
-              // Set a reasonable timeout for each search
-              const abortController = new AbortController();
-              const timeoutId = setTimeout(() => abortController.abort(), 10000); // 10 second timeout
+              // Directly call our Brave search endpoint
+              const braveSearchUrl = "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/brave-search";
+              const braveResponse = await fetch(braveSearchUrl, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
+                },
+                body: JSON.stringify({ query, count: 5 })
+              });
               
-              // Brave API request with retry logic
-              let braveResponse = null;
-              let retries = 0;
-              const MAX_RETRIES = 3;
-              let backoffDelay = 1000; // Start with 1 second backoff
-              
-              while (retries <= MAX_RETRIES && !braveResponse) {
-                try {
-                  const braveApiKey = Deno.env.get('BRAVE_API_KEY');
-                  const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5`, {
-                    headers: {
-                      'Accept': 'application/json',
-                      'Accept-Encoding': 'gzip',
-                      'X-Subscription-Token': braveApiKey
-                    },
-                    signal: abortController.signal
-                  });
-                  
-                  // Check for rate limiting response
-                  if (response.status === 429) {
-                    retries++;
-                    console.log(`[Background][${jobId}] Rate limited by Brave API, retry ${retries}/${MAX_RETRIES}`);
-                    
-                    // Check for rate limit headers
-                    const resetTime = response.headers.get('X-RateLimit-Reset');
-                    if (resetTime) {
-                      const waitTime = parseInt(resetTime) * 1000 - Date.now();
-                      if (waitTime > 0) {
-                        console.log(`[Background][${jobId}] Waiting for rate limit reset: ${waitTime}ms`);
-                        await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, 30000))); // Wait for reset or max 30 seconds
-                      }
-                    } else {
-                      // Exponential backoff if no reset header
-                      console.log(`[Background][${jobId}] Applying exponential backoff: ${backoffDelay}ms`);
-                      await new Promise(resolve => setTimeout(resolve, backoffDelay));
-                      backoffDelay *= 2; // Exponential backoff
-                    }
-                    continue; // Try again
-                  }
-                  
-                  if (!response.ok) {
-                    console.error(`[Background][${jobId}] Brave search returned ${response.status}`);
-                    break; // Give up on this query
-                  }
-                  
-                  braveResponse = await response.json();
-                } catch (e) {
-                  if (e.name === 'AbortError') {
-                    console.log(`[Background][${jobId}] Search request timed out for query: ${query}`);
-                    break; // Don't retry timeouts
-                  }
-                  
-                  retries++;
-                  console.error(`[Background][${jobId}] Error searching, retry ${retries}/${MAX_RETRIES}:`, e);
-                  
-                  if (retries <= MAX_RETRIES) {
-                    await new Promise(resolve => setTimeout(resolve, backoffDelay));
-                    backoffDelay *= 2; // Exponential backoff
-                  }
-                }
+              if (!braveResponse.ok) {
+                const errorText = await braveResponse.text();
+                console.error(`[Background][${jobId}] Brave search failed: ${braveResponse.status} ${errorText}`);
+                continue; // Skip to next query on failure
               }
               
-              clearTimeout(timeoutId);
-              
-              if (!braveResponse) {
-                console.log(`[Background][${jobId}] Failed to get results for query after ${MAX_RETRIES} retries: ${query}`);
-                continue; // Move on to the next query
-              }
-              
-              const webPages = braveResponse.web?.results || [];
+              const braveData: BraveSearchResult = await braveResponse.json();
+              const webPages = braveData.web?.results || [];
               
               console.log(`[Background][${jobId}] Found ${webPages.length} pages for query: ${query}`);
               
               // Get the content for each page with exponential backoff for failures
               const pageResults = await Promise.all(webPages.map(async (page) => {
                 let retries = 0;
-                const MAX_CONTENT_RETRIES = 2;
                 let contentBackoffDelay = 1000;
                 
                 while (retries <= MAX_CONTENT_RETRIES) {
                   try {
                     // Use a timeout for each content fetch
                     const contentAbortController = new AbortController();
-                    const contentTimeoutId = setTimeout(() => contentAbortController.abort(), 5000); // 5 second timeout
+                    const contentTimeoutId = setTimeout(() => contentAbortController.abort(), FETCH_TIMEOUT_MS);
                     
                     const contentResponse = await fetch(page.url, {
                       signal: contentAbortController.signal
