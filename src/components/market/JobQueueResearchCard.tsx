@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -137,6 +138,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
+      // Convert all progress log entries to strings
       setProgress(job.progress_log.map(entry => String(entry)));
     }
     
@@ -251,6 +253,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           }
           
           if (job.progress_log && Array.isArray(job.progress_log)) {
+            // Convert all new progress log entries to strings
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
               setProgress(prev => [...prev, ...newItems.map(item => String(item))]);
