@@ -21,7 +21,7 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
 
   return (
     <div className="w-full max-w-full overflow-hidden">
-      <ScrollArea className="h-[200px] rounded-md border p-4 w-full max-w-[100%] overflow-x-hidden">
+      <ScrollArea className="h-[200px] rounded-md border p-4 w-full max-w-full overflow-x-hidden">
         <div className="mb-2 text-sm text-muted-foreground">
           {results.length} {results.length === 1 ? 'source' : 'sources'} collected
         </div>
