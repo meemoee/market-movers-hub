@@ -1,10 +1,10 @@
+
 import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Glow } from "@/components/ui/glow";
-import { MobileAccountButton } from '@/components/MobileAccountButton';
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} minutes`;
@@ -52,9 +52,6 @@ export default function Index() {
         />
       </div>
       
-      {/* Mobile Account Button (only shows on mobile) */}
-      {isMobile && <MobileAccountButton />}
-      
       <main className="container mx-auto xl:pr-[400px] px-4 relative z-10">
         <div className="relative flex max-w-[1280px] mx-auto justify-center">
           {isMobile && isSidebarOpen && (
@@ -83,7 +80,7 @@ export default function Index() {
                   />
                 </a>
               </div>
-              {!isMobile && <AccountIsland />}
+              <AccountIsland />
             </div>
           </aside>
 
