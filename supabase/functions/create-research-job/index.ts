@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -8,7 +9,7 @@ const corsHeaders = {
 }
 
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, bestAsk?: number, bestBid?: number, outcomes?: string[]) {
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string) {
   console.log(`Starting background research for job ${jobId}`)
   
   try {
@@ -33,21 +34,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       await supabaseClient.rpc('append_research_progress', {
         job_id: jobId,
         progress_entry: JSON.stringify(`Research focus: ${focusText}`)
-      })
-    }
-    
-    // Log pricing data if available
-    if (bestAsk || bestBid) {
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Market prices - Ask: ${bestAsk ? Math.round(bestAsk * 100) + '%' : 'N/A'}, Bid: ${bestBid ? Math.round(bestBid * 100) + '%' : 'N/A'}`)
-      })
-    }
-    
-    if (outcomes && outcomes.length > 0) {
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Market outcomes: ${outcomes.join(', ')}`)
       })
     }
     
@@ -424,20 +410,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       }
     }
     
-    // Add pricing and outcomes to job data
-    if (bestAsk !== undefined || bestBid !== undefined || (outcomes && outcomes.length > 0)) {
-      await supabaseClient
-        .from('research_jobs')
-        .update({
-          market_data: {
-            bestAsk,
-            bestBid,
-            outcomes
-          }
-        })
-        .eq('id', jobId);
-    }
-    
     // Generate final analysis with OpenRouter
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
@@ -718,10 +690,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         queries: allQueries,
         areasForResearch: areasForResearch,
         marketPrice: marketPrice,
-        relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined,
-        bestAsk,
-        bestBid,
-        outcomes
+        relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined
       };
       
       console.log(`Sending extract-research-insights payload with:
@@ -730,10 +699,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         - ${allQueries.length} queries
         - ${areasForResearch.length} areas for research
         - marketPrice: ${marketPrice || 'undefined'}
-        - ${relatedMarkets.length} related markets
-        - bestAsk: ${bestAsk !== undefined ? (bestAsk * 100).toFixed(2) + '%' : 'undefined'}
-        - bestBid: ${bestBid !== undefined ? (bestBid * 100).toFixed(2) + '%' : 'undefined'}
-        - outcomes: ${outcomes ? outcomes.join(', ') : 'undefined'}`);
+        - ${relatedMarkets.length} related markets`);
       
       // Call the extract-research-insights function to get structured insights (without streaming)
       const extractInsightsResponse = await fetch(
@@ -961,7 +927,7 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3, focusText, bestAsk, bestBid, outcomes } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -975,7 +941,7 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
     
-    // Create a new job record with market pricing data
+    // Create a new job record
     const { data: jobData, error: jobError } = await supabaseClient
       .from('research_jobs')
       .insert({
@@ -986,12 +952,7 @@ serve(async (req) => {
         current_iteration: 0,
         progress_log: [],
         iterations: [],
-        focus_text: focusText,
-        market_data: {
-          bestAsk,
-          bestBid,
-          outcomes
-        }
+        focus_text: focusText
       })
       .select('id')
       .single()
@@ -1005,7 +966,7 @@ serve(async (req) => {
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations, focusText, bestAsk, bestBid, outcomes).catch(err => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText).catch(err => {
         console.error(`Background research failed: ${err}`);
       });
     }, 0);

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -19,9 +20,6 @@ import { Label } from "@/components/ui/label"
 interface JobQueueResearchCardProps {
   description: string;
   marketId: string;
-  bestBid?: number;
-  bestAsk?: number;
-  outcomes?: string[];
 }
 
 interface ResearchResult {
@@ -30,6 +28,7 @@ interface ResearchResult {
   title?: string;
 }
 
+// Define an interface for our research job data
 interface ResearchJob {
   id: string;
   market_id: string;
@@ -49,7 +48,7 @@ interface ResearchJob {
   focus_text?: string;
 }
 
-export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, outcomes }: JobQueueResearchCardProps) {
+export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [progressPercent, setProgressPercent] = useState<number>(0)
@@ -68,6 +67,7 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
   const { toast } = useToast()
 
+  // Reset all state variables to their initial values
   const resetState = () => {
     setJobId(null);
     setPolling(false);
@@ -82,10 +82,12 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
     setStructuredInsights(null);
   }
 
+  // Load saved research jobs for this market on component mount
   useEffect(() => {
     fetchSavedJobs();
   }, [marketId]);
 
+  // Fetch saved research jobs for this market
   const fetchSavedJobs = async () => {
     try {
       setIsLoadingJobs(true);
@@ -110,35 +112,44 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
     }
   };
 
+  // Helper function to load job data consistently
   const loadJobData = (job: ResearchJob) => {
+    // Update state with the job details
     setJobId(job.id);
     setJobStatus(job.status);
     
+    // Set progress percent based on current iteration
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
       setProgressPercent(percent);
       
+      // If the job is completed, set to 100%
       if (job.status === 'completed') {
         setProgressPercent(100);
       }
     }
     
+    // Set progress log
     if (job.progress_log && Array.isArray(job.progress_log)) {
       setProgress(job.progress_log);
     }
     
+    // Start polling if the job is still active
     if (job.status === 'queued' || job.status === 'processing') {
       setPolling(true);
     }
     
+    // Set iterations data
     if (job.iterations && Array.isArray(job.iterations)) {
       setIterations(job.iterations);
       
+      // Auto-expand the latest iteration
       if (job.iterations.length > 0) {
         setExpandedIterations([job.iterations.length]);
       }
     }
     
+    // Set results if available
     if (job.status === 'completed' && job.results) {
       try {
         const parsedResults = JSON.parse(job.results);
@@ -159,15 +170,18 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
       }
     }
     
+    // Set error if job failed
     if (job.status === 'failed') {
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
     }
 
+    // Set focus text if available
     if (job.focus_text) {
       setFocusText(job.focus_text);
     }
   }
 
+  // Poll for job status
   useEffect(() => {
     if (!jobId || !polling) return;
     
@@ -193,8 +207,10 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
         const job = data as ResearchJob;
         console.log('Job status:', job.status);
         
+        // Update job status
         setJobStatus(job.status);
         
+        // Update progress based on status
         if (job.status === 'completed') {
           setPolling(false);
           setProgressPercent(100);
@@ -220,6 +236,7 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
             }
           }
           
+          // Refresh the list of saved jobs after completion
           fetchSavedJobs();
           
           clearInterval(pollInterval);
@@ -228,25 +245,31 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           
+          // Refresh the list of saved jobs even if failed
           fetchSavedJobs();
           
           clearInterval(pollInterval);
         } else if (job.status === 'processing') {
+          // Calculate progress based on current_iteration and max_iterations
           if (job.max_iterations && job.current_iteration !== undefined) {
             const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
             setProgressPercent(percent);
           }
           
+          // Add progress log entries if they exist
           if (job.progress_log && Array.isArray(job.progress_log)) {
+            // Only add new progress items
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
               setProgress(prev => [...prev, ...newItems]);
             }
           }
           
+          // Update iterations data
           if (job.iterations && Array.isArray(job.iterations)) {
             setIterations(job.iterations);
             
+            // If this is the first time we're seeing a new iteration, expand it
             if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
               setExpandedIterations(prev => [...prev, job.current_iteration]);
             }
@@ -261,6 +284,7 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
   }, [jobId, polling, progress.length, expandedIterations]);
 
   const handleResearch = async (initialFocusText = '') => {
+    // Reset state before starting a new research
     resetState();
     setIsLoading(true);
 
@@ -273,12 +297,10 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
         marketId,
         query: description,
         maxIterations: 3,
-        focusText: useFocusText.trim() || undefined,
-        bestAsk,
-        bestBid,
-        outcomes
+        focusText: useFocusText.trim() || undefined
       };
       
+      // Call the job creation endpoint
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
       });
@@ -292,6 +314,7 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
         throw new Error("Invalid response from server - no job ID returned");
       }
       
+      // Store the job ID
       const jobId = response.data.jobId;
       setJobId(jobId);
       setPolling(true);
@@ -304,6 +327,7 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
         description: `Job ID: ${jobId}. You can close this window and check back later.`,
       });
       
+      // Refresh the list of saved jobs after starting a new one
       fetchSavedJobs();
       
     } catch (error) {
@@ -323,10 +347,12 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
     );
   };
 
+  // Load a saved research job
   const loadSavedResearch = async (jobId: string) => {
     try {
       setIsLoadingSaved(true);
       
+      // Reset state before loading a new research
       resetState();
       
       const { data, error } = await supabase
@@ -358,6 +384,7 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
       
       const job = data as ResearchJob;
       
+      // Load job data
       loadJobData(job);
       
       toast({
@@ -377,21 +404,26 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
   };
 
   const handleResearchArea = (area: string) => {
+    // Reset focus text input before starting new research with the selected area
     setFocusText('');
     
+    // Start a new research job with the selected area as the focus text
     toast({
       title: "Starting Focused Research",
       description: `Creating new research job focused on: ${area}`,
     });
     
+    // Start research with the selected area
     handleResearch(area);
   };
 
+  // Clear the current job display and return to the blank state
   const handleClearDisplay = () => {
     resetState();
     setFocusText('');
   };
 
+  // Function to render status badge
   const renderStatusBadge = () => {
     if (!jobStatus) return null;
     
@@ -444,6 +476,7 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
     }
   };
 
+  // Get a status icon for history items
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'completed':
@@ -603,9 +636,6 @@ export function JobQueueResearchCard({ description, marketId, bestBid, bestAsk, 
           <InsightsDisplay 
             streamingState={structuredInsights} 
             onResearchArea={handleResearchArea}
-            bestBid={bestBid}
-            bestAsk={bestAsk}
-            outcomes={outcomes}
           />
         </div>
       )}
