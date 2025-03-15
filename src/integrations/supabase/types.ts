@@ -531,6 +531,7 @@ export type Database = {
           focus_text: string | null
           id: string
           iterations: Json
+          market_data: Json | null
           market_id: string
           max_iterations: number
           progress_log: Json
@@ -549,6 +550,7 @@ export type Database = {
           focus_text?: string | null
           id?: string
           iterations?: Json
+          market_data?: Json | null
           market_id: string
           max_iterations?: number
           progress_log?: Json
@@ -567,6 +569,7 @@ export type Database = {
           focus_text?: string | null
           id?: string
           iterations?: Json
+          market_data?: Json | null
           market_id?: string
           max_iterations?: number
           progress_log?: Json

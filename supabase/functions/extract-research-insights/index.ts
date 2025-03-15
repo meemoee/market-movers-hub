@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -176,7 +177,7 @@ ${truncatedAnalysis}
 
 ${previousAnalysesContext}
 
-${marketPricingContext}
+${marketPriceContext}
 
 Based on all this information, please provide:
 1. A specific probability estimate for the market question: "${marketQuestion}"
