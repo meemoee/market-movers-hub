@@ -1,663 +1,358 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { Progress } from "@/components/ui/progress"
 import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
-import { useToast } from "@/components/ui/use-toast"
-import { IterationCard } from "./research/IterationCard"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, History, Target } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { PlayIcon, PauseIcon, Trash2Icon, InfoIcon, StopCircleIcon } from 'lucide-react'
+import { useToast } from "@/components/ui/use-toast"
+import { Json } from '@/integrations/supabase/types'
+import { format } from 'date-fns'
+import { useResearchJob } from '@/hooks/useResearchJob'
+import { ensureString } from '@/utils/progressUtils'
 
 interface JobQueueResearchCardProps {
   description: string;
   marketId: string;
+  jobId?: string;
+  onDeleteJob?: (jobId: string) => void;
 }
 
-interface ResearchResult {
-  url: string;
-  content: string;
-  title?: string;
-}
-
-interface ResearchJob {
-  id: string;
-  market_id: string;
-  query: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
-  max_iterations: number;
-  current_iteration: number;
-  progress_log: any[];
-  iterations: any[];
-  results: any;
-  error_message?: string;
-  created_at: string;
-  started_at?: string;
-  completed_at?: string;
-  updated_at: string;
-  user_id?: string;
-  focus_text?: string;
-  probability?: string | null;
-}
-
-export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const [progress, setProgress] = useState<string[]>([])
-  const [progressPercent, setProgressPercent] = useState<number>(0)
-  const [results, setResults] = useState<ResearchResult[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [analysis, setAnalysis] = useState('')
-  const [jobId, setJobId] = useState<string | null>(null)
-  const [polling, setPolling] = useState(false)
-  const [iterations, setIterations] = useState<any[]>([])
-  const [expandedIterations, setExpandedIterations] = useState<number[]>([])
-  const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
-  const [structuredInsights, setStructuredInsights] = useState<any>(null)
-  const [focusText, setFocusText] = useState<string>('')
-  const [isLoadingSaved, setIsLoadingSaved] = useState(false)
-  const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
-  const [isLoadingJobs, setIsLoadingJobs] = useState(false)
-  const { toast } = useToast()
-
-  const resetState = () => {
-    setJobId(null);
-    setPolling(false);
-    setProgress([]);
-    setProgressPercent(0);
-    setResults([]);
-    setError(null);
-    setAnalysis('');
-    setIterations([]);
-    setExpandedIterations([]);
-    setJobStatus(null);
-    setStructuredInsights(null);
-  }
-
-  useEffect(() => {
-    fetchSavedJobs();
-  }, [marketId]);
-
-  const fetchSavedJobs = async () => {
+export function JobQueueResearchCard({ 
+  description, 
+  marketId, 
+  jobId,
+  onDeleteJob
+}: JobQueueResearchCardProps) {
+  const [isJobStartedLocally, setIsJobStartedLocally] = useState(false);
+  const { toast } = useToast();
+  
+  const {
+    job,
+    isLoading,
+    error,
+    progress,
+    progressPercent,
+    startJob,
+    pauseJob,
+    resumeJob,
+    cancelJob,
+    refreshJob
+  } = useResearchJob(jobId, marketId);
+  
+  const isActive = job?.status === 'running' || job?.status === 'queued';
+  const isPaused = job?.status === 'paused';
+  const isCompleted = job?.status === 'completed';
+  const isFailed = job?.status === 'failed';
+  
+  // Convert progress log items to strings for display
+  const progressStrings = progress?.map(item => ensureString(item)) || [];
+  
+  const handleStartJob = async () => {
     try {
-      setIsLoadingJobs(true);
-      const { data, error } = await supabase
-        .from('research_jobs')
-        .select('*')
-        .eq('market_id', marketId)
-        .order('created_at', { ascending: false });
+      setIsJobStartedLocally(true);
       
-      if (error) {
-        console.error('Error fetching research jobs:', error);
-        return;
-      }
-      
-      if (data && data.length > 0) {
-        const processedJobs = data.map(job => {
-          let probability = null;
-          if (job.status === 'completed' && job.results) {
-            try {
-              const parsedResults = JSON.parse(job.results);
-              if (parsedResults.structuredInsights && parsedResults.structuredInsights.probability) {
-                probability = parsedResults.structuredInsights.probability;
-              }
-            } catch (e) {
-              console.error('Error parsing job results for probability:', e);
-            }
-          }
-          return { ...job, probability };
-        });
-        
-        setSavedJobs(processedJobs as ResearchJob[]);
-      }
-    } catch (e) {
-      console.error('Error in fetchSavedJobs:', e);
-    } finally {
-      setIsLoadingJobs(false);
-    }
-  };
-
-  const sanitizeProgressEntries = (entries: any[]): string[] => {
-    if (!entries || !Array.isArray(entries)) return [];
-    return entries.map(entry => {
-      if (typeof entry === 'string') return entry;
-      if (typeof entry === 'number') return String(entry);
-      if (typeof entry === 'object') {
-        try {
-          return JSON.stringify(entry);
-        } catch (e) {
-          return String(entry);
-        }
-      }
-      return String(entry);
-    });
-  };
-
-  const loadJobData = (job: ResearchJob) => {
-    setJobId(job.id);
-    setJobStatus(job.status);
-    
-    if (job.max_iterations && job.current_iteration !== undefined) {
-      const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-      setProgressPercent(percent);
-      
-      if (job.status === 'completed') {
-        setProgressPercent(100);
-      }
-    }
-    
-    if (job.progress_log && Array.isArray(job.progress_log)) {
-      setProgress(sanitizeProgressEntries(job.progress_log));
-    }
-    
-    if (job.status === 'queued' || job.status === 'processing') {
-      setPolling(true);
-    }
-    
-    if (job.iterations && Array.isArray(job.iterations)) {
-      setIterations(job.iterations);
-      
-      if (job.iterations.length > 0) {
-        setExpandedIterations([job.iterations.length]);
-      }
-    }
-    
-    if (job.status === 'completed' && job.results) {
-      try {
-        const parsedResults = JSON.parse(job.results);
-        if (parsedResults.data && Array.isArray(parsedResults.data)) {
-          setResults(parsedResults.data);
-        }
-        if (parsedResults.analysis) {
-          setAnalysis(parsedResults.analysis);
-        }
-        if (parsedResults.structuredInsights) {
-          setStructuredInsights({
-            parsedData: parsedResults.structuredInsights,
-            rawText: JSON.stringify(parsedResults.structuredInsights)
-          });
-        }
-      } catch (e) {
-        console.error('Error parsing job results:', e);
-      }
-    }
-    
-    if (job.status === 'failed') {
-      setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-    }
-
-    if (job.focus_text) {
-      setFocusText(job.focus_text);
-    }
-  }
-
-  useEffect(() => {
-    if (!jobId || !polling) return;
-    
-    const pollInterval = setInterval(async () => {
-      try {
-        console.log(`Polling for job status: ${jobId}`);
-        const { data, error } = await supabase
-          .from('research_jobs')
-          .select('*')
-          .eq('id', jobId)
-          .single();
-          
-        if (error) {
-          console.error('Error polling job status:', error);
-          return;
-        }
-        
-        if (!data) {
-          console.log('No job data found');
-          return;
-        }
-        
-        const job = data as ResearchJob;
-        console.log('Job status:', job.status);
-        
-        setJobStatus(job.status);
-        
-        if (job.status === 'completed') {
-          setPolling(false);
-          setProgressPercent(100);
-          setProgress(prev => [...prev, 'Job completed successfully!']);
-          
-          if (job.results) {
-            try {
-              const parsedResults = JSON.parse(job.results);
-              if (parsedResults.data && Array.isArray(parsedResults.data)) {
-                setResults(parsedResults.data);
-              }
-              if (parsedResults.analysis) {
-                setAnalysis(parsedResults.analysis);
-              }
-              if (parsedResults.structuredInsights) {
-                setStructuredInsights({
-                  parsedData: parsedResults.structuredInsights,
-                  rawText: JSON.stringify(parsedResults.structuredInsights)
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing job results:', e);
-            }
-          }
-          
-          fetchSavedJobs();
-          
-          clearInterval(pollInterval);
-        } else if (job.status === 'failed') {
-          setPolling(false);
-          setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-          
-          fetchSavedJobs();
-          
-          clearInterval(pollInterval);
-        } else if (job.status === 'processing') {
-          if (job.max_iterations && job.current_iteration !== undefined) {
-            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-            setProgressPercent(percent);
-          }
-          
-          if (job.progress_log && Array.isArray(job.progress_log)) {
-            const currentLength = progress.length;
-            
-            const newItems = sanitizeProgressEntries(job.progress_log.slice(currentLength));
-            
-            if (newItems.length > 0) {
-              setProgress(prev => [...prev, ...newItems]);
-            }
-          }
-          
-          if (job.iterations && Array.isArray(job.iterations)) {
-            setIterations(job.iterations);
-            
-            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-              setExpandedIterations(prev => [...prev, job.current_iteration]);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Error in poll interval:', e);
-      }
-    }, 3000);
-    
-    return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations]);
-
-  const handleResearch = async (initialFocusText = '') => {
-    resetState();
-    setIsLoading(true);
-
-    const useFocusText = initialFocusText || focusText;
-
-    try {
-      setProgress(prev => [...prev, "Starting research job..."]);
-      
-      const payload = {
-        marketId,
-        query: description,
-        maxIterations: 3,
-        focusText: useFocusText.trim() || undefined
-      };
-      
-      console.log('Sending research job payload:', payload);
-      
-      const response = await supabase.functions.invoke('create-research-job', {
-        body: JSON.stringify(payload)
-      });
-      
-      console.log('Research job response:', response);
-      
-      if (response.error) {
-        console.error("Error creating research job:", response.error);
-        throw new Error(`Error creating research job: ${response.error.message}`);
-      }
-      
-      if (!response.data || !response.data.jobId) {
-        throw new Error("Invalid response from server - no job ID returned");
-      }
-      
-      const jobId = response.data.jobId;
-      setJobId(jobId);
-      setPolling(true);
-      setJobStatus('queued');
-      setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
-      setProgress(prev => [...prev, `Background processing started...`]);
+      await startJob(description);
       
       toast({
-        title: "Background Research Started",
-        description: `Job ID: ${jobId}. You can close this window and check back later.`,
+        title: "Research job started",
+        description: "Your research job has been queued and will start processing shortly.",
       });
-      
-      fetchSavedJobs();
-      
     } catch (error) {
-      console.error('Error in research job:', error);
-      setError(`Error occurred during research job: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setJobStatus('failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const toggleIterationExpand = (iteration: number) => {
-    setExpandedIterations(prev => 
-      prev.includes(iteration) 
-        ? prev.filter(i => i !== iteration) 
-        : [...prev, iteration]
-    );
-  };
-
-  const loadSavedResearch = async (jobId: string) => {
-    try {
-      setIsLoadingSaved(true);
-      
-      resetState();
-      
-      const { data, error } = await supabase
-        .from('research_jobs')
-        .select('*')
-        .eq('id', jobId)
-        .single();
-        
-      if (error) {
-        console.error('Error loading saved research:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load saved research job.",
-          variant: "destructive"
-        });
-        setIsLoadingSaved(false);
-        return;
-      }
-      
-      if (!data) {
-        toast({
-          title: "Error",
-          description: "Research job not found.",
-          variant: "destructive"
-        });
-        setIsLoadingSaved(false);
-        return;
-      }
-      
-      const job = data as ResearchJob;
-      
-      loadJobData(job);
-      
-      toast({
-        title: "Research Loaded",
-        description: `Loaded research job ${job.focus_text ? `focused on: ${job.focus_text}` : ''}`,
-      });
-    } catch (e) {
-      console.error('Error loading saved research:', e);
+      console.error("Error in research job:", error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred while loading the research job.",
+        description: `Failed to start research: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive"
       });
-    } finally {
-      setIsLoadingSaved(false);
     }
   };
-
-  const handleResearchArea = (area: string) => {
-    setFocusText('');
-    
-    toast({
-      title: "Starting Focused Research",
-      description: `Creating new research job focused on: ${area}`,
-    });
-    
-    handleResearch(area);
-  };
-
-  const handleClearDisplay = () => {
-    resetState();
-    setFocusText('');
-  };
-
-  const renderStatusBadge = () => {
-    if (!jobStatus) return null;
-    
-    switch (jobStatus) {
-      case 'queued':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 text-yellow-700 border-yellow-200">
-            <Clock className="h-3 w-3" />
-            <span>Queued</span>
-          </Badge>
-        );
-      case 'processing':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Processing</span>
-          </Badge>
-        );
-      case 'completed':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 text-green-700 border-green-200">
-            <CheckCircle className="h-3 w-3" />
-            <span>Completed</span>
-          </Badge>
-        );
-      case 'failed':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-red-50 text-red-700 border-red-200">
-            <AlertCircle className="h-3 w-3" />
-            <span>Failed</span>
-          </Badge>
-        );
-      default:
-        return null;
-    }
-  };
-
-  const formatDate = (dateString: string) => {
+  
+  const handlePauseResumeJob = async () => {
     try {
-      const date = new Date(dateString);
-      return new Intl.DateTimeFormat('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      }).format(date);
-    } catch (e) {
-      return 'Invalid date';
+      if (isPaused) {
+        await resumeJob();
+        toast({
+          title: "Job resumed",
+          description: "Your research job has been resumed.",
+        });
+      } else {
+        await pauseJob();
+        toast({
+          title: "Job paused",
+          description: "Your research job has been paused and can be resumed later.",
+        });
+      }
+    } catch (error) {
+      console.error("Error pausing/resuming job:", error);
+      toast({
+        title: "Error",
+        description: `Failed to ${isPaused ? 'resume' : 'pause'} job: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive"
+      });
     }
   };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle className="h-4 w-4 text-green-500 mr-2" />;
-      case 'failed':
-        return <AlertCircle className="h-4 w-4 text-red-500 mr-2" />;
-      case 'processing':
-        return <Loader2 className="h-4 w-4 text-blue-500 animate-spin mr-2" />;
-      case 'queued':
-        return <Clock className="h-4 w-4 text-yellow-500 mr-2" />;
-      default:
-        return null;
+  
+  const handleCancelJob = async () => {
+    if (!job?.id) return;
+    
+    try {
+      await cancelJob();
+      
+      toast({
+        title: "Job cancelled",
+        description: "Your research job has been cancelled.",
+      });
+      
+      if (onDeleteJob) {
+        onDeleteJob(job.id);
+      }
+    } catch (error) {
+      console.error("Error cancelling job:", error);
+      toast({
+        title: "Error",
+        description: `Failed to cancel job: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive"
+      });
     }
   };
-
+  
+  const handleDeleteJob = async () => {
+    if (!job?.id) return;
+    
+    try {
+      const { error } = await supabase
+        .from('research_jobs')
+        .delete()
+        .eq('id', job.id);
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Job deleted",
+        description: "Your research job has been deleted.",
+      });
+      
+      if (onDeleteJob) {
+        onDeleteJob(job.id);
+      }
+    } catch (error) {
+      console.error("Error deleting job:", error);
+      toast({
+        title: "Error",
+        description: `Failed to delete job: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive"
+      });
+    }
+  };
+  
+  // Auto refresh job status periodically while the job is active
+  useEffect(() => {
+    if (!job?.id || !isActive) return;
+    
+    const interval = setInterval(() => {
+      refreshJob();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [job?.id, isActive, refreshJob]);
+  
+  // Render a placeholder while creating a job
+  if (!job && isJobStartedLocally) {
+    return (
+      <Card className="p-4 space-y-4 w-full">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-medium">Initializing Research...</h3>
+        </div>
+        <Progress value={5} className="h-2" />
+        <div className="text-sm text-muted-foreground">
+          Starting up your research job...
+        </div>
+      </Card>
+    );
+  }
+  
+  // Render start button if no job exists
+  if (!job && !isJobStartedLocally) {
+    return (
+      <Card className="p-4 space-y-4 w-full">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-medium">Background Research</h3>
+        </div>
+        <div className="text-sm">
+          <p className="mb-4">Start a background research job to analyze this market while you're away.</p>
+          <Button 
+            onClick={handleStartJob} 
+            className="w-full"
+            disabled={isLoading}
+          >
+            <PlayIcon className="mr-2 h-4 w-4" />
+            Start Background Research
+          </Button>
+        </div>
+      </Card>
+    );
+  }
+  
+  // Display error if job couldn't be loaded
+  if (error) {
+    return (
+      <Card className="p-4 space-y-4 w-full">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-medium">Research Error</h3>
+        </div>
+        <div className="text-sm text-red-500">
+          {error instanceof Error ? error.message : 'Unknown error loading research job'}
+        </div>
+      </Card>
+    );
+  }
+  
+  if (!job) {
+    return (
+      <Card className="p-4 space-y-4 w-full">
+        <div className="text-sm text-muted-foreground">
+          Loading research job...
+        </div>
+      </Card>
+    );
+  }
+  
   return (
-    <Card className="p-4 space-y-4 w-full max-w-full">
-      <div className="flex items-center justify-between w-full max-w-full">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-semibold">Background Job Research</h2>
-            {renderStatusBadge()}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            This research continues in the background even if you close your browser.
-          </p>
+    <Card className="p-4 space-y-4 w-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-medium">Background Research</h3>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <InfoIcon className="h-4 w-4 text-muted-foreground" />
+            </TooltipTrigger>
+            <TooltipContent>
+              This research runs in the background even when you're not on this page.
+            </TooltipContent>
+          </Tooltip>
         </div>
         
         <div className="flex items-center gap-2">
-          {jobId ? (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={handleClearDisplay}
-              disabled={isLoading || isLoadingSaved}
-            >
-              New Research
-            </Button>
-          ) : (
-            <Button 
-              onClick={() => handleResearch()} 
-              disabled={isLoading || polling}
-              className="flex items-center gap-2"
-            >
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isLoading ? "Starting..." : "Start Research"}
-            </Button>
+          {!isCompleted && !isFailed && (
+            <>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handlePauseResumeJob}
+                disabled={isLoading}
+              >
+                {isPaused ? (
+                  <>
+                    <PlayIcon className="mr-1 h-4 w-4" />
+                    Resume
+                  </>
+                ) : (
+                  <>
+                    <PauseIcon className="mr-1 h-4 w-4" />
+                    Pause
+                  </>
+                )}
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleCancelJob}
+                disabled={isLoading}
+              >
+                <StopCircleIcon className="mr-1 h-4 w-4" />
+                Cancel
+              </Button>
+            </>
           )}
           
-          {savedJobs.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  disabled={isLoadingJobs || isLoading || isLoadingSaved}
-                >
-                  {isLoadingJobs ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
-                  ) : (
-                    <History className="h-4 w-4 mr-2" />
-                  )}
-                  History
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[340px]">
-                {savedJobs.map((job) => (
-                  <DropdownMenuItem
-                    key={job.id}
-                    onClick={() => loadSavedResearch(job.id)}
-                    disabled={isLoadingSaved}
-                    className="flex flex-col items-start py-2"
-                  >
-                    <div className="flex items-center w-full">
-                      {getStatusIcon(job.status)}
-                      <span className="font-medium truncate flex-1">
-                        {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
-                      </span>
-                      <Badge 
-                        variant="outline" 
-                        className={`ml-2 ${
-                          job.status === 'completed' ? 'bg-green-50 text-green-700' : 
-                          job.status === 'failed' ? 'bg-red-50 text-red-700' :
-                          job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
-                          'bg-yellow-50 text-yellow-700'
-                        }`}
-                      >
-                        {job.status}
-                      </Badge>
-                    </div>
-                    {job.probability && (
-                      <div className="flex items-center mt-1">
-                        <Target className="h-3 w-3 text-primary mr-1" />
-                        <span className="text-xs font-medium">
-                          Probability: {job.probability}
-                        </span>
-                      </div>
-                    )}
-                    <span className="text-xs text-muted-foreground mt-1">
-                      {formatDate(job.created_at)}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleDeleteJob}
+            disabled={isLoading}
+          >
+            <Trash2Icon className="h-4 w-4" />
+          </Button>
         </div>
       </div>
-
-      {!jobId && (
-        <div className="flex items-center gap-2 w-full">
-          <Input
-            placeholder="Add an optional focus area for your research..."
-            value={focusText}
-            onChange={(e) => setFocusText(e.target.value)}
-            disabled={isLoading || polling}
-            className="flex-1"
-          />
+      
+      <div className="space-y-1">
+        <div className="flex justify-between items-center">
+          <div className="text-sm font-medium">
+            {isActive && "In progress..."}
+            {isPaused && "Paused"}
+            {isCompleted && "Completed"}
+            {isFailed && "Failed"}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {job.created_at && format(new Date(job.created_at), 'MMM d, yyyy HH:mm')}
+          </div>
         </div>
-      )}
-
-      {focusText && jobId && (
-        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
-          <span className="font-medium">Research focus:</span> {focusText}
-        </div>
-      )}
-
-      {error && (
-        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
-          {error}
-        </div>
-      )}
-
-      {jobId && (
-        <ProgressDisplay 
-          messages={progress} 
-          jobId={jobId || undefined} 
-          progress={progressPercent}
-          status={jobStatus}
+        
+        <Progress 
+          value={progressPercent} 
+          className="h-2" 
         />
-      )}
-      
-      {iterations.length > 0 && (
-        <div className="border-t pt-4 w-full max-w-full space-y-2">
-          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
-          <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={3}
-              />
-            ))}
-          </div>
+        
+        <div className="text-xs text-muted-foreground">
+          {progressPercent}% complete
         </div>
-      )}
+      </div>
       
-      {structuredInsights && structuredInsights.parsedData && (
-        <div className="border-t pt-4 w-full max-w-full">
-          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
-          <InsightsDisplay 
-            streamingState={structuredInsights} 
-            onResearchArea={handleResearchArea}
-          />
-        </div>
-      )}
-      
-      {results.length > 0 && (
+      {progressStrings.length > 0 && (
         <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
-          </div>
+          <Separator />
           
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Progress</h4>
+            <ProgressDisplay messages={progressStrings} />
+          </div>
+        </>
+      )}
+      
+      {job.results && job.results.length > 0 && (
+        <>
+          <Separator />
+          
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Sources Found</h4>
+            <SitePreviewList results={job.results} />
+          </div>
+        </>
+      )}
+      
+      {job.analysis && (
+        <>
+          <Separator />
+          
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Analysis</h4>
+            <AnalysisDisplay content={job.analysis} />
+          </div>
+        </>
+      )}
+      
+      {job.insights && (
+        <>
+          <Separator />
+          
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">Insights</h4>
+            <InsightsDisplay 
+              streamingState={{
+                rawText: '',
+                parsedData: job.insights
+              }} 
+            />
+          </div>
         </>
       )}
     </Card>
