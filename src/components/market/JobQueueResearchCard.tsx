@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -254,7 +253,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           if (job.progress_log && Array.isArray(job.progress_log)) {
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
-              // Fix: Explicitly convert any non-string items to strings
               setProgress(prev => [...prev, ...newItems.map(item => String(item))]);
             }
           }
