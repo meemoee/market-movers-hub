@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -138,7 +137,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
-      // Ensure all items in progress_log are converted to strings to match progress state type
       const stringEntries = job.progress_log.map(entry => String(entry));
       setProgress(stringEntries);
     }
@@ -256,7 +254,6 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           if (job.progress_log && Array.isArray(job.progress_log)) {
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
-              // Convert all new log entries to strings to ensure type compatibility
               const stringNewItems = newItems.map(item => String(item));
               setProgress(prev => [...prev, ...stringNewItems]);
             }
