@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +18,8 @@ interface MarketDetailsProps {
   eventId?: string;
   bestBid?: number;
   bestAsk?: number;
+  noBestBid?: number; // Add this property to the interface
+  noBestAsk?: number; // Add this property to the interface
   outcomes?: string[];
 }
 
@@ -28,6 +31,8 @@ export function MarketDetails({
   eventId,
   bestBid,
   bestAsk,
+  noBestBid, // Add this to the function parameters
+  noBestAsk, // Add this to the function parameters
   outcomes
 }: MarketDetailsProps) {
   const [selectedChartInterval, setSelectedChartInterval] = useState('1d');
@@ -176,6 +181,8 @@ export function MarketDetails({
             marketId={marketId}
             bestBid={bestBid}
             bestAsk={bestAsk}
+            noBestBid={noBestBid} // Pass the noBestBid property
+            noBestAsk={noBestAsk} // Pass the noBestAsk property
             outcomes={outcomes}
           />
         </div>
