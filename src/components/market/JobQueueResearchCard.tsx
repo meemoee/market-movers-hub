@@ -578,14 +578,14 @@ export function JobQueueResearchCard({
                   variant="outline" 
                   size="sm"
                   disabled={isLoadingJobs || isLoading || isLoadingSaved}
-                  className="fixed bottom-4 right-4 z-10 shadow-md"
+                  className="flex items-center gap-2"
                 >
                   {isLoadingJobs ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
                   ) : (
                     <History className="h-4 w-4 mr-2" />
                   )}
-                  History
+                  History ({savedJobs.length})
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[300px] max-h-[400px] overflow-y-auto">
