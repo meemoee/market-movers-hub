@@ -5,6 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Loader2, ArrowRightCircle, ThumbsUp, ThumbsDown } from "lucide-react";
 
+interface ParentResearch {
+  id: string;
+  focusText?: string;
+  onView: () => void;
+}
+
+interface ChildResearch {
+  id: string;
+  focusText: string;
+  onView: () => void;
+}
+
 interface InsightsDisplayProps {
   streamingState: {
     parsedData?: {
@@ -21,6 +33,8 @@ interface InsightsDisplayProps {
   bestBid?: number;
   bestAsk?: number;
   outcomes?: string[];
+  parentResearch?: ParentResearch;
+  childResearches?: ChildResearch[];
 }
 
 export function InsightsDisplay({ 
@@ -28,7 +42,9 @@ export function InsightsDisplay({
   onResearchArea,
   bestBid,
   bestAsk,
-  outcomes 
+  outcomes,
+  parentResearch,
+  childResearches
 }: InsightsDisplayProps) {
   const { parsedData } = streamingState;
   
@@ -193,6 +209,38 @@ export function InsightsDisplay({
               </div>
             </div>
           )}
+        </div>
+      )}
+      
+      {/* Add parent and child research display */}
+      {childResearches && childResearches.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-sm font-medium mb-2">Related Research:</h4>
+          <div className="flex flex-wrap gap-2">
+            {childResearches.map((research) => (
+              <Badge 
+                key={research.id} 
+                variant="secondary" 
+                className="cursor-pointer hover:bg-accent/50"
+                onClick={research.onView}
+              >
+                {research.focusText}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {parentResearch && (
+        <div className="mt-3 text-xs text-muted-foreground">
+          <span>Part of broader research: </span>
+          <Button 
+            variant="link" 
+            className="p-0 h-auto text-xs"
+            onClick={parentResearch.onView}
+          >
+            {parentResearch.focusText || "View parent research"}
+          </Button>
         </div>
       )}
     </div>
