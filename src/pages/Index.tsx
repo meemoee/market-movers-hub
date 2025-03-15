@@ -3,6 +3,7 @@ import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
+import MobileHeader from "@/components/MobileHeader";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Glow } from "@/components/ui/glow";
 
@@ -52,7 +53,10 @@ export default function Index() {
         />
       </div>
       
-      <main className={`container mx-auto ${isMobile ? 'px-0 pr-0' : 'px-4 xl:pr-[400px]'} relative z-10 overflow-x-hidden`}>
+      {/* Mobile Header */}
+      {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
+      
+      <main className={`container mx-auto ${isMobile ? 'px-0 pr-0 pt-14' : 'px-4 xl:pr-[400px]'} relative z-10 overflow-x-hidden`}>
         <div className="relative flex max-w-[1280px] mx-auto justify-center overflow-x-hidden">
           {isMobile && isSidebarOpen && (
             <div 
@@ -68,19 +72,21 @@ export default function Index() {
                 : 'w-[280px] relative'
             } ${
               isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'
-            }`}
+            } transition-transform duration-300 ease-in-out`}
           >
-            <div className={`${isMobile ? 'h-full overflow-y-auto' : 'sticky top-0 h-screen pt-3 overflow-y-auto'}`}>
-              <div className="ml-6 mb-3">
-                <a href="/" className="inline-block">
-                  <img 
-                    src="/hunchex-logo.svg" 
-                    alt="Hunchex" 
-                    className="h-12 hover:opacity-80 transition-opacity"
-                  />
-                </a>
-              </div>
-              <AccountIsland />
+            <div className={`${isMobile ? 'h-full overflow-y-auto pt-14' : 'sticky top-0 h-screen pt-3 overflow-y-auto'}`}>
+              {!isMobile && (
+                <div className="ml-6 mb-3">
+                  <a href="/" className="inline-block">
+                    <img 
+                      src="/hunchex-logo.svg" 
+                      alt="Hunchex" 
+                      className="h-12 hover:opacity-80 transition-opacity"
+                    />
+                  </a>
+                </div>
+              )}
+              {!isMobile && <AccountIsland />}
             </div>
           </aside>
 
