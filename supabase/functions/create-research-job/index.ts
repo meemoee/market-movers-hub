@@ -1,8 +1,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { addJob, addProgressLog, updateJobStatus, addJobIteration, updateJobIteration, updateJobResults, syncJobToDatabase } from '../_shared/jobQueue.ts'
-import { throttledRequest } from '../_shared/rateLimiter.ts'
 
 // Define CORS headers
 const corsHeaders = {
@@ -21,13 +19,22 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     )
     
     // Update job status to processing
-    await updateJobStatus(jobId, 'processing')
+    await supabaseClient.rpc('update_research_job_status', {
+      job_id: jobId,
+      new_status: 'processing'
+    })
     
     // Log start
-    await addProgressLog(jobId, `Starting research for: ${query}`)
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Starting research for: ${query}`)
+    })
     
     if (focusText) {
-      await addProgressLog(jobId, `Research focus: ${focusText}`)
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Research focus: ${focusText}`)
+      })
     }
     
     // Track all previous queries to avoid repetition
@@ -40,52 +47,50 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       console.log(`Processing iteration ${i} for job ${jobId}`)
       
       // Update current iteration
-      await updateJobIteration(jobId, i)
-      
-      // Sync to database every iteration
-      await syncJobToDatabase(jobId, supabaseClient)
+      await supabaseClient
+        .from('research_jobs')
+        .update({ current_iteration: i })
+        .eq('id', jobId)
       
       // Add progress log for this iteration
-      await addProgressLog(jobId, `Starting iteration ${i} of ${maxIterations}`)
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Starting iteration ${i} of ${maxIterations}`)
+      })
       
       // Generate search queries
       try {
-        await addProgressLog(jobId, `Generating search queries for iteration ${i}`)
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Generating search queries for iteration ${i}`)
+        })
         
         // Call the generate-queries function to get real queries
-        const generateQueriesResponse = await throttledRequest(
-          'openrouter',
-          `job-${jobId}`,
-          async () => {
-            const response = await fetch(
-              `${Deno.env.get('SUPABASE_URL')}/functions/v1/generate-queries`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-                },
-                body: JSON.stringify({
-                  query,
-                  marketId: marketId,
-                  marketDescription: query,
-                  question: query,
-                  iteration: i,
-                  previousQueries,
-                  focusText
-                })
-              }
-            );
-            
-            if (!response.ok) {
-              throw new Error(`Failed to generate queries: ${response.statusText}`);
-            }
-            
-            return response.json();
+        const generateQueriesResponse = await fetch(
+          `${Deno.env.get('SUPABASE_URL')}/functions/v1/generate-queries`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+            },
+            body: JSON.stringify({
+              query,
+              marketId: marketId,
+              marketDescription: query,
+              question: query,
+              iteration: i,
+              previousQueries,
+              focusText
+            })
           }
         );
         
-        const { queries } = generateQueriesResponse;
+        if (!generateQueriesResponse.ok) {
+          throw new Error(`Failed to generate queries: ${generateQueriesResponse.statusText}`);
+        }
+        
+        const { queries } = await generateQueriesResponse.json();
         console.log(`Generated ${queries.length} queries for iteration ${i}:`, queries);
         
         // Add generated queries to previous queries to avoid repetition
@@ -99,12 +104,21 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         };
         
         // Append the iteration data to the research job
-        await addJobIteration(jobId, iterationData);
+        await supabaseClient.rpc('append_research_iteration', {
+          job_id: jobId,
+          iteration_data: iterationData
+        });
         
-        await addProgressLog(jobId, `Generated ${queries.length} search queries for iteration ${i}`)
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Generated ${queries.length} search queries for iteration ${i}`)
+        })
         
         // Process each query with Brave Search
-        await addProgressLog(jobId, `Executing Brave searches for iteration ${i}...`);
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Executing Brave searches for iteration ${i}...`)
+        });
         
         let allResults = [];
         
@@ -113,39 +127,37 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           const currentQuery = queries[j];
           
           try {
-            // Call the brave-search function with throttling
-            const braveSearchResponse = await throttledRequest(
-              'brave',
-              `job-${jobId}`,
-              async () => {
-                const response = await fetch(
-                  `${Deno.env.get('SUPABASE_URL')}/functions/v1/brave-search`,
-                  {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-                    },
-                    body: JSON.stringify({
-                      query: currentQuery,
-                      count: 10 // Get 10 results per query
-                    })
-                  }
-                );
-                
-                if (!response.ok) {
-                  throw new Error(`Error searching for query "${currentQuery}": ${response.statusText}`);
-                }
-                
-                return response.json();
+            // Call the brave-search function
+            const braveSearchResponse = await fetch(
+              `${Deno.env.get('SUPABASE_URL')}/functions/v1/brave-search`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+                },
+                body: JSON.stringify({
+                  query: currentQuery,
+                  count: 10 // Get 10 results per query
+                })
               }
             );
             
+            if (!braveSearchResponse.ok) {
+              console.error(`Error searching for query "${currentQuery}": ${braveSearchResponse.statusText}`);
+              continue;
+            }
+            
+            const searchResults = await braveSearchResponse.json();
+            
             // Extract web results
-            const webResults = braveSearchResponse.web?.results || [];
+            const webResults = searchResults.web?.results || [];
             
             // Log search results count
-            await addProgressLog(jobId, `Found ${webResults.length} results for "${currentQuery}"`);
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Found ${webResults.length} results for "${currentQuery}"`)
+            });
             
             // Process results: fetch content from URLs
             const validResults = [];
@@ -200,14 +212,17 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             
           } catch (queryError) {
             console.error(`Error processing query "${currentQuery}":`, queryError);
-            await addProgressLog(jobId, `Error processing query "${currentQuery}": ${queryError.message}`);
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Error processing query "${currentQuery}": ${queryError.message}`)
+            });
           }
-          
-          // Small delay between queries to avoid overloading
-          await new Promise(resolve => setTimeout(resolve, 500));
         }
         
-        await addProgressLog(jobId, `Completed searches for iteration ${i} with ${allResults.length} total results`);
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
+        });
         
         // After each iteration, analyze the collected data using OpenRouter
         try {
@@ -221,7 +236,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           const currentIterationData = iterationResults.find(iter => iter.iteration === i);
           
           if (currentIterationData && currentIterationData.results && currentIterationData.results.length > 0) {
-            await addProgressLog(jobId, `Analyzing ${currentIterationData.results.length} results for iteration ${i}...`);
+            await supabaseClient.rpc('append_research_progress', {
+              job_id: jobId,
+              progress_entry: JSON.stringify(`Analyzing ${currentIterationData.results.length} results for iteration ${i}...`)
+            });
             
             // Combine all content from the results
             const combinedContent = currentIterationData.results
@@ -229,120 +247,114 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               .join('\n\n');
             
             if (combinedContent.length > 0) {
-              // Use throttled request for OpenRouter analysis
-              const analysisText = await throttledRequest(
-                'openrouter',
-                `job-${jobId}`,
-                async () => {
-                  // Get market price for context
-                  let marketPrice = undefined;
-                  try {
-                    const { data: priceData } = await supabaseClient
-                      .from('market_prices')
-                      .select('last_traded_price')
-                      .eq('market_id', marketId)
-                      .order('timestamp', { ascending: false })
-                      .limit(1);
-                      
-                    if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
-                      marketPrice = Math.round(priceData[0].last_traded_price * 100);
-                      console.log(`Found market price for ${marketId}: ${marketPrice}%`);
-                    }
-                  } catch (priceError) {
-                    console.error(`Error fetching market price for ${marketId}:`, priceError);
-                  }
+              // Get market price for context
+              let marketPrice = undefined;
+              try {
+                const { data: priceData } = await supabaseClient
+                  .from('market_prices')
+                  .select('last_traded_price')
+                  .eq('market_id', marketId)
+                  .order('timestamp', { ascending: false })
+                  .limit(1);
                   
-                  // Try to get related markets for context
-                  const relatedMarkets = [];
-                  try {
-                    const { data: relatedData } = await supabaseClient
-                      .from('related_markets')
-                      .select('related_market_id, relationship_strength')
-                      .eq('market_id', marketId)
-                      .order('relationship_strength', { ascending: false })
-                      .limit(5);
-                      
-                    if (relatedData && relatedData.length > 0) {
-                      for (const relation of relatedData) {
-                        try {
-                          // Get market details
-                          const { data: marketData } = await supabaseClient
-                            .from('markets')
-                            .select('question')
-                            .eq('id', relation.related_market_id)
-                            .single();
-                            
-                          // Get market price
-                          const { data: priceData } = await supabaseClient
-                            .from('market_prices')
-                            .select('last_traded_price')
-                            .eq('market_id', relation.related_market_id)
-                            .order('timestamp', { ascending: false })
-                            .limit(1);
-                            
-                          if (marketData && priceData && priceData.length > 0) {
-                            relatedMarkets.push({
-                              market_id: relation.related_market_id,
-                              question: marketData.question,
-                              probability: priceData[0].last_traded_price
-                            });
-                          }
-                        } catch (relatedError) {
-                          console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
-                        }
-                      }
-                    }
-                  } catch (relatedError) {
-                    console.error(`Error fetching related markets for ${marketId}:`, relatedError);
-                  }
-                  
-                  // Collect areas for research that may have been identified in previous iterations
-                  const areasForResearch = [];
-                  try {
-                    for (const iteration of iterationResults) {
-                      if (iteration.analysis) {
-                        // Look for a section with "areas for further research" or similar
-                        const analysisText = iteration.analysis.toLowerCase();
-                        if (analysisText.includes("areas for further research") || 
-                            analysisText.includes("further research needed") ||
-                            analysisText.includes("additional research")) {
-                          // Extract areas if possible
-                          const lines = iteration.analysis.split('\n');
-                          let inAreaSection = false;
-                          
-                          for (const line of lines) {
-                            if (!inAreaSection) {
-                              if (line.toLowerCase().includes("areas for") || 
-                                  line.toLowerCase().includes("further research") ||
-                                  line.toLowerCase().includes("additional research")) {
-                                inAreaSection = true;
-                              }
-                            } else if (line.trim().length === 0 || line.startsWith('#')) {
-                              inAreaSection = false;
-                            } else if (line.startsWith('-') || line.startsWith('*') || 
-                                       (line.match(/^\d+\.\s/) !== null)) {
-                              const area = line.replace(/^[-*\d.]\s+/, '').trim();
-                              if (area && !areasForResearch.includes(area)) {
-                                areasForResearch.push(area);
-                              }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  } catch (areasError) {
-                    console.error(`Error extracting areas for research:`, areasError);
-                  }
-                  
-                  return await generateAnalysis(
-                    combinedContent, 
-                    query, 
-                    `Iteration ${i} analysis for "${query}"`,
-                    marketPrice,
-                    relatedMarkets,
-                    areasForResearch
-                  );
+                if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
+                  marketPrice = Math.round(priceData[0].last_traded_price * 100);
+                  console.log(`Found market price for ${marketId}: ${marketPrice}%`);
                 }
+              } catch (priceError) {
+                console.error(`Error fetching market price for ${marketId}:`, priceError);
+              }
+              
+              // Try to get related markets for context
+              const relatedMarkets = [];
+              try {
+                const { data: relatedData } = await supabaseClient
+                  .from('related_markets')
+                  .select('related_market_id, relationship_strength')
+                  .eq('market_id', marketId)
+                  .order('relationship_strength', { ascending: false })
+                  .limit(5);
+                  
+                if (relatedData && relatedData.length > 0) {
+                  for (const relation of relatedData) {
+                    try {
+                      // Get market details
+                      const { data: marketData } = await supabaseClient
+                        .from('markets')
+                        .select('question')
+                        .eq('id', relation.related_market_id)
+                        .single();
+                        
+                      // Get market price
+                      const { data: priceData } = await supabaseClient
+                        .from('market_prices')
+                        .select('last_traded_price')
+                        .eq('market_id', relation.related_market_id)
+                        .order('timestamp', { ascending: false })
+                        .limit(1);
+                        
+                      if (marketData && priceData && priceData.length > 0) {
+                        relatedMarkets.push({
+                          market_id: relation.related_market_id,
+                          question: marketData.question,
+                          probability: priceData[0].last_traded_price
+                        });
+                      }
+                    } catch (relatedError) {
+                      console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
+                    }
+                  }
+                }
+              } catch (relatedError) {
+                console.error(`Error fetching related markets for ${marketId}:`, relatedError);
+              }
+              
+              // Collect areas for research that may have been identified in previous iterations
+              const areasForResearch = [];
+              try {
+                for (const iteration of iterationResults) {
+                  if (iteration.analysis) {
+                    // Look for a section with "areas for further research" or similar
+                    const analysisText = iteration.analysis.toLowerCase();
+                    if (analysisText.includes("areas for further research") || 
+                        analysisText.includes("further research needed") ||
+                        analysisText.includes("additional research")) {
+                      // Extract areas if possible
+                      const lines = iteration.analysis.split('\n');
+                      let inAreaSection = false;
+                      
+                      for (const line of lines) {
+                        if (!inAreaSection) {
+                          if (line.toLowerCase().includes("areas for") || 
+                              line.toLowerCase().includes("further research") ||
+                              line.toLowerCase().includes("additional research")) {
+                            inAreaSection = true;
+                          }
+                        } else if (line.trim().length === 0 || line.startsWith('#')) {
+                          inAreaSection = false;
+                        } else if (line.startsWith('-') || line.startsWith('*') || 
+                                   (line.match(/^\d+\.\s/) !== null)) {
+                          const area = line.replace(/^[-*\d.]\s+/, '').trim();
+                          if (area && !areasForResearch.includes(area)) {
+                            areasForResearch.push(area);
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (areasError) {
+                console.error(`Error extracting areas for research:`, areasError);
+              }
+              
+              // Generate analysis for this iteration with market context
+              const analysisText = await generateAnalysis(
+                combinedContent, 
+                query, 
+                `Iteration ${i} analysis for "${query}"`,
+                marketPrice,
+                relatedMarkets,
+                areasForResearch
               );
               
               // Update the iteration with the analysis
@@ -357,22 +369,28 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                   .update({ iterations: updatedIterations })
                   .eq('id', jobId);
                 
-                await addProgressLog(jobId, `Completed analysis for iteration ${i}`);
+                await supabaseClient.rpc('append_research_progress', {
+                  job_id: jobId,
+                  progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
+                });
               }
             }
           }
         } catch (analysisError) {
           console.error(`Error analyzing iteration ${i} results:`, analysisError);
-          await addProgressLog(jobId, `Error analyzing iteration ${i} results: ${analysisError.message}`);
+          await supabaseClient.rpc('append_research_progress', {
+            job_id: jobId,
+            progress_entry: JSON.stringify(`Error analyzing iteration ${i} results: ${analysisError.message}`)
+          });
         }
         
       } catch (error) {
         console.error(`Error generating queries for job ${jobId}:`, error);
-        await addProgressLog(jobId, `Error generating queries: ${error.message}`);
+        await supabaseClient.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: JSON.stringify(`Error generating queries: ${error.message}`)
+        });
       }
-      
-      // Sync to database at end of iteration
-      await syncJobToDatabase(jobId, supabaseClient)
     }
     
     // Get all results from all iterations
@@ -393,139 +411,138 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     }
     
     // Generate final analysis with OpenRouter
-    await addProgressLog(jobId, `Generating final analysis of ${allResults.length} total results...`);
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Generating final analysis of ${allResults.length} total results...`)
+    });
     
     let finalAnalysis = "";
     try {
-      // Use throttled request for final analysis
-      finalAnalysis = await throttledRequest(
-        'openrouter',
-        `job-${jobId}`,
-        async () => {
-          // Combine all content from the results
-          const allContent = allResults
-            .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
-            .join('\n\n');
+      // Combine all content from the results
+      const allContent = allResults
+        .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
+        .join('\n\n');
+      
+      // Get market price for final analysis
+      let marketPrice = undefined;
+      try {
+        const { data: priceData } = await supabaseClient
+          .from('market_prices')
+          .select('last_traded_price')
+          .eq('market_id', marketId)
+          .order('timestamp', { ascending: false })
+          .limit(1);
           
-          // Get market price for final analysis
-          let marketPrice = undefined;
-          try {
-            const { data: priceData } = await supabaseClient
-              .from('market_prices')
-              .select('last_traded_price')
-              .eq('market_id', marketId)
-              .order('timestamp', { ascending: false })
-              .limit(1);
-              
-            if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
-              marketPrice = Math.round(priceData[0].last_traded_price * 100);
-              console.log(`Found market price for final analysis ${marketId}: ${marketPrice}%`);
-            }
-          } catch (priceError) {
-            console.error(`Error fetching market price for final analysis ${marketId}:`, priceError);
-          }
+        if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
+          marketPrice = Math.round(priceData[0].last_traded_price * 100);
+          console.log(`Found market price for final analysis ${marketId}: ${marketPrice}%`);
+        }
+      } catch (priceError) {
+        console.error(`Error fetching market price for final analysis ${marketId}:`, priceError);
+      }
+      
+      // Try to get related markets for final analysis
+      const relatedMarkets = [];
+      try {
+        const { data: relatedData } = await supabaseClient
+          .from('related_markets')
+          .select('related_market_id, relationship_strength')
+          .eq('market_id', marketId)
+          .order('relationship_strength', { ascending: false })
+          .limit(5);
           
-          // Try to get related markets for final analysis
-          const relatedMarkets = [];
-          try {
-            const { data: relatedData } = await supabaseClient
-              .from('related_markets')
-              .select('related_market_id, relationship_strength')
-              .eq('market_id', marketId)
-              .order('relationship_strength', { ascending: false })
-              .limit(5);
-              
-            if (relatedData && relatedData.length > 0) {
-              for (const relation of relatedData) {
-                try {
-                  // Get market details
-                  const { data: marketData } = await supabaseClient
-                    .from('markets')
-                    .select('question')
-                    .eq('id', relation.related_market_id)
-                    .single();
-                    
-                  // Get market price
-                  const { data: priceData } = await supabaseClient
-                    .from('market_prices')
-                    .select('last_traded_price')
-                    .eq('market_id', relation.related_market_id)
-                    .order('timestamp', { ascending: false })
-                    .limit(1);
-                    
-                  if (marketData && priceData && priceData.length > 0) {
-                    relatedMarkets.push({
-                      market_id: relation.related_market_id,
-                      question: marketData.question,
-                      probability: priceData[0].last_traded_price
-                    });
-                  }
-                } catch (relatedError) {
-                  console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
-                }
+        if (relatedData && relatedData.length > 0) {
+          for (const relation of relatedData) {
+            try {
+              // Get market details
+              const { data: marketData } = await supabaseClient
+                .from('markets')
+                .select('question')
+                .eq('id', relation.related_market_id)
+                .single();
+                
+              // Get market price
+              const { data: priceData } = await supabaseClient
+                .from('market_prices')
+                .select('last_traded_price')
+                .eq('market_id', relation.related_market_id)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+                
+              if (marketData && priceData && priceData.length > 0) {
+                relatedMarkets.push({
+                  market_id: relation.related_market_id,
+                  question: marketData.question,
+                  probability: priceData[0].last_traded_price
+                });
               }
+            } catch (relatedError) {
+              console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
             }
-          } catch (relatedError) {
-            console.error(`Error fetching related markets for final analysis ${marketId}:`, relatedError);
-          }
-          
-          // Get all areas for research that may have been identified in previous iterations
-          const areasForResearch = [];
-          try {
-            for (const iteration of allIterations) {
-              if (iteration.analysis) {
-                // Look for a section with "areas for further research" or similar
-                const analysisText = iteration.analysis.toLowerCase();
-                if (analysisText.includes("areas for further research") || 
-                    analysisText.includes("further research needed") ||
-                    analysisText.includes("additional research")) {
-                  // Extract areas if possible
-                  const lines = iteration.analysis.split('\n');
-                  let inAreaSection = false;
-                  
-                  for (const line of lines) {
-                    if (!inAreaSection) {
-                      if (line.toLowerCase().includes("areas for") || 
-                          line.toLowerCase().includes("further research") ||
-                          line.toLowerCase().includes("additional research")) {
-                        inAreaSection = true;
-                      }
-                    } else if (line.trim().length === 0 || line.startsWith('#')) {
-                      inAreaSection = false;
-                    } else if (line.startsWith('-') || line.startsWith('*') || 
-                               (line.match(/^\d+\.\s/) !== null)) {
-                      const area = line.replace(/^[-*\d.]\s+/, '').trim();
-                      if (area && !areasForResearch.includes(area)) {
-                        areasForResearch.push(area);
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          } catch (areasError) {
-            console.error(`Error extracting areas for research:`, areasError);
-          }
-          
-          if (allContent.length > 0) {
-            return await generateAnalysis(
-              allContent, 
-              query, 
-              `Final comprehensive analysis for "${query}"`,
-              marketPrice,
-              relatedMarkets,
-              areasForResearch
-            );
-          } else {
-            return `No content was collected for analysis regarding "${query}".`;
           }
         }
-      );
+      } catch (relatedError) {
+        console.error(`Error fetching related markets for final analysis ${marketId}:`, relatedError);
+      }
+      
+      // Get all areas for research that may have been identified in previous iterations
+      const areasForResearch = [];
+      try {
+        for (const iteration of allIterations) {
+          if (iteration.analysis) {
+            // Look for a section with "areas for further research" or similar
+            const analysisText = iteration.analysis.toLowerCase();
+            if (analysisText.includes("areas for further research") || 
+                analysisText.includes("further research needed") ||
+                analysisText.includes("additional research")) {
+              // Extract areas if possible
+              const lines = iteration.analysis.split('\n');
+              let inAreaSection = false;
+              
+              for (const line of lines) {
+                if (!inAreaSection) {
+                  if (line.toLowerCase().includes("areas for") || 
+                      line.toLowerCase().includes("further research") ||
+                      line.toLowerCase().includes("additional research")) {
+                    inAreaSection = true;
+                  }
+                } else if (line.trim().length === 0 || line.startsWith('#')) {
+                  inAreaSection = false;
+                } else if (line.startsWith('-') || line.startsWith('*') || 
+                           (line.match(/^\d+\.\s/) !== null)) {
+                  const area = line.replace(/^[-*\d.]\s+/, '').trim();
+                  if (area && !areasForResearch.includes(area)) {
+                    areasForResearch.push(area);
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (areasError) {
+        console.error(`Error extracting areas for research:`, areasError);
+      }
+      
+      if (allContent.length > 0) {
+        finalAnalysis = await generateAnalysis(
+          allContent, 
+          query, 
+          `Final comprehensive analysis for "${query}"`,
+          marketPrice,
+          relatedMarkets,
+          areasForResearch
+        );
+      } else {
+        finalAnalysis = `No content was collected for analysis regarding "${query}".`;
+      }
     } catch (analysisError) {
       console.error(`Error generating final analysis for job ${jobId}:`, analysisError);
       finalAnalysis = `Error generating analysis: ${analysisError.message}`;
       
-      await addProgressLog(jobId, `Error generating final analysis: ${analysisError.message}`);
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error generating final analysis: ${analysisError.message}`)
+      });
     }
     
     // Create final results object with the text analysis
@@ -535,180 +552,179 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     };
     
     // Now generate the structured insights with the extract-research-insights function
-    await addProgressLog(jobId, `Generating structured insights with probability assessment...`);
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Generating structured insights with probability assessment...`)
+    });
     
     let structuredInsights = null;
     try {
-      // Use throttled request for structured insights
-      structuredInsights = await throttledRequest(
-        'openrouter',
-        `job-${jobId}`,
-        async () => {
-          // Get market price for the given market ID
-          let marketPrice = undefined;
-          try {
-            const { data: priceData } = await supabaseClient
-              .from('market_prices')
-              .select('last_traded_price')
-              .eq('market_id', marketId)
-              .order('timestamp', { ascending: false })
-              .limit(1);
-              
-            if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
-              marketPrice = Math.round(priceData[0].last_traded_price * 100);
-              console.log(`Found market price for ${marketId}: ${marketPrice}%`);
-            }
-          } catch (priceError) {
-            console.error(`Error fetching market price for ${marketId}:`, priceError);
-          }
+      // Get market price for the given market ID
+      let marketPrice = undefined;
+      try {
+        const { data: priceData } = await supabaseClient
+          .from('market_prices')
+          .select('last_traded_price')
+          .eq('market_id', marketId)
+          .order('timestamp', { ascending: false })
+          .limit(1);
           
-          // Try to get related markets
-          const relatedMarkets = [];
-          try {
-            const { data: relatedData } = await supabaseClient
-              .from('related_markets')
-              .select('related_market_id, relationship_strength')
-              .eq('market_id', marketId)
-              .order('relationship_strength', { ascending: false })
-              .limit(5);
-              
-            if (relatedData && relatedData.length > 0) {
-              for (const relation of relatedData) {
-                try {
-                  // Get market details
-                  const { data: marketData } = await supabaseClient
-                    .from('markets')
-                    .select('question')
-                    .eq('id', relation.related_market_id)
-                    .single();
-                    
-                  // Get market price
-                  const { data: priceData } = await supabaseClient
-                    .from('market_prices')
-                    .select('last_traded_price')
-                    .eq('market_id', relation.related_market_id)
-                    .order('timestamp', { ascending: false })
-                    .limit(1);
-                    
-                  if (marketData && priceData && priceData.length > 0) {
-                    relatedMarkets.push({
-                      market_id: relation.related_market_id,
-                      question: marketData.question,
-                      probability: priceData[0].last_traded_price
-                    });
-                  }
-                } catch (relatedError) {
-                  console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
-                }
+        if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
+          marketPrice = Math.round(priceData[0].last_traded_price * 100);
+          console.log(`Found market price for ${marketId}: ${marketPrice}%`);
+        }
+      } catch (priceError) {
+        console.error(`Error fetching market price for ${marketId}:`, priceError);
+      }
+      
+      // Try to get related markets
+      const relatedMarkets = [];
+      try {
+        const { data: relatedData } = await supabaseClient
+          .from('related_markets')
+          .select('related_market_id, relationship_strength')
+          .eq('market_id', marketId)
+          .order('relationship_strength', { ascending: false })
+          .limit(5);
+          
+        if (relatedData && relatedData.length > 0) {
+          for (const relation of relatedData) {
+            try {
+              // Get market details
+              const { data: marketData } = await supabaseClient
+                .from('markets')
+                .select('question')
+                .eq('id', relation.related_market_id)
+                .single();
+                
+              // Get market price
+              const { data: priceData } = await supabaseClient
+                .from('market_prices')
+                .select('last_traded_price')
+                .eq('market_id', relation.related_market_id)
+                .order('timestamp', { ascending: false })
+                .limit(1);
+                
+              if (marketData && priceData && priceData.length > 0) {
+                relatedMarkets.push({
+                  market_id: relation.related_market_id,
+                  question: marketData.question,
+                  probability: priceData[0].last_traded_price
+                });
               }
+            } catch (relatedError) {
+              console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
             }
-          } catch (relatedError) {
-            console.error(`Error fetching related markets for ${marketId}:`, relatedError);
           }
-          
-          // Get all areas for research that may have been identified in previous iterations
-          const areasForResearch = [];
-          try {
-            for (const iteration of allIterations) {
-              if (iteration.analysis) {
-                // Look for a section with "areas for further research" or similar
-                const analysisText = iteration.analysis.toLowerCase();
-                if (analysisText.includes("areas for further research") || 
-                    analysisText.includes("further research needed") ||
-                    analysisText.includes("additional research")) {
-                  // Extract areas if possible
-                  const lines = iteration.analysis.split('\n');
-                  let inAreaSection = false;
-                  
-                  for (const line of lines) {
-                    if (!inAreaSection) {
-                      if (line.toLowerCase().includes("areas for") || 
-                          line.toLowerCase().includes("further research") ||
-                          line.toLowerCase().includes("additional research")) {
-                        inAreaSection = true;
-                      }
-                    } else if (line.trim().length === 0 || line.startsWith('#')) {
-                      inAreaSection = false;
-                    } else if (line.startsWith('-') || line.startsWith('*') || 
-                               (line.match(/^\d+\.\s/) !== null)) {
-                      const area = line.replace(/^[-*\d.]\s+/, '').trim();
-                      if (area && !areasForResearch.includes(area)) {
-                        areasForResearch.push(area);
-                      }
-                    }
+        }
+      } catch (relatedError) {
+        console.error(`Error fetching related markets for ${marketId}:`, relatedError);
+      }
+      
+      // Get all areas for research that may have been identified in previous iterations
+      const areasForResearch = [];
+      try {
+        for (const iteration of allIterations) {
+          if (iteration.analysis) {
+            // Look for a section with "areas for further research" or similar
+            const analysisText = iteration.analysis.toLowerCase();
+            if (analysisText.includes("areas for further research") || 
+                analysisText.includes("further research needed") ||
+                analysisText.includes("additional research")) {
+              // Extract areas if possible
+              const lines = iteration.analysis.split('\n');
+              let inAreaSection = false;
+              
+              for (const line of lines) {
+                if (!inAreaSection) {
+                  if (line.toLowerCase().includes("areas for") || 
+                      line.toLowerCase().includes("further research") ||
+                      line.toLowerCase().includes("additional research")) {
+                    inAreaSection = true;
+                  }
+                } else if (line.trim().length === 0 || line.startsWith('#')) {
+                  inAreaSection = false;
+                } else if (line.startsWith('-') || line.startsWith('*') || 
+                           (line.match(/^\d+\.\s/) !== null)) {
+                  const area = line.replace(/^[-*\d.]\s+/, '').trim();
+                  if (area && !areasForResearch.includes(area)) {
+                    areasForResearch.push(area);
                   }
                 }
               }
             }
-          } catch (areasError) {
-            console.error(`Error extracting areas for research:`, areasError);
           }
-          
-          // Prepare all previous analyses
-          const previousAnalyses = allIterations
-            .filter(iter => iter.analysis)
-            .map(iter => iter.analysis);
-          
-          // Collect all queries used across iterations
-          const allQueries = allIterations.flatMap(iter => iter.queries || []);
-          
-          // Modify webContent to include iteration analyses prominently
-          const webContentWithAnalyses = [
-            // First add all previous analyses with proper formatting
-            ...previousAnalyses.map((analysis, idx) => 
-              `===== PREVIOUS ITERATION ${idx+1} ANALYSIS =====\n${analysis}\n==============================`
-            ),
-            // Then add the web results
-            ...allResults.map(r => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`)
-          ].join('\n\n');
-          
-          console.log(`Preparing web content with ${previousAnalyses.length} analyses prominently included`);
-          
-          // Prepare payload with all the same information as non-background research
-          const insightsPayload = {
-            webContent: webContentWithAnalyses,
-            analysis: finalAnalysis,
-            marketId: marketId,
-            marketQuestion: query,
-            previousAnalyses: previousAnalyses,
-            iterations: allIterations,
-            queries: allQueries,
-            areasForResearch: areasForResearch,
-            marketPrice: marketPrice,
-            relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined
-          };
-          
-          console.log(`Sending extract-research-insights payload with:
-            - ${allResults.length} web results
-            - ${previousAnalyses.length} previous analyses (prominently included in webContent)
-            - ${allQueries.length} queries
-            - ${areasForResearch.length} areas for research
-            - marketPrice: ${marketPrice || 'undefined'}
-            - ${relatedMarkets.length} related markets`);
-          
-          // Call the extract-research-insights function to get structured insights (without streaming)
-          const extractInsightsResponse = await fetch(
-            `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-              },
-              body: JSON.stringify(insightsPayload)
-            }
-          );
-          
-          if (!extractInsightsResponse.ok) {
-            throw new Error(`Failed to extract insights: ${extractInsightsResponse.statusText}`);
-          }
-          
-          // Parse the JSON response directly
-          return await extractInsightsResponse.json();
+        }
+      } catch (areasError) {
+        console.error(`Error extracting areas for research:`, areasError);
+      }
+      
+      // Prepare all previous analyses
+      const previousAnalyses = allIterations
+        .filter(iter => iter.analysis)
+        .map(iter => iter.analysis);
+      
+      // Collect all queries used across iterations
+      const allQueries = allIterations.flatMap(iter => iter.queries || []);
+      
+      // Modify webContent to include iteration analyses prominently
+      const webContentWithAnalyses = [
+        // First add all previous analyses with proper formatting
+        ...previousAnalyses.map((analysis, idx) => 
+          `===== PREVIOUS ITERATION ${idx+1} ANALYSIS =====\n${analysis}\n==============================`
+        ),
+        // Then add the web results
+        ...allResults.map(r => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`)
+      ].join('\n\n');
+      
+      console.log(`Preparing web content with ${previousAnalyses.length} analyses prominently included`);
+      
+      // Prepare payload with all the same information as non-background research
+      const insightsPayload = {
+        webContent: webContentWithAnalyses,
+        analysis: finalAnalysis,
+        marketId: marketId,
+        marketQuestion: query,
+        previousAnalyses: previousAnalyses,
+        iterations: allIterations,
+        queries: allQueries,
+        areasForResearch: areasForResearch,
+        marketPrice: marketPrice,
+        relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined
+      };
+      
+      console.log(`Sending extract-research-insights payload with:
+        - ${allResults.length} web results
+        - ${previousAnalyses.length} previous analyses (prominently included in webContent)
+        - ${allQueries.length} queries
+        - ${areasForResearch.length} areas for research
+        - marketPrice: ${marketPrice || 'undefined'}
+        - ${relatedMarkets.length} related markets`);
+      
+      // Call the extract-research-insights function to get structured insights (without streaming)
+      const extractInsightsResponse = await fetch(
+        `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify(insightsPayload)
         }
       );
       
-      await addProgressLog(jobId, `Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`);
+      if (!extractInsightsResponse.ok) {
+        throw new Error(`Failed to extract insights: ${extractInsightsResponse.statusText}`);
+      }
+      
+      // Parse the JSON response directly
+      structuredInsights = await extractInsightsResponse.json();
+      
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`)
+      });
       
       // Extract the actual insights from the OpenRouter response
       if (structuredInsights.choices && 
@@ -747,7 +763,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     } catch (insightsError) {
       console.error(`Error extracting structured insights for job ${jobId}:`, insightsError);
       
-      await addProgressLog(jobId, `Error extracting structured insights: ${insightsError.message}`);
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error extracting structured insights: ${insightsError.message}`)
+      });
       
       structuredInsights = {
         probability: "Error: Failed to generate",
@@ -762,15 +781,21 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     };
     
     // Update the job with final results
-    await updateJobResults(jobId, finalResults);
+    await supabaseClient.rpc('update_research_results', {
+      job_id: jobId,
+      result_data: JSON.stringify(finalResults)
+    });
     
     // Mark job as complete
-    await updateJobStatus(jobId, 'completed');
+    await supabaseClient.rpc('update_research_job_status', {
+      job_id: jobId,
+      new_status: 'completed'
+    });
     
-    await addProgressLog(jobId, 'Research completed successfully!');
-    
-    // Final database sync
-    await syncJobToDatabase(jobId, supabaseClient);
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify('Research completed successfully!')
+    });
     
     console.log(`Completed background research for job ${jobId}`);
   } catch (error) {
@@ -783,12 +808,16 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       );
       
       // Mark job as failed
-      await updateJobStatus(jobId, 'failed');
+      await supabaseClient.rpc('update_research_job_status', {
+        job_id: jobId,
+        new_status: 'failed',
+        error_msg: error.message || 'Unknown error'
+      });
       
-      await addProgressLog(jobId, `Research failed: ${error.message || 'Unknown error'}`);
-      
-      // Final database sync
-      await syncJobToDatabase(jobId, supabaseClient);
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
+      });
     } catch (e) {
       console.error(`Failed to update job ${jobId} status:`, e);
     }
@@ -912,18 +941,30 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
     
-    // Create a job in Redis
-    const jobId = await addJob({
-      market_id: marketId,
-      query: query,
-      max_iterations: maxIterations,
-      focus_text: focusText
-    });
+    // Create a new job record
+    const { data: jobData, error: jobError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        current_iteration: 0,
+        progress_log: [],
+        iterations: [],
+        focus_text: focusText
+      })
+      .select('id')
+      .single()
     
-    // Sync to database for initial record
-    await syncJobToDatabase(jobId, supabaseClient);
+    if (jobError) {
+      throw new Error(`Failed to create job: ${jobError.message}`)
+    }
     
-    // Start the background process without blocking the response
+    const jobId = jobData.id
+    
+    // Start the background process without EdgeRuntime
+    // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
       performWebResearch(jobId, query, marketId, maxIterations, focusText).catch(err => {
         console.error(`Background research failed: ${err}`);

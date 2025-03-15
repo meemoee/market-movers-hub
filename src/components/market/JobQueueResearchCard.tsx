@@ -34,7 +34,7 @@ interface ResearchJob {
   status: 'queued' | 'processing' | 'completed' | 'failed';
   max_iterations: number;
   current_iteration: number;
-  progress_log: any[];
+  progress_log: string[];
   iterations: any[];
   results: any;
   error_message?: string;
@@ -137,8 +137,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
-      const stringEntries = job.progress_log.map(entry => String(entry));
-      setProgress(stringEntries);
+      setProgress(job.progress_log.map(entry => String(entry)));
     }
     
     if (job.status === 'queued' || job.status === 'processing') {
@@ -254,8 +253,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           if (job.progress_log && Array.isArray(job.progress_log)) {
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
-              const stringNewItems = newItems.map(item => String(item));
-              setProgress(prev => [...prev, ...stringNewItems]);
+              setProgress(prev => [...prev, ...newItems.map(item => String(item))]);
             }
           }
           
