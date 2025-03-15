@@ -187,7 +187,7 @@ export function JobQueueResearchCard({
   }
 
   const calculateGoodBuyOpportunities = (probabilityStr: string) => {
-    if (!probabilityStr || !bestBid || !bestAsk || !outcomes || outcomes.length < 2) {
+    if (!probabilityStr || !bestAsk || !outcomes || outcomes.length < 2) {
       return null;
     }
 
@@ -200,19 +200,20 @@ export function JobQueueResearchCard({
     
     const opportunities = [];
     
-    if (probability > bestBid + THRESHOLD) {
+    // Use bestAsk instead of bestBid for comparing buy opportunities of the "Yes" outcome
+    // This is the correct value to use for detecting good buy opportunities since it's what 
+    // a user would pay when buying the Yes outcome with a market order
+    if (probability > bestAsk + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[0],
         predictedProbability: probability,
-        marketPrice: bestBid,
-        difference: (probability - bestBid).toFixed(2)
+        marketPrice: bestAsk,
+        difference: (probability - bestAsk).toFixed(2)
       });
     }
     
     const inferredProbability = 1 - probability;
     // Use noBestAsk directly if available for comparing buy opportunities of the "No" outcome
-    // This is the correct value to use for detecting good buy opportunities since it's what 
-    // a user would pay when buying the No outcome with a market order
     const noAskPrice = noBestAsk !== undefined ? noBestAsk : 1 - bestBid;
     
     if (inferredProbability > noAskPrice + THRESHOLD) {
