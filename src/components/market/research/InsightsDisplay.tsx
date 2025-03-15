@@ -13,7 +13,7 @@ interface InsightsDisplayProps {
       reasoning?: {
         evidenceFor?: string[];
         evidenceAgainst?: string[];
-      };
+      } | string;  // Updated to allow string type
     };
     rawText?: string;
   };
@@ -152,7 +152,7 @@ export function InsightsDisplay({
       
       {parsedData.reasoning && (
         <div className="space-y-4 mt-4">
-          {parsedData.reasoning.evidenceFor && parsedData.reasoning.evidenceFor.length > 0 && (
+          {typeof parsedData.reasoning === 'object' && parsedData.reasoning.evidenceFor && parsedData.reasoning.evidenceFor.length > 0 && (
             <div>
               <h4 className="text-sm font-medium mb-2 flex items-center">
                 <ThumbsUp className="h-4 w-4 text-green-600 mr-1" />
@@ -168,7 +168,7 @@ export function InsightsDisplay({
             </div>
           )}
           
-          {parsedData.reasoning.evidenceAgainst && parsedData.reasoning.evidenceAgainst.length > 0 && (
+          {typeof parsedData.reasoning === 'object' && parsedData.reasoning.evidenceAgainst && parsedData.reasoning.evidenceAgainst.length > 0 && (
             <div>
               <h4 className="text-sm font-medium mb-2 flex items-center">
                 <ThumbsDown className="h-4 w-4 text-red-600 mr-1" />
@@ -181,6 +181,16 @@ export function InsightsDisplay({
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+          
+          {/* Handle string reasoning for backward compatibility */}
+          {typeof parsedData.reasoning === 'string' && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">Reasoning:</h4>
+              <div className="text-sm p-2 bg-gray-50 dark:bg-gray-900/30 rounded border border-gray-100 dark:border-gray-800">
+                {parsedData.reasoning}
+              </div>
             </div>
           )}
         </div>
