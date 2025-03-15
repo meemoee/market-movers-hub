@@ -17,13 +17,13 @@ export function SitePreviewList({ results }: SitePreviewListProps) {
   if (!results.length) return null;
 
   return (
-    <ScrollArea className="h-[200px] rounded-md border p-4 w-full max-w-full">
+    <ScrollArea className="h-[200px] rounded-md border p-4 w-full max-w-full overflow-hidden">
       <div className="mb-2 text-sm text-muted-foreground">
         {results.length} {results.length === 1 ? 'source' : 'sources'} collected
       </div>
-      <div className="w-full">
+      <div className="w-full flex flex-col space-y-4">
         {results.map((result, index) => (
-          <div key={index} className="mb-4 last:mb-0 p-3 bg-accent/5 rounded-lg w-full overflow-hidden">
+          <div key={index} className="p-3 bg-accent/5 rounded-lg w-full overflow-hidden">
             <div className="flex items-center gap-2 w-full">
               <img 
                 src={getFaviconUrl(result.url)} 
