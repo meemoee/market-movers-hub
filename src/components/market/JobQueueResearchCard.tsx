@@ -138,8 +138,9 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
-      // Convert all progress_log items to strings to ensure type compatibility
-      setProgress(job.progress_log.map(entry => String(entry)));
+      // Ensure all items in progress_log are converted to strings to match progress state type
+      const stringEntries = job.progress_log.map(entry => String(entry));
+      setProgress(stringEntries);
     }
     
     if (job.status === 'queued' || job.status === 'processing') {
@@ -255,8 +256,9 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           if (job.progress_log && Array.isArray(job.progress_log)) {
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
-              // Also convert new items to strings when adding them to the progress array
-              setProgress(prev => [...prev, ...newItems.map(item => String(item))]);
+              // Convert all new log entries to strings to ensure type compatibility
+              const stringNewItems = newItems.map(item => String(item));
+              setProgress(prev => [...prev, ...stringNewItems]);
             }
           }
           
