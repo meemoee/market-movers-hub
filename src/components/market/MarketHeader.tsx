@@ -7,7 +7,7 @@ interface MarketHeaderProps {
   yesSubTitle?: string;
   bestBid?: number;
   bestAsk?: number;
-  noPrice?: number;  // Added noPrice prop to the interface
+  noPrice?: number;  // Price for the "No" outcome
   onBuy: () => void;
   onSell: () => void;
   outcomes?: string[];
@@ -20,7 +20,7 @@ export function MarketHeader({
   yesSubTitle, 
   bestBid,
   bestAsk,
-  noPrice,  // Added noPrice to destructured props
+  noPrice,  
   onBuy, 
   onSell,
   outcomes = ["Yes", "No"],
@@ -74,10 +74,6 @@ export function MarketHeader({
           {noPrice !== undefined ? (
             <span className="text-[11px] font-medium opacity-90">
               {(noPrice * 100).toFixed(1)}¢
-            </span>
-          ) : bestBid !== undefined ? (
-            <span className="text-[11px] font-medium opacity-90">
-              {(100 - (bestBid * 100)).toFixed(1)}¢
             </span>
           ) : null}
         </HoverButton>

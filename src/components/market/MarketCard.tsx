@@ -16,6 +16,7 @@ interface Market {
   final_last_traded_price: number;
   final_best_ask: number;
   final_best_bid: number;
+  final_no_best_ask?: number;  // Add this field for the No best ask price
   description?: string;
   outcomes?: string[];
   event_id?: string;
@@ -38,9 +39,12 @@ export function MarketCard({
   onSell,
   selectedInterval,
 }: MarketCardProps) {
-  // Calculate the proper "No" price based on the "Yes" price (best_bid)
-  // For "No", the price is 1 - best_bid because they are complementary
-  const noPrice = market.final_best_bid ? 1 - market.final_best_bid : undefined;
+  // Use the direct No price if available, otherwise calculate it
+  const noPrice = market.final_no_best_ask !== undefined ? 
+    market.final_no_best_ask : 
+    market.final_best_bid !== undefined ? 
+      1 - market.final_best_bid : 
+      undefined;
   
   return (
     <div className="w-full p-3 space-y-3">
@@ -50,7 +54,7 @@ export function MarketCard({
         yesSubTitle={market.yes_sub_title}
         bestBid={market.final_best_bid}
         bestAsk={market.final_best_ask}
-        noPrice={noPrice}  // Pass the calculated No price
+        noPrice={noPrice}
         onBuy={onBuy}
         onSell={onSell}
         outcomes={market.outcomes}

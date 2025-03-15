@@ -80,6 +80,7 @@ export function TopMoversContent({
                 final_last_traded_price: mover.final_last_traded_price,
                 final_best_ask: mover.final_best_ask,
                 final_best_bid: mover.final_best_bid,
+                final_no_best_ask: mover.final_no_best_ask, // Pass the No price if available
                 description: mover.description,
                 outcomes: mover.outcomes || ["Yes", "No"],
                 event_id: mover.event_id,
@@ -102,7 +103,7 @@ export function TopMoversContent({
                 if (clobTokenId) {
                   setSelectedMarket({ 
                     id: mover.market_id, 
-                    action: 'buy',  // Changed to 'buy' since we're buying the opposite outcome
+                    action: 'buy',  // This is for buying the "No" outcome
                     clobTokenId,
                     selectedOutcome: "No"
                   });
