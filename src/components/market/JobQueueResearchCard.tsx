@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,6 +19,9 @@ import { Label } from "@/components/ui/label"
 interface JobQueueResearchCardProps {
   description: string;
   marketId: string;
+  bestBidPrice?: number;
+  bestAskPrice?: number;
+  outcomes?: string[];
 }
 
 interface ResearchResult {
@@ -53,7 +55,13 @@ interface ResearchJob {
   };
 }
 
-export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
+export function JobQueueResearchCard({ 
+  description, 
+  marketId, 
+  bestBidPrice: initialBestBidPrice, 
+  bestAskPrice: initialBestAskPrice,
+  outcomes 
+}: JobQueueResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [progressPercent, setProgressPercent] = useState<number>(0)
@@ -70,8 +78,8 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
-  const [bestBidPrice, setBestBidPrice] = useState<number | undefined>(undefined)
-  const [bestAskPrice, setBestAskPrice] = useState<number | undefined>(undefined)
+  const [bestBidPrice, setBestBidPrice] = useState<number | undefined>(initialBestBidPrice)
+  const [bestAskPrice, setBestAskPrice] = useState<number | undefined>(initialBestAskPrice)
   const [isLoadingOrderbook, setIsLoadingOrderbook] = useState(false)
   const { toast } = useToast()
 
@@ -95,52 +103,14 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   // Load saved research jobs for this market on component mount
   useEffect(() => {
     fetchSavedJobs();
-    fetchOrderbookData();
   }, [marketId]);
 
-  // Fetch orderbook data for the market to get best bid/ask prices
-  const fetchOrderbookData = async () => {
-    try {
-      setIsLoadingOrderbook(true);
-      
-      // First, try to get the CLOB token ID for this market from the markets table
-      const { data: marketData } = await supabase
-        .from('markets')
-        .select('clobtokenids')
-        .eq('id', marketId)
-        .maybeSingle();
-      
-      const clobTokenId = marketData?.clobtokenids?.[0] || marketId;
-      
-      console.log('Using CLOB token ID for orderbook:', clobTokenId);
-      
-      const response = await supabase.functions.invoke('get-orderbook', {
-        body: JSON.stringify({ tokenId: clobTokenId })
-      });
-
-      if (response.error) {
-        console.error('Error invoking get-orderbook function:', response.error);
-        return;
-      }
-
-      if (response.data) {
-        const orderbook = response.data;
-        console.log('Fetched orderbook data:', orderbook);
-        
-        if (orderbook.best_bid !== null && orderbook.best_bid !== undefined) {
-          setBestBidPrice(parseFloat(orderbook.best_bid));
-        }
-        
-        if (orderbook.best_ask !== null && orderbook.best_ask !== undefined) {
-          setBestAskPrice(parseFloat(orderbook.best_ask));
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching orderbook data:', error);
-    } finally {
-      setIsLoadingOrderbook(false);
+  // Only fetch orderbook data if we don't already have it from props
+  useEffect(() => {
+    if ((initialBestBidPrice === undefined || initialBestAskPrice === undefined) && marketId) {
+      fetchOrderbookData();
     }
-  };
+  }, [marketId, initialBestBidPrice, initialBestAskPrice]);
 
   // Fetch saved research jobs for this market
   const fetchSavedJobs = async () => {
@@ -371,6 +341,55 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     return () => clearInterval(pollInterval);
   }, [jobId, polling, progress.length, expandedIterations]);
 
+  // Simplified fetchOrderbookData that only runs if we don't have the data from props
+  const fetchOrderbookData = async () => {
+    if (initialBestBidPrice !== undefined && initialBestAskPrice !== undefined) {
+      console.log('Already have orderbook data from props, skipping fetch');
+      return;
+    }
+
+    try {
+      setIsLoadingOrderbook(true);
+      
+      // First, try to get the CLOB token ID for this market from the markets table
+      const { data: marketData } = await supabase
+        .from('markets')
+        .select('clobtokenids')
+        .eq('id', marketId)
+        .maybeSingle();
+      
+      const clobTokenId = marketData?.clobtokenids?.[0] || marketId;
+      
+      console.log('Using CLOB token ID for orderbook:', clobTokenId);
+      
+      const response = await supabase.functions.invoke('get-orderbook', {
+        body: JSON.stringify({ tokenId: clobTokenId })
+      });
+
+      if (response.error) {
+        console.error('Error invoking get-orderbook function:', response.error);
+        return;
+      }
+
+      if (response.data) {
+        const orderbook = response.data;
+        console.log('Fetched orderbook data:', orderbook);
+        
+        if (orderbook.best_bid !== null && orderbook.best_bid !== undefined) {
+          setBestBidPrice(parseFloat(orderbook.best_bid));
+        }
+        
+        if (orderbook.best_ask !== null && orderbook.best_ask !== undefined) {
+          setBestAskPrice(parseFloat(orderbook.best_ask));
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching orderbook data:', error);
+    } finally {
+      setIsLoadingOrderbook(false);
+    }
+  };
+
   const handleResearch = async (initialFocusText = '') => {
     // Reset state before starting a new research
     resetState();
@@ -381,19 +400,18 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
       
-      // Ensure we have the latest orderbook data if not already loaded
-      if (bestBidPrice === undefined || bestAskPrice === undefined) {
-        setProgress(prev => [...prev, "Fetching market price data..."]);
-        await fetchOrderbookData();
-      }
+      // We already have the best bid/ask prices from props or fetched earlier
+      const bid = bestBidPrice;
+      const ask = bestAskPrice;
       
       const payload = {
         marketId,
         query: description,
         maxIterations: 3,
         focusText: useFocusText.trim() || undefined,
-        bestBidPrice,
-        bestAskPrice
+        bestBidPrice: bid,
+        bestAskPrice: ask,
+        outcomes: outcomes || ["Yes", "No"]
       };
       
       console.log('Creating research job with payload:', payload);
