@@ -15,6 +15,9 @@ interface MarketDetailsProps {
   question: string;
   selectedInterval: string;
   eventId?: string;
+  bestBid?: number;
+  bestAsk?: number;
+  outcomes?: string[];
 }
 
 export function MarketDetails({
@@ -22,7 +25,10 @@ export function MarketDetails({
   marketId,
   question,
   selectedInterval,
-  eventId
+  eventId,
+  bestBid,
+  bestAsk,
+  outcomes
 }: MarketDetailsProps) {
   const [selectedChartInterval, setSelectedChartInterval] = useState('1d');
 
@@ -168,6 +174,9 @@ export function MarketDetails({
           <JobQueueResearchCard 
             description={fullResearchContext} 
             marketId={marketId}
+            bestBid={bestBid}
+            bestAsk={bestAsk}
+            outcomes={outcomes}
           />
         </div>
       )}

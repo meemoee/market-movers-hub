@@ -16,7 +16,19 @@ interface StreamingState {
     probability: string;
     areasForResearch: string[];
     reasoning?: ReasoningData | string;
+    goodBuyOpportunities?: Array<{
+      outcome: string;
+      predictedProbability: number;
+      marketPrice: number;
+      difference: string;
+    }> | null;
   } | null;
+}
+
+interface MarketData {
+  bestBid?: number;
+  bestAsk?: number;
+  outcomes?: string[];
 }
 
 interface ResearchChild {
@@ -34,18 +46,20 @@ interface InsightsDisplayProps {
     onView?: () => void;
   };
   childResearches?: ResearchChild[];
+  marketData?: MarketData;
 }
 
 export function InsightsDisplay({ 
   streamingState, 
   onResearchArea, 
   parentResearch,
-  childResearches 
+  childResearches,
+  marketData
 }: InsightsDisplayProps) {
   // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
-  const { probability, areasForResearch, reasoning } = streamingState.parsedData;
+  const { probability, areasForResearch, reasoning, goodBuyOpportunities } = streamingState.parsedData;
   
   // More comprehensive check for error messages in probability
   const hasErrorInProbability = 
@@ -156,6 +170,28 @@ export function InsightsDisplay({
                 : 'likelihood based on research'}
             </div>
           </div>
+          
+          {/* Display good buy opportunities if available */}
+          {goodBuyOpportunities && goodBuyOpportunities.length > 0 && (
+            <div className="mt-4 space-y-3">
+              {goodBuyOpportunities.map((opportunity, index) => (
+                <div key={index} className="bg-green-500/10 border border-green-500/30 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span className="font-medium text-green-700 dark:text-green-400">
+                        Good Buy: {opportunity.outcome}
+                      </span>
+                    </div>
+                    <Badge className="bg-green-600">+{(parseFloat(opportunity.difference) * 100).toFixed(0)}%</Badge>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Research suggests {(opportunity.predictedProbability * 100).toFixed(0)}% probability vs market price of {(opportunity.marketPrice * 100).toFixed(0)}%
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           
           {/* Display structured evidence if available */}
           {(evidenceFor.length > 0 || evidenceAgainst.length > 0) && (

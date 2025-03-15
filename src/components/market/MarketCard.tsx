@@ -65,6 +65,9 @@ export function MarketCard({
           question={market.question}
           selectedInterval={selectedInterval}
           eventId={market.event_id}
+          bestBid={market.final_best_bid}
+          bestAsk={market.final_best_ask}
+          outcomes={market.outcomes}
         />
       )}
       <Separator className="mt-3" />
