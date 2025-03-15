@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -287,8 +288,8 @@ export default function TopMoversList({
         />
       </div>
       
-      <div className="w-full px-0 sm:px-4 -mt-20">
-        <div className="flex flex-col items-center space-y-6 pt-28 border border-white/5 rounded-lg bg-black/20">
+      <div className={`w-full ${isMobile ? 'px-0' : 'px-0 sm:px-4'} -mt-20`}>
+        <div className={`flex flex-col items-center space-y-6 pt-28 ${isMobile ? '' : 'border border-white/5 rounded-lg bg-black/20'}`}>
           <InsightPostBox />
           <MarketStatsBento selectedInterval={selectedInterval} />
           
