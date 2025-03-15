@@ -27,6 +27,7 @@ interface TopMover {
   final_last_traded_price: number;
   final_best_ask: number;
   final_best_bid: number;
+  final_no_best_ask?: number; // Add this property to match the interface in TopMoversList
   final_volume: number;
   initial_last_traded_price: number;
   initial_volume: number;

@@ -58,6 +58,7 @@ export interface TopMover {
   final_last_traded_price: number;
   final_best_ask: number;
   final_best_bid: number;
+  final_no_best_ask?: number; // Add this property for the No outcome price
   final_volume: number;
   initial_last_traded_price: number;
   initial_volume: number;
