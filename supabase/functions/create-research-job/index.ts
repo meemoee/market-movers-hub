@@ -927,7 +927,7 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3, focusText } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -952,7 +952,9 @@ serve(async (req) => {
         current_iteration: 0,
         progress_log: [],
         iterations: [],
-        focus_text: focusText
+        focus_text: focusText,
+        notification_email: notificationEmail || null,
+        notification_sent: false
       })
       .select('id')
       .single()

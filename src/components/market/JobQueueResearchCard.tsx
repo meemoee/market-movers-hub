@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,11 +11,13 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, History } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from "@/components/ui/form"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -49,6 +52,8 @@ interface ResearchJob {
   updated_at: string;
   user_id?: string;
   focus_text?: string;
+  notification_email?: string;
+  notification_sent?: boolean;
 }
 
 export function JobQueueResearchCard({ 
@@ -76,6 +81,9 @@ export function JobQueueResearchCard({
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
+  const [notificationEmail, setNotificationEmail] = useState<string>('')
+  const [enableNotification, setEnableNotification] = useState(false)
+  const [isSendingNotification, setIsSendingNotification] = useState(false)
   const { toast } = useToast()
 
   const resetState = () => {
@@ -90,6 +98,8 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    setNotificationEmail('');
+    setEnableNotification(false);
   }
 
   useEffect(() => {
@@ -123,6 +133,11 @@ export function JobQueueResearchCard({
   const loadJobData = (job: ResearchJob) => {
     setJobId(job.id);
     setJobStatus(job.status);
+    
+    if (job.notification_email) {
+      setNotificationEmail(job.notification_email);
+      setEnableNotification(true);
+    }
     
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
@@ -274,6 +289,11 @@ export function JobQueueResearchCard({
           setProgressPercent(100);
           setProgress(prev => [...prev, 'Job completed successfully!']);
           
+          // Send email notification if enabled and not already sent
+          if (enableNotification && notificationEmail && !job.notification_sent) {
+            sendEmailNotification(job.id, notificationEmail);
+          }
+          
           if (job.results) {
             try {
               const parsedResults = JSON.parse(job.results);
@@ -339,7 +359,7 @@ export function JobQueueResearchCard({
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, enableNotification, notificationEmail]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -377,6 +397,16 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       
+      // If notification is enabled, save the email to the job
+      if (enableNotification && notificationEmail) {
+        await supabase
+          .from('research_jobs')
+          .update({ notification_email: notificationEmail })
+          .eq('id', jobId);
+        
+        setProgress(prev => [...prev, `Email notification will be sent to ${notificationEmail} when research completes`]);
+      }
+      
       toast({
         title: "Background Research Started",
         description: `Job ID: ${jobId}. You can close this window and check back later.`,
@@ -390,6 +420,52 @@ export function JobQueueResearchCard({
       setJobStatus('failed');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const sendEmailNotification = async (jobId: string, email: string) => {
+    if (!jobId || !email) return;
+    
+    try {
+      setIsSendingNotification(true);
+      
+      const response = await supabase.functions.invoke('send-research-notification', {
+        body: JSON.stringify({ jobId, email })
+      });
+      
+      if (response.error) {
+        console.error("Error sending notification:", response.error);
+        toast({
+          title: "Notification Error",
+          description: `Could not send email notification: ${response.error.message}`,
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      toast({
+        title: "Notification Sent",
+        description: `Email notification sent to ${email}`,
+      });
+      
+      // Mark as sent in local state
+      setSavedJobs(prev => 
+        prev.map(job => 
+          job.id === jobId 
+            ? { ...job, notification_sent: true } 
+            : job
+        )
+      );
+      
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      toast({
+        title: "Notification Error",
+        description: `Failed to send email notification: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSendingNotification(false);
     }
   };
 
@@ -636,20 +712,62 @@ export function JobQueueResearchCard({
       </div>
 
       {!jobId && (
-        <div className="flex items-center gap-2 w-full">
-          <Input
-            placeholder="Add an optional focus area for your research..."
-            value={focusText}
-            onChange={(e) => setFocusText(e.target.value)}
-            disabled={isLoading || polling}
-            className="flex-1"
-          />
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 w-full">
+            <Input
+              placeholder="Add an optional focus area for your research..."
+              value={focusText}
+              onChange={(e) => setFocusText(e.target.value)}
+              disabled={isLoading || polling}
+              className="flex-1"
+            />
+          </div>
+          
+          <div className="flex flex-col space-y-2 bg-accent/10 p-3 rounded-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="notification-mode"
+                  checked={enableNotification}
+                  onCheckedChange={setEnableNotification}
+                  disabled={isLoading || polling}
+                />
+                <Label htmlFor="notification-mode" className="font-medium">
+                  Email notification
+                </Label>
+              </div>
+            </div>
+            
+            {enableNotification && (
+              <div className="pt-2">
+                <Input
+                  type="email"
+                  placeholder="Enter email for notification when research completes"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  disabled={isLoading || polling}
+                  className="w-full"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  We'll send you an email when your research is complete
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {focusText && jobId && (
         <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
           <span className="font-medium">Research focus:</span> {focusText}
+        </div>
+      )}
+      
+      {notificationEmail && jobId && (
+        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm flex items-center">
+          <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
+          <span className="font-medium">Email notification:</span> 
+          <span className="ml-1">{notificationEmail}</span>
         </div>
       )}
 
@@ -716,6 +834,35 @@ export function JobQueueResearchCard({
             </div>
           )}
         </>
+      )}
+      
+      {jobStatus === 'completed' && !notificationEmail && (
+        <div className="border-t pt-4">
+          <div className="bg-accent/10 p-3 rounded-md">
+            <h4 className="text-sm font-medium mb-2 flex items-center">
+              <Mail className="h-4 w-4 mr-2" />
+              Send Results by Email
+            </h4>
+            <div className="flex gap-2">
+              <Input
+                type="email"
+                placeholder="Enter email address"
+                value={notificationEmail}
+                onChange={(e) => setNotificationEmail(e.target.value)}
+                disabled={isSendingNotification}
+                className="flex-1"
+              />
+              <Button 
+                size="sm" 
+                onClick={() => jobId && sendEmailNotification(jobId, notificationEmail)}
+                disabled={!notificationEmail || isSendingNotification}
+              >
+                {isSendingNotification && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                Send
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </Card>
   );
