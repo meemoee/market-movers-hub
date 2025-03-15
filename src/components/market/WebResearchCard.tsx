@@ -154,14 +154,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     ? Math.round(marketData.last_traded_price * 100) 
     : undefined;
 
-  const bestBidPrice = marketData?.best_bid;
-  const bestAskPrice = marketData?.best_ask;
-
   useEffect(() => {
     if (marketPrice !== undefined) {
-      console.log(`Market ID ${marketId} has price: ${marketPrice}%. Best bid: ${bestBidPrice ? (bestBidPrice * 100).toFixed(1) : 'N/A'}%. Best ask: ${bestAskPrice ? (bestAskPrice * 100).toFixed(1) : 'N/A'}`);
+      console.log(`Market ID ${marketId} has price: ${marketPrice}%`);
     }
-  }, [marketPrice, marketId, bestBidPrice, bestAskPrice]);
+  }, [marketPrice, marketId]);
 
   const findParentResearch = useCallback((parentId: string | null) => {
     if (!parentId || !savedResearch) return null;
@@ -1347,8 +1344,6 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
           focusText: child.focus_text || 'Unknown focus',
           onView: () => handleViewChildResearch(child)
         })) : undefined}
-        bestBidPrice={bestBidPrice}
-        bestAskPrice={bestAskPrice}
       />
 
       {results.length > 0 && !iterations.length && (
@@ -1369,4 +1364,3 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     </Card>
   );
 }
-

@@ -1,7 +1,8 @@
+
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle, ShoppingBag } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface ReasoningData {
@@ -15,8 +16,6 @@ interface StreamingState {
     probability: string;
     areasForResearch: string[];
     reasoning?: ReasoningData | string;
-    bestBidPrice?: number;
-    bestAskPrice?: number;
   } | null;
 }
 
@@ -35,25 +34,20 @@ interface InsightsDisplayProps {
     onView?: () => void;
   };
   childResearches?: ResearchChild[];
-  bestBidPrice?: number;
-  bestAskPrice?: number;
 }
 
 export function InsightsDisplay({ 
   streamingState, 
   onResearchArea, 
   parentResearch,
-  childResearches,
-  bestBidPrice,
-  bestAskPrice 
+  childResearches 
 }: InsightsDisplayProps) {
+  // Return loading state or null if no parsed data yet
   if (!streamingState.parsedData) return null;
 
   const { probability, areasForResearch, reasoning } = streamingState.parsedData;
   
-  const effectiveBidPrice = bestBidPrice || streamingState.parsedData.bestBidPrice;
-  const effectiveAskPrice = bestAskPrice || streamingState.parsedData.bestAskPrice;
-  
+  // More comprehensive check for error messages in probability
   const hasErrorInProbability = 
     !probability || 
     probability.toLowerCase().includes('error') || 
@@ -64,15 +58,19 @@ export function InsightsDisplay({
     probability === "null" ||
     probability === "undefined";
   
+  // Check if market is resolved (100% or 0%)
   const isResolved = probability === "100%" || probability === "0%";
 
+  // Don't show the component if there's an error in probability and no valid research areas
   if ((hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) || 
-      streamingState.rawText.length < 10) {  
+      streamingState.rawText.length < 10) {  // Also don't show if we have barely any raw text (still streaming)
     return null;
   }
 
+  // If there's an error in the probability but we have research areas, only show those
   const showProbabilityCard = probability && !hasErrorInProbability;
   
+  // Helper function to find a child research that matches a specific research area
   const findMatchingChildResearch = (area: string): ResearchChild | undefined => {
     if (!childResearches) return undefined;
     return childResearches.find(child => 
@@ -82,12 +80,16 @@ export function InsightsDisplay({
     );
   };
 
+  // Process reasoning data which can now be either a string or an object
   const evidenceFor: string[] = [];
   const evidenceAgainst: string[] = [];
   
   if (reasoning) {
     if (typeof reasoning === 'string') {
+      // Legacy format: just a string
+      // Do nothing with this case, will use the old rendering logic
     } else {
+      // New format: object with evidenceFor and evidenceAgainst arrays
       if (reasoning.evidenceFor) {
         evidenceFor.push(...reasoning.evidenceFor);
       }
@@ -95,36 +97,6 @@ export function InsightsDisplay({
         evidenceAgainst.push(...reasoning.evidenceAgainst);
       }
     }
-  }
-
-  const extractedProbabilityNum = !hasErrorInProbability ? 
-    parseInt(probability.replace('%', ''), 10) : null;
-
-  console.log('InsightsDisplay prices:', { 
-    probability: probability, 
-    extractedProbabilityNum, 
-    bestBidPrice: effectiveBidPrice, 
-    bestAskPrice: effectiveAskPrice 
-  });
-
-  const isYesGoodBuy = !hasErrorInProbability && 
-    extractedProbabilityNum !== null && 
-    effectiveAskPrice !== undefined && 
-    extractedProbabilityNum > effectiveAskPrice * 100;
-
-  const isNoGoodBuy = !hasErrorInProbability && 
-    extractedProbabilityNum !== null && 
-    effectiveAskPrice !== undefined && 
-    (100 - extractedProbabilityNum) > effectiveAskPrice * 100;
-  
-  if (effectiveAskPrice !== undefined) {
-    console.log('Buy opportunity calculations:', {
-      isYesGoodBuy,
-      isNoGoodBuy,
-      probabilityNum: extractedProbabilityNum,
-      askPricePercentage: effectiveAskPrice * 100,
-      noProbability: extractedProbabilityNum !== null ? 100 - extractedProbabilityNum : null
-    });
   }
   
   return (
@@ -185,35 +157,7 @@ export function InsightsDisplay({
             </div>
           </div>
           
-          {(isYesGoodBuy || isNoGoodBuy) && effectiveAskPrice !== undefined && (
-            <div className="mt-4 border-t pt-4 border-accent/20">
-              <div className="flex items-center gap-2 mb-3">
-                <ShoppingBag className="h-4 w-4 text-green-500" />
-                <span className="text-sm font-medium">
-                  Potential Buy Opportunities
-                </span>
-              </div>
-              <div className="space-y-2">
-                {isYesGoodBuy && (
-                  <div className="flex items-center justify-between bg-green-500/10 p-2 rounded-md border border-green-500/20">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">YES @ {(effectiveAskPrice * 100).toFixed(0)}%</span>
-                    </div>
-                    <Badge className="bg-green-500 hover:bg-green-600">Good Buy</Badge>
-                  </div>
-                )}
-                {isNoGoodBuy && (
-                  <div className="flex items-center justify-between bg-green-500/10 p-2 rounded-md border border-green-500/20">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium">NO @ {(effectiveAskPrice * 100).toFixed(0)}%</span>
-                    </div>
-                    <Badge className="bg-green-500 hover:bg-green-600">Good Buy</Badge>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-          
+          {/* Display structured evidence if available */}
           {(evidenceFor.length > 0 || evidenceAgainst.length > 0) && (
             <div className="mt-4 space-y-4 border-t pt-4 border-accent/20">
               {evidenceFor.length > 0 && (
@@ -256,6 +200,7 @@ export function InsightsDisplay({
             </div>
           )}
           
+          {/* Fallback for old format reasoning (string type) */}
           {typeof reasoning === 'string' && reasoning && (
             <div className="mt-4 border-t pt-4 border-accent/20">
               <div className="flex items-center gap-2 mb-2">

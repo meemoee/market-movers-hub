@@ -13,11 +13,9 @@ serve(async (req) => {
   }
 
   try {
-    const requestData = await req.json();
-    const { tokenId } = requestData;
+    const { tokenId } = await req.json()
     
     if (!tokenId) {
-      console.error('[get-orderbook] No tokenId provided in request:', requestData);
       throw new Error('tokenId is required')
     }
 
@@ -61,79 +59,64 @@ serve(async (req) => {
     const polymarketUrl = `https://clob.polymarket.com/orderbook/${formattedTokenId}`
     console.log(`[get-orderbook] Requesting from URL: ${polymarketUrl}`)
     
-    try {
-      const response = await fetch(polymarketUrl, {
-        headers: {
-          'Accept': 'application/json'
-        }
-      });
-
-      if (!response.ok) {
-        console.error(`[get-orderbook] Polymarket API error: ${response.status}`)
-        const errorText = await response.text()
-        console.error(`[get-orderbook] Error details: ${errorText}`)
-        
-        // Let's try the alternative WebSocket endpoint as a fallback
-        console.log(`[get-orderbook] Attempting to use WebSocket endpoint as fallback`)
-        return await fetchFromWebSocketEndpoint(formattedTokenId)
+    const response = await fetch(polymarketUrl, {
+      headers: {
+        'Accept': 'application/json'
       }
+    })
 
-      const book = await response.json()
-      console.log(`[get-orderbook] Successfully fetched orderbook for token: ${tokenId}`)
+    if (!response.ok) {
+      console.error(`[get-orderbook] Polymarket API error: ${response.status}`)
+      const errorText = await response.text()
+      console.error(`[get-orderbook] Error details: ${errorText}`)
       
-      // Store the result in our database for future use
-      try {
-        const { error: insertError } = await supabase
-          .from('orderbook_data')
-          .upsert({
-            market_id: formattedTokenId,
-            timestamp: new Date().toISOString(),
-            bids: book.bids || {},
-            asks: book.asks || {},
-            best_bid: book.best_bid,
-            best_ask: book.best_ask,
-            spread: book.spread
-          }, {
-            onConflict: 'market_id'
-          });
-        
-        if (insertError) {
-          console.error(`[get-orderbook] Error storing orderbook data:`, insertError);
-        }
-      } catch (err) {
-        console.error(`[get-orderbook] Error in database operation:`, err);
-      }
-      
-      return new Response(
-        JSON.stringify(book),
-        { 
-          headers: { 
-            ...corsHeaders, 
-            'Content-Type': 'application/json' 
-          } 
-        }
-      );
-    } catch (fetchError) {
-      console.error(`[get-orderbook] Error fetching from Polymarket API:`, fetchError);
-      
-      // Try the fallback if the first fetch failed
-      console.log(`[get-orderbook] Attempting to use WebSocket endpoint as fallback after fetch error`)
-      return await fetchFromWebSocketEndpoint(formattedTokenId);
+      // Let's try the alternative WebSocket endpoint as a fallback
+      console.log(`[get-orderbook] Attempting to use WebSocket endpoint as fallback`)
+      return await fetchFromWebSocketEndpoint(formattedTokenId)
     }
+
+    const book = await response.json()
+    console.log(`[get-orderbook] Successfully fetched orderbook for token: ${tokenId}`)
+    
+    // Store the result in our database for future use
+    try {
+      const { error: insertError } = await supabase
+        .from('orderbook_data')
+        .upsert({
+          market_id: formattedTokenId,
+          timestamp: new Date().toISOString(),
+          bids: book.bids || {},
+          asks: book.asks || {},
+          best_bid: book.best_bid,
+          best_ask: book.best_ask,
+          spread: book.spread
+        }, {
+          onConflict: 'market_id'
+        });
+      
+      if (insertError) {
+        console.error(`[get-orderbook] Error storing orderbook data:`, insertError);
+      }
+    } catch (err) {
+      console.error(`[get-orderbook] Error in database operation:`, err);
+    }
+    
+    return new Response(
+      JSON.stringify(book),
+      { 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
+    )
+
   } catch (error) {
     console.error(`[get-orderbook] Error: ${error.message}`)
-    // Return a default response with empty orderbook data
     return new Response(
-      JSON.stringify({ 
-        error: error.message,
-        bids: {},
-        asks: {},
-        best_bid: null,
-        best_ask: null,
-        spread: null
-      }),
+      JSON.stringify({ error: error.message }),
       { 
-        status: 200, // Return 200 but with error message and empty data
+        status: 500,
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json' 
@@ -163,12 +146,11 @@ async function fetchFromWebSocketEndpoint(tokenId) {
     )
     
     if (!response.ok) {
-      console.error(`[get-orderbook] WebSocket fallback failed with status: ${response.status}`);
-      throw new Error(`WebSocket fallback failed with status: ${response.status}`);
+      throw new Error(`WebSocket fallback failed with status: ${response.status}`)
     }
     
     const data = await response.json()
-    console.log(`[get-orderbook] Successfully retrieved data from WebSocket fallback`);
+    console.log(`[get-orderbook] Successfully retrieved data from WebSocket fallback`)
     
     return new Response(
       JSON.stringify(data.orderbook || data),
@@ -180,24 +162,7 @@ async function fetchFromWebSocketEndpoint(tokenId) {
       }
     )
   } catch (error) {
-    console.error(`[get-orderbook] WebSocket fallback error: ${error.message}`);
-    // Return a default response with empty orderbook data
-    return new Response(
-      JSON.stringify({ 
-        error: error.message,
-        bids: {},
-        asks: {},
-        best_bid: null,
-        best_ask: null,
-        spread: null
-      }),
-      { 
-        status: 200, // Return 200 but with error message and empty data
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        }
-      }
-    );
+    console.error(`[get-orderbook] WebSocket fallback error: ${error.message}`)
+    throw error
   }
 }

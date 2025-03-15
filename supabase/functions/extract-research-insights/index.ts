@@ -21,8 +21,6 @@ interface InsightsRequest {
   focusText?: string;
   marketPrice?: number;
   relatedMarkets?: RelatedMarket[];
-  bestBidPrice?: number;
-  bestAskPrice?: number;
 }
 
 const corsHeaders = {
@@ -47,9 +45,7 @@ serve(async (req) => {
       areasForResearch,
       focusText,
       marketPrice,
-      relatedMarkets,
-      bestBidPrice,
-      bestAskPrice
+      relatedMarkets
     } = await req.json() as InsightsRequest;
     
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
@@ -62,9 +58,7 @@ serve(async (req) => {
       areasForResearchCount: areasForResearch?.length || 0,
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       marketPrice: marketPrice || 'Not provided',
-      relatedMarketsCount: relatedMarkets?.length || 0,
-      bestBidPrice: bestBidPrice !== undefined ? bestBidPrice : 'Not provided',
-      bestAskPrice: bestAskPrice !== undefined ? bestAskPrice : 'Not provided'
+      relatedMarketsCount: relatedMarkets?.length || 0
     });
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -125,13 +119,6 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       ? `\nCRITICAL: This analysis is specifically focused on: "${focusText}"\nYou MUST ensure ALL evidence points directly address this specific focus area.\n`
       : '';
 
-    // Add market price information to the prompt if available
-    let marketPricingContext = '';
-    if (bestBidPrice !== undefined && bestAskPrice !== undefined) {
-      marketPricingContext = `\nCurrent market prices: Best Bid: ${(bestBidPrice * 100).toFixed(1)}%, Best Ask: ${(bestAskPrice * 100).toFixed(1)}%\n`;
-      marketPricingContext += `When evaluating your probability assessment, consider the available market prices for trading. If your estimated probability differs significantly from the market price, there may be a profitable trading opportunity.\n`;
-    }
-
     const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
 Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
 
@@ -180,7 +167,6 @@ ${truncatedAnalysis}
 ---
 
 ${previousAnalysesContext}
-${marketPricingContext}
 
 Based on all this information, please provide:
 1. A specific probability estimate for the market question: "${marketQuestion}"
@@ -226,15 +212,7 @@ Remember to format your response as a valid JSON object with probability, areasF
 
     // Parse the response as JSON and return it
     const results = await response.json();
-    
-    // Include the bid/ask prices in the response so they can be displayed in the UI
-    const resultsWithPrices = {
-      ...results,
-      bestBidPrice,
-      bestAskPrice
-    };
-    
-    return new Response(JSON.stringify(resultsWithPrices), {
+    return new Response(JSON.stringify(results), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json',
