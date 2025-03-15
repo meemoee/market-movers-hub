@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -226,6 +225,21 @@ export function JobQueueResearchCard({
     }
     
     return opportunities.length > 0 ? opportunities : null;
+  };
+
+  const extractProbability = (job: ResearchJob): string | null => {
+    if (!job.results || job.status !== 'completed') return null;
+    
+    try {
+      const parsedResults = JSON.parse(job.results);
+      if (parsedResults.structuredInsights && parsedResults.structuredInsights.probability) {
+        return parsedResults.structuredInsights.probability;
+      }
+      return null;
+    } catch (e) {
+      console.error('Error extracting probability from job results:', e);
+      return null;
+    }
   };
 
   useEffect(() => {
@@ -564,6 +578,7 @@ export function JobQueueResearchCard({
                   variant="outline" 
                   size="sm"
                   disabled={isLoadingJobs || isLoading || isLoadingSaved}
+                  className="fixed bottom-4 right-4 z-10 shadow-md"
                 >
                   {isLoadingJobs ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
@@ -573,36 +588,47 @@ export function JobQueueResearchCard({
                   History
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[300px]">
-                {savedJobs.map((job) => (
-                  <DropdownMenuItem
-                    key={job.id}
-                    onClick={() => loadSavedResearch(job.id)}
-                    disabled={isLoadingSaved}
-                    className="flex flex-col items-start py-2"
-                  >
-                    <div className="flex items-center w-full">
-                      {getStatusIcon(job.status)}
-                      <span className="font-medium truncate flex-1">
-                        {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
-                      </span>
-                      <Badge 
-                        variant="outline" 
-                        className={`ml-2 ${
-                          job.status === 'completed' ? 'bg-green-50 text-green-700' : 
-                          job.status === 'failed' ? 'bg-red-50 text-red-700' :
-                          job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
-                          'bg-yellow-50 text-yellow-700'
-                        }`}
-                      >
-                        {job.status}
-                      </Badge>
-                    </div>
-                    <span className="text-xs text-muted-foreground mt-1">
-                      {formatDate(job.created_at)}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
+              <DropdownMenuContent align="end" className="w-[300px] max-h-[400px] overflow-y-auto">
+                {savedJobs.map((job) => {
+                  const probability = extractProbability(job);
+                  
+                  return (
+                    <DropdownMenuItem
+                      key={job.id}
+                      onClick={() => loadSavedResearch(job.id)}
+                      disabled={isLoadingSaved}
+                      className="flex flex-col items-start py-2"
+                    >
+                      <div className="flex items-center w-full">
+                        {getStatusIcon(job.status)}
+                        <span className="font-medium truncate flex-1">
+                          {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
+                        </span>
+                        <Badge 
+                          variant="outline" 
+                          className={`ml-2 ${
+                            job.status === 'completed' ? 'bg-green-50 text-green-700' : 
+                            job.status === 'failed' ? 'bg-red-50 text-red-700' :
+                            job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
+                            'bg-yellow-50 text-yellow-700'
+                          }`}
+                        >
+                          {job.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between w-full mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(job.created_at)}
+                        </span>
+                        {probability && (
+                          <Badge variant="secondary" className="text-xs">
+                            P: {probability}
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
