@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -21,6 +20,9 @@ interface InsightsRequest {
   focusText?: string;
   marketPrice?: number;
   relatedMarkets?: RelatedMarket[];
+  bestAsk?: number;
+  bestBid?: number;
+  outcomes?: string[];
 }
 
 const corsHeaders = {
@@ -45,7 +47,10 @@ serve(async (req) => {
       areasForResearch,
       focusText,
       marketPrice,
-      relatedMarkets
+      relatedMarkets,
+      bestAsk,
+      bestBid,
+      outcomes
     } = await req.json() as InsightsRequest;
     
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
@@ -58,7 +63,10 @@ serve(async (req) => {
       areasForResearchCount: areasForResearch?.length || 0,
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       marketPrice: marketPrice || 'Not provided',
-      relatedMarketsCount: relatedMarkets?.length || 0
+      relatedMarketsCount: relatedMarkets?.length || 0,
+      bestAsk: bestAsk !== undefined ? (bestAsk * 100).toFixed(2) + '%' : 'Not provided',
+      bestBid: bestBid !== undefined ? (bestBid * 100).toFixed(2) + '%' : 'Not provided',
+      outcomesCount: outcomes?.length || 0
     });
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -168,6 +176,8 @@ ${truncatedAnalysis}
 
 ${previousAnalysesContext}
 
+${marketPricingContext}
+
 Based on all this information, please provide:
 1. A specific probability estimate for the market question: "${marketQuestion}"
 2. The key areas where more research is needed
@@ -182,7 +192,6 @@ ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed
 
 Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
-    // Non-streaming version for background jobs
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -197,7 +206,6 @@ Remember to format your response as a valid JSON object with probability, areasF
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
-        // For background jobs, don't stream
         stream: false,
         temperature: 0.2,
         response_format: { type: "json_object" }
@@ -210,7 +218,6 @@ Remember to format your response as a valid JSON object with probability, areasF
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    // Parse the response as JSON and return it
     const results = await response.json();
     return new Response(JSON.stringify(results), {
       headers: {
