@@ -46,6 +46,11 @@ interface ResearchJob {
   updated_at: string;
   user_id?: string;
   focus_text?: string;
+  meta?: {
+    marketQuestion?: string;
+    bestBidPrice?: number | null;
+    bestAskPrice?: number | null;
+  };
 }
 
 export function JobQueueResearchCard({ description, marketId }: JobQueueResearchCardProps) {
@@ -67,6 +72,7 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
   const [bestBidPrice, setBestBidPrice] = useState<number | undefined>(undefined)
   const [bestAskPrice, setBestAskPrice] = useState<number | undefined>(undefined)
+  const [isLoadingOrderbook, setIsLoadingOrderbook] = useState(false)
   const { toast } = useToast()
 
   // Reset all state variables to their initial values
@@ -95,26 +101,44 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
   // Fetch orderbook data for the market to get best bid/ask prices
   const fetchOrderbookData = async () => {
     try {
+      setIsLoadingOrderbook(true);
+      
+      // First, try to get the CLOB token ID for this market from the markets table
+      const { data: marketData } = await supabase
+        .from('markets')
+        .select('clobtokenids')
+        .eq('id', marketId)
+        .maybeSingle();
+      
+      const clobTokenId = marketData?.clobtokenids?.[0] || marketId;
+      
+      console.log('Using CLOB token ID for orderbook:', clobTokenId);
+      
       const response = await supabase.functions.invoke('get-orderbook', {
-        body: JSON.stringify({ marketId })
+        body: JSON.stringify({ tokenId: clobTokenId })
       });
+
+      if (response.error) {
+        console.error('Error invoking get-orderbook function:', response.error);
+        return;
+      }
 
       if (response.data) {
         const orderbook = response.data;
         console.log('Fetched orderbook data:', orderbook);
         
-        if (orderbook.bids && orderbook.bids.length > 0) {
-          // Best bid price is the highest bid price
-          setBestBidPrice(parseFloat(orderbook.bids[0][0]));
+        if (orderbook.best_bid !== null && orderbook.best_bid !== undefined) {
+          setBestBidPrice(parseFloat(orderbook.best_bid));
         }
         
-        if (orderbook.asks && orderbook.asks.length > 0) {
-          // Best ask price is the lowest ask price
-          setBestAskPrice(parseFloat(orderbook.asks[0][0]));
+        if (orderbook.best_ask !== null && orderbook.best_ask !== undefined) {
+          setBestAskPrice(parseFloat(orderbook.best_ask));
         }
       }
     } catch (error) {
       console.error('Error fetching orderbook data:', error);
+    } finally {
+      setIsLoadingOrderbook(false);
     }
   };
 
@@ -191,12 +215,16 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           setAnalysis(parsedResults.analysis);
         }
         if (parsedResults.structuredInsights) {
-          // Check if we have bid/ask prices in the structuredInsights
+          // Get bid/ask prices from job metadata if available
+          const storedBidPrice = job.meta?.bestBidPrice !== undefined ? job.meta.bestBidPrice : bestBidPrice;
+          const storedAskPrice = job.meta?.bestAskPrice !== undefined ? job.meta.bestAskPrice : bestAskPrice;
+          
+          // Create the insights object with prices
           const insightsWithPrices = {
             parsedData: {
               ...parsedResults.structuredInsights,
-              bestBidPrice: parsedResults.bestBidPrice || bestBidPrice,
-              bestAskPrice: parsedResults.bestAskPrice || bestAskPrice
+              bestBidPrice: parsedResults.bestBidPrice || storedBidPrice,
+              bestAskPrice: parsedResults.bestAskPrice || storedAskPrice
             },
             rawText: JSON.stringify(parsedResults.structuredInsights)
           };
@@ -217,6 +245,16 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     // Set focus text if available
     if (job.focus_text) {
       setFocusText(job.focus_text);
+    }
+    
+    // Set stored bid/ask prices if available in job metadata
+    if (job.meta) {
+      if (job.meta.bestBidPrice !== undefined && job.meta.bestBidPrice !== null) {
+        setBestBidPrice(job.meta.bestBidPrice);
+      }
+      if (job.meta.bestAskPrice !== undefined && job.meta.bestAskPrice !== null) {
+        setBestAskPrice(job.meta.bestAskPrice);
+      }
     }
   }
 
@@ -265,12 +303,16 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
                 setAnalysis(parsedResults.analysis);
               }
               if (parsedResults.structuredInsights) {
+                // Get bid/ask prices from job metadata or results
+                const storedBidPrice = job.meta?.bestBidPrice !== undefined ? job.meta.bestBidPrice : bestBidPrice;
+                const storedAskPrice = job.meta?.bestAskPrice !== undefined ? job.meta.bestAskPrice : bestAskPrice;
+                
                 // Include market prices in structuredInsights
                 const insightsWithPrices = {
                   parsedData: {
                     ...parsedResults.structuredInsights,
-                    bestBidPrice: parsedResults.bestBidPrice || bestBidPrice,
-                    bestAskPrice: parsedResults.bestAskPrice || bestAskPrice
+                    bestBidPrice: parsedResults.bestBidPrice || storedBidPrice,
+                    bestAskPrice: parsedResults.bestAskPrice || storedAskPrice
                   },
                   rawText: JSON.stringify(parsedResults.structuredInsights)
                 };
@@ -339,8 +381,11 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
       
-      // Ensure we have the latest orderbook data
-      await fetchOrderbookData();
+      // Ensure we have the latest orderbook data if not already loaded
+      if (bestBidPrice === undefined || bestAskPrice === undefined) {
+        setProgress(prev => [...prev, "Fetching market price data..."]);
+        await fetchOrderbookData();
+      }
       
       const payload = {
         marketId,
@@ -571,11 +616,11 @@ export function JobQueueResearchCard({ description, marketId }: JobQueueResearch
           ) : (
             <Button 
               onClick={() => handleResearch()} 
-              disabled={isLoading || polling}
+              disabled={isLoading || polling || isLoadingOrderbook}
               className="flex items-center gap-2"
             >
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isLoading ? "Starting..." : "Start Research"}
+              {(isLoading || isLoadingOrderbook) && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isLoading ? "Starting..." : isLoadingOrderbook ? "Loading market data..." : "Start Research"}
             </Button>
           )}
           

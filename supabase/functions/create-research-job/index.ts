@@ -37,7 +37,7 @@ serve(async (req) => {
     
     console.log(`Creating research job for market ID ${marketId} with query: ${query.substring(0, 100)}${query.length > 100 ? '...' : ''}`);
     console.log(`Focus text: ${focusText || 'None'}`);
-    console.log(`Market prices - Best Bid: ${bestBidPrice || 'Not provided'}, Best Ask: ${bestAskPrice || 'Not provided'}`);
+    console.log(`Market prices - Best Bid: ${bestBidPrice !== undefined ? bestBidPrice : 'Not provided'}, Best Ask: ${bestAskPrice !== undefined ? bestAskPrice : 'Not provided'}`);
     
     // Get market question from the markets table
     const { data: marketData, error: marketError } = await supabase
@@ -67,8 +67,8 @@ serve(async (req) => {
           focus_text: focusText || null,
           meta: {
             marketQuestion,
-            bestBidPrice,
-            bestAskPrice
+            bestBidPrice: bestBidPrice !== undefined ? bestBidPrice : null,
+            bestAskPrice: bestAskPrice !== undefined ? bestAskPrice : null
           }
         }
       ])
@@ -241,6 +241,10 @@ serve(async (req) => {
               webContent.push('No content collected yet');
             }
             
+            // Retrieve the bid/ask prices from the job meta
+            const bestBidPrice = jobData.meta?.bestBidPrice || null;
+            const bestAskPrice = jobData.meta?.bestAskPrice || null;
+            
             // Analyze the web content
             const analyzeResponse = await supabase.functions.invoke('analyze-web-content', {
               body: JSON.stringify({
@@ -309,7 +313,7 @@ serve(async (req) => {
               const updatedResults = {
                 data: parsedResults?.data || [],
                 analysis,
-                structuredInsights: insightsResponse.data.choices[0].message.content,
+                structuredInsights: insightsResponse.data,
                 bestBidPrice,
                 bestAskPrice
               };

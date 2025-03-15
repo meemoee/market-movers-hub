@@ -63,8 +63,8 @@ serve(async (req) => {
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       marketPrice: marketPrice || 'Not provided',
       relatedMarketsCount: relatedMarkets?.length || 0,
-      bestBidPrice: bestBidPrice || 'Not provided',
-      bestAskPrice: bestAskPrice || 'Not provided'
+      bestBidPrice: bestBidPrice !== undefined ? bestBidPrice : 'Not provided',
+      bestAskPrice: bestAskPrice !== undefined ? bestAskPrice : 'Not provided'
     });
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
