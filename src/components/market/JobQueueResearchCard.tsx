@@ -205,14 +205,14 @@ export function JobQueueResearchCard({
     }
     
     const inferredProbability = 1 - probability;
-    const noMarketPrice = bestAsk ? 1 - bestAsk : undefined;
+    const noBidPrice = 1 - bestAsk;
     
-    if (inferredProbability > (noMarketPrice || 0) + THRESHOLD) {
+    if (inferredProbability > noBidPrice + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[1] || "NO",
         predictedProbability: inferredProbability,
-        marketPrice: noMarketPrice,
-        difference: (inferredProbability - (noMarketPrice || 0)).toFixed(2)
+        marketPrice: noBidPrice,
+        difference: (inferredProbability - noBidPrice).toFixed(2)
       });
     }
     

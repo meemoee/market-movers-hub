@@ -38,6 +38,10 @@ export function MarketCard({
   onSell,
   selectedInterval,
 }: MarketCardProps) {
+  // Calculate the proper "No" price based on the "Yes" price (best_bid)
+  // For "No", the price is 1 - best_bid because they are complementary
+  const noPrice = market.final_best_bid ? 1 - market.final_best_bid : undefined;
+  
   return (
     <div className="w-full p-3 space-y-3">
       <MarketHeader
@@ -46,6 +50,7 @@ export function MarketCard({
         yesSubTitle={market.yes_sub_title}
         bestBid={market.final_best_bid}
         bestAsk={market.final_best_ask}
+        noPrice={noPrice}  // Pass the calculated No price
         onBuy={onBuy}
         onSell={onSell}
         outcomes={market.outcomes}
