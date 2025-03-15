@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -22,7 +23,7 @@ interface JobQueueResearchCardProps {
   bestBid?: number;
   bestAsk?: number;
   noBestAsk?: number; 
-  noBestBid?: number; // Add this property to receive the No outcome bid price
+  noBestBid?: number;
   outcomes?: string[];
 }
 
@@ -57,7 +58,7 @@ export function JobQueueResearchCard({
   bestBid, 
   bestAsk, 
   noBestAsk,
-  noBestBid, // Use the passed No bid price
+  noBestBid,
   outcomes 
 }: JobQueueResearchCardProps) {
   const [isLoading, setIsLoading] = useState(false)
@@ -209,16 +210,17 @@ export function JobQueueResearchCard({
     }
     
     const inferredProbability = 1 - probability;
-    // Use noBestBid directly if available for comparing buy opportunities of the "No" outcome
-    // This is the correct value to use for detecting good buy opportunities
-    const noBidPrice = noBestBid !== undefined ? noBestBid : 1 - bestAsk;
+    // Use noBestAsk directly if available for comparing buy opportunities of the "No" outcome
+    // This is the correct value to use for detecting good buy opportunities since it's what 
+    // a user would pay when buying the No outcome with a market order
+    const noAskPrice = noBestAsk !== undefined ? noBestAsk : 1 - bestBid;
     
-    if (inferredProbability > noBidPrice + THRESHOLD) {
+    if (inferredProbability > noAskPrice + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[1] || "NO",
         predictedProbability: inferredProbability,
-        marketPrice: noBidPrice,
-        difference: (inferredProbability - noBidPrice).toFixed(2)
+        marketPrice: noAskPrice,
+        difference: (inferredProbability - noAskPrice).toFixed(2)
       });
     }
     
