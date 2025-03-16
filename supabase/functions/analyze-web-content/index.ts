@@ -174,8 +174,10 @@ ${isMarketResolved ?
   `4. How does this information affect the probability assessment?`
 }
 5. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
-${marketPrice !== undefined && !isMarketResolved ? `6. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
-${relatedMarkets && relatedMarkets.length > 0 ? `7. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+6. IMPORTANT: Provide an estimated probability range (e.g., 30-40%) based on the evidence analyzed.
+7. IMPORTANT: List specific areas that need further research or inspection to improve confidence in this assessment.
+${marketPrice !== undefined && !isMarketResolved ? `8. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `9. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 ${focusText ? `\nCRITICAL REMINDER: Your analysis MUST focus EXCLUSIVELY on: "${focusText}"\nEnsure ALL insights directly address this specific focus area.\n` : ''}
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;

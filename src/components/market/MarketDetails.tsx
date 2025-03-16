@@ -31,8 +31,8 @@ export function MarketDetails({
   eventId,
   bestBid,
   bestAsk,
-  noBestBid, // Add this to the function parameters
-  noBestAsk, // Add this to the function parameters
+  noBestBid,
+  noBestAsk,
   outcomes
 }: MarketDetailsProps) {
   const [selectedChartInterval, setSelectedChartInterval] = useState('1d');
