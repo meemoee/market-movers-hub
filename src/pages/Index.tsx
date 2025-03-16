@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
@@ -82,12 +83,16 @@ export default function Index() {
             <div className="fixed z-[60] w-[280px]" style={{ 
               left: 'max(calc(50% - 640px + 16px), 16px)' /* Aligns with main content container */ 
             }}>
+              {/* Logo */}
+              <div className="flex justify-center mb-4">
+                <img src="/hunchex-logo.svg" alt="HunchEx" className="h-8" />
+              </div>
               <AccountIsland />
             </div>
           )}
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
-          <div className="w-[660px] flex-shrink-0 flex-grow-0 ml-[340px] xl:mr-[400px]">
+          <div className="w-[660px] flex-shrink-0 flex-grow-0 ml-[360px] xl:mr-[400px]">
             <div className={`w-full ${isMobile ? 'mt-20' : ''}`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
@@ -104,6 +109,10 @@ export default function Index() {
       {/* Mobile AccountIsland */}
       {isMobile && (
         <div className={`fixed top-14 inset-x-0 z-[60] px-4 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-[280px]' : 'translate-x-0'}`}>
+          {/* Logo for mobile */}
+          <div className="flex justify-center mb-4">
+            <img src="/hunchex-logo.svg" alt="HunchEx" className="h-6" />
+          </div>
           <AccountIsland />
         </div>
       )}
