@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
@@ -115,8 +116,8 @@ export default function Index() {
         )}
 
         {/* Main content area */}
-        <main className="h-screen overflow-y-auto">
-          <div className="container mx-auto px-4 max-w-[1280px]">
+        <main className="h-screen overflow-y-auto flex justify-center">
+          <div className="w-full max-w-[800px] px-4">
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
