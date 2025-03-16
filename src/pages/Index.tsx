@@ -78,11 +78,11 @@ export default function Index() {
             {/* Sidebar content */}
           </aside>
 
-          {/* Desktop layout with correct positioning */}
+          {/* Main content flex container */}
           <div className={`flex w-full max-w-[1280px] gap-6 ${isMobile ? '' : 'xl:pr-[400px]'}`}>
-            {/* AccountIsland - Desktop version */}
+            {/* AccountIsland - Desktop version with sticky positioning */}
             {!isMobile && (
-              <div className="w-[280px] shrink-0">
+              <div className="w-[280px] shrink-0 h-screen">
                 <div className="sticky top-4 z-[60]">
                   <AccountIsland />
                 </div>
