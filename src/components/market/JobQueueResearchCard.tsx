@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
-import { SitePreviewList } from "./SitePreviewList"
+import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
@@ -1053,9 +1053,11 @@ export function JobQueueResearchCard({
                   <IterationCard 
                     key={index}
                     iteration={iteration}
-                    iterationNumber={index + 1}
-                    expanded={expandedIterations.includes(index + 1)}
-                    onToggle={() => toggleIterationExpand(index + 1)}
+                    isExpanded={expandedIterations.includes(index + 1)}
+                    onToggleExpand={() => toggleIterationExpand(index + 1)}
+                    isStreaming={isStreaming && isCurrentIteration && index + 1 === iterations.length}
+                    isCurrentIteration={index + 1 === iterations.length}
+                    maxIterations={iterations.length}
                   />
                 ))}
               </div>
@@ -1078,7 +1080,7 @@ export function JobQueueResearchCard({
             {results.length > 0 && (
               <div>
                 <h3 className="text-lg font-medium mb-3">Research Results</h3>
-                <SitePreviewList sites={results} />
+                <SitePreviewList results={results} />
               </div>
             )}
             
@@ -1093,13 +1095,15 @@ export function JobQueueResearchCard({
               <div className="mt-6">
                 <h3 className="text-lg font-medium mb-3">Key Insights</h3>
                 <InsightsDisplay 
-                  insights={structuredInsights.parsedData} 
-                  rawText={structuredInsights.rawText}
-                  bestBid={bestBid}
-                  bestAsk={bestAsk}
-                  noBestBid={noBestBid}
-                  noBestAsk={noBestAsk}
-                  outcomes={outcomes}
+                  streamingState={structuredInsights}
+                  onResearchArea={onResearchArea}
+                  marketData={{
+                    bestBid,
+                    bestAsk,
+                    noBestBid,
+                    noBestAsk,
+                    outcomes
+                  }}
                 />
               </div>
             )}
