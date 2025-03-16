@@ -81,6 +81,9 @@ Your search queries must:
 4. Each query should address a distinct aspect of the market question
 5. Avoid filler words like "what is" or "how to" unless absolutely necessary
 6. Include enough context for relevant search results
+7. PRIORITIZE RECENT DATA: Include terms like "latest", "recent", "2025", or "update" where appropriate
+8. TARGET STATISTICAL DATA: Focus on finding specific numbers, statistics, percentages, or quantitative data
+9. Include timeframes, dates, or specific periods when relevant to get the most current information
 
 Focus on different aspects that would be relevant for market research.`;
 
@@ -89,7 +92,7 @@ Focus on different aspects that would be relevant for market research.`;
       prompt += `\n\nFOCUS AREA:
 "${focusText.trim()}"
 
-Ensure that most of your queries address this focus area while providing sufficient context.`;
+Ensure that most of your queries address this focus area while providing sufficient context. When focusing on this area, prioritize finding recent data points and specific statistics.`;
     }
 
     // Adjust prompt based on iteration and include previous analyses
@@ -112,13 +115,18 @@ Ensure that most of your queries address this focus area while providing suffici
 2. Create a targeted search query for EACH specific gap
 3. Each query should be precise, focusing on one specific aspect or data point
 4. Prioritize collecting factual information over opinions
-5. Target recent or time-sensitive information where relevant`;
+5. Target recent or time-sensitive information where relevant
+6. Specifically search for NUMERIC DATA and STATISTICS that were missing in previous analyses
+7. Include date ranges or time periods to ensure you get the most current information
+8. Look for trend data, historical comparisons, and up-to-date metrics`;
       } else {
         prompt += `\n\nKNOWLEDGE GAP REQUIREMENTS:
 1. Analyze previous queries and target NEW topics not yet covered
 2. Focus on missing information crucial for comprehensive understanding
 3. Explore specialized sub-topics or alternative perspectives
-4. Maintain search query format (not sentences)`;
+4. Maintain search query format (not sentences)
+5. Prioritize queries that will find the LATEST DATA and SPECIFIC STATISTICS
+6. Include date ranges or time periods to ensure you get the most current information`;
       }
     }
 
@@ -129,11 +137,11 @@ ${previousQueries.join('\n')}`;
     }
 
     prompt += `\n\nFor example, if the topic is "Will SpaceX successfully land humans on Mars by 2030?" and the description mentions "Elon Musk's Mars colonization plans face technical and funding challenges", good queries would be:
-- SpaceX Mars mission timeline 2030 technical challenges
-- Elon Musk Mars colonization funding obstacles recent updates
-- SpaceX Starship human landing technology readiness
-- Mars mission delays SpaceX historical timeline analysis
-- NASA SpaceX Mars collaboration funding status 2030 goal
+- SpaceX Mars mission timeline 2030 technical challenges latest updates
+- Elon Musk Mars colonization funding statistics 2025 current status
+- SpaceX Starship human landing technology readiness metrics percentage
+- Mars mission delays SpaceX historical timeline analysis 2020-2025 data
+- NASA SpaceX Mars collaboration funding numbers 2030 goal recent changes
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
 
@@ -151,7 +159,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         messages: [
           {
             role: "system",
-            content: "You are a market research specialist that identifies specific knowledge gaps and generates effective search queries to fill those gaps. You create targeted queries that focus on obtaining precise information about specific aspects, data points, or examples needed."
+            content: "You are a market research specialist that identifies specific knowledge gaps and generates effective search queries to fill those gaps. You create targeted queries that focus on obtaining precise information about specific aspects, data points, or examples needed. You have a strong preference for recent data and specific statistics."
           },
           {
             role: "user",
@@ -193,21 +201,21 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     } catch (error) {
       console.error("Error parsing OpenRouter response:", error, content);
       
-      // Generate fallback queries in search format style
+      // Generate fallback queries in search format style with recency and stats focus
       const topicForFallback = topicTitle || query;
       queries = [
-        `${topicForFallback} recent developments`,
-        `${topicForFallback} market forecast data`,
-        `${topicForFallback} historical trends statistics`,
-        `${topicForFallback} expert analysis`,
-        `${topicForFallback} performance metrics comparison`
+        `${topicForFallback} latest statistics 2025`,
+        `${topicForFallback} recent data trends numbers`,
+        `${topicForFallback} current metrics percentages`,
+        `${topicForFallback} up-to-date analysis figures`,
+        `${topicForFallback} historical comparison stats 2020-2025`
       ];
       
       // If focus text exists, add it to a couple of queries
       if (focusText && focusText.trim()) {
         const focusKeywords = focusText.trim().split(' ').slice(0, 3).join(' ');
-        queries[1] = `${topicForFallback} ${focusKeywords} analysis`;
-        queries[3] = `${focusKeywords} impact on ${topicForFallback}`;
+        queries[1] = `${topicForFallback} ${focusKeywords} latest statistics data`;
+        queries[3] = `${focusKeywords} impact on ${topicForFallback} recent numbers`;
       }
     }
 
@@ -226,11 +234,11 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
       JSON.stringify({ 
         error: `Query generation error: ${error.message}`,
         queries: [
-          `${query} key developments`,
-          `${query} expert analysis`,
-          `${query} historical data trends`,
-          `${query} statistical metrics`,
-          `${query} future projections`
+          `${query} latest developments 2025`,
+          `${query} current statistics data`,
+          `${query} recent trends metrics`,
+          `${query} updated figures percentages`,
+          `${query} historical comparison 2020-2025`
         ]
       }),
       {

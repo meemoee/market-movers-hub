@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
@@ -51,8 +52,9 @@ CRITICAL REQUIREMENTS:
 4. Avoid filler words like "what is" or "how to" unless absolutely necessary
 5. Include enough context for relevant search results
 6. Each query should target a specific aspect of the topic
-
-Make each query different to gather a wide range of information.
+7. PRIORITIZE RECENT INFORMATION - include time indicators like "latest", "2025", "recent" or date ranges
+8. TARGET SPECIFIC STATISTICS AND NUMBERS - focus on finding exact data points, percentages, and metrics
+9. Make each query different to gather a wide range of statistical and recent information
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
 
@@ -111,25 +113,25 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries in search format
+    // Generate fallback queries in search format with recency and statistics focus
     if (focusText) {
-      // Add focused variants
+      // Add focused variants with recency and stats emphasis
       const focusKeywords = focusText.split(' ').slice(0, 3).join(' ');
       return [
-        `${query} ${focusKeywords} analysis`,
-        `${query} ${focusKeywords} market impact`,
-        `${query} ${focusKeywords} data trends`,
-        `${focusKeywords} effect on ${query}`,
-        `${query} ${focusKeywords} historical context`
+        `${query} ${focusKeywords} latest statistics 2025`,
+        `${query} ${focusKeywords} recent data trends`,
+        `${query} ${focusKeywords} current metrics percentages`,
+        `${focusKeywords} impact on ${query} data 2023-2025`,
+        `${query} ${focusKeywords} comparative analysis numbers`
       ]
     }
     
     return [
-      `${query} market insights analysis`,
-      `${query} performance metrics data`,
-      `${query} historical context trends`,
-      `${query} expert forecasts`,
-      `${query} statistical comparisons`
+      `${query} latest statistics data 2025`,
+      `${query} current metrics percentages`,
+      `${query} historical data trends 2020-2025`,
+      `${query} recent analysis numbers`,
+      `${query} comparative statistics last 2 years`
     ]
   }
 }

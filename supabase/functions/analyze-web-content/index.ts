@@ -122,16 +122,20 @@ Your task is to analyze web content to assess the probability of market outcomes
    - Evaluate source credibility and relevance
    - Highlight strongest evidence points
    - Note potential biases or limitations
+   - EXTRACT SPECIFIC NUMBERS AND STATISTICS wherever possible
+   - PRIORITIZE RECENT DATA over older information
 
 3. Impact Factor Analysis
    - List major factors affecting probability
    - Analyze positive and negative influences
    - Consider timing and sequence of events
+   - Quantify factors with specific numbers when possible
 
 4. Condition Mapping
    - Identify necessary conditions for the event
    - Assess likelihood of conditions being met
    - Note dependencies between conditions
+   - Use specific metrics and timelines when available
 
 5. Uncertainty Analysis
    - Highlight key areas of uncertainty
@@ -140,15 +144,23 @@ Your task is to analyze web content to assess the probability of market outcomes
    
 6. Temporal Relevance
    - Evaluate information recency relative to today (${currentDate})
+   - CLEARLY FLAG when data is from before 2024
    - Note when data may be outdated
    - Consider what might have changed since information was published
+   - Give greater weight to the most recent information
 
-${focusText ? `7. Focus Area Priority
+7. Data Precision
+   - Extract and highlight specific statistics, percentages, and numbers
+   - Note dates associated with any statistical data
+   - Compare different data points to identify trends
+   - Indicate reliability of quantitative information
+
+${focusText ? `8. Focus Area Priority
    - EVERY insight MUST explicitly address the focus area: "${focusText}"
    - Information not directly related to the focus area should be excluded
    - Clearly explain how each point connects to the specified focus` : ''}
 
-Be factual, precise, and evidence-based in your analysis.`;
+Be factual, precise, and evidence-based in your analysis. Prioritize recent information and exact statistics.`;
 
     let prompt = `Here is the web content I've collected during research:
 ---
@@ -165,20 +177,27 @@ ${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... 
     prompt += `\nTODAY'S DATE: ${currentDate}
 
 Based solely on the information in this content:
-1. What are the key facts and insights relevant to the market question "${question}"?
+1. What are the key facts and insights relevant to the market question "${question}"? PRIORITIZE recent information (2024-2025) and extract specific numbers, percentages and statistics.
 ${focusText ? `1a. CRITICAL: Focus specifically ONLY on aspects directly related to: "${focusText}"` : ''}
-2. What evidence supports or contradicts the proposition?
-3. Considering today's date (${currentDate}), how recent and relevant is the information?
+2. What evidence supports or contradicts the proposition? Pay special attention to verifiable data points, statistics, and recent developments.
+3. Considering today's date (${currentDate}), how recent and relevant is the information? CLEARLY INDICATE the dates of any statistics or data points.
 ${isMarketResolved ? 
   `4. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
-  `4. How does this information affect the probability assessment?`
+  `4. How does this information affect the probability assessment? Use specific quantitative data points where available.`
 }
-5. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
+5. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}? Support with the most recent available statistics.
 6. IMPORTANT: Provide an estimated probability range (e.g., 30-40%) based on the evidence analyzed.
 7. IMPORTANT: List specific areas that need further research or inspection to improve confidence in this assessment.
 ${marketPrice !== undefined && !isMarketResolved ? `8. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
 ${relatedMarkets && relatedMarkets.length > 0 ? `9. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 ${focusText ? `\nCRITICAL REMINDER: Your analysis MUST focus EXCLUSIVELY on: "${focusText}"\nEnsure ALL insights directly address this specific focus area.\n` : ''}
+
+IMPORTANT REQUIREMENTS:
+- Prioritize and highlight the MOST RECENT information available in the content
+- Extract and include SPECIFIC STATISTICS, NUMBERS, and PERCENTAGES whenever possible
+- CLEARLY INDICATE the publication dates or timeframes of any data points you reference
+- Apply greater weight to information from 2024-2025 compared to older sources
+- Flag any data points older than 2023 as potentially outdated
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
