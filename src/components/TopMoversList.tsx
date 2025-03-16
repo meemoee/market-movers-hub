@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { useToast } from "@/hooks/use-toast";
@@ -242,7 +243,7 @@ export default function TopMoversList({
 
   return (
     <div className="flex flex-col w-full max-w-full overflow-hidden">
-      <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
+      <div className="sticky top-0 z-50 w-full flex flex-col bg-background/95 backdrop-blur-md rounded-b-lg shadow-md border-b border-white/5">
         {!marketId && (
           <div className="flex items-center w-full px-4 py-3 border-b">
             <div className="relative flex-1 max-w-2xl mx-auto">
