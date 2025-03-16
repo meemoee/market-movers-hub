@@ -62,16 +62,16 @@ export default function Index() {
           />
         )}
 
-        {/* Main sidebar container */}
+        {/* Main sidebar container - simplified structure */}
         <aside 
           className={`
             ${isMobile 
               ? 'fixed left-0 top-0 bottom-0 z-50 w-[280px]'
-              : 'w-[280px] flex-shrink-0 h-screen'
+              : 'w-[280px] flex-shrink-0 h-screen sticky top-0'
             }
             ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}
             transition-transform duration-300 ease-in-out bg-background
-            flex flex-col
+            flex flex-col overflow-hidden
           `}
         >
           {/* Fixed logo header */}
@@ -94,15 +94,14 @@ export default function Index() {
             </a>
           </div>
 
-          {/* Scrollable content area - AccountIsland direct child, sticky */}
+          {/* Single scrollable container for the rest of the sidebar content */}
           <div className="flex-1 overflow-y-auto scrollbar-none">
-            <div className="sticky top-0 px-4 py-4 bg-background z-10">
-              <AccountIsland />
-            </div>
+            {/* AccountIsland directly in the scroll container */}
+            <AccountIsland />
           </div>
         </aside>
 
-        <main className={`w-[600px] ${isMobile ? 'px-0 pt-14' : 'px-0'} relative z-10`}>
+        <main className={`flex-1 max-w-[600px] ${isMobile ? 'px-0 pt-14' : 'px-0'} relative z-10`}>
           <div className="w-full pt-0 pb-4">
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
