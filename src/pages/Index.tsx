@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
@@ -64,7 +65,7 @@ export default function Index() {
             />
           )}
 
-          {/* Mobile Sidebar */}
+          {/* Mobile Sidebar - Remove AccountIsland from here */}
           <aside 
             className={`${
               isMobile 
@@ -75,20 +76,18 @@ export default function Index() {
             } transition-transform duration-300 ease-in-out`}
           >
             <div className="h-full overflow-y-auto pt-14">
-              {isMobile && <AccountIsland />}
+              {/* Remove AccountIsland from mobile sidebar */}
             </div>
           </aside>
 
           {/* Main Content with AccountIsland and TopMoversList */}
           <div className="flex w-full max-w-[1280px] gap-6 xl:pr-[400px]">
-            {/* AccountIsland - Desktop Only */}
-            {!isMobile && (
-              <div className="w-[280px] shrink-0">
-                <div className="sticky top-[102px]">
-                  <AccountIsland />
-                </div>
+            {/* AccountIsland - Always visible with sticky positioning */}
+            <div className="w-[280px] shrink-0">
+              <div className="sticky top-4 z-[60]">
+                <AccountIsland />
               </div>
-            )}
+            </div>
 
             {/* TopMoversList */}
             <div className="flex-1 min-w-0 overflow-x-hidden">
@@ -103,6 +102,13 @@ export default function Index() {
           </div>
         </div>
       </main>
+
+      {/* Mobile fixed AccountIsland - show when sidebar is closed */}
+      {isMobile && !isSidebarOpen && (
+        <div className="fixed top-14 inset-x-0 z-[60] px-4">
+          <AccountIsland />
+        </div>
+      )}
 
       <RightSidebar />
     </div>
