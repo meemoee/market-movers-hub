@@ -57,7 +57,7 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <div className="flex relative max-w-[1280px] mx-auto">
+      <div className="flex relative max-w-[1280px] mx-auto gap-4">
         {/* Sidebar Overlay for Mobile */}
         {isMobile && isSidebarOpen && (
           <div 
@@ -108,8 +108,8 @@ export default function Index() {
         </aside>
 
         {/* Main Content Area */}
-        <main className={`flex-1 ${isMobile ? 'px-0 pt-14' : 'px-4'} relative z-10`}>
-          <div className="container mx-auto pt-0 pb-4">
+        <main className={`flex-1 ${isMobile ? 'px-0 pt-14' : 'pr-4'} max-w-4xl relative z-10`}>
+          <div className="w-full pt-0 pb-4">
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
