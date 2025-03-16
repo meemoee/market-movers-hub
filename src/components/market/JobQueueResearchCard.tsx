@@ -10,7 +10,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -81,6 +81,7 @@ export function JobQueueResearchCard({
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
+  const [maxIterations, setMaxIterations] = useState<string>("3")
   const { toast } = useToast()
 
   const resetState = () => {
@@ -347,6 +348,7 @@ export function JobQueueResearchCard({
     setIsLoading(true);
 
     const useFocusText = initialFocusText || focusText;
+    const numIterations = parseInt(maxIterations, 10);
 
     try {
       setProgress(prev => [...prev, "Starting research job..."]);
@@ -354,7 +356,7 @@ export function JobQueueResearchCard({
       const payload = {
         marketId,
         query: description,
-        maxIterations: 3,
+        maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
         notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
@@ -378,6 +380,7 @@ export function JobQueueResearchCard({
       setJobStatus('queued');
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
+      setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
         ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
@@ -643,55 +646,83 @@ export function JobQueueResearchCard({
 
       {!jobId && (
         <>
-          <div className="flex items-center gap-2 w-full">
-            <Input
-              placeholder="Add an optional focus area for your research..."
-              value={focusText}
-              onChange={(e) => setFocusText(e.target.value)}
-              disabled={isLoading || polling}
-              className="flex-1"
-            />
-          </div>
-          
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <Checkbox 
-                id="notify-email" 
-                checked={notifyByEmail} 
-                onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
+          <div className="flex flex-col space-y-4 w-full">
+            <div className="flex items-center gap-2 w-full">
+              <Input
+                placeholder="Add an optional focus area for your research..."
+                value={focusText}
+                onChange={(e) => setFocusText(e.target.value)}
+                disabled={isLoading || polling}
+                className="flex-1"
               />
-              <Label htmlFor="notify-email" className="cursor-pointer">
-                Notify me by email when research is complete
-              </Label>
             </div>
             
-            {notifyByEmail && (
+            <div className="flex flex-col space-y-2">
               <div className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="email"
-                  placeholder="Enter your email address"
-                  value={notificationEmail}
-                  onChange={(e) => setNotificationEmail(e.target.value)}
-                  className="flex-1"
-                />
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <Label>Iterations</Label>
               </div>
-            )}
-            
-            <Button 
-              onClick={() => handleResearch()} 
-              disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
-              className="w-full"
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  Starting...
-                </>
-              ) : (
-                "Start Background Research"
+              <Select
+                value={maxIterations}
+                onValueChange={setMaxIterations}
+                disabled={isLoading || polling}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Number of iterations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 iteration</SelectItem>
+                  <SelectItem value="2">2 iterations</SelectItem>
+                  <SelectItem value="3">3 iterations (default)</SelectItem>
+                  <SelectItem value="4">4 iterations</SelectItem>
+                  <SelectItem value="5">5 iterations</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                More iterations provide deeper research but take longer to complete.
+              </p>
+            </div>
+          
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="notify-email" 
+                  checked={notifyByEmail} 
+                  onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
+                />
+                <Label htmlFor="notify-email" className="cursor-pointer">
+                  Notify me by email when research is complete
+                </Label>
+              </div>
+              
+              {notifyByEmail && (
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
               )}
-            </Button>
+              
+              <Button 
+                onClick={() => handleResearch()} 
+                disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
+                className="w-full"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Starting...
+                  </>
+                ) : (
+                  "Start Background Research"
+                )}
+              </Button>
+            </div>
           </div>
         </>
       )}
@@ -729,7 +760,7 @@ export function JobQueueResearchCard({
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
                 isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={3}
+                maxIterations={parseInt(maxIterations, 10)}
               />
             ))}
           </div>
