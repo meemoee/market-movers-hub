@@ -74,11 +74,11 @@ export default function Index() {
               : 'sticky top-0 h-screen w-[280px] flex-shrink-0'
             }
             ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}
-            transition-transform duration-300 ease-in-out bg-background
+            transition-transform duration-300 ease-in-out bg-background flex flex-col
           `}
         >
-          {/* Sidebar Header with Logo */}
-          <div className="flex-shrink-0 ml-2 mb-3 pt-3 px-4 sticky top-0 bg-background z-10">
+          {/* Sidebar Header with Logo - Always Visible */}
+          <div className="flex-shrink-0 ml-2 pt-3 px-4 pb-3 sticky top-0 bg-background z-10">
             <a href="/" className="inline-block">
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
@@ -97,14 +97,12 @@ export default function Index() {
             </a>
           </div>
 
-          {/* Sidebar Content - AccountIsland in ScrollArea */}
-          <div className="h-[calc(100vh-76px)] overflow-hidden">
-            <ScrollArea className="h-full pb-6">
-              <div className={`${isMobile ? 'pt-0' : ''} px-4`}>
-                <AccountIsland />
-              </div>
-            </ScrollArea>
-          </div>
+          {/* Scrollable Account Island - Fills remaining height */}
+          <ScrollArea className="flex-grow pb-6">
+            <div className="px-4">
+              <AccountIsland />
+            </div>
+          </ScrollArea>
         </aside>
 
         {/* Main Content Area */}
