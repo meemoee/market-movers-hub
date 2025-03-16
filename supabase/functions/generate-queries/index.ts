@@ -70,13 +70,17 @@ Deno.serve(async (req) => {
 Topic: ${topicTitle}
 Description: ${topicDescription}
 
-CRITICAL REQUIREMENTS:
-1. Format as search queries, not sentences with questions or punctuation
-2. Include specific entities, names, and key technical terms from the original topic
-3. Each query should be informative and contextual, but not conversational
-4. Avoid filler words like "what is" or "how to" unless absolutely necessary
-5. Include enough context for relevant search results
-6. Each query should target a specific aspect of the topic
+CRITICAL CONTEXT FOR QUERY GENERATION:
+The topic title represents the key market question: "${topicTitle}"
+The description provides additional context: "${topicDescription}"
+
+Your search queries must:
+1. Combine elements from BOTH the title and description to create comprehensive, targeted queries
+2. Format as search queries, not sentences with questions or punctuation
+3. Include specific entities, names, and key technical terms from both title and description
+4. Each query should address a distinct aspect of the market question
+5. Avoid filler words like "what is" or "how to" unless absolutely necessary
+6. Include enough context for relevant search results
 
 Focus on different aspects that would be relevant for market research.`;
 
@@ -124,7 +128,14 @@ Ensure that most of your queries address this focus area while providing suffici
 ${previousQueries.join('\n')}`;
     }
 
-    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
+    prompt += `\n\nFor example, if the topic is "Will SpaceX successfully land humans on Mars by 2030?" and the description mentions "Elon Musk's Mars colonization plans face technical and funding challenges", good queries would be:
+- SpaceX Mars mission timeline 2030 technical challenges
+- Elon Musk Mars colonization funding obstacles recent updates
+- SpaceX Starship human landing technology readiness
+- Mars mission delays SpaceX historical timeline analysis
+- NASA SpaceX Mars collaboration funding status 2030 goal
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
 
     // Call OpenRouter API
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
