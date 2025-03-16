@@ -32,23 +32,9 @@ Deno.serve(async (req) => {
     const requestData: GenerateQueriesRequest = await req.json();
     const { query, marketId, iteration = 1, previousQueries = [], focusText } = requestData;
 
-    console.log("Received generate-queries request:", JSON.stringify(requestData, null, 2));
-
     if (!query) {
-      console.error("Missing required query parameter");
       return new Response(
         JSON.stringify({ error: "Query parameter is required" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    if (!marketId) {
-      console.error("Missing required marketId parameter");
-      return new Response(
-        JSON.stringify({ error: "marketId parameter is required" }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -96,8 +82,6 @@ ${previousQueries.join('\n')}`;
 
     prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
 
-    console.log("Sending prompt to OpenRouter API");
-
     // Call OpenRouter API
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -124,23 +108,16 @@ ${previousQueries.join('\n')}`;
     });
 
     if (!openRouterResponse.ok) {
-      const errorText = await openRouterResponse.text();
-      console.error(`OpenRouter API error: ${openRouterResponse.status}`, errorText);
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status} ${errorText}`);
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} ${await openRouterResponse.text()}`);
     }
 
     const result = await openRouterResponse.json();
-    console.log("Received response from OpenRouter");
-    
     const content = result.choices[0].message.content.trim();
     
     let queries = [];
-    let reasoning = "";
-    
     try {
       const queriesData = JSON.parse(content);
       queries = queriesData.queries || [];
-      reasoning = queriesData.reasoning || "Generated based on the topic and search guidelines";
       
       // Process queries to ensure each has full context
       queries = queries.map((q: string) => {
@@ -161,8 +138,6 @@ ${previousQueries.join('\n')}`;
         
         return q;
       });
-      
-      console.log(`Successfully parsed ${queries.length} queries from AI response`);
     } catch (error) {
       console.error("Error parsing OpenRouter response:", error, content);
       
@@ -180,18 +155,12 @@ ${previousQueries.join('\n')}`;
         queries[1] = `${query} ${focusText.trim()} analysis and implications`;
         queries[3] = `${focusText.trim()} impact on ${query}`;
       }
-      
-      reasoning = "Generated fallback queries due to parsing error";
     }
 
     console.log(`Generated ${queries.length} queries:`, queries);
 
     return new Response(
-      JSON.stringify({ 
-        queries,
-        reasoning,
-        focus: focusText || null
-      }),
+      JSON.stringify({ queries }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       }

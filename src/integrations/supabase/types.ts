@@ -534,8 +534,6 @@ export type Database = {
           market_data: Json | null
           market_id: string
           max_iterations: number
-          notification_email: string | null
-          notification_sent: boolean | null
           progress_log: Json
           query: string
           results: Json | null
@@ -555,8 +553,6 @@ export type Database = {
           market_data?: Json | null
           market_id: string
           max_iterations?: number
-          notification_email?: string | null
-          notification_sent?: boolean | null
           progress_log?: Json
           query: string
           results?: Json | null
@@ -576,8 +572,6 @@ export type Database = {
           market_data?: Json | null
           market_id?: string
           max_iterations?: number
-          notification_email?: string | null
-          notification_sent?: boolean | null
           progress_log?: Json
           query?: string
           results?: Json | null
