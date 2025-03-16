@@ -1,9 +1,12 @@
+
 import { corsHeaders } from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
 interface GenerateQueriesRequest {
   query: string;
   marketId: string;
+  marketQuestion?: string;  // Added optional market question field
+  marketDescription?: string;  // Added optional market description field
   iteration?: number;
   previousQueries?: string[];
   focusText?: string;
@@ -30,7 +33,16 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const requestData: GenerateQueriesRequest = await req.json();
-    const { query, marketId, iteration = 1, previousQueries = [], focusText, previousAnalyses = [] } = requestData;
+    const { 
+      query, 
+      marketId, 
+      marketQuestion,
+      marketDescription,
+      iteration = 1, 
+      previousQueries = [], 
+      focusText, 
+      previousAnalyses = [] 
+    } = requestData;
 
     if (!query) {
       return new Response(
@@ -42,14 +54,21 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Generating queries for: "${query}" (iteration ${iteration})`);
+    // Use market question and description if available, otherwise fallback to query
+    const topicTitle = marketQuestion || query;
+    const topicDescription = marketDescription || query;
+    
+    console.log(`Generating queries for market: "${topicTitle}" (iteration ${iteration})`);
+    console.log(`Market description: "${topicDescription}"`);
     if (focusText) {
       console.log(`With focus area: "${focusText}"`);
     }
 
     // Generate prompt based on iteration
-    let prompt = `Generate 5 search queries that someone would type into a search engine to gather information about:
-${query}
+    let prompt = `Generate 5 search queries that someone would type into a search engine to gather information about this topic:
+
+Topic: ${topicTitle}
+Description: ${topicDescription}
 
 CRITICAL REQUIREMENTS:
 1. Format as search queries, not sentences with questions or punctuation
@@ -164,19 +183,20 @@ ${previousQueries.join('\n')}`;
       console.error("Error parsing OpenRouter response:", error, content);
       
       // Generate fallback queries in search format style
+      const topicForFallback = topicTitle || query;
       queries = [
-        `${query} recent developments`,
-        `${query} market forecast data`,
-        `${query} historical trends statistics`,
-        `${query} expert analysis`,
-        `${query} performance metrics comparison`
+        `${topicForFallback} recent developments`,
+        `${topicForFallback} market forecast data`,
+        `${topicForFallback} historical trends statistics`,
+        `${topicForFallback} expert analysis`,
+        `${topicForFallback} performance metrics comparison`
       ];
       
       // If focus text exists, add it to a couple of queries
       if (focusText && focusText.trim()) {
         const focusKeywords = focusText.trim().split(' ').slice(0, 3).join(' ');
-        queries[1] = `${query} ${focusKeywords} analysis`;
-        queries[3] = `${focusKeywords} impact on ${query}`;
+        queries[1] = `${topicForFallback} ${focusKeywords} analysis`;
+        queries[3] = `${focusKeywords} impact on ${topicForFallback}`;
       }
     }
 

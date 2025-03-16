@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -63,6 +62,25 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       })
     }
     
+    // Get market question from the database for more context
+    let marketQuestion = query; // Default to query if we can't get the market question
+    try {
+      const { data: marketData, error: marketError } = await supabaseClient
+        .from('markets')
+        .select('question')
+        .eq('id', marketId)
+        .single();
+        
+      if (!marketError && marketData && marketData.question) {
+        marketQuestion = marketData.question;
+        console.log(`Retrieved market question: "${marketQuestion}"`);
+      } else {
+        console.log(`Could not retrieve market question, using query as fallback`);
+      }
+    } catch (marketFetchError) {
+      console.error(`Error fetching market details:`, marketFetchError);
+    }
+    
     // Track all previous queries to avoid repetition
     const previousQueries: string[] = [];
     // Track all seen URLs to avoid duplicate content
@@ -101,10 +119,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
             },
             body: JSON.stringify({
-              query,
+              query: query, // Keep for backward compatibility
               marketId: marketId,
-              marketDescription: query,
-              question: query,
+              marketQuestion: marketQuestion, // Pass the question/title from the market
+              marketDescription: query, // Pass the description separately
               iteration: i,
               previousQueries,
               focusText
