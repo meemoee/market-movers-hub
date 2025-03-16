@@ -289,8 +289,8 @@ export default function TopMoversList({
         />
       </div>
       
-      <div className={`w-full ${isMobile ? 'px-0 max-w-[100vw] overflow-hidden' : 'px-0 sm:px-4'} -mt-20`}>
-        <div className={`flex flex-col items-center space-y-6 pt-28 ${isMobile ? 'px-2' : 'border border-white/5 rounded-lg bg-black/20'}`}>
+      <div className={`w-full ${isMobile ? 'px-0 max-w-[100vw] overflow-hidden' : 'px-0 sm:px-4'}`}>
+        <div className={`flex flex-col items-center space-y-6 pt-6 ${isMobile ? 'px-2' : 'border border-white/5 rounded-lg bg-black/20'}`}>
           <InsightPostBox />
           <MarketStatsBento selectedInterval={selectedInterval} />
           

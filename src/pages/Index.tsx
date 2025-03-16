@@ -1,3 +1,4 @@
+
 import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
@@ -55,7 +56,7 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <main className={`mx-auto ${isMobile ? 'px-0 pr-0 pt-14 pb-60 w-full overflow-hidden' : 'px-4'} relative z-10`}>
+      <main className={`mx-auto ${isMobile ? 'px-0 pr-0 pt-16 pb-60 w-full overflow-hidden' : 'px-4'} relative z-10`}>
         <div className="flex justify-center max-w-[1280px] mx-auto">
           {isMobile && isSidebarOpen && (
             <div 
@@ -92,7 +93,7 @@ export default function Index() {
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
           <div className={`w-[660px] flex-shrink-0 flex-grow-0 ${isMobile ? 'ml-0 max-w-full' : 'ml-[360px]'} xl:mr-[400px]`}>
-            <div className={`w-full ${isMobile ? 'mt-2 px-0' : ''}`}>
+            <div className={`w-full ${isMobile ? 'mt-3 px-0' : ''}`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}
