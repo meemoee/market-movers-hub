@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
+import { getFaviconUrl } from "@/utils/favicon"
 
 interface IterationCardProps {
   iteration: {
