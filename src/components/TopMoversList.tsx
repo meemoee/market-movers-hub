@@ -12,6 +12,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { useTopMovers } from '@/hooks/useTopMovers';
 import { useMarketSearch } from '@/hooks/useMarketSearch';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { ScrollArea } from './ui/scroll-area';
 
 interface TimeInterval {
   label: string;
@@ -241,8 +242,8 @@ export default function TopMoversList({
   const sortedMarkets = displayedMarkets;
 
   return (
-    <div className="flex flex-col w-full max-w-full overflow-hidden">
-      <div className="sticky top-0 z-40 w-full flex flex-col bg-background/95 backdrop-blur-sm rounded-b-lg">
+    <div className="flex flex-col w-full h-full">
+      <div className={`sticky ${isMobile ? 'top-16' : 'top-0'} z-50 w-full flex flex-col bg-background/95 backdrop-blur-md border-b shadow-sm transition-all duration-200`}>
         {!marketId && (
           <div className="flex items-center w-full px-4 py-3 border-b">
             <div className="relative flex-1 max-w-2xl mx-auto">
@@ -289,29 +290,31 @@ export default function TopMoversList({
         />
       </div>
       
-      <div className={`w-full ${isMobile ? 'px-0 max-w-[100vw] overflow-hidden' : 'px-0 sm:px-4'}`}>
-        <div className={`flex flex-col items-center space-y-6 pt-6 ${isMobile ? 'px-2' : 'border border-white/5 rounded-lg bg-black/20'}`}>
-          <InsightPostBox />
-          <MarketStatsBento selectedInterval={selectedInterval} />
-          
-          <TopMoversContent
-            isLoading={activeQuery.isLoading}
-            error={activeQuery.error ? String(activeQuery.error) : null}
-            topMovers={sortedMarkets}
-            expandedMarkets={expandedMarkets}
-            toggleMarket={toggleMarket}
-            setSelectedMarket={handleMarketSelection}
-            onLoadMore={handleLoadMore}
-            hasMore={hasMore}
-            isLoadingMore={
-              isSearching 
-                ? marketSearchQuery.isFetching 
-                : topMoversQuery.isFetchingNextPage
-            }
-            selectedInterval={selectedInterval}
-          />
+      <ScrollArea className="flex-1 w-full">
+        <div className={`w-full ${isMobile ? 'px-0 max-w-[100vw]' : 'px-0 sm:px-4'}`}>
+          <div className={`flex flex-col items-center space-y-6 pt-6 ${isMobile ? 'px-2' : 'border border-white/5 rounded-lg bg-black/20'}`}>
+            <InsightPostBox />
+            <MarketStatsBento selectedInterval={selectedInterval} />
+            
+            <TopMoversContent
+              isLoading={activeQuery.isLoading}
+              error={activeQuery.error ? String(activeQuery.error) : null}
+              topMovers={sortedMarkets}
+              expandedMarkets={expandedMarkets}
+              toggleMarket={toggleMarket}
+              setSelectedMarket={handleMarketSelection}
+              onLoadMore={handleLoadMore}
+              hasMore={hasMore}
+              isLoadingMore={
+                isSearching 
+                  ? marketSearchQuery.isFetching 
+                  : topMoversQuery.isFetchingNextPage
+              }
+              selectedInterval={selectedInterval}
+            />
+          </div>
         </div>
-      </div>
+      </ScrollArea>
 
       <TransactionDialog
         selectedMarket={selectedMarket}

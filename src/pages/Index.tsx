@@ -44,7 +44,7 @@ export default function Index() {
   };
 
   return (
-    <div className="bg-background min-h-screen overflow-x-hidden">
+    <div className="bg-background min-h-screen flex flex-col overflow-hidden">
       {/* Purple Glow Effect */}
       <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <Glow 
@@ -56,8 +56,8 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <main className={`mx-auto ${isMobile ? 'px-0 pr-0 pt-16 pb-60 w-full overflow-hidden' : 'px-4'} relative z-10`}>
-        <div className="flex justify-center max-w-[1280px] mx-auto">
+      <main className={`mx-auto flex-1 ${isMobile ? 'px-0 pr-0 pt-16 pb-60 w-full' : 'px-4'} relative z-10 overflow-y-auto`}>
+        <div className="flex justify-center max-w-[1280px] mx-auto h-full">
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-40"
@@ -92,8 +92,8 @@ export default function Index() {
           )}
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
-          <div className={`w-[660px] flex-shrink-0 flex-grow-0 ${isMobile ? 'ml-0 max-w-full' : 'ml-[360px]'} xl:mr-[400px]`}>
-            <div className={`w-full ${isMobile ? 'mt-3 px-0' : ''}`}>
+          <div className={`w-[660px] flex-shrink-0 flex-grow-0 ${isMobile ? 'ml-0 max-w-full' : 'ml-[360px]'} xl:mr-[400px] h-full`}>
+            <div className={`w-full ${isMobile ? 'mt-3 px-0' : ''} h-full`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}

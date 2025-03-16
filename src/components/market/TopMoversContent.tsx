@@ -1,4 +1,3 @@
-
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
 import { TopMover } from '../TopMoversList';
@@ -66,7 +65,7 @@ export function TopMoversContent({
   }
 
   return (
-    <div className={`w-full ${isMobile ? 'max-w-[100%] overflow-hidden' : ''}`}>
+    <div className="w-full pb-4">
       <div className="w-full space-y-3">
         {topMovers.map((mover) => (
           <div key={mover.market_id} className="w-full first:mt-0">
@@ -120,7 +119,7 @@ export function TopMoversContent({
       </div>
 
       {hasMore && (
-        <div className={`mt-3 ${isMobile ? 'h-[48px] px-2' : 'h-[52px]'}`}>
+        <div className="mt-3 px-2">
           <button
             onClick={onLoadMore}
             disabled={isLoadingMore}
