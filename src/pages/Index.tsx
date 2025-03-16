@@ -78,7 +78,7 @@ export default function Index() {
           `}
         >
           {/* Sidebar Header with Logo */}
-          <div className="flex-shrink-0 ml-2 mb-3 pt-3 px-4">
+          <div className="flex-shrink-0 ml-2 mb-3 pt-3 px-4 sticky top-0 bg-background z-10">
             <a href="/" className="inline-block">
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
@@ -99,7 +99,7 @@ export default function Index() {
 
           {/* Sidebar Content - AccountIsland in ScrollArea */}
           <div className="h-[calc(100vh-76px)] overflow-hidden">
-            <ScrollArea className="h-full">
+            <ScrollArea className="h-full pb-6">
               <div className={`${isMobile ? 'pt-0' : ''} px-4`}>
                 <AccountIsland />
               </div>
