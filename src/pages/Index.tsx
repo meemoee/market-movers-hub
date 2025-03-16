@@ -108,9 +108,9 @@ export default function Index() {
           )}
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
-          <div className={`flex-grow flex flex-col ${isMobile ? 'ml-0 max-w-full' : 'ml-[320px]'} xl:mr-[400px]`}>
+          <div className={`flex flex-col ${isMobile ? 'ml-0 max-w-full' : 'ml-[320px]'} xl:mr-[400px] max-w-[660px]`}>
             {/* Search and Fixed Header Section */}
-            <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-md shadow-md border-b border-white/5">
+            <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-md shadow-md border-b border-white/5 w-full max-w-[660px]">
               {/* Search Bar */}
               <div className="flex items-center w-full px-4 py-3 border-b border-white/5">
                 <div className="relative flex-1 max-w-2xl mx-auto">
@@ -159,7 +159,7 @@ export default function Index() {
             
             {/* Scrollable Content Area */}
             <div className="flex-grow overflow-y-auto">
-              <div className={`w-full ${isMobile ? 'px-0 max-w-[100vw]' : 'px-4'}`}>
+              <div className={`w-full ${isMobile ? 'px-0 max-w-full' : 'px-4'}`}>
                 <TopMoversList
                   timeIntervals={TIME_INTERVALS}
                   selectedInterval={selectedInterval}
