@@ -84,6 +84,7 @@ Your search queries must:
 7. PRIORITIZE RECENT DATA: Include terms like "latest", "recent", "2025", or "update" where appropriate
 8. TARGET STATISTICAL DATA: Focus on finding specific numbers, statistics, percentages, or quantitative data
 9. Include timeframes, dates, or specific periods when relevant to get the most current information
+10. RESOLUTION TIMING: Include queries that search for when this question will be resolved and when relevant data will become available
 
 Focus on different aspects that would be relevant for market research.`;
 
@@ -118,7 +119,8 @@ Ensure that most of your queries address this focus area while providing suffici
 5. Target recent or time-sensitive information where relevant
 6. Specifically search for NUMERIC DATA and STATISTICS that were missing in previous analyses
 7. Include date ranges or time periods to ensure you get the most current information
-8. Look for trend data, historical comparisons, and up-to-date metrics`;
+8. Look for trend data, historical comparisons, and up-to-date metrics
+9. RESOLUTION TIMING: Generate at least one query specifically about resolution timing, deadlines, or when conclusive data will be available`;
       } else {
         prompt += `\n\nKNOWLEDGE GAP REQUIREMENTS:
 1. Analyze previous queries and target NEW topics not yet covered
@@ -126,7 +128,8 @@ Ensure that most of your queries address this focus area while providing suffici
 3. Explore specialized sub-topics or alternative perspectives
 4. Maintain search query format (not sentences)
 5. Prioritize queries that will find the LATEST DATA and SPECIFIC STATISTICS
-6. Include date ranges or time periods to ensure you get the most current information`;
+6. Include date ranges or time periods to ensure you get the most current information
+7. RESOLUTION TIMING: Include at least one query about when this market question will be resolved and when resolution data will become available`;
       }
     }
 
@@ -142,6 +145,7 @@ ${previousQueries.join('\n')}`;
 - SpaceX Starship human landing technology readiness metrics percentage
 - Mars mission delays SpaceX historical timeline analysis 2020-2025 data
 - NASA SpaceX Mars collaboration funding numbers 2030 goal recent changes
+- SpaceX Mars mission resolution criteria official announcement date
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
 
@@ -208,7 +212,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         `${topicForFallback} recent data trends numbers`,
         `${topicForFallback} current metrics percentages`,
         `${topicForFallback} up-to-date analysis figures`,
-        `${topicForFallback} historical comparison stats 2020-2025`
+        `${topicForFallback} resolution timeline when determined`
       ];
       
       // If focus text exists, add it to a couple of queries
@@ -238,7 +242,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
           `${query} current statistics data`,
           `${query} recent trends metrics`,
           `${query} updated figures percentages`,
-          `${query} historical comparison 2020-2025`
+          `${query} resolution timeline determination date`
         ]
       }),
       {

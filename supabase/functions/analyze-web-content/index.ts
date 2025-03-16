@@ -155,7 +155,14 @@ Your task is to analyze web content to assess the probability of market outcomes
    - Compare different data points to identify trends
    - Indicate reliability of quantitative information
 
-${focusText ? `8. Focus Area Priority
+8. Resolution Timing
+   - Identify when this market question will be resolved
+   - Analyze when conclusive data will become available
+   - Consider if resolution criteria are clearly defined
+   - Note any official announcement dates or deadlines
+   - Discuss factors that could accelerate or delay resolution
+
+${focusText ? `9. Focus Area Priority
    - EVERY insight MUST explicitly address the focus area: "${focusText}"
    - Information not directly related to the focus area should be excluded
    - Clearly explain how each point connects to the specified focus` : ''}
@@ -188,8 +195,9 @@ ${isMarketResolved ?
 5. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}? Support with the most recent available statistics.
 6. IMPORTANT: Provide an estimated probability range (e.g., 30-40%) based on the evidence analyzed.
 7. IMPORTANT: List specific areas that need further research or inspection to improve confidence in this assessment.
-${marketPrice !== undefined && !isMarketResolved ? `8. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
-${relatedMarkets && relatedMarkets.length > 0 ? `9. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+8. CRITICAL: When will this market question be resolved, and when will conclusive data become available? Identify any official deadlines, announcement dates, or resolution criteria.
+${marketPrice !== undefined && !isMarketResolved ? `9. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `10. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 ${focusText ? `\nCRITICAL REMINDER: Your analysis MUST focus EXCLUSIVELY on: "${focusText}"\nEnsure ALL insights directly address this specific focus area.\n` : ''}
 
 IMPORTANT REQUIREMENTS:
@@ -198,6 +206,7 @@ IMPORTANT REQUIREMENTS:
 - CLEARLY INDICATE the publication dates or timeframes of any data points you reference
 - Apply greater weight to information from 2024-2025 compared to older sources
 - Flag any data points older than 2023 as potentially outdated
+- Specifically address WHEN this market will be resolved and when conclusive data will be available
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
