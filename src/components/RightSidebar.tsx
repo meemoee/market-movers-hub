@@ -1,4 +1,3 @@
-
 import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -63,30 +62,20 @@ export default function RightSidebar() {
               }
               
               const chunk = textDecoder.decode(value)
-              // Remove this log that prints each chunk
-              // console.log('Received chunk:', chunk)
               
               const lines = chunk.split('\n').filter(line => line.trim())
-              // Remove this log of processed lines
-              // console.log('Processing lines:', lines)
               
               for (const line of lines) {
                 if (line.startsWith('data: ')) {
                   const jsonStr = line.slice(6).trim()
-                  // Remove this log of JSON string
-                  // console.log('Processing JSON string:', jsonStr)
                   
                   if (jsonStr === '[DONE]') continue
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
-                    // Remove this log of parsed JSON
-                    // console.log('Parsed JSON:', parsed)
                     
                     const content = parsed.choices?.[0]?.delta?.content
                     if (content) {
-                      // Remove this log of new content
-                      // console.log('New content chunk:', content)
                       accumulatedContent += content
                       setStreamingContent(accumulatedContent)
                     }
@@ -137,24 +126,6 @@ export default function RightSidebar() {
         { icon: TrendingUp, text: "Track price changes in real-time" },
         { icon: DollarSign, text: "Identify profitable opportunities" }
       ]
-    },
-    {
-      icon: TrendingUp,
-      question: "Your ability to predict depends on the data you have access to.",
-      answer: "Hunchex lets you buy and sell your unique market insights, so you can make a living from telling the truth.",
-      subPoints: [
-        { icon: Zap, text: "Filter by time intervals" },
-        { icon: DollarSign, text: "Sort by price movement %" }
-      ]
-    },
-    {
-      icon: DollarSign,
-      question: "Data ownership. For real.",
-      answer: "Sell your data to those who need it to understand the future. ",
-      subPoints: [
-        { icon: TrendingUp, text: "Login to your account" },
-        { icon: Zap, text: "Select a market and place orders" }
-      ]
     }
   ]
 
@@ -165,7 +136,7 @@ export default function RightSidebar() {
           <>
             <div className="mb-16">
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
-                A New Kind of Market
+                A New Kind of Game
               </h2>
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] text-transparent bg-clip-text">
                 For a New Age
