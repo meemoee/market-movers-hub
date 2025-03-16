@@ -853,4 +853,3 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
-
