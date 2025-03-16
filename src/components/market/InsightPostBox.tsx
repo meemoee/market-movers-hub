@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -5,6 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { UserCircle, Image as ImageIcon, Link as LinkIcon, Globe, Lock, Sparkle } from 'lucide-react'
 import { cn } from "@/lib/utils"
 import * as React from "react"
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const TextareaAutosize = React.forwardRef<
   HTMLTextAreaElement,
@@ -27,6 +29,7 @@ export function InsightPostBox() {
   const [content, setContent] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -54,15 +57,15 @@ export function InsightPostBox() {
   };
 
   return (
-    <div className="w-full mb-4 py-4 px-6">
+    <div className={`w-full mb-4 py-4 ${isMobile ? 'px-2' : 'px-6'} box-border overflow-hidden`}>
       <div className="flex gap-3">
-        <Avatar className="h-10 w-10">
+        <Avatar className="h-10 w-10 flex-shrink-0">
           <AvatarFallback className="bg-primary/10">
             {localStorage.getItem('userEmail')?.charAt(0).toUpperCase() || '?'}
           </AvatarFallback>
         </Avatar>
         
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 space-y-2 min-w-0">
           <div className="flex items-center min-h-[40px]">
             <TextareaAutosize
               value={content}
@@ -79,7 +82,7 @@ export function InsightPostBox() {
           
           <Separator className="bg-border/50" />
           
-          <div className="flex items-center justify-between py-0.5">
+          <div className="flex items-center justify-between py-0.5 flex-wrap gap-2">
             <div className="flex gap-1">
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary h-7 w-7 p-0">
                 <ImageIcon className="h-4 w-4" />
@@ -93,8 +96,14 @@ export function InsightPostBox() {
                 onClick={handleGeneratePortfolio}
                 className="h-7 px-3 text-xs font-medium rounded-full bg-primary/10 hover:bg-primary/20 text-primary flex items-center gap-1 ml-2"
               >
-                Generate portfolio
-                <Sparkle className="h-3 w-3" />
+                {isMobile ? (
+                  <Sparkle className="h-3 w-3" />
+                ) : (
+                  <>
+                    Generate portfolio
+                    <Sparkle className="h-3 w-3" />
+                  </>
+                )}
               </Button>
             </div>
             
@@ -109,12 +118,12 @@ export function InsightPostBox() {
                   {isPrivate ? (
                     <>
                       <Lock className="h-3 w-3" />
-                      Private
+                      {!isMobile && "Private"}
                     </>
                   ) : (
                     <>
                       <Globe className="h-3 w-3" />
-                      Public
+                      {!isMobile && "Public"}
                     </>
                   )}
                 </Button>

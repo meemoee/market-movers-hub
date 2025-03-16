@@ -228,7 +228,7 @@ export default function TopMoversList({
   const sortedMarkets = displayedMarkets;
 
   return (
-    <div className={`flex flex-col items-center space-y-6 pt-6 ${isMobile ? 'px-2' : 'border border-white/5 rounded-lg bg-black/20'}`}>
+    <div className={`flex flex-col items-center space-y-6 pt-6 ${isMobile ? 'px-0 max-w-[100vw] box-border' : 'border border-white/5 rounded-lg bg-black/20'}`}>
       <InsightPostBox />
       <MarketStatsBento selectedInterval={selectedInterval} />
       
