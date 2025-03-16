@@ -8,8 +8,34 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Function to send a notification email
+async function sendNotificationEmail(jobId: string, email: string) {
+  if (!email) return;
+  
+  try {
+    console.log(`Sending notification email for job ${jobId} to ${email}`);
+    
+    await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-research-notification`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+        },
+        body: JSON.stringify({
+          jobId,
+          email
+        })
+      }
+    );
+  } catch (error) {
+    console.error(`Error sending notification email for job ${jobId}:`, error);
+  }
+}
+
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string) {
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
   console.log(`Starting background research for job ${jobId}`)
   
   try {
@@ -797,6 +823,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       progress_entry: JSON.stringify('Research completed successfully!')
     });
     
+    // Send notification email if provided
+    if (notificationEmail) {
+      await sendNotificationEmail(jobId, notificationEmail);
+    }
+    
     console.log(`Completed background research for job ${jobId}`);
   } catch (error) {
     console.error(`Error in background job ${jobId}:`, error);
@@ -818,6 +849,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         job_id: jobId,
         progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
       });
+      
+      // Send notification email for failure if provided
+      if (notificationEmail) {
+        await sendNotificationEmail(jobId, notificationEmail);
+      }
     } catch (e) {
       console.error(`Failed to update job ${jobId} status:`, e);
     }
@@ -927,7 +963,7 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3, focusText } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -952,7 +988,8 @@ serve(async (req) => {
         current_iteration: 0,
         progress_log: [],
         iterations: [],
-        focus_text: focusText
+        focus_text: focusText,
+        notification_email: notificationEmail
       })
       .select('id')
       .single()
@@ -966,7 +1003,7 @@ serve(async (req) => {
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations, focusText).catch(err => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
         console.error(`Background research failed: ${err}`);
       });
     }, 0);

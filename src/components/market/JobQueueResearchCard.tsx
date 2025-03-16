@@ -10,11 +10,12 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, History } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -49,6 +50,8 @@ interface ResearchJob {
   updated_at: string;
   user_id?: string;
   focus_text?: string;
+  notification_email?: string;
+  notification_sent?: boolean;
 }
 
 export function JobQueueResearchCard({ 
@@ -76,6 +79,8 @@ export function JobQueueResearchCard({
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
+  const [notifyByEmail, setNotifyByEmail] = useState(false)
+  const [notificationEmail, setNotificationEmail] = useState('')
   const { toast } = useToast()
 
   const resetState = () => {
@@ -199,9 +204,6 @@ export function JobQueueResearchCard({
     
     const opportunities = [];
     
-    // Use bestAsk instead of bestBid for comparing buy opportunities of the "Yes" outcome
-    // This is the correct value to use for detecting good buy opportunities since it's what 
-    // a user would pay when buying the Yes outcome with a market order
     if (probability > bestAsk + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[0],
@@ -212,7 +214,6 @@ export function JobQueueResearchCard({
     }
     
     const inferredProbability = 1 - probability;
-    // Use noBestAsk directly if available for comparing buy opportunities of the "No" outcome
     const noAskPrice = noBestAsk !== undefined ? noBestAsk : 1 - bestBid;
     
     if (inferredProbability > noAskPrice + THRESHOLD) {
@@ -354,7 +355,8 @@ export function JobQueueResearchCard({
         marketId,
         query: description,
         maxIterations: 3,
-        focusText: useFocusText.trim() || undefined
+        focusText: useFocusText.trim() || undefined,
+        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
       
       const response = await supabase.functions.invoke('create-research-job', {
@@ -377,9 +379,13 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       
+      const toastMessage = notifyByEmail && notificationEmail.trim() 
+        ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
+        : `Job ID: ${jobId}. You can close this window and check back later.`;
+      
       toast({
         title: "Background Research Started",
-        description: `Job ID: ${jobId}. You can close this window and check back later.`,
+        description: toastMessage,
       });
       
       fetchSavedJobs();
@@ -563,7 +569,7 @@ export function JobQueueResearchCard({
           ) : (
             <Button 
               onClick={() => handleResearch()} 
-              disabled={isLoading || polling}
+              disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
               className="flex items-center gap-2"
             >
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -636,15 +642,58 @@ export function JobQueueResearchCard({
       </div>
 
       {!jobId && (
-        <div className="flex items-center gap-2 w-full">
-          <Input
-            placeholder="Add an optional focus area for your research..."
-            value={focusText}
-            onChange={(e) => setFocusText(e.target.value)}
-            disabled={isLoading || polling}
-            className="flex-1"
-          />
-        </div>
+        <>
+          <div className="flex items-center gap-2 w-full">
+            <Input
+              placeholder="Add an optional focus area for your research..."
+              value={focusText}
+              onChange={(e) => setFocusText(e.target.value)}
+              disabled={isLoading || polling}
+              className="flex-1"
+            />
+          </div>
+          
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="notify-email" 
+                checked={notifyByEmail} 
+                onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
+              />
+              <Label htmlFor="notify-email" className="cursor-pointer">
+                Notify me by email when research is complete
+              </Label>
+            </div>
+            
+            {notifyByEmail && (
+              <div className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="email"
+                  placeholder="Enter your email address"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  className="flex-1"
+                />
+              </div>
+            )}
+            
+            <Button 
+              onClick={() => handleResearch()} 
+              disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
+              className="w-full"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Starting...
+                </>
+              ) : (
+                "Start Background Research"
+              )}
+            </Button>
+          </div>
+        </>
       )}
 
       {focusText && jobId && (
