@@ -6,6 +6,10 @@ import AccountIsland from "@/components/AccountIsland";
 import MobileHeader from "@/components/MobileHeader";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Glow } from "@/components/ui/glow";
+import { Search } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { TopMoversHeader } from "@/components/market/TopMoversHeader";
+import { TopMoversContent } from "@/components/market/TopMoversContent";
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} minutes`;
@@ -31,6 +35,18 @@ export default function Index() {
   const [selectedInterval, setSelectedInterval] = useState<string>("1440");
   const [openMarketsOnly, setOpenMarketsOnly] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isTimeIntervalDropdownOpen, setIsTimeIntervalDropdownOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [probabilityRange, setProbabilityRange] = useState<[number, number]>([0, 100]);
+  const [showMinThumb, setShowMinThumb] = useState(false);
+  const [showMaxThumb, setShowMaxThumb] = useState(false);
+  const [priceChangeRange, setPriceChangeRange] = useState<[number, number]>([-100, 100]);
+  const [showPriceChangeMinThumb, setShowPriceChangeMinThumb] = useState(false);
+  const [showPriceChangeMaxThumb, setShowPriceChangeMaxThumb] = useState(false);
+  const [volumeRange, setVolumeRange] = useState<[number, number]>([0, 1000000]);
+  const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
+  const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
+  const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
   const isMobile = useIsMobile();
 
   const handleIntervalChange = (newInterval: string) => {
@@ -56,8 +72,8 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <main className={`flex-1 relative z-10 ${isMobile ? 'pt-16 pb-60' : ''} overflow-auto`}>
-        <div className="max-w-[1280px] mx-auto relative">
+      <main className={`flex-1 overflow-hidden flex flex-col ${isMobile ? 'pt-16 pb-60' : ''}`}>
+        <div className="max-w-[1280px] mx-auto w-full relative flex flex-grow overflow-hidden">
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-30"
@@ -92,15 +108,77 @@ export default function Index() {
           )}
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
-          <div className={`flex-grow ${isMobile ? 'ml-0 max-w-full' : 'ml-[320px]'} xl:mr-[400px]`}>
-            <div className={`w-full ${isMobile ? 'mt-3 px-0' : 'px-4'}`}>
-              <TopMoversList
+          <div className={`flex-grow flex flex-col ${isMobile ? 'ml-0 max-w-full' : 'ml-[320px]'} xl:mr-[400px] overflow-hidden`}>
+            {/* Search and Filter Sticky Header */}
+            <div className="sticky top-0 z-50 flex-shrink-0 w-full bg-background/95 backdrop-blur-md shadow-md border-b border-white/5">
+              {/* Search Bar */}
+              <div className="flex items-center w-full px-4 py-3 border-b border-white/5">
+                <div className="relative flex-1 max-w-2xl mx-auto">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search markets..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-9 bg-background"
+                  />
+                </div>
+              </div>
+              
+              {/* Top Movers Header with Filters */}
+              <TopMoversHeader
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}
                 onIntervalChange={handleIntervalChange}
                 openMarketsOnly={openMarketsOnly}
                 onOpenMarketsChange={setOpenMarketsOnly}
+                isTimeIntervalDropdownOpen={isTimeIntervalDropdownOpen}
+                setIsTimeIntervalDropdownOpen={setIsTimeIntervalDropdownOpen}
+                probabilityRange={probabilityRange}
+                setProbabilityRange={setProbabilityRange}
+                showMinThumb={showMinThumb}
+                setShowMinThumb={setShowMinThumb}
+                showMaxThumb={showMaxThumb}
+                setShowMaxThumb={setShowMaxThumb}
+                priceChangeRange={priceChangeRange}
+                setPriceChangeRange={setPriceChangeRange}
+                showPriceChangeMinThumb={showPriceChangeMinThumb}
+                setShowPriceChangeMinThumb={setShowPriceChangeMinThumb}
+                showPriceChangeMaxThumb={showPriceChangeMaxThumb}
+                setShowPriceChangeMaxThumb={setShowPriceChangeMaxThumb}
+                volumeRange={volumeRange}
+                setVolumeRange={setVolumeRange}
+                showVolumeMinThumb={showVolumeMinThumb}
+                setShowVolumeMinThumb={setShowVolumeMinThumb}
+                showVolumeMaxThumb={showVolumeMaxThumb}
+                setShowVolumeMaxThumb={setShowVolumeMaxThumb}
+                sortBy={sortBy}
+                onSortChange={setSortBy}
               />
+            </div>
+            
+            {/* Scrollable Content Area */}
+            <div className="flex-grow overflow-y-auto">
+              <div className={`w-full ${isMobile ? 'px-0 max-w-[100vw]' : 'px-4'}`}>
+                <TopMoversList
+                  timeIntervals={TIME_INTERVALS}
+                  selectedInterval={selectedInterval}
+                  onIntervalChange={handleIntervalChange}
+                  openMarketsOnly={openMarketsOnly}
+                  onOpenMarketsChange={setOpenMarketsOnly}
+                  searchQuery={searchQuery}
+                  probabilityRange={probabilityRange}
+                  showMinThumb={showMinThumb}
+                  showMaxThumb={showMaxThumb}
+                  priceChangeRange={priceChangeRange}
+                  showPriceChangeMinThumb={showPriceChangeMinThumb}
+                  showPriceChangeMaxThumb={showPriceChangeMaxThumb}
+                  volumeRange={volumeRange}
+                  showVolumeMinThumb={showVolumeMinThumb}
+                  showVolumeMaxThumb={showVolumeMaxThumb}
+                  sortBy={sortBy}
+                />
+              </div>
             </div>
           </div>
         </div>
