@@ -1,4 +1,3 @@
-
 import { corsHeaders } from "../_shared/cors.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
@@ -8,6 +7,7 @@ interface GenerateQueriesRequest {
   iteration?: number;
   previousQueries?: string[];
   focusText?: string;
+  previousAnalyses?: string[];
 }
 
 Deno.serve(async (req) => {
@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const requestData: GenerateQueriesRequest = await req.json();
-    const { query, marketId, iteration = 1, previousQueries = [], focusText } = requestData;
+    const { query, marketId, iteration = 1, previousQueries = [], focusText, previousAnalyses = [] } = requestData;
 
     if (!query) {
       return new Response(
@@ -69,15 +69,34 @@ Focus on different aspects that would be relevant for market research.`;
 Ensure that most of your queries address this focus area while providing sufficient context.`;
     }
 
-    // Adjust prompt based on iteration
+    // Adjust prompt based on iteration and include previous analyses
     if (iteration > 1) {
-      prompt += `\n\nThis is iteration ${iteration}. Your goal is to fill in knowledge gaps from previous iterations.
-
-KNOWLEDGE GAP REQUIREMENTS:
+      prompt += `\n\nThis is iteration ${iteration}. Your goal is to identify SPECIFIC knowledge gaps from previous research and create targeted queries to fill those gaps.`;
+      
+      // Include previous analyses if available
+      if (previousAnalyses.length > 0) {
+        prompt += `\n\nBased on previous research, these were our findings:\n`;
+        previousAnalyses.forEach((analysis, index) => {
+          // Only use the first 300 characters of each analysis to keep prompt size manageable
+          const truncatedAnalysis = analysis.length > 300 
+            ? analysis.substring(0, 300) + "..." 
+            : analysis;
+          prompt += `\nAnalysis ${index + 1}: ${truncatedAnalysis}\n`;
+        });
+        
+        prompt += `\nQUERY GENERATION INSTRUCTIONS:
+1. Identify 5 SPECIFIC unanswered questions or knowledge gaps in the previous analyses
+2. Create a targeted search query for EACH specific gap
+3. Each query should be precise, focusing on one specific aspect or data point
+4. Prioritize collecting factual information over opinions
+5. Target recent or time-sensitive information where relevant`;
+      } else {
+        prompt += `\n\nKNOWLEDGE GAP REQUIREMENTS:
 1. Analyze previous queries and target NEW topics not yet covered
 2. Focus on missing information crucial for comprehensive understanding
 3. Explore specialized sub-topics or alternative perspectives
 4. Maintain search query format (not sentences)`;
+      }
     }
 
     // Add previous queries to avoid repetition
@@ -102,7 +121,7 @@ ${previousQueries.join('\n')}`;
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates effective search queries that would be typed into a search engine. You create queries that retain essential context without excessive words or being formed as questions."
+            content: "You are a market research specialist that identifies specific knowledge gaps and generates effective search queries to fill those gaps. You create targeted queries that focus on obtaining precise information about specific aspects, data points, or examples needed."
           },
           {
             role: "user",
