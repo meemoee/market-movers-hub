@@ -69,7 +69,7 @@ export default function AccountIsland() {
   };
 
   return (
-    <Card className={`w-full mb-4 ${isMobile ? 'rounded-none border-0' : 'bg-transparent border-0'}`}>
+    <Card className={`w-full ${isMobile ? 'rounded-none border-0' : 'bg-transparent border-0'}`}>
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
