@@ -44,7 +44,7 @@ export default function MobileHeader({ toggleSidebar }: MobileHeaderProps) {
           </Button>
         </SheetTrigger>
         <SheetContent side="right" className="p-0 pt-0 w-full sm:max-w-md">
-          <AccountIsland />
+          <AccountIsland context="mobile" />
         </SheetContent>
       </Sheet>
     </div>

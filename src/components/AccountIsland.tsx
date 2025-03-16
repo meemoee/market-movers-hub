@@ -12,14 +12,25 @@ import { AccountBalance } from "./account/AccountBalance";
 import { AccountHoldings } from "./account/AccountHoldings";
 import { useIsMobile } from "@/hooks/use-mobile";
 
-export default function AccountIsland() {
+type AccountIslandContext = 'desktop' | 'mobile';
+
+interface AccountIslandProps {
+  context?: AccountIslandContext;
+}
+
+export default function AccountIsland({ context = 'desktop' }: AccountIslandProps) {
   const [session, setSession] = useState<any>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  
+  // If we're on mobile and this is a desktop context, or vice versa, don't render the content
+  const shouldRender = (context === 'mobile' && isMobile) || (context === 'desktop' && !isMobile);
 
   useEffect(() => {
+    if (!shouldRender) return;
+    
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
@@ -39,7 +50,7 @@ export default function AccountIsland() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [shouldRender]);
 
   const fetchUserProfile = async (userId: string) => {
     try {
@@ -67,6 +78,11 @@ export default function AccountIsland() {
       setError(error.message);
     }
   };
+
+  // If we shouldn't render this context, return null
+  if (!shouldRender) {
+    return null;
+  }
 
   return (
     <Card className={`w-full ${isMobile ? 'rounded-md' : 'rounded-lg'} bg-transparent border-0 shadow-none`}>
