@@ -380,7 +380,9 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 `Iteration ${i} analysis for "${query}"`,
                 marketPrice,
                 relatedMarkets,
-                areasForResearch
+                areasForResearch,
+                focusText,
+                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
               );
               
               // Update the iteration with the analysis
@@ -549,6 +551,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         console.error(`Error extracting areas for research:`, areasError);
       }
       
+      // Collect all previous analyses
+      const previousAnalyses = allIterations
+        .filter(iter => iter.analysis)
+        .map(iter => iter.analysis);
+      
       if (allContent.length > 0) {
         finalAnalysis = await generateAnalysis(
           allContent, 
@@ -556,7 +563,9 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           `Final comprehensive analysis for "${query}"`,
           marketPrice,
           relatedMarkets,
-          areasForResearch
+          areasForResearch,
+          focusText,
+          previousAnalyses
         );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
@@ -716,7 +725,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         queries: allQueries,
         areasForResearch: areasForResearch,
         marketPrice: marketPrice,
-        relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined
+        relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined,
+        focusText: focusText
       };
       
       console.log(`Sending extract-research-insights payload with:
@@ -725,7 +735,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         - ${allQueries.length} queries
         - ${areasForResearch.length} areas for research
         - marketPrice: ${marketPrice || 'undefined'}
-        - ${relatedMarkets.length} related markets`);
+        - ${relatedMarkets.length} related markets
+        - focusText: ${focusText || 'undefined'}`);
       
       // Call the extract-research-insights function to get structured insights (without streaming)
       const extractInsightsResponse = await fetch(
@@ -867,7 +878,9 @@ async function generateAnalysis(
   analysisType: string,
   marketPrice?: number,
   relatedMarkets?: any[],
-  areasForResearch?: string[]
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -907,18 +920,41 @@ async function generateAnalysis(
     });
   }
   
+  // Add focus text section if provided
+  let focusSection = '';
+  if (focusText && focusText.trim()) {
+    focusSection = `\nFOCUS AREA: "${focusText.trim()}"\n
+Your analysis must specifically address and deeply analyze this focus area. Connect all insights to this focus.`;
+  }
+  
+  // Add previous analyses section if provided
+  let previousAnalysesSection = '';
+  if (previousAnalyses && previousAnalyses.length > 0) {
+    previousAnalysesSection = `\n\nPREVIOUS ANALYSES: 
+${previousAnalyses.map((analysis, idx) => `--- Analysis ${idx+1} ---\n${analysis}\n`).join('\n')}
+
+IMPORTANT: DO NOT REPEAT information from previous analyses. Instead:
+1. Build upon them with NEW insights
+2. Address gaps and uncertainties from earlier analyses
+3. Deepen understanding of already identified points with NEW evidence
+4. Provide CONTRASTING perspectives where relevant`;
+  }
+  
   const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
 
 Content to analyze:
 ${truncatedContent}
 ${contextInfo}
+${focusSection}
+${previousAnalysesSection}
 
 Please provide:
 
-1. Key Facts and Insights: What are the most important pieces of information relevant to the query?
-2. Evidence Assessment: Evaluate the strength of evidence regarding the query.
-3. Probability Factors: What factors impact the likelihood of outcomes related to the query?
-4. Conclusions: Based solely on this information, what conclusions can we draw?
+1. Key Facts and Insights: What are the most important NEW pieces of information relevant to the query?
+2. Evidence Assessment: Evaluate the strength of evidence regarding the query.${focusText ? ` Make EXPLICIT connections to the focus area: "${focusText}"` : ''}
+3. Probability Factors: What factors impact the likelihood of outcomes related to the query?${focusText ? ` Specifically analyze how these factors relate to: "${focusText}"` : ''}
+4. Areas for Further Research: Identify specific gaps in knowledge that would benefit from additional research.
+5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
   
@@ -933,6 +969,19 @@ Present the analysis in a structured, concise format with clear sections and bul
     body: JSON.stringify({
       model: "google/gemini-flash-1.5",
       messages: [
+        {
+          role: "system",
+          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
+
+Your analysis should:
+1. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
+2. Avoid repeating information from previous analyses
+3. Build upon existing knowledge with new perspectives
+4. Identify connections between evidence and implications
+5. Be critical of source reliability and evidence quality
+6. Draw balanced conclusions based solely on the evidence provided`
+        },
         {
           role: "user",
           content: prompt
