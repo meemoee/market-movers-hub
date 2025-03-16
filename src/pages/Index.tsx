@@ -44,7 +44,7 @@ export default function Index() {
   };
 
   return (
-    <div className="bg-background overflow-x-hidden">
+    <div className="bg-background min-h-screen overflow-x-hidden">
       {/* Purple Glow Effect - adjust positioning for mobile */}
       <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <Glow 
@@ -56,7 +56,21 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <main className={`mx-auto ${isMobile ? 'px-0 pr-0 pt-14 pb-60' : 'px-4'} relative z-10 overflow-x-hidden`}>
+      {/* Fixed Desktop AccountIsland */}
+      {!isMobile && (
+        <div className="fixed left-4 top-4 w-[280px] z-[60]">
+          <AccountIsland />
+        </div>
+      )}
+
+      {/* Fixed Mobile AccountIsland */}
+      {isMobile && (
+        <div className={`fixed top-14 inset-x-0 z-[60] px-4 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-[280px]' : 'translate-x-0'}`}>
+          <AccountIsland />
+        </div>
+      )}
+      
+      <main className={`mx-auto ${isMobile ? 'px-0 pr-0 pt-14 pb-60' : 'px-4 pl-[300px]'} relative z-10`}>
         <div className="flex justify-center max-w-[1280px] mx-auto">
           {isMobile && isSidebarOpen && (
             <div 
@@ -78,19 +92,10 @@ export default function Index() {
             {/* Sidebar content */}
           </aside>
 
-          {/* Desktop layout with sticky AccountIsland */}
-          <div className="flex w-full max-w-[1280px] gap-6 xl:pr-[400px]">
-            {/* AccountIsland - Desktop version */}
-            {!isMobile && (
-              <div className="w-[280px] shrink-0">
-                <div className="sticky top-4 z-[60]">
-                  <AccountIsland />
-                </div>
-              </div>
-            )}
-
+          {/* Content area */}
+          <div className={`flex w-full max-w-[1280px] ${isMobile ? '' : 'xl:pr-[400px]'}`}>
             {/* TopMoversList */}
-            <div className={`flex-1 min-w-0 overflow-x-hidden ${isMobile ? 'mt-16' : ''}`}>
+            <div className={`flex-1 min-w-0 ${isMobile ? 'mt-20' : ''}`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}
@@ -102,13 +107,6 @@ export default function Index() {
           </div>
         </div>
       </main>
-
-      {/* Mobile fixed AccountIsland */}
-      {isMobile && (
-        <div className={`fixed top-14 inset-x-0 z-[60] px-4 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-[280px]' : 'translate-x-0'}`}>
-          <AccountIsland />
-        </div>
-      )}
 
       <RightSidebar />
     </div>
