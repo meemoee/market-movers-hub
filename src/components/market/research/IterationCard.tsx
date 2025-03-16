@@ -96,27 +96,28 @@ export function IterationCard({
                 <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
                   <div className="space-y-2 w-full">
                     {iteration.results.map((result, idx) => (
-                      <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full">
+                      <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
                         <div className="flex items-center gap-2">
-                          <FileText className="h-3 w-3 flex-shrink-0" />
-                          <span className="source-title text-sm">
-                            {result.title || new URL(result.url).hostname}
-                          </span>
+                          <img 
+                            src={getFaviconUrl(result.url)} 
+                            alt=""
+                            className="w-4 h-4 flex-shrink-0"
+                            onError={(e) => {
+                              e.currentTarget.src = `data:image/svg+xml,${encodeURIComponent(
+                                '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>'
+                              )}`;
+                            }}
+                          />
+                          <a 
+                            href={result.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-500 hover:underline truncate w-full"
+                            title={result.url}
+                          >
+                            {result.url}
+                          </a>
                         </div>
-                        <a 
-                          href={result.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="source-url flex items-center gap-1 text-primary hover:underline"
-                        >
-                          <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                          {result.url}
-                        </a>
-                        {result.content && (
-                          <div className="source-content text-muted-foreground">
-                            {result.content.substring(0, 120)}...
-                          </div>
-                        )}
                       </div>
                     ))}
                     
