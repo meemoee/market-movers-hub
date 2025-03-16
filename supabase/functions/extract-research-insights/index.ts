@@ -67,6 +67,13 @@ serve(async (req) => {
       throw new Error('No API key configured for OpenRouter');
     }
 
+    // Get current date in a readable format
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
     const contentLimit = 70000; // Arbitrary limit to prevent token overages
     const truncatedContent = webContent.length > contentLimit 
       ? webContent.substring(0, contentLimit) + "... [content truncated]" 
@@ -119,7 +126,9 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       ? `\nCRITICAL: This analysis is specifically focused on: "${focusText}"\nYou MUST ensure ALL evidence points directly address this specific focus area.\n`
       : '';
 
-    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}
+    const dateContext = `\nTODAY'S DATE: ${currentDate}\nWhen generating probability estimates, consider the temporal relevance of information relative to today's date. Be explicit about how the recency or timeliness of information impacts your assessment.\n`;
+
+    const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}${dateContext}
 Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
 
 CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
@@ -130,7 +139,8 @@ CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
 5. Uncertainty: Acknowledge key areas of uncertainty and how they affect your estimate
 6. Competitive Analysis: When relevant, analyze competitor positions and market dynamics
 7. Timeline Considerations: Account for time-dependent factors and how they affect probability
-${focusText ? `8. FOCUS AREA: Every evidence point MUST explicitly connect to the focus area: "${focusText}". Prioritize evidence that directly addresses this specific aspect.\n` : ''}
+8. Temporal Relevance: Consider how the recency of information (relative to today, ${currentDate}) affects your probability assessment
+${focusText ? `9. FOCUS AREA: Every evidence point MUST explicitly connect to the focus area: "${focusText}". Prioritize evidence that directly addresses this specific aspect.\n` : ''}
 
 Format your analysis as a JSON object with:
 {
@@ -154,7 +164,8 @@ IMPORTANT:
 - In the "evidenceFor" and "evidenceAgainst" arrays, include detailed points with specific examples, historical precedents, statistics, and source citations where available.
 - For resolved markets (0% or 100%), focus on explaining why the event did or didn't happen rather than probability assessment.
 - Consider all dimensions of the question including economic, political, social, and technological factors.
-- Each evidence point should be a complete, well-reasoned argument, not just a simple statement.${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
+- Each evidence point should be a complete, well-reasoned argument, not just a simple statement.
+- Evaluate the temporal relevance of all evidence - clearly indicate when information may be outdated relative to today (${currentDate}).${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
 
     const prompt = `Here is the web content I've collected during research:
 ---
@@ -168,15 +179,18 @@ ${truncatedAnalysis}
 
 ${previousAnalysesContext}
 
+TODAY'S DATE: ${currentDate}
+
 Based on all this information, please provide:
 1. A specific probability estimate for the market question: "${marketQuestion}"
 2. The key areas where more research is needed
 3. A detailed reasoning section with:
    - Evidence FOR the event happening (with specific historical precedents, examples, statistics)
    - Evidence AGAINST the event happening (with specific historical precedents, examples, statistics)
+4. Consider the temporal relevance of all evidence relative to today's date (${currentDate})
 ${focusText ? `\nCRITICAL: Your analysis MUST focus specifically on: "${focusText}"\nEnsure ALL evidence points directly address this specific focus area.\n` : ''}
 ${relatedMarkets && relatedMarkets.length > 0 ? 
-  `4. Analysis of how the following related markets affect your assessment:
+  `5. Analysis of how the following related markets affect your assessment:
 ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 
   : ''}
 

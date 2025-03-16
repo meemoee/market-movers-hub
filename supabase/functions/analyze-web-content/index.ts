@@ -66,6 +66,13 @@ serve(async (req) => {
       ? content.substring(0, contentLimit) + "... [content truncated]" 
       : content;
 
+    // Get current date in a readable format
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
     const marketContext = marketId
       ? `\nImportant context: You are analyzing content for prediction market ID: ${marketId}\n`
       : '';
@@ -100,7 +107,9 @@ serve(async (req) => {
       relatedMarketsContext += "\nConsider how these related markets may inform your analysis. Look for correlations or dependencies between markets.\n";
     }
 
-    const systemPrompt = `You are an expert market research analyst focused on evidence-based analysis.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}${relatedMarketsContext}
+    const dateContext = `\nTODAY'S DATE: ${currentDate}\nWhen analyzing content, consider the recency and temporal relevance of information relative to today's date. Give higher weight to more recent information and explicitly note when information may be outdated.\n`;
+
+    const systemPrompt = `You are an expert market research analyst focused on evidence-based analysis.${marketContext}${focusContext}${researchAreasContext}${marketPriceContext}${relatedMarketsContext}${dateContext}
 
 Your task is to analyze web content to assess the probability of market outcomes. Follow these critical guidelines:
 
@@ -129,7 +138,12 @@ Your task is to analyze web content to assess the probability of market outcomes
    - Discuss potential unknown factors
    - Consider alternative scenarios
    
-${focusText ? `6. Focus Area Priority
+6. Temporal Relevance
+   - Evaluate information recency relative to today (${currentDate})
+   - Note when data may be outdated
+   - Consider what might have changed since information was published
+
+${focusText ? `7. Focus Area Priority
    - EVERY insight MUST explicitly address the focus area: "${focusText}"
    - Information not directly related to the focus area should be excluded
    - Clearly explain how each point connects to the specified focus` : ''}
@@ -148,17 +162,20 @@ ${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... 
 ---`;
     }
 
-    prompt += `\nBased solely on the information in this content:
+    prompt += `\nTODAY'S DATE: ${currentDate}
+
+Based solely on the information in this content:
 1. What are the key facts and insights relevant to the market question "${question}"?
 ${focusText ? `1a. CRITICAL: Focus specifically ONLY on aspects directly related to: "${focusText}"` : ''}
 2. What evidence supports or contradicts the proposition?
+3. Considering today's date (${currentDate}), how recent and relevant is the information?
 ${isMarketResolved ? 
-  `3. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
-  `3. How does this information affect the probability assessment?`
+  `4. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
+  `4. How does this information affect the probability assessment?`
 }
-4. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
-${marketPrice !== undefined && !isMarketResolved ? `5. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
-${relatedMarkets && relatedMarkets.length > 0 ? `6. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+5. What conclusions can we draw about the ${isMarketResolved ? 'reasons for this outcome' : 'likely outcome'}?
+${marketPrice !== undefined && !isMarketResolved ? `6. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `7. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 ${focusText ? `\nCRITICAL REMINDER: Your analysis MUST focus EXCLUSIVELY on: "${focusText}"\nEnsure ALL insights directly address this specific focus area.\n` : ''}
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
