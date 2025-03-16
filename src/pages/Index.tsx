@@ -44,7 +44,7 @@ export default function Index() {
   };
 
   return (
-    <div className="bg-background min-h-screen overflow-x-hidden">
+    <div className="bg-background min-h-screen">
       {/* Purple Glow Effect */}
       <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <Glow 
@@ -78,18 +78,17 @@ export default function Index() {
             {/* Sidebar content */}
           </aside>
 
-          {/* Main content flex container */}
-          <div className={`flex w-full max-w-[1280px] gap-6 ${isMobile ? '' : 'xl:pr-[400px]'}`}>
-            {/* AccountIsland - Desktop version with sticky positioning */}
-            {!isMobile && (
-              <div className="w-[280px] shrink-0 h-screen">
-                <div className="sticky top-4 z-[60]">
-                  <AccountIsland />
-                </div>
-              </div>
-            )}
+          {/* Desktop Account Island - Fixed positioning relative to content width */}
+          {!isMobile && (
+            <div className="fixed z-[60] w-[280px]" style={{ 
+              left: 'max(calc(50% - 640px + 16px), 16px)' /* Aligns with main content container */ 
+            }}>
+              <AccountIsland />
+            </div>
+          )}
 
-            {/* TopMoversList */}
+          {/* Main content area with proper margin to account for fixed AccountIsland */}
+          <div className={`w-full max-w-[1280px] ${isMobile ? '' : 'ml-[280px] pl-6'} ${isMobile ? '' : 'xl:pr-[400px]'}`}>
             <div className={`flex-1 min-w-0 ${isMobile ? 'mt-20' : ''}`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
