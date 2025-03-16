@@ -56,13 +56,13 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <div className={`${isMobile ? 'pt-14' : 'pt-4'} flex justify-center w-full min-h-screen relative z-10`}>
+      <div className={`${isMobile ? 'pt-14' : 'pt-4'} flex justify-center w-full relative z-10`}>
         {/* Main Content Container - Centers both AccountIsland and TopMoversList together */}
         <div className="flex w-full max-w-[1280px] mx-auto">
           {/* Left Sidebar - AccountIsland - Not Mobile */}
           {!isMobile && (
             <div className="w-[280px] flex-shrink-0">
-              <div className="sticky top-4 h-[calc(100vh-2rem)]">
+              <div className="sticky top-4 max-h-screen overflow-y-auto pb-4">
                 <AccountIsland />
               </div>
             </div>
@@ -93,7 +93,7 @@ export default function Index() {
           )}
           
           {/* Main Content Area - TopMoversList */}
-          <main className="flex-1 px-4 max-w-[800px]">
+          <main className="flex-1 px-4 max-w-[800px] overflow-y-auto">
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
@@ -107,7 +107,7 @@ export default function Index() {
         {/* Right Sidebar - Fixed position outside the central content */}
         {!isMobile && (
           <aside className="fixed right-0 top-0 w-[400px] h-screen">
-            <div className="sticky top-0 h-screen">
+            <div className="sticky top-0 h-screen overflow-y-auto">
               <RightSidebar />
             </div>
           </aside>
