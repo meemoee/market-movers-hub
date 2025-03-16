@@ -10,11 +10,13 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, History } from "lucide-react"
+import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, MailCheck } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -49,6 +51,8 @@ interface ResearchJob {
   updated_at: string;
   user_id?: string;
   focus_text?: string;
+  notification_email?: string;
+  notification_sent?: boolean;
 }
 
 export function JobQueueResearchCard({ 
@@ -77,6 +81,10 @@ export function JobQueueResearchCard({
   const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
   const { toast } = useToast()
+  
+  const [enableNotification, setEnableNotification] = useState(false)
+  const [notificationEmail, setNotificationEmail] = useState('')
+  const [isEmailSent, setIsEmailSent] = useState(false)
 
   const resetState = () => {
     setJobId(null);
@@ -90,6 +98,7 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    setIsEmailSent(false);
   }
 
   useEffect(() => {
@@ -183,6 +192,16 @@ export function JobQueueResearchCard({
     if (job.focus_text) {
       setFocusText(job.focus_text);
     }
+    
+    if (job.notification_email) {
+      setNotificationEmail(job.notification_email);
+      setEnableNotification(true);
+      setIsEmailSent(job.notification_sent || false);
+    } else {
+      setNotificationEmail('');
+      setEnableNotification(false);
+      setIsEmailSent(false);
+    }
   }
 
   const calculateGoodBuyOpportunities = (probabilityStr: string) => {
@@ -199,9 +218,6 @@ export function JobQueueResearchCard({
     
     const opportunities = [];
     
-    // Use bestAsk instead of bestBid for comparing buy opportunities of the "Yes" outcome
-    // This is the correct value to use for detecting good buy opportunities since it's what 
-    // a user would pay when buying the Yes outcome with a market order
     if (probability > bestAsk + THRESHOLD) {
       opportunities.push({
         outcome: outcomes[0],
@@ -212,7 +228,6 @@ export function JobQueueResearchCard({
     }
     
     const inferredProbability = 1 - probability;
-    // Use noBestAsk directly if available for comparing buy opportunities of the "No" outcome
     const noAskPrice = noBestAsk !== undefined ? noBestAsk : 1 - bestBid;
     
     if (inferredProbability > noAskPrice + THRESHOLD) {
@@ -274,6 +289,10 @@ export function JobQueueResearchCard({
           setProgressPercent(100);
           setProgress(prev => [...prev, 'Job completed successfully!']);
           
+          if (job.notification_sent) {
+            setIsEmailSent(true);
+          }
+          
           if (job.results) {
             try {
               const parsedResults = JSON.parse(job.results);
@@ -309,6 +328,10 @@ export function JobQueueResearchCard({
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           
+          if (job.notification_sent) {
+            setIsEmailSent(true);
+          }
+          
           fetchSavedJobs();
           
           clearInterval(pollInterval);
@@ -341,6 +364,41 @@ export function JobQueueResearchCard({
     return () => clearInterval(pollInterval);
   }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
+  const handleSendNotification = async () => {
+    if (!jobId || !notificationEmail) return;
+    
+    try {
+      setIsLoading(true);
+      
+      const response = await supabase.functions.invoke('send-research-notification', {
+        body: JSON.stringify({ 
+          jobId,
+          email: notificationEmail
+        })
+      });
+      
+      if (response.error) {
+        throw new Error(`Failed to send notification: ${response.error.message}`);
+      }
+      
+      setIsEmailSent(true);
+      toast({
+        title: "Notification Sent",
+        description: `Email notification sent to ${notificationEmail}`,
+      });
+      
+    } catch (error) {
+      console.error('Error sending notification:', error);
+      toast({
+        title: "Notification Failed",
+        description: `Failed to send email: ${error.message}`,
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleResearch = async (initialFocusText = '') => {
     resetState();
     setIsLoading(true);
@@ -354,7 +412,8 @@ export function JobQueueResearchCard({
         marketId,
         query: description,
         maxIterations: 3,
-        focusText: useFocusText.trim() || undefined
+        focusText: useFocusText.trim() || undefined,
+        notificationEmail: enableNotification ? notificationEmail.trim() : undefined
       };
       
       const response = await supabase.functions.invoke('create-research-job', {
@@ -377,9 +436,14 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       
+      let notificationMessage = `Job ID: ${jobId}. You can close this window and check back later.`;
+      if (enableNotification && notificationEmail) {
+        notificationMessage += ` You'll receive an email notification at ${notificationEmail} when complete.`;
+      }
+      
       toast({
         title: "Background Research Started",
-        description: `Job ID: ${jobId}. You can close this window and check back later.`,
+        description: notificationMessage,
       });
       
       fetchSavedJobs();
@@ -615,6 +679,9 @@ export function JobQueueResearchCard({
                         >
                           {job.status}
                         </Badge>
+                        {job.notification_sent && (
+                          <MailCheck className="h-3 w-3 ml-1 text-green-600" />
+                        )}
                       </div>
                       <div className="flex items-center justify-between w-full mt-1">
                         <span className="text-xs text-muted-foreground">
@@ -636,20 +703,86 @@ export function JobQueueResearchCard({
       </div>
 
       {!jobId && (
-        <div className="flex items-center gap-2 w-full">
-          <Input
-            placeholder="Add an optional focus area for your research..."
-            value={focusText}
-            onChange={(e) => setFocusText(e.target.value)}
-            disabled={isLoading || polling}
-            className="flex-1"
-          />
-        </div>
+        <>
+          <div className="flex items-center gap-2 w-full">
+            <Input
+              placeholder="Add an optional focus area for your research..."
+              value={focusText}
+              onChange={(e) => setFocusText(e.target.value)}
+              disabled={isLoading || polling}
+              className="flex-1"
+            />
+          </div>
+          
+          <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 border-t pt-4">
+            <div className="flex items-center space-x-2">
+              <Switch 
+                id="notification" 
+                checked={enableNotification}
+                onCheckedChange={setEnableNotification}
+                disabled={isLoading || polling}
+              />
+              <Label htmlFor="notification" className="cursor-pointer">Email notification</Label>
+            </div>
+            
+            {enableNotification && (
+              <div className="flex-1">
+                <Input
+                  type="email"
+                  placeholder="Email for notification when complete"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  disabled={isLoading || polling || !enableNotification}
+                />
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {focusText && jobId && (
         <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
           <span className="font-medium">Research focus:</span> {focusText}
+        </div>
+      )}
+      
+      {jobId && enableNotification && notificationEmail && (
+        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-muted-foreground" />
+            <span className="text-muted-foreground">Notification to: {notificationEmail}</span>
+          </div>
+          
+          {(jobStatus === 'completed' || jobStatus === 'failed') && (
+            <>
+              {isEmailSent ? (
+                <Badge variant="outline" className="bg-green-50 text-green-700 flex items-center gap-1">
+                  <MailCheck className="h-3 w-3" />
+                  <span>Notification sent</span>
+                </Badge>
+              ) : (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        className="flex items-center gap-1"
+                        onClick={handleSendNotification}
+                        disabled={isLoading}
+                      >
+                        {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+                        <span>Send now</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Send email notification manually</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+            </>
+          )}
         </div>
       )}
 
@@ -720,3 +853,4 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
+

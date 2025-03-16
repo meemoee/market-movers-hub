@@ -18,8 +18,8 @@ interface MarketDetailsProps {
   eventId?: string;
   bestBid?: number;
   bestAsk?: number;
-  noBestBid?: number; // Add this property to the interface
-  noBestAsk?: number; // Add this property to the interface
+  noBestBid?: number;
+  noBestAsk?: number;
   outcomes?: string[];
 }
 
@@ -31,8 +31,8 @@ export function MarketDetails({
   eventId,
   bestBid,
   bestAsk,
-  noBestBid, // Add this to the function parameters
-  noBestAsk, // Add this to the function parameters
+  noBestBid,
+  noBestAsk,
   outcomes
 }: MarketDetailsProps) {
   const [selectedChartInterval, setSelectedChartInterval] = useState('1d');
@@ -181,8 +181,8 @@ export function MarketDetails({
             marketId={marketId}
             bestBid={bestBid}
             bestAsk={bestAsk}
-            noBestBid={noBestBid} // Pass the noBestBid property
-            noBestAsk={noBestAsk} // Pass the noBestAsk property
+            noBestBid={noBestBid}
+            noBestAsk={noBestAsk}
             outcomes={outcomes}
           />
         </div>

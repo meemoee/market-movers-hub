@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -9,7 +8,7 @@ const corsHeaders = {
 }
 
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string) {
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
   console.log(`Starting background research for job ${jobId}`)
   
   try {
@@ -798,6 +797,38 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     });
     
     console.log(`Completed background research for job ${jobId}`);
+    
+    // Send email notification if email is provided
+    if (notificationEmail) {
+      try {
+        console.log(`Sending email notification for job ${jobId} to ${notificationEmail}`);
+        
+        // Call the notification edge function
+        const notificationResponse = await fetch(
+          `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-research-notification`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+            },
+            body: JSON.stringify({
+              jobId,
+              email: notificationEmail
+            })
+          }
+        );
+        
+        if (!notificationResponse.ok) {
+          const errorText = await notificationResponse.text();
+          console.error(`Error sending notification: ${errorText}`);
+        } else {
+          console.log(`Notification sent successfully to ${notificationEmail}`);
+        }
+      } catch (notificationError) {
+        console.error(`Failed to send notification: ${notificationError.message}`);
+      }
+    }
   } catch (error) {
     console.error(`Error in background job ${jobId}:`, error);
     
@@ -818,6 +849,38 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         job_id: jobId,
         progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
       });
+      
+      // Send email notification for failure if email is provided
+      if (notificationEmail) {
+        try {
+          console.log(`Sending failure notification for job ${jobId} to ${notificationEmail}`);
+          
+          // Call the notification edge function
+          const notificationResponse = await fetch(
+            `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-research-notification`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+              },
+              body: JSON.stringify({
+                jobId,
+                email: notificationEmail
+              })
+            }
+          );
+          
+          if (!notificationResponse.ok) {
+            const errorText = await notificationResponse.text();
+            console.error(`Error sending failure notification: ${errorText}`);
+          } else {
+            console.log(`Failure notification sent successfully to ${notificationEmail}`);
+          }
+        } catch (notificationError) {
+          console.error(`Failed to send failure notification: ${notificationError.message}`);
+        }
+      }
     } catch (e) {
       console.error(`Failed to update job ${jobId} status:`, e);
     }
@@ -927,19 +990,19 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3, focusText } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json();
     
     if (!marketId || !query) {
       return new Response(
         JSON.stringify({ error: 'marketId and query are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      );
     }
     
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    );
     
     // Create a new job record
     const { data: jobData, error: jobError } = await supabaseClient
@@ -952,21 +1015,23 @@ serve(async (req) => {
         current_iteration: 0,
         progress_log: [],
         iterations: [],
-        focus_text: focusText
+        focus_text: focusText,
+        notification_email: notificationEmail || null,
+        notification_sent: false
       })
       .select('id')
-      .single()
+      .single();
     
     if (jobError) {
-      throw new Error(`Failed to create job: ${jobError.message}`)
+      throw new Error(`Failed to create job: ${jobError.message}`);
     }
     
-    const jobId = jobData.id
+    const jobId = jobData.id;
     
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations, focusText).catch(err => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
         console.error(`Background research failed: ${err}`);
       });
     }, 0);
@@ -982,12 +1047,12 @@ serve(async (req) => {
         status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
-    )
+    );
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    );
   }
-})
+});
