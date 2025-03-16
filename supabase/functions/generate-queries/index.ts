@@ -48,15 +48,15 @@ Deno.serve(async (req) => {
     }
 
     // Generate prompt based on iteration
-    let prompt = `Generate 5 concise search queries to gather information about:
+    let prompt = `Generate 5 search queries that someone would type into a search engine to gather information about:
 ${query}
 
 CRITICAL REQUIREMENTS:
-1. Each query should be 5-10 words maximum
+1. Format as search queries, not sentences with questions or punctuation
 2. Include specific entities, names, and key technical terms from the original topic
-3. Format as precise keyword phrases, not full sentences
-4. Include enough context for relevant search results
-5. Balance brevity with clarity - informative but concise
+3. Each query should be informative and contextual, but not conversational
+4. Avoid filler words like "what is" or "how to" unless absolutely necessary
+5. Include enough context for relevant search results
 6. Each query should target a specific aspect of the topic
 
 Focus on different aspects that would be relevant for market research.`;
@@ -66,7 +66,7 @@ Focus on different aspects that would be relevant for market research.`;
       prompt += `\n\nFOCUS AREA:
 "${focusText.trim()}"
 
-Ensure that most of your queries address this focus area while keeping queries concise.`;
+Ensure that most of your queries address this focus area while providing sufficient context.`;
     }
 
     // Adjust prompt based on iteration
@@ -77,7 +77,7 @@ KNOWLEDGE GAP REQUIREMENTS:
 1. Analyze previous queries and target NEW topics not yet covered
 2. Focus on missing information crucial for comprehensive understanding
 3. Explore specialized sub-topics or alternative perspectives
-4. Keep queries concise (5-10 words) but maintain sufficient context`;
+4. Maintain search query format (not sentences)`;
     }
 
     // Add previous queries to avoid repetition
@@ -86,7 +86,7 @@ KNOWLEDGE GAP REQUIREMENTS:
 ${previousQueries.join('\n')}`;
     }
 
-    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 concise, keyword-focused search queries.`;
+    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
 
     // Call OpenRouter API
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -102,7 +102,7 @@ ${previousQueries.join('\n')}`;
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates effective search queries that are concise but retain essential context."
+            content: "You are a helpful assistant that generates effective search queries that would be typed into a search engine. You create queries that retain essential context without excessive words or being formed as questions."
           },
           {
             role: "user",
@@ -125,33 +125,31 @@ ${previousQueries.join('\n')}`;
       const queriesData = JSON.parse(content);
       queries = queriesData.queries || [];
       
-      // Process queries to ensure they have enough context but aren't too verbose
+      // Process queries to ensure they're in search engine format
       queries = queries.map((q: string) => {
-        // Check if the query is too short or lacks context
-        if (q.split(' ').length < 3 || q.length < 12) {
-          // Add minimal context from original query
-          const mainTopic = query.split(' ').slice(0, 2).join(' ');
-          return `${q} ${mainTopic}`;
+        // Remove question marks and unnecessary punctuation
+        let processedQuery = q.replace(/\?|\.|!|"/g, '');
+        
+        // Remove filler question starts if present
+        processedQuery = processedQuery.replace(/^(what is|how to|why does|when did|where can|how do|is there|are there|can i|should i|would a)/i, '');
+        
+        // Ensure first letter is capitalized if query doesn't start with a proper noun
+        if (processedQuery.length > 0 && processedQuery[0].toLowerCase() === processedQuery[0]) {
+          const firstChar = processedQuery.charAt(0).toUpperCase();
+          processedQuery = firstChar + processedQuery.slice(1);
         }
         
-        // Check if the query is too long (more like a sentence)
-        if (q.split(' ').length > 10 || q.includes('.')) {
-          // Extract key terms
-          const words = q.replace(/[.,?!]/g, '').split(' ');
-          return words.slice(0, 10).join(' ');
-        }
-        
-        return q;
+        return processedQuery.trim();
       });
     } catch (error) {
       console.error("Error parsing OpenRouter response:", error, content);
       
-      // Generate fallback queries with balanced approach
+      // Generate fallback queries in search format style
       queries = [
-        `${query} recent developments analysis`,
+        `${query} recent developments`,
         `${query} market forecast data`,
         `${query} historical trends statistics`,
-        `${query} expert assessment impacts`,
+        `${query} expert analysis`,
         `${query} performance metrics comparison`
       ];
       

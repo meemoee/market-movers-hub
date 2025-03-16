@@ -40,21 +40,21 @@ async function generateSubQueries(query: string, focusText?: string): Promise<st
       ? `You are a helpful assistant that generates effective search queries about: ${focusText}`
       : 'You are a helpful assistant that generates effective search queries.';
       
-    const userPrompt = `Generate 5 concise search queries to gather information about:
+    const userPrompt = `Generate 5 search queries that someone would type into a search engine to gather information about:
 ${query}
 ${focusText ? `With specific focus on: "${focusText}"` : ''}
 
 CRITICAL REQUIREMENTS:
-1. Each query should be 5-10 words maximum
+1. Format as search queries, not sentences with questions or punctuation
 2. Include specific entities, names, and key technical terms from the original topic
-3. Format as precise keyword phrases, not full sentences
-4. Include enough context for relevant search results
-5. Balance brevity with clarity - informative but concise
+3. Each query should be informative and contextual, but not conversational
+4. Avoid filler words like "what is" or "how to" unless absolutely necessary
+5. Include enough context for relevant search results
 6. Each query should target a specific aspect of the topic
 
 Make each query different to gather a wide range of information.
 
-Respond with a JSON object containing a 'queries' array with exactly 5 concise, keyword-focused search queries.`;
+Respond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -89,23 +89,21 @@ Respond with a JSON object containing a 'queries' array with exactly 5 concise, 
     const queriesData = JSON.parse(content)
     let queries = queriesData.queries || []
     
-    // Process queries to ensure they have enough context but aren't too verbose
+    // Process queries to ensure they're in search engine format
     queries = queries.map((q: string) => {
-      // Check if the query is too short or lacks context
-      if (q.split(' ').length < 3 || q.length < 12) {
-        // Add minimal context from original query
-        const mainTopic = query.split(' ').slice(0, 2).join(' ');
-        return `${q} ${mainTopic}`;
+      // Remove question marks and unnecessary punctuation
+      let processedQuery = q.replace(/\?|\.|!|"/g, '');
+      
+      // Remove filler question starts if present
+      processedQuery = processedQuery.replace(/^(what is|how to|why does|when did|where can|how do|is there|are there|can i|should i|would a)/i, '');
+      
+      // Ensure first letter is capitalized if query doesn't start with a proper noun
+      if (processedQuery.length > 0 && processedQuery[0].toLowerCase() === processedQuery[0]) {
+        const firstChar = processedQuery.charAt(0).toUpperCase();
+        processedQuery = firstChar + processedQuery.slice(1);
       }
       
-      // Check if the query is too long (more like a sentence)
-      if (q.split(' ').length > 10 || q.includes('.')) {
-        // Extract key terms
-        const words = q.replace(/[.,?!]/g, '').split(' ');
-        return words.slice(0, 10).join(' ');
-      }
-      
-      return q;
+      return processedQuery.trim();
     })
     
     console.log('Generated queries:', queries)
@@ -113,7 +111,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 concise, 
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries with balanced approach
+    // Generate fallback queries in search format
     if (focusText) {
       // Add focused variants
       const focusKeywords = focusText.split(' ').slice(0, 3).join(' ');
@@ -130,7 +128,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 concise, 
       `${query} market insights analysis`,
       `${query} performance metrics data`,
       `${query} historical context trends`,
-      `${query} expert forecasts assessment`,
+      `${query} expert forecasts`,
       `${query} statistical comparisons`
     ]
   }
