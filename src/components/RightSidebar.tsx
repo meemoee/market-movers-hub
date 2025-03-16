@@ -119,13 +119,8 @@ export default function RightSidebar() {
 
   const defaultContent = [
     {
-      icon: Zap,
       question: "Turn your 💬 into 💰",
       answer: "Hunchex will find market positions that correspond to the comments you make, allowing you to track their truthfulness over time.",
-      subPoints: [
-        { icon: TrendingUp, text: "Track price changes in real-time" },
-        { icon: DollarSign, text: "Identify profitable opportunities" }
-      ]
     }
   ]
 
@@ -136,7 +131,7 @@ export default function RightSidebar() {
           <>
             <div className="mb-16">
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
-                A New Kind of Game
+                A New Game
               </h2>
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis bg-gradient-to-r from-[#7E69AB] via-[#9b87f5] to-[#D946EF] text-transparent bg-clip-text">
                 For a New Age
@@ -144,23 +139,8 @@ export default function RightSidebar() {
             </div>
             {defaultContent.map((item, index) => (
               <div key={index} className="mb-6 pb-6 border-b border-white/10 last:border-0">
-                <div className="flex items-center mb-2">
-                  <span className="mr-3 text-blue-500">
-                    <item.icon size={16} />
-                  </span>
-                  <h3 className="text-sm font-semibold">{item.question}</h3>
-                </div>
-                <p className="text-gray-400 text-sm ml-9 mb-2">{item.answer}</p>
-                <div className="space-y-1 ml-9">
-                  {item.subPoints.map((subPoint, subIndex) => (
-                    <div key={subIndex} className="flex items-center">
-                      <span className="mr-2 text-blue-500">
-                        <subPoint.icon size={12} />
-                      </span>
-                      <span className="text-xs text-gray-400">{subPoint.text}</span>
-                    </div>
-                  ))}
-                </div>
+                <h3 className="text-xl font-semibold mb-3">{item.question}</h3>
+                <p className="text-gray-400 text-lg">{item.answer}</p>
               </div>
             ))}
           </>
