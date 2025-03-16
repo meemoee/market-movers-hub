@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
-import { SitePreviewList } from "./research/SitePreviewList"
+import { SitePreviewList } from "./SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel } from "@/components/ui/form"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert" 
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -85,6 +86,7 @@ export function JobQueueResearchCard({
   const [isSendingNotification, setIsSendingNotification] = useState(false)
   const [notificationStatus, setNotificationStatus] = useState<'pending' | 'sending' | 'sent' | 'failed' | null>(null)
   const [notificationAttempts, setNotificationAttempts] = useState(0)
+  const [notificationSendingStarted, setNotificationSendingStarted] = useState(false)
   const MAX_NOTIFICATION_ATTEMPTS = 3
 
   const { toast } = useToast()
@@ -105,6 +107,7 @@ export function JobQueueResearchCard({
     setEnableNotification(false);
     setNotificationStatus(null);
     setNotificationAttempts(0);
+    setNotificationSendingStarted(false);
   }
 
   useEffect(() => {
@@ -354,27 +357,24 @@ export function JobQueueResearchCard({
             }
           }
           
+          // Check if notification needs to be sent
           if (job.notification_sent) {
             console.log('Notification already marked as sent in database');
             setNotificationStatus('sent');
-            setPolling(false);
-            clearInterval(pollInterval);
-            return;
-          }
-          
-          if (enableNotification && notificationEmail) {
-            console.log(`Job completed, checking notification status for email ${notificationEmail}`);
-            
-            if (notificationStatus !== 'sending' && notificationStatus !== 'sent') {
+          } else if (enableNotification && notificationEmail && notificationStatus !== 'sent') {
+            // Only try to send if we haven't already started the process
+            if (!notificationSendingStarted) {
+              console.log(`Job completed, initiating notification to ${notificationEmail}`);
+              setNotificationSendingStarted(true);
               setNotificationStatus('sending');
-              
+
               if (!progress.some(msg => msg.includes(`Sending email notification to ${notificationEmail}`))) {
                 setProgress(prev => [...prev, `Sending email notification to ${notificationEmail}...`]);
               }
               
               try {
+                console.log(`Sending first notification attempt to ${notificationEmail}`);
                 setNotificationAttempts(prev => prev + 1);
-                console.log(`Sending notification, attempt ${notificationAttempts + 1}`);
                 
                 const result = await sendEmailNotification(job.id, notificationEmail);
                 
@@ -384,13 +384,8 @@ export function JobQueueResearchCard({
                     setProgress(prev => [...prev, `Email notification sent successfully to ${notificationEmail}`]);
                   }
                   
-                  setTimeout(() => {
-                    fetchSavedJobs();
-                    setPolling(false);
-                    clearInterval(pollInterval);
-                  }, 2000);
-                  
-                  return;
+                  setPolling(false);
+                  await fetchSavedJobs();  // Always refetch the job list to reflect the updated notification status
                 }
               } catch (err) {
                 console.error('Failed to send email notification:', err);
@@ -405,19 +400,53 @@ export function JobQueueResearchCard({
                     variant: "destructive"
                   });
                   
-                  fetchSavedJobs();
-                  setPolling(false);
-                  clearInterval(pollInterval);
-                  return;
+                  await fetchSavedJobs();
                 } else {
                   setProgress(prev => [...prev, `Notification attempt ${notificationAttempts} failed, will retry shortly...`]);
                 }
               }
+            } else if (notificationStatus === 'sending' && notificationAttempts < MAX_NOTIFICATION_ATTEMPTS) {
+              // If we're still trying to send and haven't reached the max attempts, try again
+              try {
+                console.log(`Sending retry notification attempt ${notificationAttempts + 1} to ${notificationEmail}`);
+                setNotificationAttempts(prev => prev + 1);
+                
+                const result = await sendEmailNotification(job.id, notificationEmail);
+                
+                if (result) {
+                  setNotificationStatus('sent');
+                  if (!progress.some(msg => msg.includes('Email notification sent successfully'))) {
+                    setProgress(prev => [...prev, `Email notification sent successfully to ${notificationEmail}`]);
+                  }
+                  
+                  setPolling(false);
+                  await fetchSavedJobs();
+                }
+              } catch (err) {
+                console.error(`Retry ${notificationAttempts} failed:`, err);
+                
+                if (notificationAttempts >= MAX_NOTIFICATION_ATTEMPTS) {
+                  setNotificationStatus('failed');
+                  setProgress(prev => [...prev, `Failed to send email notification after ${MAX_NOTIFICATION_ATTEMPTS} attempts`]);
+                  
+                  toast({
+                    title: "Notification Failed",
+                    description: `Could not send notification email after multiple attempts. You can try again manually.`,
+                    variant: "destructive"
+                  });
+                  
+                  await fetchSavedJobs();
+                } else {
+                  setProgress(prev => [...prev, `Notification attempt ${notificationAttempts} failed, will retry in 15 seconds...`]);
+                }
+              }
+            } else if (notificationStatus === 'failed') {
+              // If notification failed, stop polling
+              setPolling(false);
             }
-          } else {
-            fetchSavedJobs();
+          } else if (!enableNotification || !notificationEmail) {
+            // No notification needed, stop polling for completed jobs
             setPolling(false);
-            clearInterval(pollInterval);
           }
         } 
         else if (job.status === 'failed') {
@@ -426,17 +455,33 @@ export function JobQueueResearchCard({
             setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           }
           
-          fetchSavedJobs();
           setPolling(false);
-          clearInterval(pollInterval);
+          await fetchSavedJobs();
         }
       } catch (e) {
         console.error('Error in poll interval:', e);
       }
     }, 3000);
     
-    return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, enableNotification, notificationEmail, notificationStatus, notificationAttempts]);
+    return () => {
+      console.log(`Clearing poll interval for job ${jobId}`);
+      clearInterval(pollInterval);
+    };
+  }, [
+    jobId, 
+    polling, 
+    progress.length, 
+    expandedIterations, 
+    bestBid, 
+    bestAsk, 
+    noBestBid, 
+    outcomes, 
+    enableNotification, 
+    notificationEmail, 
+    notificationStatus, 
+    notificationAttempts, 
+    notificationSendingStarted
+  ]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -892,162 +937,3 @@ export function JobQueueResearchCard({
               className="flex-1"
             />
           </div>
-          
-          <div className="flex flex-col space-y-2 bg-accent/10 p-3 rounded-md">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="notification-mode"
-                  checked={enableNotification}
-                  onCheckedChange={setEnableNotification}
-                  disabled={isLoading || polling}
-                />
-                <Label htmlFor="notification-mode" className="font-medium">
-                  Email notification
-                </Label>
-              </div>
-            </div>
-            
-            {enableNotification && (
-              <div className="pt-2">
-                <Input
-                  type="email"
-                  placeholder="Enter email for notification when research completes"
-                  value={notificationEmail}
-                  onChange={(e) => setNotificationEmail(e.target.value)}
-                  disabled={isLoading || polling}
-                  className="w-full"
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  We'll send you an email when your research is complete
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {focusText && jobId && (
-        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
-          <span className="font-medium">Research focus:</span> {focusText}
-        </div>
-      )}
-      
-      {notificationEmail && jobId && (
-        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm flex items-center">
-          <Mail className="h-4 w-4 mr-2 text-muted-foreground" />
-          <span className="font-medium">Email notification:</span> 
-          <span className="ml-1">{notificationEmail}</span>
-          {notificationStatus === 'failed' && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="ml-auto"
-              disabled={isSendingNotification}
-              onClick={retryNotification}
-            >
-              {isSendingNotification ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-1" />
-              ) : null}
-              Retry
-            </Button>
-          )}
-        </div>
-      )}
-
-      {error && (
-        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
-          {error}
-        </div>
-      )}
-
-      {jobId && (
-        <ProgressDisplay 
-          messages={progress} 
-          jobId={jobId || undefined} 
-          progress={progressPercent}
-          status={jobStatus}
-        />
-      )}
-      
-      {iterations.length > 0 && (
-        <div className="border-t pt-4 w-full max-w-full space-y-2">
-          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
-          <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={3}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {structuredInsights && structuredInsights.parsedData && (
-        <div className="border-t pt-4 w-full max-w-full">
-          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
-          <InsightsDisplay 
-            streamingState={structuredInsights} 
-            onResearchArea={handleResearchArea}
-            marketData={{
-              bestBid,
-              bestAsk,
-              outcomes
-            }}
-          />
-        </div>
-      )}
-      
-      {results.length > 0 && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
-          </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
-        </>
-      )}
-      
-      {jobStatus === 'completed' && notificationStatus !== 'sent' && notificationStatus !== 'sending' && (
-        <div className="border-t pt-4">
-          <div className="bg-accent/10 p-3 rounded-md">
-            <h4 className="text-sm font-medium mb-2 flex items-center">
-              <Mail className="h-4 w-4 mr-2" />
-              Send Results by Email
-            </h4>
-            <div className="flex gap-2">
-              <Input
-                type="email"
-                placeholder="Enter email address"
-                value={notificationEmail}
-                onChange={(e) => setNotificationEmail(e.target.value)}
-                disabled={isSendingNotification}
-                className="flex-1"
-              />
-              <Button 
-                size="sm" 
-                onClick={() => jobId && sendEmailNotification(jobId, notificationEmail)}
-                disabled={!notificationEmail || isSendingNotification}
-              >
-                {isSendingNotification && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-                Send
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-    </Card>
-  );
-}
