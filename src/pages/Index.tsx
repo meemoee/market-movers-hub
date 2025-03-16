@@ -6,7 +6,6 @@ import AccountIsland from "@/components/AccountIsland";
 import MobileHeader from "@/components/MobileHeader";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Glow } from "@/components/ui/glow";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} minutes`;
@@ -46,7 +45,7 @@ export default function Index() {
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
-      {/* Purple Glow Effect - adjust positioning for mobile */}
+      {/* Purple Glow Effect */}
       <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <Glow 
           variant="top" 
@@ -57,47 +56,44 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      {/* Main grid layout - now only for the right sidebar */}
-      <div className={`${isMobile ? 'pt-14' : ''} w-full h-screen grid grid-cols-1 md:grid-cols-[1fr_400px] relative z-10`}>
-        {/* Main content area with positioned sidebar */}
-        <main className="h-screen overflow-y-auto flex justify-center relative">
-          {/* Desktop Account Island - positioned absolutely */}
-          {!isMobile && (
-            <div className="absolute left-4 top-4 w-[280px] h-[calc(100vh-32px)]">
-              <ScrollArea className="h-full">
+      {/* Main content layout - using flexbox instead of grid */}
+      <div className={`${isMobile ? 'pt-14' : ''} w-full h-screen flex relative z-10`}>
+        {/* Left Sidebar - AccountIsland */}
+        {!isMobile && (
+          <aside className="w-[280px] h-screen flex-shrink-0">
+            <div className="sticky top-0 h-screen pt-4 pl-4 pr-2 overflow-y-auto">
+              <AccountIsland />
+            </div>
+          </aside>
+        )}
+        
+        {/* Mobile Sidebar - slides in from left */}
+        {isMobile && (
+          <>
+            {isSidebarOpen && (
+              <div 
+                className="fixed inset-0 bg-black/50 z-40"
+                onClick={() => setIsSidebarOpen(false)}
+              />
+            )}
+
+            <aside 
+              className={`fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background
+                ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}
+                transition-transform duration-300 ease-in-out flex flex-col`}
+            >
+              <div className="h-full pt-14 overflow-y-auto">
                 <div className="p-4">
                   <AccountIsland />
                 </div>
-              </ScrollArea>
-            </div>
-          )}
-          
-          {/* Mobile sidebar - slide in */}
-          {isMobile && (
-            <>
-              {isSidebarOpen && (
-                <div 
-                  className="fixed inset-0 bg-black/50 z-40"
-                  onClick={() => setIsSidebarOpen(false)}
-                />
-              )}
-
-              <aside 
-                className={`fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background
-                  ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}
-                  transition-transform duration-300 ease-in-out flex flex-col`}
-              >
-                <ScrollArea className="h-full pt-14">
-                  <div className="p-4">
-                    <AccountIsland />
-                  </div>
-                </ScrollArea>
-              </aside>
-            </>
-          )}
-          
-          {/* Top Movers List - with margin to accommodate the sidebar */}
-          <div className="w-full max-w-[800px] px-4 md:ml-[300px]">
+              </div>
+            </aside>
+          </>
+        )}
+        
+        {/* Main Content Area - TopMoversList */}
+        <main className="flex-1 h-screen overflow-y-auto flex justify-center">
+          <div className="w-full max-w-[800px] px-4">
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
@@ -108,11 +104,13 @@ export default function Index() {
           </div>
         </main>
 
-        {/* Right sidebar - only on desktop */}
+        {/* Right Sidebar */}
         {!isMobile && (
-          <div className="h-screen">
-            <RightSidebar />
-          </div>
+          <aside className="w-[400px] h-screen flex-shrink-0">
+            <div className="sticky top-0 h-screen">
+              <RightSidebar />
+            </div>
+          </aside>
         )}
       </div>
     </div>
