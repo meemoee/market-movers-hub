@@ -1,7 +1,9 @@
-import { Send, Zap, TrendingUp, DollarSign } from 'lucide-react'
+
+import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
+import { Separator } from './ui/separator'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
@@ -129,7 +131,7 @@ export default function RightSidebar() {
       <div className="p-6 overflow-y-auto h-full">
         {!hasStartedChat ? (
           <>
-            <div className="mb-16">
+            <div className="mb-12">
               <h2 className="text-3xl font-extrabold whitespace-nowrap overflow-hidden text-ellipsis mb-1">
                 A New Game
               </h2>
@@ -138,9 +140,9 @@ export default function RightSidebar() {
               </h2>
             </div>
             {defaultContent.map((item, index) => (
-              <div key={index} className="mb-6 pb-6 border-b border-white/10 last:border-0">
-                <h3 className="text-xl font-semibold mb-3">{item.question}</h3>
-                <p className="text-gray-400 text-lg">{item.answer}</p>
+              <div key={index} className="mb-6">
+                <h3 className="text-xl font-semibold mb-2">{item.question}</h3>
+                <p className="text-gray-400 text-base">{item.answer}</p>
               </div>
             ))}
           </>
