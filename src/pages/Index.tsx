@@ -44,7 +44,7 @@ export default function Index() {
   };
 
   return (
-    <div className="bg-background min-h-screen overflow-x-hidden flex flex-col">
+    <div className="bg-background min-h-screen overflow-hidden flex flex-col">
       {/* Purple Glow Effect */}
       <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
         <Glow 
@@ -56,11 +56,11 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <main className={`flex-1 mx-auto ${isMobile ? 'px-0 pr-0 pt-16 pb-60 w-full overflow-y-auto' : 'px-4 overflow-y-auto'} relative z-10`}>
+      <main className={`flex-1 mx-auto ${isMobile ? 'px-0 pr-0 pt-16 pb-60 w-full' : 'px-4'} relative z-10 overflow-y-auto`}>
         <div className="flex justify-center max-w-[1280px] mx-auto min-h-full">
           {isMobile && isSidebarOpen && (
             <div 
-              className="fixed inset-0 bg-black/50 z-40"
+              className="fixed inset-0 bg-black/50 z-30"
               onClick={() => setIsSidebarOpen(false)}
             />
           )}

@@ -242,10 +242,10 @@ export default function TopMoversList({
   const sortedMarkets = displayedMarkets;
 
   return (
-    <div className="flex flex-col w-full max-w-full overflow-hidden">
-      <div className="sticky top-0 z-50 w-full flex flex-col bg-background/95 backdrop-blur-md rounded-b-lg shadow-md border-b border-white/5">
+    <div className="flex flex-col w-full max-w-full">
+      <div className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur-md shadow-md border-b border-white/5">
         {!marketId && (
-          <div className="flex items-center w-full px-4 py-3 border-b">
+          <div className="flex items-center w-full px-4 py-3 border-b border-white/5">
             <div className="relative flex-1 max-w-2xl mx-auto">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
