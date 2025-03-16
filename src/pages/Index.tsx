@@ -56,44 +56,44 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      {/* Main content layout - using flexbox instead of grid */}
-      <div className={`${isMobile ? 'pt-14' : ''} w-full h-screen flex relative z-10`}>
-        {/* Left Sidebar - AccountIsland */}
-        {!isMobile && (
-          <aside className="w-[280px] h-screen flex-shrink-0">
-            <div className="sticky top-0 h-screen pt-4 pl-4 pr-2 overflow-y-auto">
-              <AccountIsland />
-            </div>
-          </aside>
-        )}
-        
-        {/* Mobile Sidebar - slides in from left */}
-        {isMobile && (
-          <>
-            {isSidebarOpen && (
-              <div 
-                className="fixed inset-0 bg-black/50 z-40"
-                onClick={() => setIsSidebarOpen(false)}
-              />
-            )}
-
-            <aside 
-              className={`fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background
-                ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}
-                transition-transform duration-300 ease-in-out flex flex-col`}
-            >
-              <div className="h-full pt-14 overflow-y-auto">
-                <div className="p-4">
-                  <AccountIsland />
-                </div>
+      <div className={`${isMobile ? 'pt-14' : 'pt-4'} flex justify-center w-full min-h-screen relative z-10`}>
+        {/* Main Content Container - Centers both AccountIsland and TopMoversList together */}
+        <div className="flex w-full max-w-[1280px] mx-auto">
+          {/* Left Sidebar - AccountIsland - Not Mobile */}
+          {!isMobile && (
+            <div className="w-[280px] flex-shrink-0">
+              <div className="sticky top-4 h-[calc(100vh-2rem)]">
+                <AccountIsland />
               </div>
-            </aside>
-          </>
-        )}
-        
-        {/* Main Content Area - TopMoversList */}
-        <main className="flex-1 h-screen overflow-y-auto flex justify-center">
-          <div className="w-full max-w-[800px] px-4">
+            </div>
+          )}
+          
+          {/* Mobile Sidebar - slides in from left */}
+          {isMobile && (
+            <>
+              {isSidebarOpen && (
+                <div 
+                  className="fixed inset-0 bg-black/50 z-40"
+                  onClick={() => setIsSidebarOpen(false)}
+                />
+              )}
+
+              <aside 
+                className={`fixed left-0 top-0 bottom-0 z-50 w-[280px] bg-background
+                  ${isMobile && !isSidebarOpen ? '-translate-x-full' : 'translate-x-0'}
+                  transition-transform duration-300 ease-in-out flex flex-col`}
+              >
+                <div className="h-full pt-14 overflow-y-auto">
+                  <div className="p-4">
+                    <AccountIsland />
+                  </div>
+                </div>
+              </aside>
+            </>
+          )}
+          
+          {/* Main Content Area - TopMoversList */}
+          <main className="flex-1 px-4 max-w-[800px]">
             <TopMoversList
               timeIntervals={TIME_INTERVALS}
               selectedInterval={selectedInterval}
@@ -101,12 +101,12 @@ export default function Index() {
               openMarketsOnly={openMarketsOnly}
               onOpenMarketsChange={setOpenMarketsOnly}
             />
-          </div>
-        </main>
-
-        {/* Right Sidebar */}
+          </main>
+        </div>
+        
+        {/* Right Sidebar - Fixed position outside the central content */}
         {!isMobile && (
-          <aside className="w-[400px] h-screen flex-shrink-0">
+          <aside className="fixed right-0 top-0 w-[400px] h-screen">
             <div className="sticky top-0 h-screen">
               <RightSidebar />
             </div>
