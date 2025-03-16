@@ -1,8 +1,6 @@
 
 import { Button } from "./ui/button";
-import { Menu, UserCircle } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "./ui/sheet";
-import AccountIsland from "./AccountIsland";
+import { Menu } from "lucide-react";
 
 interface MobileHeaderProps {
   toggleSidebar: () => void;
@@ -37,16 +35,7 @@ export default function MobileHeader({ toggleSidebar }: MobileHeaderProps) {
         </svg>
       </a>
 
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-9 w-9">
-            <UserCircle className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="right" className="p-0 pt-0 w-full sm:max-w-md">
-          <AccountIsland context="mobile" />
-        </SheetContent>
-      </Sheet>
+      <div className="w-9"></div> {/* Empty space to balance the layout */}
     </div>
   );
 }

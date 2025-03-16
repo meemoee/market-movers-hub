@@ -4,6 +4,7 @@ import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
 import AccountIsland from "@/components/AccountIsland";
 import MobileHeader from "@/components/MobileHeader";
+import MobileDock from "@/components/MobileDock";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Glow } from "@/components/ui/glow";
 import { Search } from 'lucide-react';
@@ -72,7 +73,7 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <main className={`flex-1 flex flex-col ${isMobile ? 'pt-16 pb-60' : ''}`}>
+      <main className={`flex-1 flex flex-col ${isMobile ? 'pt-16 pb-20' : ''}`}>
         <div className="max-w-[1280px] mx-auto w-full relative flex flex-grow">
           {isMobile && isSidebarOpen && (
             <div 
@@ -183,6 +184,9 @@ export default function Index() {
           </div>
         </div>
       </main>
+
+      {/* Mobile Dock */}
+      {isMobile && <MobileDock />}
 
       <RightSidebar />
     </div>
