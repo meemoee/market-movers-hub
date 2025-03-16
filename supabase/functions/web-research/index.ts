@@ -37,24 +37,24 @@ async function generateSubQueries(query: string, focusText?: string): Promise<st
   
   try {
     const systemPrompt = focusText 
-      ? `You are a helpful assistant that generates concise, keyword-focused search queries about: ${focusText}`
-      : 'You are a helpful assistant that generates concise, keyword-focused search queries.';
+      ? `You are a helpful assistant that generates effective search queries about: ${focusText}`
+      : 'You are a helpful assistant that generates effective search queries.';
       
     const userPrompt = `Generate 5 concise search queries to gather information about:
 ${query}
 ${focusText ? `With specific focus on: "${focusText}"` : ''}
 
 CRITICAL REQUIREMENTS:
-1. Keep each query BRIEF (3-7 keywords) while retaining ESSENTIAL context
-2. Include specific entities, names, or technical terms from the original topic
-3. Focus on KEYWORDS rather than complete sentences
-4. Maintain critical context but REMOVE filler words
-5. Make each query specific enough that a search engine will return relevant results
-6. Avoid pronouns (it, they) or vague references
+1. Each query should be 5-10 words maximum
+2. Include specific entities, names, and key technical terms from the original topic
+3. Format as precise keyword phrases, not full sentences
+4. Include enough context for relevant search results
+5. Balance brevity with clarity - informative but concise
+6. Each query should target a specific aspect of the topic
 
 Make each query different to gather a wide range of information.
 
-Respond with a JSON object containing a 'queries' array with exactly 5 brief, keyword-focused search queries.`;
+Respond with a JSON object containing a 'queries' array with exactly 5 concise, keyword-focused search queries.`;
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -89,14 +89,22 @@ Respond with a JSON object containing a 'queries' array with exactly 5 brief, ke
     const queriesData = JSON.parse(content)
     let queries = queriesData.queries || []
     
-    // Process queries to ensure each has enough context
+    // Process queries to ensure they have enough context but aren't too verbose
     queries = queries.map((q: string) => {
       // Check if the query is too short or lacks context
-      if (q.split(' ').length < 3 || q.length < 15) {
+      if (q.split(' ').length < 3 || q.length < 12) {
         // Add minimal context from original query
-        const mainTopic = query.split(' ').slice(0, 3).join(' ');
+        const mainTopic = query.split(' ').slice(0, 2).join(' ');
         return `${q} ${mainTopic}`;
       }
+      
+      // Check if the query is too long (more like a sentence)
+      if (q.split(' ').length > 10 || q.includes('.')) {
+        // Extract key terms
+        const words = q.replace(/[.,?!]/g, '').split(' ');
+        return words.slice(0, 10).join(' ');
+      }
+      
       return q;
     })
     
@@ -105,28 +113,26 @@ Respond with a JSON object containing a 'queries' array with exactly 5 brief, ke
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries that are more concise
-    const fallbackQueries = [
-      `${query} latest developments`,
-      `${query} expert analysis`,
-      `${query} historical data`,
-      `${query} statistics probability`,
-      `${query} future outlook`
-    ]
-    
+    // Generate fallback queries with balanced approach
     if (focusText) {
       // Add focused variants
       const focusKeywords = focusText.split(' ').slice(0, 3).join(' ');
       return [
-        `${focusKeywords} ${query} analysis`,
-        `${query} ${focusKeywords} impact`,
-        `${query} ${focusKeywords} data`,
-        `${query} ${focusKeywords} facts`,
-        `${query} ${focusKeywords} history ${query}`
+        `${query} ${focusKeywords} analysis`,
+        `${query} ${focusKeywords} market impact`,
+        `${query} ${focusKeywords} data trends`,
+        `${focusKeywords} effect on ${query}`,
+        `${query} ${focusKeywords} historical context`
       ]
     }
     
-    return fallbackQueries
+    return [
+      `${query} market insights analysis`,
+      `${query} performance metrics data`,
+      `${query} historical context trends`,
+      `${query} expert forecasts assessment`,
+      `${query} statistical comparisons`
+    ]
   }
 }
 

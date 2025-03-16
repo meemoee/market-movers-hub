@@ -52,12 +52,12 @@ Deno.serve(async (req) => {
 ${query}
 
 CRITICAL REQUIREMENTS:
-1. Keep each query BRIEF (3-7 keywords) while retaining ESSENTIAL context
-2. Include specific entities, names, or technical terms from the original topic
-3. Focus on KEYWORDS rather than complete sentences
-4. Maintain critical context but REMOVE filler words
-5. Make each query specific enough that a search engine will return relevant results
-6. Avoid pronouns (it, they) or vague references
+1. Each query should be 5-10 words maximum
+2. Include specific entities, names, and key technical terms from the original topic
+3. Format as precise keyword phrases, not full sentences
+4. Include enough context for relevant search results
+5. Balance brevity with clarity - informative but concise
+6. Each query should target a specific aspect of the topic
 
 Focus on different aspects that would be relevant for market research.`;
 
@@ -77,7 +77,7 @@ KNOWLEDGE GAP REQUIREMENTS:
 1. Analyze previous queries and target NEW topics not yet covered
 2. Focus on missing information crucial for comprehensive understanding
 3. Explore specialized sub-topics or alternative perspectives
-4. Keep queries brief (3-7 keywords) but maintain context`;
+4. Keep queries concise (5-10 words) but maintain sufficient context`;
     }
 
     // Add previous queries to avoid repetition
@@ -86,7 +86,7 @@ KNOWLEDGE GAP REQUIREMENTS:
 ${previousQueries.join('\n')}`;
     }
 
-    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 brief, keyword-focused search queries.`;
+    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 concise, keyword-focused search queries.`;
 
     // Call OpenRouter API
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -102,7 +102,7 @@ ${previousQueries.join('\n')}`;
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates concise, keyword-focused search queries."
+            content: "You are a helpful assistant that generates effective search queries that are concise but retain essential context."
           },
           {
             role: "user",
@@ -125,33 +125,41 @@ ${previousQueries.join('\n')}`;
       const queriesData = JSON.parse(content);
       queries = queriesData.queries || [];
       
-      // Process queries to ensure each has enough context
+      // Process queries to ensure they have enough context but aren't too verbose
       queries = queries.map((q: string) => {
         // Check if the query is too short or lacks context
-        if (q.split(' ').length < 3 || q.length < 15) {
+        if (q.split(' ').length < 3 || q.length < 12) {
           // Add minimal context from original query
-          const mainTopic = query.split(' ').slice(0, 3).join(' ');
+          const mainTopic = query.split(' ').slice(0, 2).join(' ');
           return `${q} ${mainTopic}`;
         }
+        
+        // Check if the query is too long (more like a sentence)
+        if (q.split(' ').length > 10 || q.includes('.')) {
+          // Extract key terms
+          const words = q.replace(/[.,?!]/g, '').split(' ');
+          return words.slice(0, 10).join(' ');
+        }
+        
         return q;
       });
     } catch (error) {
       console.error("Error parsing OpenRouter response:", error, content);
       
-      // Generate fallback queries that are more concise
+      // Generate fallback queries with balanced approach
       queries = [
-        `${query} latest developments`,
-        `${query} expert analysis`,
-        `${query} historical data`,
-        `${query} statistics probability`,
-        `${query} future outlook`
+        `${query} recent developments analysis`,
+        `${query} market forecast data`,
+        `${query} historical trends statistics`,
+        `${query} expert assessment impacts`,
+        `${query} performance metrics comparison`
       ];
       
       // If focus text exists, add it to a couple of queries
       if (focusText && focusText.trim()) {
         const focusKeywords = focusText.trim().split(' ').slice(0, 3).join(' ');
         queries[1] = `${query} ${focusKeywords} analysis`;
-        queries[3] = `${focusKeywords} impact ${query}`;
+        queries[3] = `${focusKeywords} impact on ${query}`;
       }
     }
 
@@ -170,11 +178,11 @@ ${previousQueries.join('\n')}`;
       JSON.stringify({ 
         error: `Query generation error: ${error.message}`,
         queries: [
-          "Latest developments",
-          "Expert analysis",
-          "Historical precedents",
-          "Statistical data",
-          "Future outlook"
+          `${query} key developments`,
+          `${query} expert analysis`,
+          `${query} historical data trends`,
+          `${query} statistical metrics`,
+          `${query} future projections`
         ]
       }),
       {
