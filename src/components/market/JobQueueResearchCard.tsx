@@ -937,3 +937,175 @@ export function JobQueueResearchCard({
               className="flex-1"
             />
           </div>
+          
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="email-notification"
+                checked={enableNotification}
+                onCheckedChange={setEnableNotification}
+                disabled={isLoading || polling}
+              />
+              <Label htmlFor="email-notification" className="cursor-pointer">
+                Email notification
+              </Label>
+            </div>
+            
+            {enableNotification && (
+              <div className="flex-1">
+                <Input
+                  type="email"
+                  placeholder="Your email address"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  disabled={isLoading || polling}
+                  className="w-full"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {jobId && (
+        <div className="space-y-6">
+          {focusText && (
+            <Alert className="bg-muted">
+              <AlertTitle className="text-sm font-medium">Research Focus:</AlertTitle>
+              <AlertDescription className="text-sm">{focusText}</AlertDescription>
+            </Alert>
+          )}
+
+          {notificationStatus && (
+            <Alert className={`${
+              notificationStatus === 'sent' ? 'bg-green-50 border-green-200' :
+              notificationStatus === 'failed' ? 'bg-red-50 border-red-200' :
+              'bg-blue-50 border-blue-200'
+            }`}>
+              <div className="flex items-center">
+                <Mail className={`h-4 w-4 mr-2 ${
+                  notificationStatus === 'sent' ? 'text-green-500' :
+                  notificationStatus === 'failed' ? 'text-red-500' :
+                  'text-blue-500'
+                }`} />
+                <AlertTitle className="text-sm font-medium">
+                  {notificationStatus === 'sent' ? 'Notification Sent' :
+                   notificationStatus === 'failed' ? 'Notification Failed' :
+                   'Notification Pending'}
+                </AlertTitle>
+              </div>
+              <AlertDescription className="text-sm pl-6">
+                {notificationStatus === 'sent' 
+                  ? `Email notification was sent to ${notificationEmail}.`
+                  : notificationStatus === 'failed'
+                  ? <>
+                      Failed to send notification to {notificationEmail}.
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={retryNotification}
+                        disabled={isSendingNotification}
+                        className="ml-2 text-xs h-6"
+                      >
+                        {isSendingNotification ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                            Sending...
+                          </>
+                        ) : (
+                          'Retry'
+                        )}
+                      </Button>
+                    </>
+                  : `Email will be sent to ${notificationEmail} when research completes.`
+                }
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <div className="text-sm font-medium">Progress: {progressPercent}%</div>
+              <div className="text-xs text-muted-foreground">
+                {jobStatus === 'queued' ? 'Waiting to start...' :
+                 jobStatus === 'processing' ? 'Processing...' :
+                 jobStatus === 'completed' ? 'Completed' :
+                 'Failed'}
+              </div>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2.5">
+              <div 
+                className={`h-2.5 rounded-full ${
+                  jobStatus === 'failed' ? 'bg-red-500' :
+                  jobStatus === 'completed' ? 'bg-green-500' :
+                  'bg-blue-500'
+                }`} 
+                style={{ width: `${progressPercent}%` }}
+              ></div>
+            </div>
+          </div>
+          
+          {iterations.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium">Research Iterations:</h3>
+              <div className="space-y-2">
+                {iterations.map((iteration, index) => (
+                  <IterationCard 
+                    key={index}
+                    iteration={iteration}
+                    iterationNumber={index + 1}
+                    expanded={expandedIterations.includes(index + 1)}
+                    onToggle={() => toggleIterationExpand(index + 1)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          
+          <ProgressDisplay messages={progress} />
+          
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>
+                {error}
+              </AlertDescription>
+            </Alert>
+          )}
+          
+          <div className="space-y-4">
+            {results.length > 0 && (
+              <div>
+                <h3 className="text-lg font-medium mb-3">Research Results</h3>
+                <SitePreviewList sites={results} />
+              </div>
+            )}
+            
+            {analysis && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium mb-3">Analysis</h3>
+                <AnalysisDisplay content={analysis} />
+              </div>
+            )}
+            
+            {structuredInsights && (
+              <div className="mt-6">
+                <h3 className="text-lg font-medium mb-3">Key Insights</h3>
+                <InsightsDisplay 
+                  insights={structuredInsights.parsedData} 
+                  rawText={structuredInsights.rawText}
+                  bestBid={bestBid}
+                  bestAsk={bestAsk}
+                  noBestBid={noBestBid}
+                  noBestAsk={noBestAsk}
+                  outcomes={outcomes}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
