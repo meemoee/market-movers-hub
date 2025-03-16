@@ -10,7 +10,7 @@ interface MobileHeaderProps {
 
 export default function MobileHeader({ toggleSidebar }: MobileHeaderProps) {
   return (
-    <div className="fixed top-0 left-0 right-0 z-40 flex items-center justify-between p-3 bg-background/80 backdrop-blur-sm border-b md:hidden">
+    <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between p-3 bg-background/80 backdrop-blur-sm border-b md:hidden">
       <Button 
         onClick={toggleSidebar} 
         variant="ghost" 
