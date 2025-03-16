@@ -51,7 +51,7 @@ export function MarketCard({
       undefined;
   
   return (
-    <div className={`w-full ${isMobile ? 'px-2 py-3' : 'p-3'} space-y-3 overflow-hidden`}>
+    <div className={`w-full ${isMobile ? 'px-2 py-2' : 'p-3'} space-y-3 overflow-hidden`}>
       <MarketHeader
         image={market.image}
         question={market.question}

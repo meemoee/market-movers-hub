@@ -1,4 +1,3 @@
-
 import { useState } from 'react';
 import RightSidebar from "@/components/RightSidebar";
 import TopMoversList from "@/components/TopMoversList";
@@ -93,7 +92,7 @@ export default function Index() {
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
           <div className={`w-[660px] flex-shrink-0 flex-grow-0 ${isMobile ? 'ml-0 max-w-full' : 'ml-[360px]'} xl:mr-[400px]`}>
-            <div className={`w-full ${isMobile ? 'mt-28 px-0' : ''}`}>
+            <div className={`w-full ${isMobile ? 'mt-2 px-0' : ''}`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}

@@ -34,28 +34,28 @@ export function MarketHeader({
   };
 
   return (
-    <div className={`flex flex-col ${isMobile ? 'gap-3' : 'sm:flex-row sm:items-center gap-4'}`}>
+    <div className={`flex flex-col ${isMobile ? 'gap-2' : 'sm:flex-row sm:items-center gap-4'}`}>
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <img
           src={image}
           alt=""
-          className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} rounded-lg object-cover flex-shrink-0`}
+          className={`${isMobile ? 'w-9 h-9' : 'w-12 h-12'} rounded-lg object-cover flex-shrink-0`}
         />
         <div 
-          className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity py-1.5"
+          className="flex-1 min-w-0 cursor-pointer hover:opacity-80 transition-opacity py-1"
           onClick={onToggleExpand}
         >
           <h3 className={`font-medium ${isMobile ? 'text-sm' : 'text-base'} leading-tight line-clamp-2`}>
             {question}
           </h3>
           {yesSubTitle && (
-            <p className="text-sm text-muted-foreground mt-1 truncate">
+            <p className="text-xs text-muted-foreground mt-0.5 truncate">
               {yesSubTitle}
             </p>
           )}
         </div>
       </div>
-      <div className={`flex ${isMobile ? 'w-full' : 'w-auto'} gap-2 ${isMobile ? 'h-10' : 'h-12'} flex-shrink-0`}>
+      <div className={`flex ${isMobile ? 'w-full' : 'w-auto'} gap-2 ${isMobile ? 'h-9' : 'h-12'} flex-shrink-0`}>
         <HoverButton
           variant="buy"
           onClick={onBuy}
