@@ -20,7 +20,7 @@ export default function MobileHeader({ toggleSidebar }: MobileHeaderProps) {
         <Menu className="h-5 w-5" />
       </Button>
       
-      <a href="/" className="flex-1 flex justify-center">
+      <a href="/" className="flex-1 flex justify-center items-center">
         <svg 
           xmlns="http://www.w3.org/2000/svg" 
           viewBox="0 0 1788 638.6" 
