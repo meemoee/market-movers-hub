@@ -2,6 +2,7 @@
 import { Loader2 } from 'lucide-react';
 import { MarketCard } from './MarketCard';
 import { TopMover } from '../TopMoversList';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface TopMoversContentProps {
   isLoading: boolean;
@@ -33,6 +34,8 @@ export function TopMoversContent({
   isLoadingMore,
   selectedInterval,
 }: TopMoversContentProps) {
+  const isMobile = useIsMobile();
+
   if (isLoading || (topMovers.length === 0 && isLoadingMore)) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -63,7 +66,7 @@ export function TopMoversContent({
   }
 
   return (
-    <div className="w-full">
+    <div className={`w-full ${isMobile ? 'max-w-[100%] overflow-hidden' : ''}`}>
       <div className="w-full space-y-3">
         {topMovers.map((mover) => (
           <div key={mover.market_id} className="w-full first:mt-0">
@@ -81,7 +84,7 @@ export function TopMoversContent({
                 final_best_ask: mover.final_best_ask,
                 final_best_bid: mover.final_best_bid,
                 final_no_best_ask: mover.final_no_best_ask,
-                final_no_best_bid: mover.final_no_best_bid, // Pass the No bid price if available
+                final_no_best_bid: mover.final_no_best_bid,
                 description: mover.description,
                 outcomes: mover.outcomes || ["Yes", "No"],
                 event_id: mover.event_id,
@@ -104,7 +107,7 @@ export function TopMoversContent({
                 if (clobTokenId) {
                   setSelectedMarket({ 
                     id: mover.market_id, 
-                    action: 'buy',  // This is for buying the "No" outcome
+                    action: 'buy',
                     clobTokenId,
                     selectedOutcome: "No"
                   });
@@ -117,7 +120,7 @@ export function TopMoversContent({
       </div>
 
       {hasMore && (
-        <div className="mt-3 h-[52px]">
+        <div className={`mt-3 ${isMobile ? 'h-[48px] px-2' : 'h-[52px]'}`}>
           <button
             onClick={onLoadMore}
             disabled={isLoadingMore}

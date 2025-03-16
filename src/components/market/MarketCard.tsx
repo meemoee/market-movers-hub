@@ -3,6 +3,7 @@ import { MarketHeader } from "./MarketHeader";
 import { MarketDetails } from "./MarketDetails";
 import { MarketStats } from "./MarketStats";
 import { Separator } from "@/components/ui/separator";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Market {
   market_id: string;
@@ -40,6 +41,8 @@ export function MarketCard({
   onSell,
   selectedInterval,
 }: MarketCardProps) {
+  const isMobile = useIsMobile();
+  
   // Use the direct No price if available, otherwise calculate it
   const noPrice = market.final_no_best_ask !== undefined ? 
     market.final_no_best_ask : 
@@ -48,7 +51,7 @@ export function MarketCard({
       undefined;
   
   return (
-    <div className="w-full p-3 space-y-3">
+    <div className={`w-full ${isMobile ? 'px-2 py-3' : 'p-3'} space-y-3 overflow-hidden`}>
       <MarketHeader
         image={market.image}
         question={market.question}
@@ -77,8 +80,8 @@ export function MarketCard({
           eventId={market.event_id}
           bestBid={market.final_best_bid}
           bestAsk={market.final_best_ask}
-          noBestBid={market.final_no_best_bid} // Pass this to the MarketDetails
-          noBestAsk={market.final_no_best_ask} // Pass this to the MarketDetails
+          noBestBid={market.final_no_best_bid}
+          noBestAsk={market.final_no_best_ask}
           outcomes={market.outcomes}
         />
       )}
