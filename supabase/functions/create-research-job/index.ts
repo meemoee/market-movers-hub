@@ -134,32 +134,56 @@ async function performWebResearch(supabase, jobId) {
           progress_entry: `Starting iteration ${i} of ${maxIterations}...`
         });
 
-        // Generate search queries
+        // Generate search queries - FIXING THIS PART TO MATCH THE EXPECTED INTERFACE
+        console.log('Preparing to generate search queries for iteration', i);
+        
+        const previousQueries = jobData.iterations
+          ? jobData.iterations
+              .filter(it => it.query)
+              .map(it => it.query)
+          : [];
+          
+        const generateQueriesPayload = {
+          query: baseQuery,
+          marketId: jobData.market_id,
+          iteration: i,
+          previousQueries: previousQueries,
+          focusText: jobData.focus_text || ''
+        };
+        
+        console.log('Sending payload to generate-queries:', JSON.stringify(generateQueriesPayload));
+
         const { data: queryResponse, error: queryError } = await supabase.functions.invoke('generate-queries', {
-          body: { 
-            marketQuestion: marketData?.question || baseQuery,
-            marketDescription: marketData?.description || '',
-            focusText: jobData.focus_text || '',
-            previousFindings: iterationContext,
-            iteration: i,
-            maxIterations
-          }
+          body: generateQueriesPayload
         });
 
         if (queryError) {
+          console.error('Error invoking generate-queries function:', queryError);
           await supabase.rpc('append_research_progress', {
             job_id: jobId,
             progress_entry: `Error generating search queries: ${queryError.message}`
           });
           throw new Error(`Query generation failed: ${queryError.message}`);
         }
+        
+        if (!queryResponse || !queryResponse.queries || !Array.isArray(queryResponse.queries)) {
+          console.error('Invalid response from generate-queries:', queryResponse);
+          await supabase.rpc('append_research_progress', {
+            job_id: jobId,
+            progress_entry: `Invalid response from query generator`
+          });
+          throw new Error(`Query generation returned invalid format: ${JSON.stringify(queryResponse)}`);
+        }
+
+        const selectedQuery = queryResponse.queries[0] || baseQuery;
+        console.log('Generated query:', selectedQuery);
 
         // Record iteration start
         const iterationData = {
           iteration: i,
-          query: queryResponse.query,
-          focus: queryResponse.focus,
-          reasoning: queryResponse.reasoning,
+          query: selectedQuery,
+          focus: jobData.focus_text || '',
+          reasoning: queryResponse.reasoning || 'Generated to search for relevant information',
           results: [],
           analysis: '',
           started_at: new Date().toISOString()
@@ -173,14 +197,16 @@ async function performWebResearch(supabase, jobId) {
         // Perform search
         await supabase.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: `Searching for: ${queryResponse.query}`
+          progress_entry: `Searching for: ${selectedQuery}`
         });
 
+        // Updated to use web-scrape instead of web-research
         const { data: searchResults, error: searchError } = await supabase.functions.invoke('web-scrape', {
-          body: { query: queryResponse.query }
+          body: { query: selectedQuery }
         });
 
         if (searchError) {
+          console.error('Error in web search:', searchError);
           await supabase.rpc('append_research_progress', {
             job_id: jobId,
             progress_entry: `Error in web search: ${searchError.message}`
