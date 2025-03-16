@@ -92,8 +92,8 @@ export default function Index() {
           )}
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
-          <div className="w-[660px] flex-shrink-0 flex-grow-0 ml-[360px] xl:mr-[400px]">
-            <div className={`w-full ${isMobile ? 'mt-20' : ''}`}>
+          <div className={`w-[660px] flex-shrink-0 flex-grow-0 ${isMobile ? 'ml-0' : 'ml-[360px]'} xl:mr-[400px]`}>
+            <div className={`w-full ${isMobile ? 'mt-28 px-4' : ''}`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}
@@ -106,11 +106,11 @@ export default function Index() {
         </div>
       </main>
 
-      {/* Mobile AccountIsland */}
+      {/* Mobile AccountIsland - Now with conditional rendering and higher z-index */}
       {isMobile && (
         <div className={`fixed top-14 inset-x-0 z-[60] px-4 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-[280px]' : 'translate-x-0'}`}>
           {/* Logo for mobile */}
-          <div className="text-left mb-10 pl-3 pt-2">
+          <div className="text-left mb-4 pl-3 pt-2">
             <img src="/hunchex-logo.svg" alt="HunchEx" className="h-12" />
           </div>
           <AccountIsland />
