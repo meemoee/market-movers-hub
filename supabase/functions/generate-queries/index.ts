@@ -71,7 +71,16 @@ Ensure that most of your queries specifically address this focus area while stil
 
     // Adjust prompt based on iteration
     if (iteration > 1) {
-      prompt += `\n\nThis is iteration ${iteration}. Based on previous searches, dig deeper and focus on more specific aspects or angles that haven't been covered yet.`;
+      prompt += `\n\nThis is iteration ${iteration}. IMPORTANT: Your goal is to fill in knowledge gaps from previous iterations.
+
+KNOWLEDGE GAP REQUIREMENTS:
+1. Analyze the previous queries and AVOID ANY repetition or similar topics
+2. Target aspects of the topic that have NOT been covered in previous queries
+3. Explore more specialized sub-topics or alternative perspectives not yet investigated
+4. Identify missing information that would be crucial for a comprehensive understanding
+5. Seek contrasting or complementary information to what has already been gathered
+
+Your new queries MUST explore distinctly different aspects of the topic while maintaining full context.`;
     }
 
     // Add previous queries to avoid repetition
