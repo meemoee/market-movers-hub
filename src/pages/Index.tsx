@@ -88,8 +88,8 @@ export default function Index() {
           )}
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
-          <div className={`w-full max-w-[1280px] ${isMobile ? '' : 'ml-[280px] pl-6'} ${isMobile ? '' : 'xl:pr-[400px]'}`}>
-            <div className={`flex-1 min-w-0 ${isMobile ? 'mt-20' : ''}`}>
+          <div className={`flex-grow max-w-[960px] ${isMobile ? '' : 'ml-[320px]'} ${isMobile ? '' : 'xl:mr-[400px]'}`}>
+            <div className={`w-full ${isMobile ? 'mt-20' : ''}`}>
               <TopMoversList
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}
