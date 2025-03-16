@@ -69,7 +69,7 @@ export default function AccountIsland() {
   };
 
   return (
-    <Card className={`w-full ${isMobile ? 'rounded-none border-0' : 'p-6 sticky top-[102px] bg-transparent border-0'}`}>
+    <Card className={`w-full ${isMobile ? 'rounded-none border-0' : 'rounded-lg bg-transparent shadow-none'}`}>
       {error && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{error}</AlertDescription>
@@ -77,7 +77,7 @@ export default function AccountIsland() {
       )}
 
       {!session ? (
-        <div className={isMobile ? 'p-4' : ''}>
+        <div className={isMobile ? 'p-4' : 'p-6'}>
           <Auth
             supabaseClient={supabase}
             appearance={{ 
@@ -97,7 +97,7 @@ export default function AccountIsland() {
           />
         </div>
       ) : (
-        <div className={`space-y-6 ${isMobile ? 'p-4' : ''}`}>
+        <div className={`space-y-6 ${isMobile ? 'p-4' : 'p-6'}`}>
           <div className="flex items-start gap-4">
             <AccountAvatar email={session.user.email} />
             <div className="flex-1 min-w-0">
