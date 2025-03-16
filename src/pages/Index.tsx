@@ -9,7 +9,7 @@ import { Glow } from "@/components/ui/glow";
 import { Search } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { TopMoversHeader } from "@/components/market/TopMoversHeader";
-import { TopMoversContent } from "@/components/market/TopMoversContent";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} minutes`;
@@ -62,7 +62,7 @@ export default function Index() {
   return (
     <div className="bg-background min-h-screen flex flex-col">
       {/* Purple Glow Effect */}
-      <div className="fixed top-0 right-0 w-full h-full overflow-hidden pointer-events-none z-0">
+      <div className="fixed top-0 right-0 w-full h-full pointer-events-none z-0">
         <Glow 
           variant="top" 
           className={`opacity-30 scale-150 ${isMobile ? '' : 'translate-x-1/4'} -translate-y-1/4 blur-3xl`}
@@ -72,8 +72,8 @@ export default function Index() {
       {/* Mobile Header */}
       {isMobile && <MobileHeader toggleSidebar={toggleSidebar} />}
       
-      <main className={`flex-1 overflow-hidden flex flex-col ${isMobile ? 'pt-16 pb-60' : ''}`}>
-        <div className="max-w-[1280px] mx-auto w-full relative flex flex-grow overflow-hidden">
+      <main className={`flex-1 flex flex-col ${isMobile ? 'pt-16 pb-60' : ''}`}>
+        <div className="max-w-[1280px] mx-auto w-full relative flex flex-grow">
           {isMobile && isSidebarOpen && (
             <div 
               className="fixed inset-0 bg-black/50 z-30"
@@ -108,9 +108,9 @@ export default function Index() {
           )}
 
           {/* Main content area with proper margin to account for fixed AccountIsland */}
-          <div className={`flex-grow flex flex-col ${isMobile ? 'ml-0 max-w-full' : 'ml-[320px]'} xl:mr-[400px] overflow-hidden`}>
-            {/* Search and Filter Sticky Header */}
-            <div className="sticky top-0 z-50 flex-shrink-0 w-full bg-background/95 backdrop-blur-md shadow-md border-b border-white/5">
+          <div className={`flex-grow flex flex-col ${isMobile ? 'ml-0 max-w-full' : 'ml-[320px]'} xl:mr-[400px]`}>
+            {/* Search and Fixed Header Section */}
+            <div className="sticky top-0 z-50 bg-background/95 backdrop-blur-md shadow-md border-b border-white/5">
               {/* Search Bar */}
               <div className="flex items-center w-full px-4 py-3 border-b border-white/5">
                 <div className="relative flex-1 max-w-2xl mx-auto">
@@ -125,7 +125,7 @@ export default function Index() {
                 </div>
               </div>
               
-              {/* Top Movers Header with Filters */}
+              {/* Top Movers Header with Filters - This is sticky */}
               <TopMoversHeader
                 timeIntervals={TIME_INTERVALS}
                 selectedInterval={selectedInterval}
