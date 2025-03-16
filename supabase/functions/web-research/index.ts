@@ -37,24 +37,24 @@ async function generateSubQueries(query: string, focusText?: string): Promise<st
   
   try {
     const systemPrompt = focusText 
-      ? `You are a helpful assistant that generates search queries focused specifically on: ${focusText}`
-      : 'You are a helpful assistant that generates search queries.';
+      ? `You are a helpful assistant that generates concise, keyword-focused search queries about: ${focusText}`
+      : 'You are a helpful assistant that generates concise, keyword-focused search queries.';
       
-    const userPrompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
+    const userPrompt = `Generate 5 concise search queries to gather information about:
 ${query}
 ${focusText ? `With specific focus on: "${focusText}"` : ''}
 
-CRITICAL GUIDELINES FOR QUERIES:
-1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
-2. Include specific entities, dates, events, or proper nouns from the original question
-3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
-4. Make each query a complete, standalone question or statement that contains ALL relevant context
-5. If the original question asks about a future event, include timeframes or dates
-6. Use precise terminology and specific entities mentioned in the original question
+CRITICAL REQUIREMENTS:
+1. Keep each query BRIEF (3-7 keywords) while retaining ESSENTIAL context
+2. Include specific entities, names, or technical terms from the original topic
+3. Focus on KEYWORDS rather than complete sentences
+4. Maintain critical context but REMOVE filler words
+5. Make each query specific enough that a search engine will return relevant results
+6. Avoid pronouns (it, they) or vague references
 
-Focus on different aspects that would be relevant for market research. Make each query different from the others to gather a wide range of information.
+Make each query different to gather a wide range of information.
 
-Respond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
+Respond with a JSON object containing a 'queries' array with exactly 5 brief, keyword-focused search queries.`;
 
     const response = await fetch(OPENROUTER_URL, {
       method: 'POST',
@@ -89,28 +89,15 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
     const queriesData = JSON.parse(content)
     let queries = queriesData.queries || []
     
-    // Process queries to ensure each has full context
+    // Process queries to ensure each has enough context
     queries = queries.map((q: string) => {
-      // Check for common issues in queries
-      if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
-        // Add original query context
-        return `${q} regarding ${query}`
+      // Check if the query is too short or lacks context
+      if (q.split(' ').length < 3 || q.length < 15) {
+        // Add minimal context from original query
+        const mainTopic = query.split(' ').slice(0, 3).join(' ');
+        return `${q} ${mainTopic}`;
       }
-      
-      // Check if query likely has enough context
-      const hasNames = /[A-Z][a-z]+/.test(q) // Has proper nouns
-      const isLongEnough = q.length > 40     // Is reasonably detailed
-      
-      if (!hasNames || !isLongEnough) {
-        // Add more context
-        if (focusText) {
-          return `${q} about ${query} focused on ${focusText}`
-        } else {
-          return `${q} about ${query}`
-        }
-      }
-      
-      return q
+      return q;
     })
     
     console.log('Generated queries:', queries)
@@ -118,23 +105,24 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries with full context
+    // Generate fallback queries that are more concise
     const fallbackQueries = [
-      `${query} latest developments and facts`,
-      `${query} comprehensive analysis and expert opinions`,
-      `${query} historical precedents and similar cases`,
-      `${query} statistical data and probability estimates`,
-      `${query} future outlook and critical factors`
+      `${query} latest developments`,
+      `${query} expert analysis`,
+      `${query} historical data`,
+      `${query} statistics probability`,
+      `${query} future outlook`
     ]
     
     if (focusText) {
       // Add focused variants
+      const focusKeywords = focusText.split(' ').slice(0, 3).join(' ');
       return [
-        `${focusText} in relation to ${query} analysis`,
-        `${query} specifically regarding ${focusText}`,
-        `${focusText} impact on ${query} outcome`,
-        `${query} factual information related to ${focusText}`,
-        `${focusText} historical precedents for ${query}`
+        `${focusKeywords} ${query} analysis`,
+        `${query} ${focusKeywords} impact`,
+        `${query} ${focusKeywords} data`,
+        `${query} ${focusKeywords} facts`,
+        `${query} ${focusKeywords} history ${query}`
       ]
     }
     

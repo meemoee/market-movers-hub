@@ -48,48 +48,45 @@ Deno.serve(async (req) => {
     }
 
     // Generate prompt based on iteration
-    let prompt = `Generate 5 diverse search queries to gather comprehensive information about the following topic:
+    let prompt = `Generate 5 concise search queries to gather information about:
 ${query}
 
-CRITICAL GUIDELINES FOR QUERIES:
-1. Each query MUST be self-contained and provide full context - a search engine should understand exactly what you're asking without any external context
-2. Include specific entities, dates, events, or proper nouns from the original question
-3. AVOID vague terms like "this event", "the topic", or pronouns without clear referents
-4. Make each query a complete, standalone question or statement that contains ALL relevant context
-5. If the original question asks about a future event, include timeframes or dates
-6. Use precise terminology and specific entities mentioned in the original question
+CRITICAL REQUIREMENTS:
+1. Keep each query BRIEF (3-7 keywords) while retaining ESSENTIAL context
+2. Include specific entities, names, or technical terms from the original topic
+3. Focus on KEYWORDS rather than complete sentences
+4. Maintain critical context but REMOVE filler words
+5. Make each query specific enough that a search engine will return relevant results
+6. Avoid pronouns (it, they) or vague references
 
 Focus on different aspects that would be relevant for market research.`;
 
     // Add focus text if provided
     if (focusText && focusText.trim()) {
-      prompt += `\n\nThe user has provided the following FOCUS AREA that should guide your queries:
+      prompt += `\n\nFOCUS AREA:
 "${focusText.trim()}"
 
-Ensure that most of your queries specifically address this focus area while still maintaining full context.`;
+Ensure that most of your queries address this focus area while keeping queries concise.`;
     }
 
     // Adjust prompt based on iteration
     if (iteration > 1) {
-      prompt += `\n\nThis is iteration ${iteration}. IMPORTANT: Your goal is to fill in knowledge gaps from previous iterations.
+      prompt += `\n\nThis is iteration ${iteration}. Your goal is to fill in knowledge gaps from previous iterations.
 
 KNOWLEDGE GAP REQUIREMENTS:
-1. Analyze the previous queries and AVOID ANY repetition or similar topics
-2. Target aspects of the topic that have NOT been covered in previous queries
-3. Explore more specialized sub-topics or alternative perspectives not yet investigated
-4. Identify missing information that would be crucial for a comprehensive understanding
-5. Seek contrasting or complementary information to what has already been gathered
-
-Your new queries MUST explore distinctly different aspects of the topic while maintaining full context.`;
+1. Analyze previous queries and target NEW topics not yet covered
+2. Focus on missing information crucial for comprehensive understanding
+3. Explore specialized sub-topics or alternative perspectives
+4. Keep queries brief (3-7 keywords) but maintain context`;
     }
 
     // Add previous queries to avoid repetition
     if (previousQueries.length > 0) {
-      prompt += `\n\nAVOID generating queries similar to these previously used queries:
+      prompt += `\n\nAVOID generating queries similar to these:
 ${previousQueries.join('\n')}`;
     }
 
-    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 search query strings.`;
+    prompt += `\n\nRespond with a JSON object containing a 'queries' array with exactly 5 brief, keyword-focused search queries.`;
 
     // Call OpenRouter API
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -105,7 +102,7 @@ ${previousQueries.join('\n')}`;
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant that generates search queries."
+            content: "You are a helpful assistant that generates concise, keyword-focused search queries."
           },
           {
             role: "user",
@@ -128,41 +125,33 @@ ${previousQueries.join('\n')}`;
       const queriesData = JSON.parse(content);
       queries = queriesData.queries || [];
       
-      // Process queries to ensure each has full context
+      // Process queries to ensure each has enough context
       queries = queries.map((q: string) => {
-        // Check for common issues in queries
-        if (q.includes("this") || q.includes("that") || q.includes("the event") || q.includes("the topic")) {
-          // Add original query context
-          return `${q} regarding ${query}`;
+        // Check if the query is too short or lacks context
+        if (q.split(' ').length < 3 || q.length < 15) {
+          // Add minimal context from original query
+          const mainTopic = query.split(' ').slice(0, 3).join(' ');
+          return `${q} ${mainTopic}`;
         }
-        
-        // Check if query likely has enough context
-        const hasNames = /[A-Z][a-z]+/.test(q); // Has proper nouns
-        const isLongEnough = q.length > 40;     // Is reasonably detailed
-        
-        if (!hasNames || !isLongEnough) {
-          // Add more context
-          return `${q} about ${query}`;
-        }
-        
         return q;
       });
     } catch (error) {
       console.error("Error parsing OpenRouter response:", error, content);
       
-      // Generate fallback queries with full context if parsing fails
+      // Generate fallback queries that are more concise
       queries = [
-        `${query} latest developments and facts`,
-        `${query} comprehensive analysis and expert opinions`,
-        `${query} historical precedents and similar cases`,
-        `${query} statistical data and probability estimates`,
-        `${query} future outlook and critical factors`
+        `${query} latest developments`,
+        `${query} expert analysis`,
+        `${query} historical data`,
+        `${query} statistics probability`,
+        `${query} future outlook`
       ];
       
       // If focus text exists, add it to a couple of queries
       if (focusText && focusText.trim()) {
-        queries[1] = `${query} ${focusText.trim()} analysis and implications`;
-        queries[3] = `${focusText.trim()} impact on ${query}`;
+        const focusKeywords = focusText.trim().split(' ').slice(0, 3).join(' ');
+        queries[1] = `${query} ${focusKeywords} analysis`;
+        queries[3] = `${focusKeywords} impact ${query}`;
       }
     }
 
@@ -181,11 +170,11 @@ ${previousQueries.join('\n')}`;
       JSON.stringify({ 
         error: `Query generation error: ${error.message}`,
         queries: [
-          "Latest developments and news",
-          "Expert analysis and opinions",
-          "Historical precedents and similar cases",
-          "Statistical data and probability estimates",
-          "Future outlook and critical factors"
+          "Latest developments",
+          "Expert analysis",
+          "Historical precedents",
+          "Statistical data",
+          "Future outlook"
         ]
       }),
       {
