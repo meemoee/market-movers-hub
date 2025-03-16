@@ -167,6 +167,9 @@ export function JobQueueResearchCard({
     
     if (job.status === 'queued' || job.status === 'processing') {
       setPolling(true);
+    } else if (job.status === 'completed' && job.notification_email && !job.notification_sent) {
+      setPolling(true);
+      setNotificationStatus('pending');
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
@@ -269,9 +272,11 @@ export function JobQueueResearchCard({
   useEffect(() => {
     if (!jobId || !polling) return;
     
+    console.log(`Setting up polling for job ${jobId}, notification status: ${notificationStatus}`);
+    
     const pollInterval = setInterval(async () => {
       try {
-        console.log(`Polling for job status: ${jobId}`);
+        console.log(`Polling for job status: ${jobId}, notification status: ${notificationStatus}, attempts: ${notificationAttempts}`);
         const { data, error } = await supabase
           .from('research_jobs')
           .select('*')
@@ -289,7 +294,7 @@ export function JobQueueResearchCard({
         }
         
         const job = data as ResearchJob;
-        console.log('Job status:', job.status);
+        console.log('Job status:', job.status, 'Notification sent:', job.notification_sent);
         
         setJobStatus(job.status);
         
@@ -318,9 +323,11 @@ export function JobQueueResearchCard({
         }
         
         if (job.status === 'completed') {
-          setProgress(prev => [...prev, 'Job completed successfully!']);
+          if (progress.length === 0 || !progress.some(msg => msg.includes('Job completed'))) {
+            setProgress(prev => [...prev, 'Job completed successfully!']);
+          }
           
-          if (job.results) {
+          if (job.results && (!results.length || !analysis)) {
             try {
               const parsedResults = JSON.parse(job.results);
               if (parsedResults.data && Array.isArray(parsedResults.data)) {
@@ -347,28 +354,44 @@ export function JobQueueResearchCard({
             }
           }
           
-          if (enableNotification && notificationEmail && !job.notification_sent) {
+          if (job.notification_sent) {
+            console.log('Notification already marked as sent in database');
+            setNotificationStatus('sent');
+            setPolling(false);
+            clearInterval(pollInterval);
+            return;
+          }
+          
+          if (enableNotification && notificationEmail) {
             console.log(`Job completed, checking notification status for email ${notificationEmail}`);
             
             if (notificationStatus !== 'sending' && notificationStatus !== 'sent') {
               setNotificationStatus('sending');
-              setProgress(prev => [...prev, `Sending email notification to ${notificationEmail}...`]);
+              
+              if (!progress.some(msg => msg.includes(`Sending email notification to ${notificationEmail}`))) {
+                setProgress(prev => [...prev, `Sending email notification to ${notificationEmail}...`]);
+              }
               
               try {
                 setNotificationAttempts(prev => prev + 1);
-                await sendEmailNotification(job.id, notificationEmail);
+                console.log(`Sending notification, attempt ${notificationAttempts + 1}`);
                 
-                setNotificationStatus('sent');
-                setProgress(prev => [...prev, `Email notification sent successfully to ${notificationEmail}`]);
+                const result = await sendEmailNotification(job.id, notificationEmail);
                 
-                setTimeout(() => {
-                  fetchSavedJobs();
+                if (result) {
+                  setNotificationStatus('sent');
+                  if (!progress.some(msg => msg.includes('Email notification sent successfully'))) {
+                    setProgress(prev => [...prev, `Email notification sent successfully to ${notificationEmail}`]);
+                  }
                   
-                  setPolling(false);
-                  clearInterval(pollInterval);
-                }, 2000);
-                
-                return;
+                  setTimeout(() => {
+                    fetchSavedJobs();
+                    setPolling(false);
+                    clearInterval(pollInterval);
+                  }, 2000);
+                  
+                  return;
+                }
               } catch (err) {
                 console.error('Failed to send email notification:', err);
                 
@@ -387,18 +410,10 @@ export function JobQueueResearchCard({
                   clearInterval(pollInterval);
                   return;
                 } else {
-                  setProgress(prev => [...prev, `Notification attempt ${notificationAttempts} failed, will retry...`]);
-                  
-                  return;
+                  setProgress(prev => [...prev, `Notification attempt ${notificationAttempts} failed, will retry shortly...`]);
                 }
               }
             }
-          } else if (job.notification_sent) {
-            setNotificationStatus('sent');
-            
-            fetchSavedJobs();
-            setPolling(false);
-            clearInterval(pollInterval);
           } else {
             fetchSavedJobs();
             setPolling(false);
@@ -407,7 +422,9 @@ export function JobQueueResearchCard({
         } 
         else if (job.status === 'failed') {
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+          if (!progress.some(msg => msg.includes('Job failed'))) {
+            setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+          }
           
           fetchSavedJobs();
           setPolling(false);
@@ -495,6 +512,8 @@ export function JobQueueResearchCard({
         body: JSON.stringify({ jobId, email })
       });
       
+      console.log("Raw notification response:", response);
+      
       if (response.error) {
         console.error("Error sending notification:", response.error);
         toast({
@@ -505,7 +524,7 @@ export function JobQueueResearchCard({
         throw new Error(`Error sending notification: ${response.error.message}`);
       }
       
-      console.log("Notification response:", response.data);
+      console.log("Notification response data:", response.data);
       
       if (response.data && response.data.alreadySent) {
         console.log("Notification was already sent previously");
@@ -556,7 +575,9 @@ export function JobQueueResearchCard({
     
     try {
       setNotificationStatus('sending');
-      setProgress(prev => [...prev, `Retrying email notification to ${notificationEmail}...`]);
+      if (!progress.some(msg => msg.includes(`Retrying email notification`))) {
+        setProgress(prev => [...prev, `Retrying email notification to ${notificationEmail}...`]);
+      }
       
       await sendEmailNotification(jobId, notificationEmail);
       
@@ -569,6 +590,7 @@ export function JobQueueResearchCard({
     } catch (error) {
       setNotificationStatus('failed');
       console.error('Retry failed:', error);
+      setProgress(prev => [...prev, `Retry failed: ${error instanceof Error ? error.message : 'Unknown error'}`]);
     }
   };
 

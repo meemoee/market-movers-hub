@@ -176,6 +176,7 @@ serve(async (req) => {
         
         emailResult = response;
         emailError = null;
+        console.log(`Email successfully sent on attempt ${attempt + 1}:`, response);
         break; // Success, exit retry loop
       } catch (error) {
         console.error(`Error sending email (attempt ${attempt + 1}/${MAX_RETRIES + 1}):`, error);
