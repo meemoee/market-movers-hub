@@ -84,8 +84,8 @@ export default function Index() {
               left: 'max(calc(50% - 640px + 16px), 16px)' /* Aligns with main content container */ 
             }}>
               {/* Logo */}
-              <div className="text-left mb-8 pl-2 pt-2">
-                <img src="/hunchex-logo.svg" alt="HunchEx" className="h-12" />
+              <div className="text-left mb-10 pl-1 pt-4">
+                <img src="/hunchex-logo.svg" alt="HunchEx" className="h-14" />
               </div>
               <AccountIsland />
             </div>
@@ -110,8 +110,8 @@ export default function Index() {
       {isMobile && (
         <div className={`fixed top-14 inset-x-0 z-[60] px-4 transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-[280px]' : 'translate-x-0'}`}>
           {/* Logo for mobile */}
-          <div className="text-left mb-8 pl-2 pt-3">
-            <img src="/hunchex-logo.svg" alt="HunchEx" className="h-10" />
+          <div className="text-left mb-10 pl-1 pt-4">
+            <img src="/hunchex-logo.svg" alt="HunchEx" className="h-12" />
           </div>
           <AccountIsland />
         </div>

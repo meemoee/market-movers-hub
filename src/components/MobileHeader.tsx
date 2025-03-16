@@ -24,7 +24,7 @@ export default function MobileHeader({ toggleSidebar }: MobileHeaderProps) {
         <svg 
           xmlns="http://www.w3.org/2000/svg" 
           viewBox="0 0 1788 638.6" 
-          className="h-12 hover:opacity-80 transition-opacity"
+          className="h-14 hover:opacity-80 transition-opacity"
           fill="currentColor"
         >
           <path d="m72.96,398.76v-209.29c0-7.07,5.59-13.12,12.83-13.12h20.4c7.24,0,12.83,6.06,12.83,13.12v74.02c10.85-15.14,26.97-25.91,49.34-25.91,33.22,0,61.84,25.24,61.84,71.33v89.84c0,7.4-5.59,13.12-12.83,13.12h-20.72c-6.91,0-12.83-5.72-12.83-13.12v-79.41c0-16.82-11.51-34.32-30.92-34.32s-33.88,15.14-33.88,42.4v71.33c0,7.4-5.59,13.12-12.83,13.12h-20.4c-7.24,0-12.83-5.72-12.83-13.12Z"/>
