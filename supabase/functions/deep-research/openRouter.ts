@@ -16,19 +16,35 @@ export class OpenRouter {
    * @param messages Messages for the model
    * @param maxTokens Maximum tokens to generate
    * @param temperature Temperature parameter
-   * @returns The response content
+   * @param useReasoning Whether to include reasoning tokens
+   * @returns The response content with optional reasoning
    */
   async complete(
     model: string, 
     messages: Array<{role: string, content: string}>,
     maxTokens: number = 500,
-    temperature: number = 0.7
-  ): Promise<string> {
+    temperature: number = 0.7,
+    useReasoning: boolean = false
+  ): Promise<{content: string, reasoning?: string}> {
     if (!this.apiKey) {
       throw new Error("OpenRouter API key is required");
     }
     
     try {
+      const payload: any = {
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature
+      };
+      
+      // Add reasoning configuration if requested
+      if (useReasoning) {
+        payload.reasoning = {
+          effort: "high"
+        };
+      }
+      
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -36,12 +52,7 @@ export class OpenRouter {
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://hunchex.app'
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature
-        })
+        body: JSON.stringify(payload)
       });
       
       if (!response.ok) {
@@ -55,7 +66,16 @@ export class OpenRouter {
         throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
       }
       
-      return data.choices[0].message.content;
+      const result = {
+        content: data.choices[0].message.content
+      };
+      
+      // Add reasoning if available
+      if (data.choices[0].message.reasoning) {
+        result.reasoning = data.choices[0].message.reasoning;
+      }
+      
+      return result;
     } catch (error) {
       console.error(`OpenRouter API request failed: ${error.message}`);
       throw error;
