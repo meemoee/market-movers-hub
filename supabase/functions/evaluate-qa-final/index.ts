@@ -1,9 +1,15 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Helper function to create properly formatted SSE messages
+function formatSSE(data) {
+  return `data: ${JSON.stringify(data)}\n\n`;
 }
 
 serve(async (req) => {
@@ -100,10 +106,10 @@ Format your response as JSON with these fields:
               if (collectingData) {
                 try {
                   const parsed = JSON.parse(jsonData);
-                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
+                  controller.enqueue(new TextEncoder().encode(formatSSE(parsed)));
                 } catch (err) {
                   console.error("Error parsing final collected JSON:", err);
-                  controller.enqueue(new TextEncoder().encode(`data: {"error": "Failed to parse JSON"}\n\n`));
+                  controller.enqueue(new TextEncoder().encode(formatSSE({"error": "Failed to parse JSON"})));
                 }
               }
               continue;
@@ -123,7 +129,7 @@ Format your response as JSON with these fields:
                   jsonData += content;
                 } else {
                   // If we're not collecting JSON yet, emit the content directly
-                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({content})}\n\n`));
+                  controller.enqueue(new TextEncoder().encode(formatSSE({content})));
                 }
                 
                 // Check if we have complete JSON
@@ -131,7 +137,7 @@ Format your response as JSON with these fields:
                   try {
                     const parsedJson = JSON.parse(jsonData);
                     console.log("Collected complete JSON:", JSON.stringify(parsedJson).substring(0, 100) + "...");
-                    controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsedJson)}\n\n`));
+                    controller.enqueue(new TextEncoder().encode(formatSSE(parsedJson)));
                     collectingData = false;
                     jsonData = "";
                   } catch (err) {
@@ -185,7 +191,7 @@ Format your response as JSON with these fields:
               }
             }
             
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsedData)}\n\n`));
+            controller.enqueue(new TextEncoder().encode(formatSSE(parsedData)));
           } catch (err) {
             console.error("Error in flush:", err);
             const defaultData = {
@@ -193,7 +199,7 @@ Format your response as JSON with these fields:
               areasForResearch: ["Additional market data", "Expert opinions"],
               analysis: "An error occurred during analysis. Please try again."
             };
-            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(defaultData)}\n\n`));
+            controller.enqueue(new TextEncoder().encode(formatSSE(defaultData)));
           }
         }
         
@@ -220,8 +226,8 @@ Format your response as JSON with these fields:
     };
     
     return new Response(
-      JSON.stringify(errorResponse),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      formatSSE(errorResponse),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'text/event-stream' } }
     );
   }
 })
