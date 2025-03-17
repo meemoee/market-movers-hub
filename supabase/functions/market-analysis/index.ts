@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -28,19 +27,18 @@ serve(async (req) => {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-r1",
+        model: "perplexity/llama-3.1-sonar-small-128k-online",
         messages: [
           {
             role: "system",
-            content: "You are a helpful assistant specialized in analyzing prediction markets and making probabilistic forecasts. Be concise and clear in your responses. Base your analysis on evidence and historical data when available."
+            content: "You are a helpful assistant. Be concise and clear in your responses."
           },
           {
             role: "user",
             content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
           }
         ],
-        stream: true,
-        reasoning: { effort: "high" }
+        stream: true
       })
     })
 
@@ -49,95 +47,8 @@ serve(async (req) => {
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    // Create a transform stream to process the response
-    const { readable, writable } = new TransformStream()
-    const writer = writable.getWriter()
-    const encoder = new TextEncoder()
-    
-    // Process the original response stream
-    const reader = openRouterResponse.body?.getReader()
-    if (!reader) {
-      throw new Error('Could not get reader from response')
-    }
-    
-    // Function to process the stream
-    const processStream = async () => {
-      try {
-        let buffer = ""
-        const decoder = new TextDecoder()
-        
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          
-          const chunk = decoder.decode(value, { stream: true })
-          buffer += chunk
-          
-          // Process complete SSE messages
-          const messages = buffer.split('\n\n')
-          buffer = messages.pop() || ""
-          
-          for (const message of messages) {
-            if (message.startsWith('data: ')) {
-              const data = message.slice(6)
-              
-              // Check if it's the [DONE] message
-              if (data.trim() === '[DONE]') {
-                await writer.write(encoder.encode('data: [DONE]\n\n'))
-                continue
-              }
-              
-              try {
-                const parsed = JSON.parse(data)
-                
-                // Extract content and reasoning
-                const delta = parsed.choices?.[0]?.delta || {}
-                const content = delta.content || ''
-                const reasoning = delta.reasoning || ''
-                
-                // If there's reasoning, include it with the content
-                if (reasoning) {
-                  // Add reasoning prefix before standard content in the stream
-                  const reasoningMsg = `data: ${JSON.stringify({
-                    choices: [{ delta: { content: `REASONING: ${reasoning}\n\n` } }]
-                  })}\n\n`
-                  await writer.write(encoder.encode(reasoningMsg))
-                }
-                
-                // Send regular content
-                if (content) {
-                  await writer.write(encoder.encode(`data: ${data}\n\n`))
-                } else if (!reasoning) {
-                  // Pass through other delta updates that don't have content or reasoning
-                  await writer.write(encoder.encode(`data: ${data}\n\n`))
-                }
-              } catch (e) {
-                console.error('Error parsing SSE data:', e)
-                await writer.write(encoder.encode(`data: ${data}\n\n`))
-              }
-            } else if (message.trim()) {
-              // Pass through non-data messages
-              await writer.write(encoder.encode(`${message}\n\n`))
-            }
-          }
-        }
-        
-        // Write any remaining content in the buffer
-        if (buffer.trim()) {
-          await writer.write(encoder.encode(`${buffer}\n\n`))
-        }
-        
-        await writer.close()
-      } catch (error) {
-        console.error('Error processing stream:', error)
-        await writer.abort(error)
-      }
-    }
-    
-    // Start processing the stream
-    processStream()
-
-    return new Response(readable, {
+    // Return the stream directly without transformation
+    return new Response(openRouterResponse.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',

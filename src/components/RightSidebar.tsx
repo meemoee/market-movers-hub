@@ -1,4 +1,3 @@
-
 import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -126,35 +125,6 @@ export default function RightSidebar() {
     }
   ]
 
-  // Helper to format content with reasoning sections highlighted
-  const formatContentWithReasoning = (content: string) => {
-    // Check if content contains REASONING: sections
-    if (content.includes('REASONING:')) {
-      // Split content at REASONING: and wrap reasoning sections in styled divs
-      const sections = content.split('REASONING:')
-      if (sections.length > 1) {
-        // Format all reasoning sections after the first split
-        let formattedContent = sections[0]
-        for (let i = 1; i < sections.length; i++) {
-          const section = sections[i]
-          // Find where reasoning section ends (next double newline or end of string)
-          const reasoningEndIndex = section.indexOf('\n\n')
-          if (reasoningEndIndex > 0) {
-            // Has a clear end
-            const reasoning = section.substring(0, reasoningEndIndex)
-            const rest = section.substring(reasoningEndIndex)
-            formattedContent += `**REASONING:**\n${reasoning}\n\n${rest}`
-          } else {
-            // Whole section is reasoning
-            formattedContent += `**REASONING:**\n${section}`
-          }
-        }
-        return formattedContent
-      }
-    }
-    return content
-  }
-
   return (
     <aside className="fixed top-0 right-0 h-screen w-[400px] bg-[#1a1b1e]/70 backdrop-blur-md z-[999] border-l border-white/10 hidden xl:block">
       <div className="p-6 overflow-y-auto h-full">
@@ -183,7 +153,7 @@ export default function RightSidebar() {
                   <p className="text-white text-sm">{message.content}</p>
                 ) : (
                   <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
-                    {formatContentWithReasoning(message.content || '')}
+                    {message.content || ''}
                   </ReactMarkdown>
                 )}
               </div>
@@ -191,7 +161,7 @@ export default function RightSidebar() {
             {streamingContent && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
                 <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
-                  {formatContentWithReasoning(streamingContent)}
+                  {streamingContent}
                 </ReactMarkdown>
               </div>
             )}

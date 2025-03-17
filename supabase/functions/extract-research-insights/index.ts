@@ -238,15 +238,14 @@ Remember to format your response as a valid JSON object with probability, areasF
               'X-Title': 'Hunchex Analysis'
             },
             body: JSON.stringify({
-              model: "deepseek/deepseek-r1",
+              model: "google/gemini-2.0-flash-lite-001",
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
               ],
               stream: false,
               temperature: 0.2,
-              response_format: { type: "json_object" },
-              reasoning: { effort: "high" }
+              response_format: { type: "json_object" }
             }),
           });
 
@@ -268,13 +267,8 @@ Remember to format your response as a valid JSON object with probability, areasF
             
             // Extract the actual model output
             const modelContent = responseData?.choices?.[0]?.message?.content;
-            const modelReasoning = responseData?.choices?.[0]?.message?.reasoning;
-            
             console.log(`Model content (attempt #${retryCount + 1}):`, 
               typeof modelContent === 'string' ? modelContent.substring(0, 500) + '...' : modelContent);
-            
-            console.log(`Model reasoning (attempt #${retryCount + 1}):`, 
-              typeof modelReasoning === 'string' ? modelReasoning.substring(0, 500) + '...' : 'No reasoning available');
             
             let insightsData;
             
@@ -284,31 +278,12 @@ Remember to format your response as a valid JSON object with probability, areasF
                 insightsData = JSON.parse(modelContent);
                 console.log(`Parsed insights data structure (attempt #${retryCount + 1}):`, 
                   JSON.stringify(Object.keys(insightsData)));
-                
-                // If we have reasoning tokens, include them in the reasoning field as a prefix
-                if (modelReasoning) {
-                  if (typeof insightsData.reasoning === 'string') {
-                    insightsData.reasoning = `REASONING PROCESS:\n${modelReasoning}\n\nFINAL REASONING:\n${insightsData.reasoning}`;
-                  } else if (insightsData.reasoning && typeof insightsData.reasoning === 'object') {
-                    // If reasoning is an object with evidenceFor/evidenceAgainst, add the reasoning as a new field
-                    insightsData.reasoningProcess = modelReasoning;
-                  }
-                }
               } catch (parseError) {
                 console.error(`Error parsing model content as JSON (attempt #${retryCount + 1}):`, parseError);
                 throw new Error(`Invalid JSON in model response: ${parseError.message}`);
               }
             } else {
               insightsData = modelContent;
-              
-              // If content is already parsed as an object and we have reasoning tokens
-              if (modelReasoning && insightsData) {
-                if (typeof insightsData.reasoning === 'string') {
-                  insightsData.reasoning = `REASONING PROCESS:\n${modelReasoning}\n\nFINAL REASONING:\n${insightsData.reasoning}`;
-                } else if (insightsData.reasoning && typeof insightsData.reasoning === 'object') {
-                  insightsData.reasoningProcess = modelReasoning;
-                }
-              }
             }
             
             // Validate the response
