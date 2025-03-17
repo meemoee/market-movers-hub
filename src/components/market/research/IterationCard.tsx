@@ -14,7 +14,7 @@ interface IterationCardProps {
     iteration: number;
     queries: string[];
     results: ResearchResult[];
-    analysis: string;
+    analysis: string | { content: string; reasoning?: string };
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -45,6 +45,15 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+
+  // Extract content and reasoning from the analysis
+  const analysisContent = typeof iteration.analysis === 'string' 
+    ? iteration.analysis 
+    : iteration.analysis?.content || "";
+    
+  const analysisReasoning = typeof iteration.analysis === 'object' && iteration.analysis?.reasoning
+    ? iteration.analysis.reasoning
+    : undefined;
 
   return (
     <div className={cn(
@@ -87,7 +96,8 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
+                  content={analysisContent || "Analysis in progress..."} 
+                  reasoning={analysisReasoning}
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />

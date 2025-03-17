@@ -83,13 +83,14 @@ export class OpenRouter {
         };
       } else if (requestReasoning) {
         console.log(`Reasoning was requested but not found in response`);
-        // If reasoning was requested but not found, still return object format
+        // Always return in object format if reasoning was requested, even if not found
         return {
           content: data.choices[0].message.content,
           reasoning: "No reasoning provided by the model."
         };
       }
       
+      // If reasoning wasn't requested, return just the content string for backward compatibility
       return data.choices[0].message.content;
     } catch (error) {
       console.error(`OpenRouter API request failed: ${error.message}`);
