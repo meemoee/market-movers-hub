@@ -841,51 +841,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       result_data: JSON.stringify(finalResults)
     });
     
-    // Extract timeline events from the final analysis and research content
-    try {
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Extracting timeline events from research...`)
-      });
-      
-      // Combine all content from the results for event extraction
-      const allContent = allResults
-        .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
-        .join('\n\n');
-      
-      // Call the extract-timeline-events function
-      const timelineResponse = await fetch(
-        `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-timeline-events`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-          },
-          body: JSON.stringify({
-            analysis: finalAnalysis,
-            content: allContent,
-            marketId: marketId
-          })
-        }
-      );
-      
-      if (!timelineResponse.ok) {
-        console.error(`Error extracting timeline events: ${timelineResponse.statusText}`);
-      } else {
-        const timelineData = await timelineResponse.json();
-        console.log(`Extracted ${timelineData.events?.length || 0} timeline events for market ${marketId}`);
-        
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Extracted ${timelineData.events?.length || 0} timeline events for the market`)
-        });
-      }
-    } catch (timelineError) {
-      console.error(`Error in timeline event extraction: ${timelineError.message}`);
-      // Non-critical, so we continue with the job completion
-    }
-    
     // Mark job as complete
     await supabaseClient.rpc('update_research_job_status', {
       job_id: jobId,
@@ -1140,4 +1095,3 @@ serve(async (req) => {
     )
   }
 })
-
