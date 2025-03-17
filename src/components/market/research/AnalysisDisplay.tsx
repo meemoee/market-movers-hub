@@ -19,107 +19,107 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const [displayContent, setDisplayContent] = useState<string>(content || '')
   
-  // Update the displayed content when the input content changes
-  useEffect(() => {
-    const currentContentLength = content?.length || 0;
+  // Optimize scrolling with less frequent updates
+  useLayoutEffect(() => {
+    if (!scrollRef.current || !shouldAutoScroll) return
     
-    if (content !== displayContent) {
-      setDisplayContent(content || '');
-    }
+    const scrollContainer = scrollRef.current
+    const currentContentLength = content?.length || 0
     
-    if (currentContentLength > prevContentLength.current) {
-      setLastUpdateTime(Date.now());
+    // Only auto-scroll if content is growing or streaming
+    if (currentContentLength > prevContentLength.current || isStreaming) {
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+        }
+        setLastUpdateTime(Date.now())
+      })
+      
       if (isStreaming) {
-        setStreamStatus('streaming');
+        setStreamStatus('streaming')
       }
     }
     
-    prevContentLength.current = currentContentLength;
-  }, [content, isStreaming, displayContent]);
-  
-  // Optimize scrolling with RAF for smooth performance
-  useLayoutEffect(() => {
-    if (!scrollRef.current || !shouldAutoScroll) return;
-    
-    const scrollContainer = scrollRef.current;
-    
-    // Only auto-scroll if content is growing or streaming
-    if (isStreaming || content?.length > prevContentLength.current) {
-      requestAnimationFrame(() => {
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight;
-        }
-      });
-    }
-  }, [content, isStreaming, shouldAutoScroll]);
+    prevContentLength.current = currentContentLength
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
-    if (!scrollRef.current) return;
+    if (!scrollRef.current) return
     
-    const scrollContainer = scrollRef.current;
+    const scrollContainer = scrollRef.current
     const handleScroll = () => {
       // If user has scrolled up, disable auto-scroll
       // If they scroll to the bottom, re-enable it
       const isAtBottom = Math.abs(
         (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
         scrollContainer.scrollTop
-      ) < 20; // Small threshold for "close enough" to bottom
+      ) < 30 // Small threshold for "close enough" to bottom
       
-      setShouldAutoScroll(isAtBottom);
-    };
+      setShouldAutoScroll(isAtBottom)
+    }
     
-    scrollContainer.addEventListener('scroll', handleScroll);
-    return () => scrollContainer.removeEventListener('scroll', handleScroll);
-  }, []);
+    scrollContainer.addEventListener('scroll', handleScroll)
+    return () => scrollContainer.removeEventListener('scroll', handleScroll)
+  }, [])
   
-  // Check for inactive streaming
+  // Check for inactive streaming with longer intervals
   useEffect(() => {
     if (!isStreaming) {
-      setStreamStatus('idle');
-      return;
+      setStreamStatus('idle')
+      return
     }
     
     const interval = setInterval(() => {
-      const timeSinceUpdate = Date.now() - lastUpdateTime;
-      if (timeSinceUpdate > 1200) { // Reduced for faster visual feedback
-        setStreamStatus('waiting');
+      const timeSinceUpdate = Date.now() - lastUpdateTime
+      if (timeSinceUpdate > 1500) { // Reduced from 2000ms to 1500ms
+        setStreamStatus('waiting')
       } else if (streamStatus !== 'streaming') {
-        setStreamStatus('streaming');
+        setStreamStatus('streaming')
       }
-    }, 800); // Check more frequently
+    }, 1000)
     
-    return () => clearInterval(interval);
-  }, [isStreaming, lastUpdateTime, streamStatus]);
-
-  // Show a placeholder if no content during streaming
-  const renderContent = () => {
-    if (!displayContent && isStreaming) {
-      return "Analyzing...";
+    return () => clearInterval(interval)
+  }, [isStreaming, lastUpdateTime, streamStatus])
+  
+  // For continuous smooth scrolling during active streaming
+  useEffect(() => {
+    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
+    
+    let rafId: number
+    
+    const scrollToBottom = () => {
+      if (scrollRef.current && shouldAutoScroll) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        rafId = requestAnimationFrame(scrollToBottom)
+      }
     }
     
-    return displayContent || "";
-  };
+    rafId = requestAnimationFrame(scrollToBottom)
+    
+    return () => cancelAnimationFrame(rafId)
+  }, [isStreaming, shouldAutoScroll])
+
+  if (!content) return null
 
   return (
     <div className="relative">
       <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full ${isStreaming ? 'live-streaming' : ''}`}
+        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {renderContent()}
+            {content}
           </ReactMarkdown>
         </div>
       </ScrollArea>
       
       {isStreaming && (
-        <div className="absolute bottom-2 right-2 z-10">
-          <div className="flex items-center space-x-2 bg-background/80 backdrop-blur-sm px-2 py-1 rounded-md shadow-sm">
+        <div className="absolute bottom-2 right-2">
+          <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
               {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
             </span>
@@ -140,11 +140,11 @@ export function AnalysisDisplay({
               scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
             }
           }}
-          className="absolute bottom-2 left-2 z-10 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors shadow-sm"
+          className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
         >
           Resume auto-scroll
         </button>
       )}
     </div>
-  );
+  )
 }

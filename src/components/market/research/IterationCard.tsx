@@ -15,8 +15,6 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
-    reasoning?: string; // Add optional reasoning field to handle both formats
-    isStreaming?: boolean; // New flag to indicate whether this iteration is currently streaming
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -48,23 +46,6 @@ export function IterationCard({
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
-  // Get the analysis content, handling both formats
-  const getAnalysisContent = () => {
-    // Handle both formats - supporting both structures for backward compatibility
-    if (iteration.reasoning) {
-      return iteration.reasoning;
-    } else if (typeof iteration.analysis === 'string') {
-      return iteration.analysis;
-    } else if (iteration.analysis && typeof iteration.analysis === 'object') {
-      // Handle the case where analysis is an object with its own fields
-      return (iteration.analysis as any).reasoning || (iteration.analysis as any).analysis || '';
-    }
-    return '';
-  };
-
-  // Determine if this particular iteration is streaming
-  const isIterationStreaming = isStreaming && isCurrentIteration && iteration.isStreaming;
-
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
@@ -80,9 +61,9 @@ export function IterationCard({
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isIterationStreaming ? "animate-pulse bg-primary" : ""}>
+            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
             Iteration {iteration.iteration}
-            {isIterationStreaming && " (Streaming...)"}
+            {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
@@ -106,8 +87,8 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={getAnalysisContent()} 
-                  isStreaming={isIterationStreaming}
+                  content={iteration.analysis || "Analysis in progress..."} 
+                  isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
               </TabsContent>
