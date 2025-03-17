@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -45,8 +44,9 @@ serve(async (req) => {
       areasForResearch,
       focusText,
       marketPrice,
-      relatedMarkets
-    } = await req.json() as InsightsRequest;
+      relatedMarkets,
+      stream = false // New parameter to enable streaming
+    } = await req.json() as InsightsRequest & { stream?: boolean };
     
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
       webContentLength: webContent?.length || 0,
@@ -58,7 +58,8 @@ serve(async (req) => {
       areasForResearchCount: areasForResearch?.length || 0,
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       marketPrice: marketPrice || 'Not provided',
-      relatedMarketsCount: relatedMarkets?.length || 0
+      relatedMarketsCount: relatedMarkets?.length || 0,
+      streamingEnabled: stream
     });
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -227,80 +228,85 @@ Remember to format your response as a valid JSON object with probability, areasF
       
       while (retryCount < maxRetries && !validResponse) {
         try {
-          console.log(`Attempt #${retryCount + 1} to get insights from OpenRouter`);
+          console.log(`Attempt #${retryCount + 1} to get insights from OpenRouter, streaming: ${stream}`);
           
-          const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openRouterKey}`,
-              'Content-Type': 'application/json',
-              'HTTP-Referer': 'https://hunchex.com',
-              'X-Title': 'Hunchex Analysis'
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.0-flash-lite-001",
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: prompt }
-              ],
-              stream: false,
-              temperature: 0.2,
-              response_format: { type: "json_object" }
-            }),
-          });
+          if (stream) {
+            return await streamInsights();
+          } else {
+            // Normal non-streaming implementation
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${openRouterKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://hunchex.com',
+                'X-Title': 'Hunchex Analysis'
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.0-flash-lite-001",
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: prompt }
+                ],
+                stream: false,
+                temperature: 0.2,
+                response_format: { type: "json_object" }
+              }),
+            });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`API error: ${response.status} ${errorText}`);
-            throw new Error(`API error: ${response.status} ${errorText}`);
-          }
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`API error: ${response.status} ${errorText}`);
+              throw new Error(`API error: ${response.status} ${errorText}`);
+            }
 
-          // Log the full raw response for debugging
-          const rawResponseText = await response.text();
-          console.log(`OpenRouter raw response (attempt #${retryCount + 1}):`, rawResponseText);
-          
-          try {
-            // Parse the raw response text
-            responseData = JSON.parse(rawResponseText);
-            console.log(`OpenRouter parsed response structure (attempt #${retryCount + 1}):`, 
-              JSON.stringify(Object.keys(responseData)));
+            // Log the full raw response for debugging
+            const rawResponseText = await response.text();
+            console.log(`OpenRouter raw response (attempt #${retryCount + 1}):`, rawResponseText);
             
-            // Extract the actual model output
-            const modelContent = responseData?.choices?.[0]?.message?.content;
-            console.log(`Model content (attempt #${retryCount + 1}):`, 
-              typeof modelContent === 'string' ? modelContent.substring(0, 500) + '...' : modelContent);
-            
-            let insightsData;
-            
-            // Try to parse the content if it's a string
-            if (typeof modelContent === 'string') {
-              try {
-                insightsData = JSON.parse(modelContent);
-                console.log(`Parsed insights data structure (attempt #${retryCount + 1}):`, 
-                  JSON.stringify(Object.keys(insightsData)));
-              } catch (parseError) {
-                console.error(`Error parsing model content as JSON (attempt #${retryCount + 1}):`, parseError);
-                throw new Error(`Invalid JSON in model response: ${parseError.message}`);
+            try {
+              // Parse the raw response text
+              responseData = JSON.parse(rawResponseText);
+              console.log(`OpenRouter parsed response structure (attempt #${retryCount + 1}):`, 
+                JSON.stringify(Object.keys(responseData)));
+              
+              // Extract the actual model output
+              const modelContent = responseData?.choices?.[0]?.message?.content;
+              console.log(`Model content (attempt #${retryCount + 1}):`, 
+                typeof modelContent === 'string' ? modelContent.substring(0, 500) + '...' : modelContent);
+              
+              let insightsData;
+              
+              // Try to parse the content if it's a string
+              if (typeof modelContent === 'string') {
+                try {
+                  insightsData = JSON.parse(modelContent);
+                  console.log(`Parsed insights data structure (attempt #${retryCount + 1}):`, 
+                    JSON.stringify(Object.keys(insightsData)));
+                } catch (parseError) {
+                  console.error(`Error parsing model content as JSON (attempt #${retryCount + 1}):`, parseError);
+                  throw new Error(`Invalid JSON in model response: ${parseError.message}`);
+                }
+              } else {
+                insightsData = modelContent;
               }
-            } else {
-              insightsData = modelContent;
+              
+              // Validate the response
+              if (isValidInsightsResponse(insightsData)) {
+                console.log(`Valid insights response received (attempt #${retryCount + 1})`);
+                validResponse = true;
+                return {
+                  ...responseData,
+                  insights: insightsData
+                };
+              } else {
+                console.error(`Invalid insights format (attempt #${retryCount + 1}):`, insightsData);
+                throw new Error('Response did not contain valid insights data');
+              }
+            } catch (parseError) {
+              console.error(`Error processing OpenRouter response (attempt #${retryCount + 1}):`, parseError);
+              throw parseError;
             }
-            
-            // Validate the response
-            if (isValidInsightsResponse(insightsData)) {
-              console.log(`Valid insights response received (attempt #${retryCount + 1})`);
-              validResponse = true;
-              return {
-                ...responseData,
-                insights: insightsData
-              };
-            } else {
-              console.error(`Invalid insights format (attempt #${retryCount + 1}):`, insightsData);
-              throw new Error('Response did not contain valid insights data');
-            }
-          } catch (parseError) {
-            console.error(`Error processing OpenRouter response (attempt #${retryCount + 1}):`, parseError);
-            throw parseError;
           }
         } catch (error) {
           console.error(`Error in attempt #${retryCount + 1}:`, error);
@@ -319,27 +325,152 @@ Remember to format your response as a valid JSON object with probability, areasF
       throw new Error('Failed to get valid insights after maximum retries');
     };
 
-    // Call the function with retry logic
-    const results = await getInsightsWithRetry();
-    
-    // Extract the insights from the response
-    const insightsData = results.insights;
-    
-    return new Response(JSON.stringify({
-      ...results,
-      choices: [{
-        ...results.choices?.[0],
-        message: {
-          ...results.choices?.[0]?.message,
-          content: insightsData
+    // New streaming implementation for OpenRouter
+    const streamInsights = async () => {
+      const controller = new AbortController();
+      const signal = controller.signal;
+      
+      try {
+        const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openRouterKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://hunchex.com',
+            'X-Title': 'Hunchex Analysis'
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.0-flash-lite-001",
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: prompt }
+            ],
+            stream: true,
+            temperature: 0.2
+          }),
+          signal
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
         }
-      }]
-    }), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
+        
+        // Prepare the response
+        const responseStream = new TransformStream();
+        const writer = responseStream.writable.getWriter();
+        
+        // Start the streaming process
+        const processStream = async () => {
+          if (!response.body) {
+            throw new Error("Response body is null");
+          }
+          
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder("utf-8");
+          let buffer = "";
+          let fullContent = "";
+          
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = decoder.decode(value, { stream: true });
+              buffer += chunk;
+              
+              // Process completed lines
+              const lines = buffer.split('\n');
+              buffer = lines.pop() || ""; // Last line might be incomplete
+              
+              for (const line of lines) {
+                if (line.trim() === '') continue;
+                
+                if (line.trim().startsWith('data: ')) {
+                  const jsonStr = line.slice(6).trim();
+                  
+                  if (jsonStr === '[DONE]') {
+                    continue;
+                  }
+                  
+                  try {
+                    const data = JSON.parse(jsonStr);
+                    const content = data.choices?.[0]?.delta?.content || '';
+                    
+                    if (content) {
+                      fullContent += content;
+                      
+                      // Write the chunk to the output stream
+                      const streamChunk = JSON.stringify({
+                        chunk: content,
+                        fullContent
+                      });
+                      
+                      await writer.write(new TextEncoder().encode(`data: ${streamChunk}\n\n`));
+                    }
+                  } catch (e) {
+                    console.error('Error parsing SSE data:', e);
+                  }
+                }
+              }
+            }
+          } catch (error) {
+            console.error('Error reading stream:', error);
+            throw error;
+          } finally {
+            reader.releaseLock();
+            await writer.close();
+          }
+          
+          return fullContent;
+        };
+        
+        // Start processing in the background but don't await it
+        EdgeRuntime.waitUntil(processStream());
+        
+        // Return the response stream
+        return new Response(responseStream.readable, {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive'
+          }
+        });
+      } catch (error) {
+        console.error('Error in streamInsights:', error);
+        controller.abort();
+        throw error;
       }
-    });
+    };
+
+    // Call the function with retry logic (or stream directly)
+    if (stream) {
+      // Direct streaming - no retries for streaming mode yet
+      return await streamInsights();
+    } else {
+      // Regular mode with retries
+      const results = await getInsightsWithRetry();
+      
+      // Extract the insights from the response
+      const insightsData = results.insights;
+      
+      return new Response(JSON.stringify({
+        ...results,
+        choices: [{
+          ...results.choices?.[0],
+          message: {
+            ...results.choices?.[0]?.message,
+            content: insightsData
+          }
+        }]
+      }), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        }
+      });
+    }
   } catch (error) {
     console.error('Error in extract-research-insights:', error);
     

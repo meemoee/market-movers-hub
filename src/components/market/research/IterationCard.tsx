@@ -16,6 +16,7 @@ interface IterationCardProps {
     results: ResearchResult[];
     analysis: string;
     reasoning?: string; // Add optional reasoning field to handle both formats
+    isStreaming?: boolean; // New flag to indicate whether this iteration is currently streaming
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -62,6 +63,9 @@ export function IterationCard({
     return iteration.analysis || "Analysis in progress...";
   };
 
+  // Determine if this particular iteration is streaming
+  const isIterationStreaming = isStreaming && isCurrentIteration && iteration.isStreaming;
+
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
@@ -104,7 +108,7 @@ export function IterationCard({
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
                   content={getAnalysisContent()} 
-                  isStreaming={isStreaming && isCurrentIteration}
+                  isStreaming={isIterationStreaming}
                   maxHeight="100%"
                 />
               </TabsContent>
