@@ -48,6 +48,8 @@ export class OpenRouter {
         };
       }
       
+      console.log(`Making OpenRouter API request to ${model}${requestReasoning ? " with reasoning" : ""}`);
+      
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -64,6 +66,7 @@ export class OpenRouter {
       }
       
       const data = await response.json();
+      console.log(`OpenRouter response received, has choices: ${!!data.choices}, first choice: ${!!data.choices?.[0]}`);
       
       if (!data.choices || !data.choices[0] || !data.choices[0].message) {
         throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
@@ -73,9 +76,17 @@ export class OpenRouter {
       if (requestReasoning && 
           data.choices[0].message.reasoning && 
           typeof data.choices[0].message.reasoning === 'string') {
+        console.log(`Reasoning found in response, length: ${data.choices[0].message.reasoning.length} chars`);
         return {
           content: data.choices[0].message.content,
           reasoning: data.choices[0].message.reasoning
+        };
+      } else if (requestReasoning) {
+        console.log(`Reasoning was requested but not found in response`);
+        // If reasoning was requested but not found, still return object format
+        return {
+          content: data.choices[0].message.content,
+          reasoning: "No reasoning provided by the model."
         };
       }
       

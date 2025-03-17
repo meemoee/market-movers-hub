@@ -1,3 +1,4 @@
+
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -21,6 +22,7 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [activeTab, setActiveTab] = useState<'content' | 'reasoning'>('content')
   
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
@@ -96,15 +98,36 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
+  // Effect to automatically show reasoning tab when it becomes available
+  useEffect(() => {
+    if (reasoning && reasoning.length > 0 && !activeTab) {
+      setActiveTab('content');
+    }
+  }, [reasoning, activeTab]);
+
   if (!content) return null
 
-  if (reasoning) {
+  // Check if reasoning exists and is not empty or just an error message
+  const hasValidReasoning = reasoning && 
+                           reasoning.length > 0 && 
+                           !reasoning.startsWith("Error:") && 
+                           reasoning !== "No reasoning provided by the model.";
+
+  if (hasValidReasoning) {
     return (
       <div className="relative">
-        <Tabs defaultValue="content" className="w-full">
+        <Tabs defaultValue="content" className="w-full" value={activeTab} onValueChange={(value) => setActiveTab(value as 'content' | 'reasoning')}>
           <TabsList className="mb-2">
             <TabsTrigger value="content">Analysis</TabsTrigger>
-            <TabsTrigger value="reasoning">AI Reasoning</TabsTrigger>
+            <TabsTrigger value="reasoning" className="relative">
+              AI Reasoning
+              {reasoning && reasoning !== "No reasoning provided by the model." && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="content">
             <ScrollArea 
@@ -126,7 +149,7 @@ export function AnalysisDisplay({
             >
               <div className="overflow-x-hidden w-full max-w-full">
                 <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-                  {reasoning}
+                  {reasoning || "The AI's reasoning will appear here once available..."}
                 </ReactMarkdown>
               </div>
             </ScrollArea>

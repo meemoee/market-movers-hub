@@ -776,7 +776,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         iterations: allIterations,
         queries: allQueries,
         areasForResearch: areasForResearch,
-        marketPrice: marketPrice,
+        marketPrice: marketPrice || 'undefined',
         relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined,
         focusText: focusText
       };
@@ -1031,6 +1031,7 @@ Present the analysis in a structured, concise format with clear sections and bul
   ];
   
   try {
+    console.log(`Requesting analysis from DeepSeek R1 with reasoning enabled`);
     const result = await openRouter.complete(
       "deepseek/deepseek-r1", 
       messages,
@@ -1039,11 +1040,23 @@ Present the analysis in a structured, concise format with clear sections and bul
       true   // request reasoning
     );
     
+    // Always return an object with content and reasoning (empty string if not available)
+    if (typeof result === 'string') {
+      console.log(`Got string result, converting to object format`);
+      return {
+        content: result,
+        reasoning: "No reasoning provided by the model."
+      };
+    }
+    console.log(`Got object result with content and reasoning`);
     return result;
   } catch (error) {
     console.error(`Error using OpenRouter: ${error.message}`);
-    // Fallback to traditional fetch method if the OpenRouter client fails
-    throw error;
+    // Return error object in consistent format
+    return {
+      content: `Error generating analysis: ${error.message}`,
+      reasoning: `Error: ${error.message}`
+    };
   }
 }
 
