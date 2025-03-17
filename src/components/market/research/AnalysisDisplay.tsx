@@ -19,10 +19,15 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [displayContent, setDisplayContent] = useState<string>(content || '')
   
-  // Monitor content changes to update accordingly
+  // Update the displayed content when the input content changes
   useEffect(() => {
     const currentContentLength = content?.length || 0;
+    
+    if (content !== displayContent) {
+      setDisplayContent(content || '');
+    }
     
     if (currentContentLength > prevContentLength.current) {
       setLastUpdateTime(Date.now());
@@ -32,7 +37,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength;
-  }, [content, isStreaming]);
+  }, [content, isStreaming, displayContent]);
   
   // Optimize scrolling with RAF for smooth performance
   useLayoutEffect(() => {
@@ -89,18 +94,25 @@ export function AnalysisDisplay({
     return () => clearInterval(interval);
   }, [isStreaming, lastUpdateTime, streamStatus]);
 
-  if (!content) return null;
+  // Show a placeholder if no content during streaming
+  const renderContent = () => {
+    if (!displayContent && isStreaming) {
+      return "Analyzing...";
+    }
+    
+    return displayContent || "";
+  };
 
   return (
     <div className="relative">
       <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
+        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full ${isStreaming ? 'live-streaming' : ''}`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {content || (isStreaming ? "Analyzing..." : "")}
+            {renderContent()}
           </ReactMarkdown>
         </div>
       </ScrollArea>

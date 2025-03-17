@@ -329,13 +329,11 @@ export function JobQueueResearchCard({
           
           if (job.iterations && Array.isArray(job.iterations)) {
             const updatedIterations = job.iterations.map(iter => {
-              if (iter.iteration === job.current_iteration) {
-                return {
-                  ...iter,
-                  isStreaming: true
-                };
-              }
-              return iter;
+              const isCurrentlyStreaming = iter.iteration === job.current_iteration;
+              return {
+                ...iter,
+                isStreaming: isCurrentlyStreaming
+              };
             });
             
             setIterations(updatedIterations);

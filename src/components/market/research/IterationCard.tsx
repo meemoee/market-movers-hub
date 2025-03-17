@@ -63,7 +63,7 @@ export function IterationCard({
   };
 
   // Determine if this particular iteration is streaming
-  const isIterationStreaming = isStreaming && isCurrentIteration;
+  const isIterationStreaming = isStreaming && isCurrentIteration && iteration.isStreaming;
 
   return (
     <div className={cn(
@@ -80,7 +80,7 @@ export function IterationCard({
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
+            className={isIterationStreaming ? "animate-pulse bg-primary" : ""}>
             Iteration {iteration.iteration}
             {isIterationStreaming && " (Streaming...)"}
           </Badge>
