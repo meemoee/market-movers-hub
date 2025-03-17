@@ -329,17 +329,10 @@ export function JobQueueResearchCard({
           }
           
           if (job.iterations && Array.isArray(job.iterations)) {
-            const updatedIterations = job.iterations.map(iter => {
-              if (iter.is_streaming && iter.iteration === job.current_iteration) {
-                return {
-                  ...iter,
-                  is_streaming: true
-                };
-              }
-              return iter;
-            });
-            
+            const updatedIterations = job.iterations;
             setIterations(updatedIterations);
+            
+            const streamingIterations = updatedIterations.filter(iter => iter.is_streaming);
             
             streamingIterations.forEach(iter => {
               if (!expandedIterations.includes(iter.iteration)) {
