@@ -1,12 +1,26 @@
-import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown, LucideIcon } from 'lucide-react';
 
-const iconMap: Record<string, LucideIcon> = {
+import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown, Calendar, Bell, Flag, Award, Target, FileText, MessageSquare, Bookmark, Zap, Star } from 'lucide-react';
+
+const iconMap: Record<string, React.ComponentType<any>> = {
   info: Info,
   alert: AlertCircle,
   success: CheckCircle,
   error: XCircle,
   up: ArrowUp,
   down: ArrowDown,
+  calendar: Calendar,
+  bell: Bell,
+  flag: Flag,
+  award: Award,
+  target: Target,
+  document: FileText,
+  announcement: Bell,
+  milestone: Flag,
+  update: Zap,
+  resolution: Target,
+  comment: MessageSquare,
+  bookmark: Bookmark,
+  star: Star
 };
 
 interface EventIconProps {

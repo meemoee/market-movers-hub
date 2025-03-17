@@ -1,3 +1,4 @@
+
 import * as React from "react";
 import type { ScaleTime } from 'd3-scale';
 import { MarketEvent } from './types';
@@ -22,6 +23,11 @@ export const EventIndicator = ({
   const xPosition = timeScale(new Date(event.timestamp).getTime());
   // Adjust the iconY position to be flush with x-axis by adding iconSize
   const iconY = height - (iconSize / 2);
+  
+  // If xPosition is outside the visible range, don't render
+  if (isNaN(xPosition)) {
+    return null;
+  }
   
   // If iconsOnly is true, only render the interactive part
   if (iconsOnly) {
@@ -62,10 +68,10 @@ export const EventIndicator = ({
           {/* Tooltip */}
           {showTooltip && (
             <foreignObject
-              x={-100}
-              y={-80}
-              width={200}
-              height={60}
+              x={-150}
+              y={-120}
+              width={300}
+              height={100}
               style={{ 
                 overflow: 'visible', 
                 pointerEvents: 'none',
@@ -73,10 +79,20 @@ export const EventIndicator = ({
               }}
             >
               <div className="relative z-50 bg-background/95 border border-border p-2 rounded-md shadow-lg">
-                <p className="font-medium text-sm">{event.title}</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <EventIcon type={event.icon} size={14} className="text-primary" />
+                  <p className="font-medium text-sm">{event.title}</p>
+                </div>
                 {event.description && (
                   <p className="text-xs text-muted-foreground">{event.description}</p>
                 )}
+                <p className="text-xs mt-1 text-muted-foreground/80">
+                  {new Date(event.timestamp).toLocaleDateString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                  })}
+                </p>
               </div>
             </foreignObject>
           )}

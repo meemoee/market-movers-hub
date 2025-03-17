@@ -162,7 +162,13 @@ Your task is to analyze web content to assess the probability of market outcomes
    - Note any official announcement dates or deadlines
    - Discuss factors that could accelerate or delay resolution
 
-${focusText ? `9. Focus Area Priority
+9. Significant Events
+   - Identify key events that have already occurred related to this market
+   - Highlight important upcoming events that could impact the outcome
+   - Include specific dates and timestamps for each event
+   - Categorize events by type (announcement, milestone, update, etc.)
+
+${focusText ? `10. Focus Area Priority
    - EVERY insight MUST explicitly address the focus area: "${focusText}"
    - Information not directly related to the focus area should be excluded
    - Clearly explain how each point connects to the specified focus` : ''}
@@ -196,8 +202,13 @@ ${isMarketResolved ?
 6. IMPORTANT: Provide an estimated probability range (e.g., 30-40%) based on the evidence analyzed.
 7. IMPORTANT: List specific areas that need further research or inspection to improve confidence in this assessment.
 8. CRITICAL: When will this market question be resolved, and when will conclusive data become available? Identify any official deadlines, announcement dates, or resolution criteria.
-${marketPrice !== undefined && !isMarketResolved ? `9. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
-${relatedMarkets && relatedMarkets.length > 0 ? `10. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+9. IMPORTANT: List any significant events (with dates) related to this market that have already occurred or are scheduled to occur.
+   - Format as: [YYYY-MM-DD] Event title - Brief description
+   - For each event, categorize it as one of: announcement, milestone, update, data_release, resolution
+   - Include a confidence score (1-5) for each event date's accuracy
+   - Events should be directly relevant to the market question and have a clear impact on outcomes
+${marketPrice !== undefined && !isMarketResolved ? `10. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `11. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 ${focusText ? `\nCRITICAL REMINDER: Your analysis MUST focus EXCLUSIVELY on: "${focusText}"\nEnsure ALL insights directly address this specific focus area.\n` : ''}
 
 IMPORTANT REQUIREMENTS:
