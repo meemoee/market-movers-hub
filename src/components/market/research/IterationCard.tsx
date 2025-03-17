@@ -55,10 +55,6 @@ export function IterationCard({
     ? iteration.analysis.reasoning
     : undefined;
 
-  // Determine if we have any reasoning content
-  const hasReasoning = analysisReasoning && analysisReasoning.length > 0 && 
-                      analysisReasoning !== "No reasoning provided by the model.";
-
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
@@ -81,11 +77,6 @@ export function IterationCard({
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
-          {hasReasoning && (
-            <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20">
-              Reasoning
-            </Badge>
-          )}
         </div>
         {isExpanded ? 
           <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 

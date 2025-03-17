@@ -17,7 +17,6 @@ export class OpenRouter {
    * @param maxTokens Maximum tokens to generate
    * @param temperature Temperature parameter
    * @param requestReasoning Whether to request reasoning
-   * @param streamingCallback Optional callback for streaming responses
    * @returns The response content or { content, reasoning } object
    */
   async complete(
@@ -25,8 +24,7 @@ export class OpenRouter {
     messages: Array<{role: string, content: string}>,
     maxTokens: number = 500,
     temperature: number = 0.7,
-    requestReasoning: boolean = false,
-    streamingCallback?: (partial: { content?: string, reasoning?: string }) => void
+    requestReasoning: boolean = false
   ): Promise<string | { content: string, reasoning: string }> {
     if (!this.apiKey) {
       throw new Error("OpenRouter API key is required");
@@ -40,12 +38,6 @@ export class OpenRouter {
         temperature
       };
       
-      // Add streaming if callback is provided
-      const isStreaming = !!streamingCallback;
-      if (isStreaming) {
-        body.stream = true;
-      }
-      
       // Add reasoning configuration for DeepSeek R1
       if (requestReasoning && model === "deepseek/deepseek-r1") {
         body.extra = {
@@ -56,7 +48,7 @@ export class OpenRouter {
         };
       }
       
-      console.log(`Making OpenRouter API request to ${model}${requestReasoning ? " with reasoning" : ""}${isStreaming ? " with streaming" : ""}`);
+      console.log(`Making OpenRouter API request to ${model}${requestReasoning ? " with reasoning" : ""}`);
       
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -73,73 +65,6 @@ export class OpenRouter {
         throw new Error(`OpenRouter API error: ${response.status} - ${JSON.stringify(errorData)}`);
       }
       
-      // Handle streaming responses
-      if (isStreaming) {
-        if (!response.body) {
-          throw new Error("Stream response body is null");
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let contentAccumulator = "";
-        let reasoningAccumulator = "";
-        
-        // Process the stream in a background task
-        (async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              
-              const chunk = decoder.decode(value, { stream: true });
-              const lines = chunk.split('\n').filter(line => line.trim());
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim();
-                  
-                  if (jsonStr === '[DONE]') continue;
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr);
-                    const contentDelta = parsed.choices?.[0]?.delta?.content;
-                    const reasoningDelta = parsed.choices?.[0]?.delta?.reasoning;
-                    
-                    if (contentDelta) {
-                      contentAccumulator += contentDelta;
-                    }
-                    
-                    if (reasoningDelta) {
-                      reasoningAccumulator += reasoningDelta;
-                    }
-                    
-                    // Call the streaming callback with accumulated data
-                    if (contentDelta || reasoningDelta) {
-                      streamingCallback({
-                        content: contentDelta ? contentAccumulator : undefined,
-                        reasoning: reasoningDelta ? reasoningAccumulator : undefined
-                      });
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr);
-                  }
-                }
-              }
-            }
-          } catch (error) {
-            console.error('Error processing stream:', error);
-          }
-        })();
-        
-        // Return an object with empty content and reasoning
-        // The real content will come through the streaming callback
-        return requestReasoning ? {
-          content: "",
-          reasoning: ""
-        } : "";
-      }
-      
-      // Handle non-streaming responses (original code path)
       const data = await response.json();
       console.log(`OpenRouter response received, has choices: ${!!data.choices}, first choice: ${!!data.choices?.[0]}`);
       
