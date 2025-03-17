@@ -1,6 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { OpenRouter } from '../deep-research/openRouter.ts'
 
 // Define CORS headers
 const corsHeaders = {
@@ -393,7 +392,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               }
               
               // Generate analysis for this iteration with market context
-              const analysisResult = await generateAnalysis(
+              const analysisText = await generateAnalysis(
                 combinedContent, 
                 query, 
                 `Iteration ${i} analysis for "${query}"`,
@@ -403,29 +402,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 focusText,
                 iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
               );
-              
-              let analysisText;
-              if (typeof analysisResult === 'string') {
-                analysisText = analysisResult;
-              } else {
-                // Handle object with content and reasoning
-                analysisText = analysisResult.content;
-                
-                // Store reasoning separately if available
-                if (analysisResult.reasoning) {
-                  const updatedIterations = [...iterationResults];
-                  const iterationIndex = updatedIterations.findIndex(iter => iter.iteration === i);
-                  
-                  if (iterationIndex >= 0) {
-                    updatedIterations[iterationIndex].reasoning = analysisResult.reasoning;
-                    
-                    await supabaseClient
-                      .from('research_jobs')
-                      .update({ iterations: updatedIterations })
-                      .eq('id', jobId);
-                  }
-                }
-              }
               
               // Update the iteration with the analysis
               const updatedIterations = [...iterationResults];
@@ -487,7 +463,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     });
     
     let finalAnalysis = "";
-    let finalReasoning = "";
     try {
       // Combine all content from the results
       const allContent = allResults
@@ -600,7 +575,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         .map(iter => iter.analysis);
       
       if (allContent.length > 0) {
-        const analysisResult = await generateAnalysis(
+        finalAnalysis = await generateAnalysis(
           allContent, 
           query, 
           `Final comprehensive analysis for "${query}"`,
@@ -610,14 +585,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           focusText,
           previousAnalyses
         );
-        
-        if (typeof analysisResult === 'string') {
-          finalAnalysis = analysisResult;
-        } else {
-          // Handle object with content and reasoning
-          finalAnalysis = analysisResult.content;
-          finalReasoning = analysisResult.reasoning || "";
-        }
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
       }
@@ -631,11 +598,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       });
     }
     
-    // Create final results object with the text analysis and reasoning if available
+    // Create final results object with the text analysis
     const textAnalysisResults = {
       data: allResults,
-      analysis: finalAnalysis,
-      reasoning: finalReasoning || undefined
+      analysis: finalAnalysis
     };
     
     // Now generate the structured insights with the extract-research-insights function
@@ -776,7 +742,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         iterations: allIterations,
         queries: allQueries,
         areasForResearch: areasForResearch,
-        marketPrice: marketPrice || 'undefined',
+        marketPrice: marketPrice,
         relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined,
         focusText: focusText
       };
@@ -923,7 +889,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// Function to generate analysis using OpenRouter and DeepSeek R1
+// Function to generate analysis using OpenRouter
 async function generateAnalysis(
   content: string, 
   query: string, 
@@ -933,17 +899,14 @@ async function generateAnalysis(
   areasForResearch?: string[],
   focusText?: string,
   previousAnalyses?: string[]
-): Promise<string | { content: string, reasoning: string }> {
+): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
   if (!openRouterKey) {
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter with DeepSeek R1`);
-  
-  // Initialize the OpenRouter client
-  const openRouter = new OpenRouter(openRouterKey);
+  console.log(`Generating ${analysisType} using OpenRouter`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -995,18 +958,7 @@ IMPORTANT: DO NOT REPEAT information from previous analyses. Instead:
 4. Provide CONTRASTING perspectives where relevant`;
   }
   
-  const systemMessage = `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
-When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
-
-Your analysis should:
-1. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
-2. Avoid repeating information from previous analyses
-3. Build upon existing knowledge with new perspectives
-4. Identify connections between evidence and implications
-5. Be critical of source reliability and evidence quality
-6. Draw balanced conclusions based solely on the evidence provided`;
-
-  const userMessage = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
+  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
 
 Content to analyze:
 ${truncatedContent}
@@ -1023,41 +975,52 @@ Please provide:
 5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
-
-  // Use the OpenRouter class to request analysis with reasoning
-  const messages = [
-    { role: "system", content: systemMessage },
-    { role: "user", content: userMessage }
-  ];
   
-  try {
-    console.log(`Requesting analysis from DeepSeek R1 with reasoning enabled`);
-    const result = await openRouter.complete(
-      "deepseek/deepseek-r1", 
-      messages,
-      1500,  // max tokens
-      0.3,   // temperature
-      true   // request reasoning
-    );
-    
-    // Always return an object with content and reasoning (empty string if not available)
-    if (typeof result === 'string') {
-      console.log(`Got string result, converting to object format`);
-      return {
-        content: result,
-        reasoning: "No reasoning provided by the model."
-      };
-    }
-    console.log(`Got object result with content and reasoning`);
-    return result;
-  } catch (error) {
-    console.error(`Error using OpenRouter: ${error.message}`);
-    // Return error object in consistent format
-    return {
-      content: `Error generating analysis: ${error.message}`,
-      reasoning: `Error: ${error.message}`
-    };
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+      "X-Title": "Market Research App",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-flash-1.5",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
+
+Your analysis should:
+1. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
+2. Avoid repeating information from previous analyses
+3. Build upon existing knowledge with new perspectives
+4. Identify connections between evidence and implications
+5. Be critical of source reliability and evidence quality
+6. Draw balanced conclusions based solely on the evidence provided`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.3
+    })
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
   }
+  
+  const data = await response.json();
+  
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+  }
+  
+  return data.choices[0].message.content;
 }
 
 serve(async (req) => {

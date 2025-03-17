@@ -14,8 +14,7 @@ interface IterationCardProps {
     iteration: number;
     queries: string[];
     results: ResearchResult[];
-    analysis: string | { content: string; reasoning?: string };
-    reasoning?: string; // Added to support the separate reasoning field from the backend
+    analysis: string;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -46,23 +45,6 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
-
-  // Extract content and reasoning from the analysis
-  let analysisContent = "";
-  let analysisReasoning = undefined;
-  
-  // Handle multiple formats of analysis data to ensure backward compatibility
-  if (typeof iteration.analysis === 'string') {
-    // If analysis is just a string
-    analysisContent = iteration.analysis;
-    // Check if there's a separate reasoning field
-    analysisReasoning = iteration.reasoning;
-  } else if (iteration.analysis && typeof iteration.analysis === 'object') {
-    // If analysis is an object with content and reasoning
-    analysisContent = iteration.analysis.content || "";
-    // Use reasoning from the analysis object or separate reasoning field
-    analysisReasoning = iteration.analysis.reasoning || iteration.reasoning;
-  }
 
   return (
     <div className={cn(
@@ -105,8 +87,7 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={analysisContent || "Analysis in progress..."} 
-                  reasoning={analysisReasoning}
+                  content={iteration.analysis || "Analysis in progress..."} 
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />

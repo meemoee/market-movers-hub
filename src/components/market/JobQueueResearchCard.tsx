@@ -148,32 +148,10 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      const parsedIterations = job.iterations.map(iteration => {
-        if (typeof iteration.analysis === 'string') {
-          return iteration;
-        } else if (typeof iteration.analysis === 'object' && iteration.analysis !== null) {
-          if (iteration.analysis.content !== undefined) {
-            return iteration;
-          }
-          try {
-            const parsedAnalysis = JSON.parse(iteration.analysis);
-            if (parsedAnalysis && typeof parsedAnalysis === 'object') {
-              return {
-                ...iteration,
-                analysis: parsedAnalysis
-              };
-            }
-          } catch (e) {
-            console.error('Error parsing iteration analysis:', e);
-          }
-        }
-        return iteration;
-      });
+      setIterations(job.iterations);
       
-      setIterations(parsedIterations);
-      
-      if (parsedIterations.length > 0) {
-        setExpandedIterations([parsedIterations.length]);
+      if (job.iterations.length > 0) {
+        setExpandedIterations([job.iterations.length]);
       }
     }
     
@@ -183,15 +161,9 @@ export function JobQueueResearchCard({
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
         }
-        
         if (parsedResults.analysis) {
-          if (typeof parsedResults.analysis === 'string') {
-            setAnalysis(parsedResults.analysis);
-          } else if (typeof parsedResults.analysis === 'object' && parsedResults.analysis.content) {
-            setAnalysis(parsedResults.analysis.content);
-          }
+          setAnalysis(parsedResults.analysis);
         }
-        
         if (parsedResults.structuredInsights) {
           const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
@@ -310,15 +282,9 @@ export function JobQueueResearchCard({
               if (parsedResults.data && Array.isArray(parsedResults.data)) {
                 setResults(parsedResults.data);
               }
-              
               if (parsedResults.analysis) {
-                if (typeof parsedResults.analysis === 'string') {
-                  setAnalysis(parsedResults.analysis);
-                } else if (typeof parsedResults.analysis === 'object' && parsedResults.analysis.content) {
-                  setAnalysis(parsedResults.analysis.content);
-                }
+                setAnalysis(parsedResults.analysis);
               }
-              
               if (parsedResults.structuredInsights) {
                 const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
                   calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
@@ -362,24 +328,7 @@ export function JobQueueResearchCard({
           }
           
           if (job.iterations && Array.isArray(job.iterations)) {
-            const parsedIterations = job.iterations.map(iteration => {
-              if (typeof iteration.analysis === 'string') {
-                try {
-                  if (iteration.analysis.trim().startsWith('{')) {
-                    const parsedAnalysis = JSON.parse(iteration.analysis);
-                    return {
-                      ...iteration,
-                      analysis: parsedAnalysis
-                    };
-                  }
-                } catch (e) {
-                  console.error('Error parsing iteration analysis:', e);
-                }
-              }
-              return iteration;
-            });
-            
-            setIterations(parsedIterations);
+            setIterations(job.iterations);
             
             if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
               setExpandedIterations(prev => [...prev, job.current_iteration]);
