@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -28,7 +27,7 @@ serve(async (req) => {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-r1",
+        model: "perplexity/llama-3.1-sonar-small-128k-online",
         messages: [
           {
             role: "system",
@@ -39,7 +38,6 @@ serve(async (req) => {
             content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
           }
         ],
-        reasoning: { effort: "high" },
         stream: true
       })
     })
