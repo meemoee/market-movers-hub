@@ -219,13 +219,14 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
         'X-Title': 'Hunchex Analysis'
       },
       body: JSON.stringify({
-        model: "google/gemini-2.0-flash-lite-001",
+        model: "deepseek/deepseek-r1",
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
         stream: true,
-        temperature: 0.3
+        temperature: 0.3,
+        reasoning: { effort: "high" }
       }),
     });
 
@@ -234,7 +235,15 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       throw new Error(`API error: ${response.status} ${errorText}`);
     }
 
-    return new Response(response.body, {
+    // Transform the stream to include reasoning
+    const transformStream = new TransformStream({
+      start() {},
+      transform(chunk, controller) {
+        controller.enqueue(chunk);
+      }
+    });
+
+    return new Response(response.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
