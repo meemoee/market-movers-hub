@@ -41,7 +41,8 @@ export class OpenRouter {
       };
       
       // Add streaming if callback is provided
-      if (streamingCallback) {
+      const isStreaming = !!streamingCallback;
+      if (isStreaming) {
         body.stream = true;
       }
       
@@ -55,7 +56,7 @@ export class OpenRouter {
         };
       }
       
-      console.log(`Making OpenRouter API request to ${model}${requestReasoning ? " with reasoning" : ""}${streamingCallback ? " with streaming" : ""}`);
+      console.log(`Making OpenRouter API request to ${model}${requestReasoning ? " with reasoning" : ""}${isStreaming ? " with streaming" : ""}`);
       
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
@@ -73,7 +74,7 @@ export class OpenRouter {
       }
       
       // Handle streaming responses
-      if (streamingCallback && body.stream) {
+      if (isStreaming) {
         if (!response.body) {
           throw new Error("Stream response body is null");
         }
@@ -101,22 +102,22 @@ export class OpenRouter {
                   
                   try {
                     const parsed = JSON.parse(jsonStr);
-                    const content = parsed.choices?.[0]?.delta?.content;
-                    const reasoning = parsed.choices?.[0]?.delta?.reasoning;
+                    const contentDelta = parsed.choices?.[0]?.delta?.content;
+                    const reasoningDelta = parsed.choices?.[0]?.delta?.reasoning;
                     
-                    if (content) {
-                      contentAccumulator += content;
+                    if (contentDelta) {
+                      contentAccumulator += contentDelta;
                     }
                     
-                    if (reasoning) {
-                      reasoningAccumulator += reasoning;
+                    if (reasoningDelta) {
+                      reasoningAccumulator += reasoningDelta;
                     }
                     
                     // Call the streaming callback with accumulated data
-                    if (content || reasoning) {
+                    if (contentDelta || reasoningDelta) {
                       streamingCallback({
-                        content: content ? contentAccumulator : undefined,
-                        reasoning: reasoning ? reasoningAccumulator : undefined
+                        content: contentDelta ? contentAccumulator : undefined,
+                        reasoning: reasoningDelta ? reasoningAccumulator : undefined
                       });
                     }
                   } catch (e) {
@@ -132,10 +133,10 @@ export class OpenRouter {
         
         // Return an object with empty content and reasoning
         // The real content will come through the streaming callback
-        return {
+        return requestReasoning ? {
           content: "",
           reasoning: ""
-        };
+        } : "";
       }
       
       // Handle non-streaming responses (original code path)
