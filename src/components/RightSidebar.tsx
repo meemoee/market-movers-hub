@@ -1,3 +1,4 @@
+
 import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -10,11 +11,13 @@ export default function RightSidebar() {
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [streamingReasoning, setStreamingReasoning] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
 
   interface Message {
     type: 'user' | 'assistant'
     content?: string
+    reasoning?: string
   }
 
   const handleChatMessage = async (userMessage: string) => {
@@ -48,6 +51,7 @@ export default function RightSidebar() {
       console.log('Received response from market-analysis:', data)
       
       let accumulatedContent = ''
+      let accumulatedReasoning = ''
       
       const stream = new ReadableStream({
         start(controller) {
@@ -76,9 +80,16 @@ export default function RightSidebar() {
                     const parsed = JSON.parse(jsonStr)
                     
                     const content = parsed.choices?.[0]?.delta?.content
+                    const reasoning = parsed.choices?.[0]?.delta?.reasoning
+                    
                     if (content) {
                       accumulatedContent += content
                       setStreamingContent(accumulatedContent)
+                    }
+                    
+                    if (reasoning) {
+                      accumulatedReasoning += reasoning
+                      setStreamingReasoning(accumulatedReasoning)
                     }
                   } catch (e) {
                     console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
@@ -102,7 +113,8 @@ export default function RightSidebar() {
 
       setMessages(prev => [...prev, { 
         type: 'assistant', 
-        content: accumulatedContent 
+        content: accumulatedContent,
+        reasoning: accumulatedReasoning && accumulatedReasoning.trim() ? accumulatedReasoning : undefined
       }])
 
     } catch (error) {
@@ -114,6 +126,7 @@ export default function RightSidebar() {
     } finally {
       setIsLoading(false)
       setStreamingContent('')
+      setStreamingReasoning('')
       abortControllerRef.current = null
     }
   }
@@ -152,20 +165,48 @@ export default function RightSidebar() {
                 {message.type === 'user' ? (
                   <p className="text-white text-sm">{message.content}</p>
                 ) : (
-                  <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
-                    {message.content || ''}
-                  </ReactMarkdown>
+                  <div className="space-y-3">
+                    <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                      {message.content || ''}
+                    </ReactMarkdown>
+                    
+                    {message.reasoning && (
+                      <>
+                        <Separator className="my-2 opacity-30" />
+                        <div className="bg-[#232529] rounded p-2">
+                          <div className="text-xs text-blue-300 mb-1">Model reasoning:</div>
+                          <ReactMarkdown className="text-white text-xs prose prose-invert prose-sm max-w-none opacity-70">
+                            {message.reasoning}
+                          </ReactMarkdown>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
             {streamingContent && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
-                  {streamingContent}
-                </ReactMarkdown>
+                <div className="space-y-3">
+                  <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
+                    {streamingContent}
+                  </ReactMarkdown>
+                  
+                  {streamingReasoning && (
+                    <>
+                      <Separator className="my-2 opacity-30" />
+                      <div className="bg-[#232529] rounded p-2">
+                        <div className="text-xs text-blue-300 mb-1">Model reasoning:</div>
+                        <ReactMarkdown className="text-white text-xs prose prose-invert prose-sm max-w-none opacity-70">
+                          {streamingReasoning}
+                        </ReactMarkdown>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             )}
-            {isLoading && !streamingContent && (
+            {isLoading && !streamingContent && !streamingReasoning && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
                 <p className="text-white text-sm">Thinking...</p>
               </div>

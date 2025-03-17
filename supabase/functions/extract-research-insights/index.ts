@@ -227,7 +227,7 @@ Remember to format your response as a valid JSON object with probability, areasF
       
       while (retryCount < maxRetries && !validResponse) {
         try {
-          console.log(`Attempt #${retryCount + 1} to get insights from OpenRouter`);
+          console.log(`Attempt #${retryCount + 1} to get insights from OpenRouter using deepseek/deepseek-r1 model`);
           
           const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -238,13 +238,14 @@ Remember to format your response as a valid JSON object with probability, areasF
               'X-Title': 'Hunchex Analysis'
             },
             body: JSON.stringify({
-              model: "google/gemini-2.0-flash-lite-001",
+              model: "deepseek/deepseek-r1",
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
               ],
               stream: false,
               temperature: 0.2,
+              reasoning: { effort: "high" },
               response_format: { type: "json_object" }
             }),
           });
@@ -265,10 +266,17 @@ Remember to format your response as a valid JSON object with probability, areasF
             console.log(`OpenRouter parsed response structure (attempt #${retryCount + 1}):`, 
               JSON.stringify(Object.keys(responseData)));
             
-            // Extract the actual model output
+            // Extract the actual model output and reasoning
             const modelContent = responseData?.choices?.[0]?.message?.content;
+            const modelReasoning = responseData?.choices?.[0]?.message?.reasoning;
+            
             console.log(`Model content (attempt #${retryCount + 1}):`, 
               typeof modelContent === 'string' ? modelContent.substring(0, 500) + '...' : modelContent);
+            
+            if (modelReasoning) {
+              console.log(`Model reasoning (attempt #${retryCount + 1}):`, 
+                typeof modelReasoning === 'string' ? modelReasoning.substring(0, 500) + '...' : modelReasoning);
+            }
             
             let insightsData;
             
@@ -284,6 +292,11 @@ Remember to format your response as a valid JSON object with probability, areasF
               }
             } else {
               insightsData = modelContent;
+            }
+            
+            // Add reasoning to the insights data if available
+            if (modelReasoning && insightsData) {
+              insightsData.modelReasoning = modelReasoning;
             }
             
             // Validate the response
