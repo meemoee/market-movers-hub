@@ -45,6 +45,27 @@ serve(async (req) => {
       ? fullContent.substring(0, 10000) + "... [content truncated]" 
       : fullContent;
 
+    // Log the content for debugging
+    console.log("--- Start of Content Preview (first 500 chars) ---");
+    console.log(truncatedContent.substring(0, 500) + (truncatedContent.length > 500 ? "..." : ""));
+    console.log("--- End of Content Preview ---");
+    
+    // Log the content length
+    console.log(`Total content length: ${fullContent.length}, Truncated to: ${truncatedContent.length}`);
+
+    // Check for date patterns in the content
+    const datePatterns = [
+      /\b\d{4}-\d{2}-\d{2}\b/g, // ISO date: 2023-01-15
+      /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b/g, // Jan 15, 2023
+      /\b\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{4}\b/g // 15 Jan 2023
+    ];
+    
+    const datesFound = datePatterns.flatMap(pattern => 
+      truncatedContent.match(pattern) || []
+    );
+    
+    console.log(`Found ${datesFound.length} date patterns in content: ${datesFound.slice(0, 10).join(", ")}${datesFound.length > 10 ? "..." : ""}`);
+
     const prompt = `From this market analysis and research content, identify up to 5 key events with exact dates.
 Only include events with SPECIFIC dates that are mentioned in the content.
 For each event, extract:
@@ -121,6 +142,16 @@ Do not include events without clear dates.`;
       if (!eventsData.events || !Array.isArray(eventsData.events)) {
         eventsData = { events: [] };
         console.log("No valid events found in the response, using empty array");
+      }
+
+      // Log the extracted events for debugging
+      if (eventsData.events.length > 0) {
+        console.log("--- Extracted Events ---");
+        eventsData.events.forEach((event, i) => {
+          console.log(`Event ${i+1}: ${event.title} - ${event.timestamp}`);
+        });
+      } else {
+        console.log("No events were extracted from the content");
       }
       
       // Store events in the database
