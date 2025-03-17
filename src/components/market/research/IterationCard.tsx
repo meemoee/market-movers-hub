@@ -15,6 +15,7 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
+    reasoning?: string; // Add optional reasoning field to handle both formats
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -45,6 +46,21 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+
+  // Get the analysis content, handling both formats
+  // (newer format has separate analysis field, older format has it nested in the analysis object)
+  const getAnalysisContent = () => {
+    // Handle both formats - supporting both structures for backward compatibility
+    if (iteration.reasoning) {
+      return iteration.reasoning;
+    } else if (typeof iteration.analysis === 'string') {
+      return iteration.analysis;
+    } else if (iteration.analysis && typeof iteration.analysis === 'object') {
+      // Handle the case where analysis is an object with its own fields
+      return (iteration.analysis as any).reasoning || (iteration.analysis as any).analysis || '';
+    }
+    return iteration.analysis || "Analysis in progress...";
+  };
 
   return (
     <div className={cn(
@@ -87,7 +103,7 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
+                  content={getAnalysisContent()} 
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
