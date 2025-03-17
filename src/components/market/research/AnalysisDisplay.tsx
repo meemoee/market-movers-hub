@@ -114,6 +114,9 @@ export function AnalysisDisplay({
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
             {content}
           </ReactMarkdown>
+          {isStreaming && streamStatus === 'streaming' && (
+            <span className="inline-block ml-1 animate-pulse">▌</span>
+          )}
         </div>
       </ScrollArea>
       

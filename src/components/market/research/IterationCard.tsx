@@ -15,6 +15,7 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
+    is_streaming?: boolean;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -33,6 +34,7 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
+  const isIterationStreaming = isStreaming && isCurrentIteration && iteration.is_streaming
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -61,9 +63,9 @@ export function IterationCard({
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
+            className={isIterationStreaming ? "animate-pulse bg-primary" : ""}>
             Iteration {iteration.iteration}
-            {isStreaming && isCurrentIteration && " (Streaming...)"}
+            {isIterationStreaming && " (Live)"}
           </Badge>
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
@@ -88,7 +90,7 @@ export function IterationCard({
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
-                  isStreaming={isStreaming && isCurrentIteration}
+                  isStreaming={isIterationStreaming}
                   maxHeight="100%"
                 />
               </TabsContent>
