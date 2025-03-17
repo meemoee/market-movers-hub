@@ -361,16 +361,24 @@ export function JobQueueResearchCard({
         notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
       
+      console.log("Creating research job with payload:", payload);
+      
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
+      }).catch(error => {
+        console.error("Error invoking create-research-job function:", error);
+        throw new Error(`Failed to invoke research job: ${error.message || error}`);
       });
+      
+      console.log("Research job response:", response);
       
       if (response.error) {
         console.error("Error creating research job:", response.error);
-        throw new Error(`Error creating research job: ${response.error.message}`);
+        throw new Error(`Error creating research job: ${response.error.message || response.error}`);
       }
       
       if (!response.data || !response.data.jobId) {
+        console.error("Invalid response from server:", response);
         throw new Error("Invalid response from server - no job ID returned");
       }
       
@@ -395,8 +403,10 @@ export function JobQueueResearchCard({
       
     } catch (error) {
       console.error('Error in research job:', error);
-      setError(`Error occurred during research job: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setError(`Error occurred during research job: ${errorMessage}`);
       setJobStatus('failed');
+      setProgress(prev => [...prev, `Error: ${errorMessage}`]);
     } finally {
       setIsLoading(false);
     }
@@ -800,3 +810,4 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
+

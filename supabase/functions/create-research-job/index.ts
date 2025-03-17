@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -7,6 +6,96 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
+
+// Main edge function handler
+serve(async (req) => {
+  // Handle CORS preflight first thing, before any other logic
+  if (req.method === 'OPTIONS') {
+    console.log('Handling OPTIONS request for CORS preflight');
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    console.log('Processing create-research-job request');
+    const reqData = await req.json();
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = reqData;
+    
+    if (!query || !marketId) {
+      console.error('Missing required parameters: query and marketId');
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters: query and marketId' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (maxIterations < 1 || maxIterations > 5) {
+      console.error('maxIterations must be between 1 and 5');
+      return new Response(
+        JSON.stringify({ error: 'maxIterations must be between 1 and 5' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    console.log(`Creating research job for market ${marketId} with query: ${query.substring(0, 50)}...`);
+    console.log(`Settings: maxIterations=${maxIterations}, focusText=${focusText ? focusText.substring(0, 50) + '...' : 'none'}`);
+    
+    // Create job entry
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    // Generate UUID for the job
+    const jobId = crypto.randomUUID();
+    
+    // Create the job record
+    const { error: insertError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        id: jobId,
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        current_iteration: 0,
+        progress_log: [`Job created: ${new Date().toISOString()}`],
+        iterations: [],
+        focus_text: focusText || null,
+        notification_email: notificationEmail || null
+      });
+      
+    if (insertError) {
+      console.error(`Failed to create research job: ${insertError.message}`);
+      throw new Error(`Failed to create research job: ${insertError.message}`);
+    }
+    
+    // Start background processing
+    performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail);
+    
+    // Return success
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: "Research job created successfully and is now processing in the background",
+        jobId
+      }),
+      { 
+        status: 200, 
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        } 
+      }
+    );
+  } catch (error) {
+    console.error("Error creating research job:", error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || "Unknown error occurred" }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+});
 
 // Function to send a notification email
 async function sendNotificationEmail(jobId: string, email: string) {
@@ -1127,88 +1216,3 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     }
   }
 }
-
-// Main edge function handler
-serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    const reqData = await req.json();
-    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = reqData;
-    
-    if (!query || !marketId) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required parameters: query and marketId' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    if (maxIterations < 1 || maxIterations > 5) {
-      return new Response(
-        JSON.stringify({ error: 'maxIterations must be between 1 and 5' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    console.log(`Creating research job for market ${marketId} with query: ${query.substring(0, 50)}...`);
-    console.log(`Settings: maxIterations=${maxIterations}, focusText=${focusText ? focusText.substring(0, 50) + '...' : 'none'}`);
-    
-    // Create job entry
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    
-    // Generate UUID for the job
-    const jobId = crypto.randomUUID();
-    
-    // Create the job record
-    const { error: insertError } = await supabaseClient
-      .from('research_jobs')
-      .insert({
-        id: jobId,
-        market_id: marketId,
-        query: query,
-        status: 'queued',
-        max_iterations: maxIterations,
-        current_iteration: 0,
-        progress_log: [`Job created: ${new Date().toISOString()}`],
-        iterations: [],
-        focus_text: focusText || null,
-        notification_email: notificationEmail || null
-      });
-      
-    if (insertError) {
-      throw new Error(`Failed to create research job: ${insertError.message}`);
-    }
-    
-    // Start background processing
-    performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail);
-    
-    // Return success
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: "Research job created successfully and is now processing in the background",
-        jobId
-      }),
-      { 
-        status: 200, 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
-      }
-    );
-  } catch (error) {
-    console.error("Error creating research job:", error);
-    
-    return new Response(
-      JSON.stringify({ error: error.message || "Unknown error occurred" }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-});
