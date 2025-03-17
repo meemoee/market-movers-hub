@@ -11,6 +11,18 @@ import {
 } from "@/components/ui/hover-card"
 import { Checkbox } from "@/components/ui/checkbox"
 
+interface ParentResearch {
+  id: string;
+  focusText?: string;
+  onView: () => void;
+}
+
+interface ChildResearch {
+  id: string;
+  focusText: string;
+  onView: () => void;
+}
+
 interface InsightsDisplayProps {
   streamingState: any
   onResearchArea?: (area: string) => void
@@ -19,12 +31,16 @@ interface InsightsDisplayProps {
     bestAsk?: number
     outcomes?: string[]
   }
+  parentResearch?: ParentResearch
+  childResearches?: ChildResearch[]
 }
 
 export function InsightsDisplay({ 
   streamingState,
   onResearchArea,
-  marketData 
+  marketData,
+  parentResearch,
+  childResearches
 }: InsightsDisplayProps) {
   const [showModelReasoning, setShowModelReasoning] = useState(false)
   
@@ -154,6 +170,39 @@ export function InsightsDisplay({
             ) : (
               <p className="text-sm italic text-muted-foreground">No evidence against provided</p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Add support for parent research display */}
+      {parentResearch && (
+        <div className="mt-3 text-xs text-muted-foreground">
+          <span>Part of broader research: </span>
+          <Button 
+            variant="link" 
+            className="p-0 h-auto text-xs"
+            onClick={parentResearch.onView}
+          >
+            {parentResearch.focusText || "View parent research"}
+          </Button>
+        </div>
+      )}
+      
+      {/* Add support for child researches display */}
+      {childResearches && childResearches.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-md font-medium">Related Research</h3>
+          <div className="flex flex-wrap gap-2">
+            {childResearches.map((research) => (
+              <Badge 
+                key={research.id} 
+                variant="secondary" 
+                className="cursor-pointer hover:bg-secondary/80"
+                onClick={research.onView}
+              >
+                {research.focusText}
+              </Badge>
+            ))}
           </div>
         </div>
       )}
