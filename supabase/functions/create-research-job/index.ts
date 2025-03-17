@@ -7,96 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Main edge function handler
-serve(async (req) => {
-  // Handle CORS preflight first thing, before any other logic
-  if (req.method === 'OPTIONS') {
-    console.log('Handling OPTIONS request for CORS preflight');
-    return new Response(null, { headers: corsHeaders });
-  }
-
-  try {
-    console.log('Processing create-research-job request');
-    const reqData = await req.json();
-    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = reqData;
-    
-    if (!query || !marketId) {
-      console.error('Missing required parameters: query and marketId');
-      return new Response(
-        JSON.stringify({ error: 'Missing required parameters: query and marketId' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    if (maxIterations < 1 || maxIterations > 5) {
-      console.error('maxIterations must be between 1 and 5');
-      return new Response(
-        JSON.stringify({ error: 'maxIterations must be between 1 and 5' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-    
-    console.log(`Creating research job for market ${marketId} with query: ${query.substring(0, 50)}...`);
-    console.log(`Settings: maxIterations=${maxIterations}, focusText=${focusText ? focusText.substring(0, 50) + '...' : 'none'}`);
-    
-    // Create job entry
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-    
-    // Generate UUID for the job
-    const jobId = crypto.randomUUID();
-    
-    // Create the job record
-    const { error: insertError } = await supabaseClient
-      .from('research_jobs')
-      .insert({
-        id: jobId,
-        market_id: marketId,
-        query: query,
-        status: 'queued',
-        max_iterations: maxIterations,
-        current_iteration: 0,
-        progress_log: [`Job created: ${new Date().toISOString()}`],
-        iterations: [],
-        focus_text: focusText || null,
-        notification_email: notificationEmail || null
-      });
-      
-    if (insertError) {
-      console.error(`Failed to create research job: ${insertError.message}`);
-      throw new Error(`Failed to create research job: ${insertError.message}`);
-    }
-    
-    // Start background processing
-    performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail);
-    
-    // Return success
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: "Research job created successfully and is now processing in the background",
-        jobId
-      }),
-      { 
-        status: 200, 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
-      }
-    );
-  } catch (error) {
-    console.error("Error creating research job:", error);
-    
-    return new Response(
-      JSON.stringify({ error: error.message || "Unknown error occurred" }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-});
-
 // Function to send a notification email
 async function sendNotificationEmail(jobId: string, email: string) {
   if (!email) return;
@@ -120,76 +30,6 @@ async function sendNotificationEmail(jobId: string, email: string) {
     );
   } catch (error) {
     console.error(`Error sending notification email for job ${jobId}:`, error);
-  }
-}
-
-// Function to generate analysis using the analyze-web-content edge function
-async function generateAnalysis(
-  content: string, 
-  query: string, 
-  title: string,
-  marketPrice?: number,
-  relatedMarkets?: any[],
-  areasForResearch?: string[],
-  focusText?: string,
-  previousAnalyses?: string[]
-) {
-  try {
-    console.log(`Generating analysis for "${title}" with content length: ${content.length}`);
-    
-    const analyzeResponse = await fetch(
-      `${Deno.env.get('SUPABASE_URL')}/functions/v1/analyze-web-content`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
-        },
-        body: JSON.stringify({
-          content: content,
-          query: query,
-          question: title,
-          marketId: query, // For backward compatibility
-          focusText: focusText,
-          previousAnalyses: previousAnalyses ? previousAnalyses.join('\n\n') : undefined,
-          areasForResearch: areasForResearch,
-          marketPrice: marketPrice,
-          relatedMarkets: relatedMarkets
-        })
-      }
-    );
-    
-    if (!analyzeResponse.ok) {
-      throw new Error(`Failed to analyze content: ${analyzeResponse.statusText}`);
-    }
-    
-    // For non-streaming response, directly get the text
-    const responseText = await analyzeResponse.text();
-    
-    // Look for stream lines that contain actual content (not SSE metadata)
-    const textLines = responseText
-      .split('\n')
-      .filter(line => line.startsWith('data: ') && !line.includes('[DONE]'))
-      .map(line => line.substring(6).trim());
-    
-    // Combine the text lines
-    const analysisText = textLines.join('');
-    
-    // Try to parse as JSON if it looks like JSON
-    let parsedResponse;
-    if (analysisText.trim().startsWith('{') && analysisText.trim().endsWith('}')) {
-      try {
-        parsedResponse = JSON.parse(analysisText);
-        return parsedResponse.text || analysisText;
-      } catch (e) {
-        console.log('Not valid JSON, using raw text');
-      }
-    }
-    
-    return analysisText || `No analysis could be generated for "${title}"`;
-  } catch (error) {
-    console.error(`Error generating analysis:`, error);
-    return `Error generating analysis: ${error.message}`;
   }
 }
 
@@ -989,174 +829,6 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       };
     }
     
-    // Extract market events from analysis and insights if any
-    try {
-      console.log(`Looking for market events in research results...`);
-      
-      // Collect all event candidates from all analyses
-      let eventCandidates = [];
-      
-      // Function to extract dates in YYYY-MM-DD format from text
-      const extractDates = (text) => {
-        const dateRegex = /\[?(\d{4}-\d{2}-\d{2})\]?/g;
-        const dates = [];
-        let match;
-        
-        while ((match = dateRegex.exec(text)) !== null) {
-          dates.push(match[1]);
-        }
-        
-        return dates;
-      };
-      
-      // Look for events in all iteration analyses
-      for (const iteration of allIterations) {
-        if (!iteration.analysis) continue;
-        
-        // Look for lines with dates in the analysis
-        const lines = iteration.analysis.split('\n');
-        for (const line of lines) {
-          const dates = extractDates(line);
-          if (dates.length > 0) {
-            // This line likely contains an event
-            const eventTitle = line.replace(/\[?\d{4}-\d{2}-\d{2}\]?/g, '').trim();
-            
-            // Skip if it's too short to be meaningful
-            if (eventTitle.length < 5) continue;
-            
-            // Try to determine event type from the line
-            let eventType = 'info';
-            if (line.toLowerCase().includes('announc')) eventType = 'announcement';
-            else if (line.toLowerCase().includes('milestone')) eventType = 'milestone';
-            else if (line.toLowerCase().includes('update')) eventType = 'update';
-            else if (line.toLowerCase().includes('releas')) eventType = 'document';
-            else if (line.toLowerCase().includes('resolut')) eventType = 'resolution';
-            
-            // Try to extract confidence if present (usually as a number in parentheses)
-            const confidenceMatch = line.match(/\((\d+)\)/);
-            const confidence = confidenceMatch ? parseInt(confidenceMatch[1]) / 5 : 0.8;
-            
-            // Create event object
-            dates.forEach(date => {
-              const timestamp = new Date(date).getTime();
-              if (!isNaN(timestamp)) {
-                eventCandidates.push({
-                  timestamp,
-                  title: eventTitle,
-                  event_type: eventType,
-                  confidence
-                });
-              }
-            });
-          }
-        }
-      }
-      
-      // Look for events in the structured insights
-      if (structuredInsights && typeof structuredInsights === 'object') {
-        // Check for events section in any field
-        const jsonStr = JSON.stringify(structuredInsights);
-        
-        // Look for dates in YYYY-MM-DD format in the entire JSON
-        const dateMatches = jsonStr.match(/\d{4}-\d{2}-\d{2}/g) || [];
-        
-        for (const dateStr of dateMatches) {
-          // Find the context around this date
-          const context = jsonStr.substring(
-            Math.max(0, jsonStr.indexOf(dateStr) - 100),
-            Math.min(jsonStr.length, jsonStr.indexOf(dateStr) + 100)
-          );
-          
-          // Create an event if we can extract a meaningful title
-          const timestamp = new Date(dateStr).getTime();
-          if (!isNaN(timestamp)) {
-            // Try to extract a reasonable title
-            const beforeDate = context.substring(0, context.indexOf(dateStr));
-            const afterDate = context.substring(context.indexOf(dateStr) + dateStr.length);
-            
-            let title = '';
-            // Try to extract text between quotes or colons
-            const titleMatch = beforeDate.match(/"([^"]+)"$/) || 
-                              afterDate.match(/^"([^"]+)"/) ||
-                              beforeDate.match(/:([^:]+)$/) ||
-                              afterDate.match(/^:([^:]+)/);
-            
-            if (titleMatch) {
-              title = titleMatch[1].trim();
-            } else {
-              // Use nearby words
-              const words = afterDate.split(/[,.\s"]/).filter(w => w.length > 0);
-              title = words.slice(0, 5).join(' ');
-            }
-            
-            if (title.length > 3) {
-              eventCandidates.push({
-                timestamp,
-                title,
-                event_type: 'info',
-                confidence: 0.7
-              });
-            }
-          }
-        }
-      }
-      
-      // Filter and deduplicate events
-      if (eventCandidates.length > 0) {
-        console.log(`Found ${eventCandidates.length} potential market events`);
-        
-        // Sort events by timestamp
-        eventCandidates.sort((a, b) => a.timestamp - b.timestamp);
-        
-        // Deduplicate events on the same day with similar titles
-        const uniqueEvents = [];
-        const seenEvents = new Set();
-        
-        for (const event of eventCandidates) {
-          const dayKey = new Date(event.timestamp).toISOString().substring(0, 10);
-          const titleKey = event.title.toLowerCase().substring(0, 20);
-          const eventKey = `${dayKey}:${titleKey}`;
-          
-          if (!seenEvents.has(eventKey)) {
-            seenEvents.add(eventKey);
-            uniqueEvents.push(event);
-          }
-        }
-        
-        // Insert events into market_events table
-        for (const event of uniqueEvents) {
-          try {
-            const eventId = crypto.randomUUID();
-            
-            // Create a market event record
-            const { error: insertError } = await supabaseClient
-              .from('market_events')
-              .insert({
-                id: eventId,
-                market_id: marketId,
-                event_type: event.event_type,
-                title: event.title,
-                description: `Auto-extracted from research job ${jobId}`,
-                timestamp: new Date(event.timestamp).toISOString(),
-                icon: event.event_type || 'info',
-                confidence: event.confidence || 0.7,
-                source: 'research_job'
-              });
-              
-            if (insertError) {
-              console.error(`Error inserting market event:`, insertError);
-            } else {
-              console.log(`Added market event: ${event.title} (${new Date(event.timestamp).toISOString()})`);
-            }
-          } catch (eventError) {
-            console.error(`Error processing market event:`, eventError);
-          }
-        }
-      }
-    } catch (eventsError) {
-      console.error(`Error extracting market events:`, eventsError);
-    }
-    
     // Combine text analysis and structured insights
     const finalResults = {
       ...textAnalysisResults,
@@ -1216,3 +888,210 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     }
   }
 }
+
+// Function to generate analysis using OpenRouter
+async function generateAnalysis(
+  content: string, 
+  query: string, 
+  analysisType: string,
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
+): Promise<string> {
+  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+  
+  if (!openRouterKey) {
+    throw new Error('OPENROUTER_API_KEY is not set in environment');
+  }
+  
+  console.log(`Generating ${analysisType} using OpenRouter`);
+  
+  // Limit content length to avoid token limits
+  const contentLimit = 20000;
+  const truncatedContent = content.length > contentLimit 
+    ? content.substring(0, contentLimit) + "... [content truncated]" 
+    : content;
+  
+  // Add market context to the prompt
+  let contextInfo = '';
+  
+  if (marketPrice !== undefined) {
+    contextInfo += `\nCurrent market prediction: ${marketPrice}% probability\n`;
+  }
+  
+  if (relatedMarkets && relatedMarkets.length > 0) {
+    contextInfo += '\nRelated markets:\n';
+    relatedMarkets.forEach(market => {
+      if (market.question && market.probability !== undefined) {
+        const probability = Math.round(market.probability * 100);
+        contextInfo += `- ${market.question}: ${probability}% probability\n`;
+      }
+    });
+  }
+  
+  if (areasForResearch && areasForResearch.length > 0) {
+    contextInfo += '\nAreas identified for further research:\n';
+    areasForResearch.forEach(area => {
+      contextInfo += `- ${area}\n`;
+    });
+  }
+  
+  // Add focus text section if provided
+  let focusSection = '';
+  if (focusText && focusText.trim()) {
+    focusSection = `\nFOCUS AREA: "${focusText.trim()}"\n
+Your analysis must specifically address and deeply analyze this focus area. Connect all insights to this focus.`;
+  }
+  
+  // Add previous analyses section if provided
+  let previousAnalysesSection = '';
+  if (previousAnalyses && previousAnalyses.length > 0) {
+    previousAnalysesSection = `\n\nPREVIOUS ANALYSES: 
+${previousAnalyses.map((analysis, idx) => `--- Analysis ${idx+1} ---\n${analysis}\n`).join('\n')}
+
+IMPORTANT: DO NOT REPEAT information from previous analyses. Instead:
+1. Build upon them with NEW insights
+2. Address gaps and uncertainties from earlier analyses
+3. Deepen understanding of already identified points with NEW evidence
+4. Provide CONTRASTING perspectives where relevant`;
+  }
+  
+  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
+
+Content to analyze:
+${truncatedContent}
+${contextInfo}
+${focusSection}
+${previousAnalysesSection}
+
+Please provide:
+
+1. Key Facts and Insights: What are the most important NEW pieces of information relevant to the query?
+2. Evidence Assessment: Evaluate the strength of evidence regarding the query.${focusText ? ` Make EXPLICIT connections to the focus area: "${focusText}"` : ''}
+3. Probability Factors: What factors impact the likelihood of outcomes related to the query?${focusText ? ` Specifically analyze how these factors relate to: "${focusText}"` : ''}
+4. Areas for Further Research: Identify specific gaps in knowledge that would benefit from additional research.
+5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
+
+Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
+  
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+      "X-Title": "Market Research App",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-flash-1.5",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
+
+Your analysis should:
+1. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
+2. Avoid repeating information from previous analyses
+3. Build upon existing knowledge with new perspectives
+4. Identify connections between evidence and implications
+5. Be critical of source reliability and evidence quality
+6. Draw balanced conclusions based solely on the evidence provided`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.3
+    })
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+  }
+  
+  const data = await response.json();
+  
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+  }
+  
+  return data.choices[0].message.content;
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+  
+  try {
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
+    
+    if (!marketId || !query) {
+      return new Response(
+        JSON.stringify({ error: 'marketId and query are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+    
+    // Create a new job record
+    const { data: jobData, error: jobError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        current_iteration: 0,
+        progress_log: [],
+        iterations: [],
+        focus_text: focusText,
+        notification_email: notificationEmail
+      })
+      .select('id')
+      .single()
+    
+    if (jobError) {
+      throw new Error(`Failed to create job: ${jobError.message}`)
+    }
+    
+    const jobId = jobData.id
+    
+    // Start the background process without EdgeRuntime
+    // Use standard Deno setTimeout for async operation instead
+    setTimeout(() => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
+        console.error(`Background research failed: ${err}`);
+      });
+    }, 0);
+    
+    // Return immediate response with job ID
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Research job started', 
+        jobId: jobId 
+      }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
+  } catch (error) {
+    console.error('Error:', error)
+    return new Response(
+      JSON.stringify({ error: error.message || 'Unknown error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})

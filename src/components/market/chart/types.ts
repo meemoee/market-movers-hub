@@ -1,4 +1,3 @@
-
 export interface PriceData {
   time: number;
   price: number;
@@ -22,6 +21,4 @@ export interface MarketEvent {
   description?: string;
   timestamp: number;
   icon: string;
-  source?: string;
-  confidence?: number;
 }

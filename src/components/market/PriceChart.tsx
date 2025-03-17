@@ -1,5 +1,4 @@
-
-import { useMemo, useCallback, useEffect, useState } from 'react';
+import { useMemo, useCallback } from 'react';
 import { ParentSize } from '@visx/responsive';
 import { scaleTime, scaleLinear } from '@visx/scale';
 import { LinePath } from '@visx/shape';
@@ -283,65 +282,23 @@ function Chart({
 
 interface PriceChartProps {
   data: PriceData[];
-  events?: MarketEvent[];
+  events: MarketEvent[];
   selectedInterval: string;
   onIntervalSelect?: (interval: string) => void;
-  marketId?: string;
 }
 
 export default function PriceChart({ 
   data, 
-  events = [],
+  events,
   selectedInterval, 
-  onIntervalSelect,
-  marketId
+  onIntervalSelect 
 }: PriceChartProps) {
-  const [marketEvents, setMarketEvents] = useState<MarketEvent[]>(events);
-  
-  // Normalize data timestamps
   const normalizedData = useMemo(() => 
     data.map(d => ({
       ...d,
       time: d.time * (d.time < 1e12 ? 1000 : 1)
     }))
   , [data]);
-  
-  // If marketId is provided, fetch events from the market_events table
-  useEffect(() => {
-    if (marketId && (!events || events.length === 0)) {
-      const fetchMarketEvents = async () => {
-        try {
-          const { data: fetchedEvents, error } = await fetch(`/api/market-events?marketId=${marketId}`)
-            .then(res => res.json());
-            
-          if (error) {
-            console.error('Error fetching market events:', error);
-            return;
-          }
-          
-          if (fetchedEvents && fetchedEvents.length > 0) {
-            // Convert database events to the format expected by the chart
-            const formattedEvents: MarketEvent[] = fetchedEvents.map((event: any) => ({
-              id: event.id,
-              event_type: event.event_type,
-              title: event.title,
-              description: event.description,
-              timestamp: new Date(event.timestamp).getTime(),
-              icon: event.icon || 'info'
-            }));
-            
-            setMarketEvents(formattedEvents);
-          }
-        } catch (error) {
-          console.error('Error fetching market events:', error);
-        }
-      };
-      
-      fetchMarketEvents();
-    } else if (events && events.length > 0) {
-      setMarketEvents(events);
-    }
-  }, [marketId, events]);
 
   return (
     <div>      
@@ -350,7 +307,7 @@ export default function PriceChart({
           {({ width, height }) => (
             <Chart
               data={normalizedData}
-              events={marketEvents}
+              events={events}
               width={width}
               height={height}
             />

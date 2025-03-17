@@ -1,32 +1,12 @@
+import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown, LucideIcon } from 'lucide-react';
 
-import { Info, AlertCircle, CheckCircle, XCircle, ArrowUp, ArrowDown, Calendar, Bell, Flag, Award, Target, FileText, MessageSquare, Bookmark, Zap, Star, BarChart, Clock, Database, FileQuestion, Megaphone, Milestone, Eye } from 'lucide-react';
-
-const iconMap: Record<string, React.ComponentType<any>> = {
+const iconMap: Record<string, LucideIcon> = {
   info: Info,
   alert: AlertCircle,
   success: CheckCircle,
   error: XCircle,
   up: ArrowUp,
   down: ArrowDown,
-  calendar: Calendar,
-  bell: Bell,
-  flag: Flag,
-  award: Award,
-  target: Target,
-  document: FileText,
-  announcement: Megaphone,
-  milestone: Milestone,
-  update: Zap,
-  resolution: Target,
-  comment: MessageSquare,
-  bookmark: Bookmark,
-  star: Star,
-  data: Database,
-  data_release: Database,
-  chart: BarChart,
-  question: FileQuestion,
-  deadline: Clock,
-  observation: Eye
 };
 
 interface EventIconProps {
@@ -36,6 +16,6 @@ interface EventIconProps {
 }
 
 export function EventIcon({ type, size = 16, className }: EventIconProps) {
-  const IconComponent = iconMap[type.toLowerCase()] || Info;
+  const IconComponent = iconMap[type] || Info;
   return <IconComponent size={size} className={className} />;
 }

@@ -19,67 +19,13 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const [processedContent, setProcessedContent] = useState<string>(content || '')
-  
-  // Process content to handle potential JSON data from API responses
-  useEffect(() => {
-    if (!content) {
-      setProcessedContent('')
-      return
-    }
-    
-    // Try to detect if the content is a raw JSON response from Gemini
-    if (content.includes('"provider":"Google') || 
-        content.includes('"model":"google/gemini-')) {
-      try {
-        // Extract the actual content from the response
-        const lines = content.split('\n')
-        let cleanedContent = ''
-        
-        lines.forEach(line => {
-          // Skip lines that are just raw JSON responses
-          if (line.includes('"provider":"Google') || 
-              line.includes('"model":"google/gemini-') ||
-              line.includes('"role":"assistant"') ||
-              line.includes('"object":"chat.completion.chunk"') ||
-              line.includes('"usage":')) {
-            return
-          }
-          
-          // If there's JSON containing content, try to extract it
-          if (line.includes('"content"')) {
-            try {
-              const jsonObj = JSON.parse(line)
-              if (jsonObj.choices?.[0]?.delta?.content) {
-                cleanedContent += jsonObj.choices[0].delta.content
-              }
-            } catch (e) {
-              // If JSON parsing fails, just include the line
-              cleanedContent += line + '\n'
-            }
-          } else {
-            // Include all other lines
-            cleanedContent += line + '\n'
-          }
-        })
-        
-        setProcessedContent(cleanedContent || content)
-      } catch (e) {
-        console.error("Error processing content:", e)
-        setProcessedContent(content)
-      }
-    } else {
-      // Not a JSON response, use content as is
-      setProcessedContent(content)
-    }
-  }, [content])
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = processedContent?.length || 0
+    const currentContentLength = content?.length || 0
     
     // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
@@ -96,7 +42,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [processedContent, isStreaming, shouldAutoScroll])
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -155,7 +101,7 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
-  if (!processedContent && !content) return null
+  if (!content) return null
 
   return (
     <div className="relative">
@@ -166,7 +112,7 @@ export function AnalysisDisplay({
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {processedContent}
+            {content}
           </ReactMarkdown>
         </div>
       </ScrollArea>
