@@ -119,27 +119,79 @@ Do not include events without clear dates.`;
       })
     });
 
+    // Log the response status and headers
+    console.log(`OpenRouter response status: ${response.status}`);
+    console.log(`OpenRouter response headers: ${JSON.stringify(Object.fromEntries(response.headers))}`);
+
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`OpenRouter API error response: ${errorText}`);
       throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
     }
 
-    const data = await response.json();
+    // Log the raw response data
+    const rawResponseText = await response.text();
+    console.log("--- OpenRouter Raw Response ---");
+    console.log(rawResponseText);
+    
+    // Parse the response after logging the raw text
+    let data;
+    try {
+      data = JSON.parse(rawResponseText);
+      console.log("--- OpenRouter Parsed Response Structure ---");
+      console.log(`Response has choices: ${!!data.choices}`);
+      console.log(`Number of choices: ${data.choices?.length || 0}`);
+      console.log(`First choice has message: ${!!data.choices?.[0]?.message}`);
+      console.log(`Model used: ${data.model || 'unknown'}`);
+      console.log(`Usage info: ${JSON.stringify(data.usage || {})}`);
+    } catch (parseError) {
+      console.error(`Failed to parse OpenRouter response as JSON: ${parseError.message}`);
+      throw new Error(`Invalid JSON response from OpenRouter: ${parseError.message}`);
+    }
     
     if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-      throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+      console.error(`Invalid response structure from OpenRouter: ${JSON.stringify(data)}`);
+      throw new Error(`Invalid response structure from OpenRouter API: ${JSON.stringify(data)}`);
     }
+
+    // Log the actual model output content
+    console.log("--- OpenRouter Model Output Content ---");
+    console.log(data.choices[0].message.content);
 
     let eventsData: EventsResponse;
     try {
       // Try to parse the content as JSON - might already be an object
       const content = data.choices[0].message.content;
-      eventsData = typeof content === 'string' ? JSON.parse(content) : content;
+      const contentToParse = typeof content === 'string' ? content : JSON.stringify(content);
+      console.log(`Content type: ${typeof content}`);
+      
+      try {
+        eventsData = typeof content === 'string' ? JSON.parse(content) : content;
+        console.log("Successfully parsed content as JSON directly");
+      } catch (directParseError) {
+        console.error(`Failed direct JSON parse: ${directParseError.message}`);
+        
+        // Try to extract JSON if wrapped in markdown or other text
+        const jsonMatch = contentToParse.match(/({[\s\S]*})/);
+        if (jsonMatch) {
+          try {
+            eventsData = JSON.parse(jsonMatch[0]);
+            console.log("Successfully parsed content by extracting JSON from text");
+          } catch (extractParseError) {
+            console.error(`Failed to parse extracted JSON: ${extractParseError.message}`);
+            throw extractParseError;
+          }
+        } else {
+          console.error("No JSON-like structure found in the response");
+          throw directParseError;
+        }
+      }
       
       console.log(`Extracted ${eventsData.events?.length || 0} timeline events`);
       
       // Validate the response format
       if (!eventsData.events || !Array.isArray(eventsData.events)) {
+        console.error("Events property missing or not an array");
         eventsData = { events: [] };
         console.log("No valid events found in the response, using empty array");
       }
@@ -197,6 +249,7 @@ Do not include events without clear dates.`;
       console.log(`Timeline events extraction completed for market ${marketId}`);
     } catch (parseError) {
       console.error(`Error parsing events data: ${parseError.message}`);
+      console.error(`Stack trace: ${parseError.stack}`);
       eventsData = { events: [] };
     }
 
@@ -210,6 +263,7 @@ Do not include events without clear dates.`;
     
   } catch (error) {
     console.error('Error in extract-timeline-events function:', error);
+    console.error(`Stack trace: ${error.stack}`);
     
     return new Response(
       JSON.stringify({ error: error.message || 'Unknown error', events: [] }),
