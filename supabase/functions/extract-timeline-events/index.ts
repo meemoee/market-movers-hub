@@ -129,6 +129,9 @@ Do not include events without clear dates.`;
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
       
+      // Log the events we're about to insert
+      console.log(`Attempting to insert ${eventsData.events.length} events for market ${marketId}`);
+      
       for (const event of eventsData.events) {
         // Convert date string to timestamp if needed
         let timestamp = event.timestamp;
@@ -138,8 +141,10 @@ Do not include events without clear dates.`;
           timestamp = `${timestamp}T12:00:00Z`;
         }
         
+        console.log(`Inserting event: "${event.title}" with timestamp ${timestamp}`);
+        
         // Insert the event
-        const { error } = await supabaseClient
+        const { data, error } = await supabaseClient
           .from('market_events')
           .insert({
             market_id: marketId,
@@ -148,12 +153,17 @@ Do not include events without clear dates.`;
             description: event.description,
             timestamp: timestamp,
             icon: event.icon || 'info'
-          });
+          })
+          .select();
           
         if (error) {
-          console.error(`Error inserting event: ${error.message}`);
+          console.error(`Error inserting event: ${error.message}`, error);
+        } else {
+          console.log(`Successfully inserted event with ID: ${data?.[0]?.id}`);
         }
       }
+      
+      console.log(`Timeline events extraction completed for market ${marketId}`);
     } catch (parseError) {
       console.error(`Error parsing events data: ${parseError.message}`);
       eventsData = { events: [] };
@@ -171,7 +181,7 @@ Do not include events without clear dates.`;
     console.error('Error in extract-timeline-events function:', error);
     
     return new Response(
-      JSON.stringify({ error: error.message || 'Unknown error' }),
+      JSON.stringify({ error: error.message || 'Unknown error', events: [] }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
