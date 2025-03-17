@@ -49,7 +49,6 @@ export function IterationCard({
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
   // Get the analysis content, handling both formats
-  // (newer format has separate analysis field, older format has it nested in the analysis object)
   const getAnalysisContent = () => {
     // Handle both formats - supporting both structures for backward compatibility
     if (iteration.reasoning) {
@@ -60,11 +59,11 @@ export function IterationCard({
       // Handle the case where analysis is an object with its own fields
       return (iteration.analysis as any).reasoning || (iteration.analysis as any).analysis || '';
     }
-    return iteration.analysis || "Analysis in progress...";
+    return '';
   };
 
   // Determine if this particular iteration is streaming
-  const isIterationStreaming = isStreaming && isCurrentIteration && iteration.isStreaming;
+  const isIterationStreaming = isStreaming && isCurrentIteration;
 
   return (
     <div className={cn(
@@ -83,7 +82,7 @@ export function IterationCard({
           <Badge variant={isFinalIteration ? "default" : "outline"} 
             className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
             Iteration {iteration.iteration}
-            {isStreaming && isCurrentIteration && " (Streaming...)"}
+            {isIterationStreaming && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
