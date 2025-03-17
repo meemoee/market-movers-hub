@@ -1,15 +1,8 @@
 
-import { Target, ArrowDown, AlertCircle, ExternalLink, TrendingUp, ChevronRight, Check, X, Brain } from "lucide-react";
+import { Target, ArrowDown, AlertCircle, ExternalLink, TrendingUp, ChevronRight, Check, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useState } from "react";
-
-interface MarketData {
-  bestBid?: number;
-  bestAsk?: number;
-  outcomes?: string[];
-}
 
 interface ParentResearch {
   id: string;
@@ -34,7 +27,6 @@ interface StreamingState {
     probability: string;
     areasForResearch: string[];
     reasoning?: ReasoningData | string;
-    reasoningTokens?: string;
   } | null;
 }
 
@@ -45,7 +37,6 @@ interface InsightsDisplayProps {
   onResearchArea?: (area: string) => void;
   parentResearch?: ParentResearch;
   childResearches?: ChildResearch[];
-  marketData?: MarketData;
 }
 
 export function InsightsDisplay({ 
@@ -54,14 +45,11 @@ export function InsightsDisplay({
   streamingState,
   onResearchArea,
   parentResearch,
-  childResearches,
-  marketData
+  childResearches
 }: InsightsDisplayProps) {
-  const [showReasoningTokens, setShowReasoningTokens] = useState(false);
-  
   const getProbabilityColor = (prob: string) => {
-    const numericProb = parseInt(prob.replace('%', ''));
-    return numericProb >= 50 ? 'bg-green-500/10' : 'bg-red-500/10';
+    const numericProb = parseInt(prob.replace('%', ''))
+    return numericProb >= 50 ? 'bg-green-500/10' : 'bg-red-500/10'
   }
 
   // Use either direct props or streaming state
@@ -70,7 +58,6 @@ export function InsightsDisplay({
   
   // Process reasoning data which can now be either a string or an object
   const reasoning = streamingState?.parsedData?.reasoning;
-  const reasoningTokens = streamingState?.parsedData?.reasoningTokens;
   const evidenceFor: string[] = [];
   const evidenceAgainst: string[] = [];
   
@@ -88,9 +75,6 @@ export function InsightsDisplay({
       }
     }
   }
-
-  // Calculate good buy opportunities if market data is available
-  const goodBuyOpportunities = calculateGoodOpportunities(displayProbability, marketData);
 
   return (
     <div className="space-y-4 bg-accent/5 rounded-md p-4 overflow-hidden">
@@ -184,37 +168,8 @@ export function InsightsDisplay({
               </>
             )}
             
-            {/* Reasoning Tokens panel */}
-            {reasoningTokens && (
-              <>
-                <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
-                <div>
-                  <Button 
-                    onClick={() => setShowReasoningTokens(!showReasoningTokens)}
-                    variant="outline" 
-                    size="sm"
-                    className="w-full justify-between mb-2"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-violet-500" />
-                      <span className="text-sm font-medium">AI Reasoning Process</span>
-                    </div>
-                    <ChevronRight className={`h-4 w-4 transition-transform ${showReasoningTokens ? 'rotate-90' : ''}`} />
-                  </Button>
-                  
-                  {showReasoningTokens && (
-                    <ScrollArea className="max-h-[300px] mt-2 bg-accent/10 rounded-md p-3">
-                      <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-                        {reasoningTokens}
-                      </div>
-                    </ScrollArea>
-                  )}
-                </div>
-              </>
-            )}
-            
             {/* Fallback for old format reasoning (string type) */}
-            {typeof reasoning === 'string' && reasoning && !reasoningTokens && (
+            {typeof reasoning === 'string' && reasoning && (
               <>
                 <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
                 <div>
@@ -225,34 +180,6 @@ export function InsightsDisplay({
                   <div className="text-sm text-muted-foreground">
                     {reasoning}
                   </div>
-                </div>
-              </>
-            )}
-            
-            {/* Good buy opportunities section */}
-            {goodBuyOpportunities && goodBuyOpportunities.length > 0 && (
-              <>
-                <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-medium mb-2">
-                    <TrendingUp className="h-4 w-4 text-green-500" />
-                    Potential Value Opportunities:
-                  </div>
-                  <ScrollArea className="max-h-[200px]">
-                    <div className="space-y-2">
-                      {goodBuyOpportunities.map((opportunity, index) => (
-                        <div key={index} className="p-2 bg-green-500/10 rounded-md">
-                          <div className="text-sm font-medium text-green-600 dark:text-green-400">
-                            {opportunity.outcome}: {opportunity.difference > 0 ? '+' : ''}{opportunity.difference}%
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            Model prediction: {(opportunity.predictedProbability * 100).toFixed(1)}% | 
-                            Market price: {(opportunity.marketPrice * 100).toFixed(1)}%
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
                 </div>
               </>
             )}
@@ -298,44 +225,4 @@ export function InsightsDisplay({
       </div>
     </div>
   )
-}
-
-// Helper function to calculate good buy opportunities
-function calculateGoodOpportunities(probabilityStr: string, marketData?: MarketData) {
-  if (!probabilityStr || !marketData || !marketData.bestAsk || !marketData.outcomes || marketData.outcomes.length < 2) {
-    return null;
-  }
-
-  const probability = parseInt(probabilityStr.replace('%', '').trim()) / 100;
-  if (isNaN(probability)) {
-    return null;
-  }
-  
-  const THRESHOLD = 0.05;
-  const opportunities = [];
-  
-  const { bestAsk, bestBid } = marketData;
-  
-  if (probability > bestAsk + THRESHOLD) {
-    opportunities.push({
-      outcome: marketData.outcomes[0],
-      predictedProbability: probability,
-      marketPrice: bestAsk,
-      difference: ((probability - bestAsk) * 100).toFixed(1)
-    });
-  }
-  
-  const inferredProbability = 1 - probability;
-  const noAskPrice = 1 - (bestBid || 0);
-  
-  if (inferredProbability > noAskPrice + THRESHOLD) {
-    opportunities.push({
-      outcome: marketData.outcomes[1] || "NO",
-      predictedProbability: inferredProbability,
-      marketPrice: noAskPrice,
-      difference: ((inferredProbability - noAskPrice) * 100).toFixed(1)
-    });
-  }
-  
-  return opportunities.length > 0 ? opportunities : null;
 }

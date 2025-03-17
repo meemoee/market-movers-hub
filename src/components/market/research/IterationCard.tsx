@@ -1,18 +1,13 @@
 
 import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, FileText, Search, ExternalLink, Brain } from "lucide-react"
+import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
+import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
-
-export interface ResearchResult {
-  url: string;
-  content: string;
-  title?: string;
-}
 
 interface IterationCardProps {
   iteration: {
@@ -20,7 +15,6 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
-    reasoning?: string;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -39,7 +33,6 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  const hasReasoning = iteration.reasoning && iteration.reasoning.length > 0
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -75,12 +68,6 @@ export function IterationCard({
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
-          {hasReasoning && (
-            <Badge variant="outline" className="bg-purple-500/10 border-purple-500/30">
-              <Brain className="h-3 w-3 mr-1 text-purple-500" />
-              <span className="text-xs">Reasoning</span>
-            </Badge>
-          )}
         </div>
         {isExpanded ? 
           <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 
@@ -91,11 +78,8 @@ export function IterationCard({
       {isExpanded && (
         <div className="p-3 w-full max-w-full">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
-            <TabsList className="w-full grid grid-cols-4 mb-3">
+            <TabsList className="w-full grid grid-cols-3 mb-3">
               <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
-              {hasReasoning && (
-                <TabsTrigger value="reasoning" className="text-xs">Reasoning</TabsTrigger>
-              )}
               <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
               <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
             </TabsList>
@@ -108,16 +92,6 @@ export function IterationCard({
                   maxHeight="100%"
                 />
               </TabsContent>
-              
-              {hasReasoning && (
-                <TabsContent value="reasoning" className="w-full max-w-full h-full m-0 p-0">
-                  <AnalysisDisplay 
-                    content={iteration.reasoning || "Reasoning in progress..."} 
-                    isStreaming={isStreaming && isCurrentIteration}
-                    maxHeight="100%"
-                  />
-                </TabsContent>
-              )}
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">

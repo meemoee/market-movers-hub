@@ -5,46 +5,30 @@ import ReactMarkdown from 'react-markdown'
 
 interface AnalysisDisplayProps {
   content: string
-  reasoning?: string
   isStreaming?: boolean
   maxHeight?: string | number
-  showReasoning?: boolean
 }
 
 export function AnalysisDisplay({ 
   content, 
-  reasoning,
   isStreaming = false, 
-  maxHeight = "200px",
-  showReasoning = false
+  maxHeight = "200px" 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const [activeTab, setActiveTab] = useState<'content' | 'reasoning'>(showReasoning ? 'reasoning' : 'content')
-  
-  // Switch to display content when reasoning is done but content is still streaming
-  useEffect(() => {
-    if (isStreaming && reasoning && reasoning.length > 0 && activeTab === 'reasoning' && content && content.length > 10) {
-      // If reasoning seems complete (ends with a complete sentence) and content is streaming
-      if (reasoning.match(/[.!?]\s*$/) && content.length < 500) {
-        setActiveTab('content');
-      }
-    }
-  }, [reasoning, content, isStreaming, activeTab]);
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = (activeTab === 'content' ? content : reasoning)?.length || 0
-    const prevLength = prevContentLength.current
+    const currentContentLength = content?.length || 0
     
     // Only auto-scroll if content is growing or streaming
-    if (currentContentLength > prevLength || isStreaming) {
+    if (currentContentLength > prevContentLength.current || isStreaming) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
@@ -58,7 +42,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, reasoning, isStreaming, shouldAutoScroll, activeTab])
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -117,38 +101,10 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
-  if (!content && !reasoning) return null
-  
-  const displayContent = activeTab === 'content' ? content : reasoning;
-  const hasReasoning = reasoning && reasoning.length > 0;
+  if (!content) return null
 
   return (
     <div className="relative">
-      {hasReasoning && (
-        <div className="flex items-center space-x-1 mb-2">
-          <button 
-            onClick={() => setActiveTab('reasoning')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              activeTab === 'reasoning' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'bg-accent/30 hover:bg-accent/40'
-            }`}
-          >
-            Reasoning Process
-          </button>
-          <button 
-            onClick={() => setActiveTab('content')}
-            className={`px-3 py-1 text-xs rounded-md transition-colors ${
-              activeTab === 'content' 
-                ? 'bg-primary text-primary-foreground' 
-                : 'bg-accent/30 hover:bg-accent/40'
-            }`}
-          >
-            Final Analysis
-          </button>
-        </div>
-      )}
-      
       <ScrollArea 
         className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}
@@ -156,7 +112,7 @@ export function AnalysisDisplay({
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {displayContent || ''}
+            {content}
           </ReactMarkdown>
         </div>
       </ScrollArea>
@@ -165,7 +121,7 @@ export function AnalysisDisplay({
         <div className="absolute bottom-2 right-2">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
-              {streamStatus === 'waiting' ? "Waiting for data..." : `Streaming ${activeTab === 'reasoning' ? 'reasoning' : 'analysis'}...`}
+              {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
             </span>
             <div className="flex space-x-1">
               <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
