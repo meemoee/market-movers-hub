@@ -126,6 +126,55 @@ export function JobQueueResearchCard({
     }
   };
 
+  const handleStreamingContent = (jobId: string, iterationNumber: number) => {
+    console.log(`Setting up streaming for job ${jobId}, iteration ${iterationNumber}`);
+    
+    const eventSource = new EventSource(
+      `${supabase.functions.url('extract-research-insights')}?stream=true&jobId=${jobId}&iteration=${iterationNumber}`
+    );
+    
+    let accumulatedContent = '';
+    
+    eventSource.onmessage = (event) => {
+      try {
+        if (event.data === '[DONE]') {
+          console.log('Streaming complete');
+          eventSource.close();
+          return;
+        }
+        
+        const parsed = JSON.parse(event.data);
+        if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+          const content = parsed.choices[0].delta.content || '';
+          if (content) {
+            accumulatedContent += content;
+            
+            setIterations(currentIterations => {
+              return currentIterations.map(iter => {
+                if (iter.iteration === iterationNumber) {
+                  return {
+                    ...iter,
+                    analysis: accumulatedContent
+                  };
+                }
+                return iter;
+              });
+            });
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing SSE data:', e, 'Raw data:', event.data);
+      }
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error('EventSource error:', error);
+      eventSource.close();
+    };
+    
+    return eventSource;
+  };
+
   const loadJobData = (job: ResearchJob) => {
     setJobId(job.id);
     setJobStatus(job.status);
@@ -247,6 +296,8 @@ export function JobQueueResearchCard({
   useEffect(() => {
     if (!jobId || !polling) return;
     
+    let eventSource: EventSource | null = null;
+    
     const pollInterval = setInterval(async () => {
       try {
         console.log(`Polling for job status: ${jobId}`);
@@ -272,6 +323,11 @@ export function JobQueueResearchCard({
         setJobStatus(job.status);
         
         if (job.status === 'completed') {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          
           setPolling(false);
           setProgressPercent(100);
           setProgress(prev => [...prev, 'Job completed successfully!']);
@@ -307,6 +363,11 @@ export function JobQueueResearchCard({
           
           clearInterval(pollInterval);
         } else if (job.status === 'failed') {
+          if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+          }
+          
           setPolling(false);
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
@@ -328,10 +389,20 @@ export function JobQueueResearchCard({
           }
           
           if (job.iterations && Array.isArray(job.iterations)) {
+            const currentIteration = job.current_iteration || 0;
+            const hasCurrentIterationInState = iterations.some(i => i.iteration === currentIteration);
+            
+            if (currentIteration > 0 && !hasCurrentIterationInState) {
+              if (eventSource) {
+                eventSource.close();
+              }
+              eventSource = handleStreamingContent(jobId, currentIteration);
+            }
+            
             setIterations(job.iterations);
             
-            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-              setExpandedIterations(prev => [...prev, job.current_iteration]);
+            if (currentIteration > 0 && !expandedIterations.includes(currentIteration)) {
+              setExpandedIterations(prev => [...prev, currentIteration]);
             }
           }
         }
@@ -340,7 +411,12 @@ export function JobQueueResearchCard({
       }
     }, 3000);
     
-    return () => clearInterval(pollInterval);
+    return () => {
+      clearInterval(pollInterval);
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
   }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
