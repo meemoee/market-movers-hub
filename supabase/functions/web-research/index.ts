@@ -1,7 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
-import { load } from "https://esm.sh/cheerio@1.0.0"
+import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
 
 const BING_API_KEY = Deno.env.get('BING_API_KEY')
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
@@ -274,53 +274,42 @@ class WebScraper {
   async run(query: string, focusText?: string) {
     await this.sendUpdate(`Starting web research for query: ${query}${focusText ? ` with focus on: ${focusText}` : ''}`)
     
-    try {
-      // Generate sub-queries using OpenRouter
-      const subQueries = await generateSubQueries(query, focusText)
-      await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
+    // Generate sub-queries using OpenRouter
+    const subQueries = await generateSubQueries(query, focusText)
+    await this.sendUpdate(`Generated ${subQueries.length} sub-queries for research`)
+    
+    // Process sub-queries in parallel with a concurrency limit
+    const concurrencyLimit = 3
+    const processSubquery = async (subQuery: string, index: number) => {
+      await this.sendUpdate(`Processing search query ${index+1}/${subQueries.length}: ${subQuery}`)
+      const searchResults = await this.searchBing(subQuery)
       
-      // Process sub-queries in parallel with a concurrency limit
-      const concurrencyLimit = 3
-      const processSubquery = async (subQuery: string, index: number) => {
-        try {
-          await this.sendUpdate(`Processing search query ${index+1}/${subQueries.length}: ${subQuery}`)
-          const searchResults = await this.searchBing(subQuery)
-          
-          if (!searchResults.length) {
-            return
-          }
-
-          const urls = searchResults.map(result => result.url)
-          const batchSize = 10
-          
-          // Process in smaller batches for more responsive streaming
-          for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
-            const batchUrls = urls.slice(startIdx, startIdx + batchSize)
-            await this.processBatch(batchUrls, batchSize)
-          }
-        } catch (e) {
-          console.error(`Error processing subquery ${index+1}:`, e)
-          await this.sendUpdate(`Error processing subquery ${index+1}: ${e.message}`)
-        }
-      }
-      
-      // Process subqueries with limited concurrency
-      for (let i = 0; i < subQueries.length; i += concurrencyLimit) {
-        const subQueryBatch = subQueries.slice(i, i + concurrencyLimit)
-        const promises = subQueryBatch.map((subQuery, idx) => 
-          processSubquery(subQuery, i + idx)
-        )
-        await Promise.all(promises)
+      if (!searchResults.length) {
+        return
       }
 
-      await this.sendUpdate(`Web research complete. Collected information from ${this.collector.collectedData.length} sources.`)
+      const urls = searchResults.map(result => result.url)
+      const batchSize = 10
       
-      return this.collector.collectedData
-    } catch (error) {
-      console.error("Error in WebScraper.run:", error)
-      await this.sendUpdate(`Error in web research: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      throw error
+      // Process in smaller batches for more responsive streaming
+      for (let startIdx = 0; startIdx < urls.length; startIdx += batchSize) {
+        const batchUrls = urls.slice(startIdx, startIdx + batchSize)
+        await this.processBatch(batchUrls, batchSize)
+      }
     }
+    
+    // Process subqueries with limited concurrency
+    for (let i = 0; i < subQueries.length; i += concurrencyLimit) {
+      const subQueryBatch = subQueries.slice(i, i + concurrencyLimit)
+      const promises = subQueryBatch.map((subQuery, idx) => 
+        processSubquery(subQuery, i + idx)
+      )
+      await Promise.all(promises)
+    }
+
+    await this.sendUpdate(`Web research complete. Collected information from ${this.collector.collectedData.length} sources.`)
+    
+    return this.collector.collectedData
   }
 }
 

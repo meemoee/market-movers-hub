@@ -1,4 +1,3 @@
-
 import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -88,9 +87,6 @@ export default function RightSidebar() {
               }
               
               push()
-            }).catch(err => {
-              console.error('Error reading stream:', err)
-              controller.close()
             })
           }
           
