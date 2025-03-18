@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { setupSSEConnection, closeSSEConnection, StreamEventType, SSEConnection } from "@/utils/sse-helpers"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -82,7 +83,7 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const [activeStreamSources, setActiveStreamSources] = useState<Map<number, EventSource>>(new Map())
+  const [activeStreamSources, setActiveStreamSources] = useState<Map<number, SSEConnection>>(new Map())
   const { toast } = useToast()
 
   const resetState = () => {
@@ -97,7 +98,11 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    activeStreamSources.forEach(source => source.close());
+    activeStreamSources.forEach(source => {
+      if (source.eventSource) {
+        closeSSEConnection(source);
+      }
+    });
     setActiveStreamSources(new Map());
   }
 
@@ -105,7 +110,11 @@ export function JobQueueResearchCard({
     fetchSavedJobs();
     
     return () => {
-      activeStreamSources.forEach(source => source.close());
+      activeStreamSources.forEach(source => {
+        if (source.eventSource) {
+          closeSSEConnection(source);
+        }
+      });
     };
   }, [marketId]);
 
@@ -137,74 +146,71 @@ export function JobQueueResearchCard({
     console.log(`Setting up streaming for job ${jobId}, iteration ${iterationNumber}`);
     
     if (activeStreamSources.has(iterationNumber)) {
-      activeStreamSources.get(iterationNumber)?.close();
+      const existingConnection = activeStreamSources.get(iterationNumber);
+      if (existingConnection && existingConnection.eventSource) {
+        closeSSEConnection(existingConnection);
+      }
     }
     
     const SUPABASE_PROJECT_ID = 'lfmkoismabbhujycnqpn';
     const functionUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-research-insights`;
-    
-    const eventSource = new EventSource(
-      `${functionUrl}?stream=true&jobId=${jobId}&iteration=${iterationNumber}`
-    );
-    
-    setActiveStreamSources(prev => {
-      const newMap = new Map(prev);
-      newMap.set(iterationNumber, eventSource);
-      return newMap;
-    });
+    const streamUrl = `${functionUrl}?stream=true&jobId=${jobId}&iteration=${iterationNumber}`;
     
     let accumulatedContent = '';
     
-    eventSource.onmessage = (event) => {
-      try {
-        if (event.data === '[DONE]') {
-          console.log(`Streaming complete for iteration ${iterationNumber}`);
+    const currentIteration = iterations.find(iter => iter.iteration === iterationNumber);
+    if (currentIteration && currentIteration.analysis) {
+      accumulatedContent = currentIteration.analysis;
+    }
+    
+    const connection = setupSSEConnection(streamUrl, {
+      retryLimit: 3,
+      retryDelay: 1500,
+      onStart: () => {
+        console.log(`Started streaming analysis for iteration ${iterationNumber}`);
+      },
+      onContent: (content) => {
+        if (content) {
+          accumulatedContent += content;
           
-          eventSource.close();
-          setActiveStreamSources(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(iterationNumber);
-            return newMap;
-          });
-          
-          return;
-        }
-        
-        const parsed = JSON.parse(event.data);
-        if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
-          const content = parsed.choices[0].delta.content || '';
-          if (content) {
-            accumulatedContent += content;
-            
-            setIterations(currentIterations => {
-              return currentIterations.map(iter => {
-                if (iter.iteration === iterationNumber) {
-                  return {
-                    ...iter,
-                    analysis: accumulatedContent
-                  };
-                }
-                return iter;
-              });
+          setIterations(currentIterations => {
+            return currentIterations.map(iter => {
+              if (iter.iteration === iterationNumber) {
+                return {
+                  ...iter,
+                  analysis: accumulatedContent
+                };
+              }
+              return iter;
             });
-          }
+          });
         }
-      } catch (e) {
-        console.error('Error parsing SSE data:', e, 'Raw data:', event.data);
+      },
+      onError: (error) => {
+        console.error(`EventSource error for iteration ${iterationNumber}:`, error);
+        setActiveStreamSources(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(iterationNumber);
+          return newMap;
+        });
+      },
+      onComplete: () => {
+        console.log(`Streaming complete for iteration ${iterationNumber}`);
+        setActiveStreamSources(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(iterationNumber);
+          return newMap;
+        });
       }
-    };
+    });
     
-    eventSource.onerror = (error) => {
-      console.error(`EventSource error for iteration ${iterationNumber}:`, error);
-      eventSource.close();
-      setActiveStreamSources(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(iterationNumber);
-        return newMap;
-      });
-    };
+    setActiveStreamSources(prev => {
+      const newMap = new Map(prev);
+      newMap.set(iterationNumber, connection);
+      return newMap;
+    });
     
-    return eventSource;
+    return connection;
   };
 
   const loadJobData = (job: ResearchJob) => {
@@ -229,10 +235,20 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      setIterations(job.iterations);
+      const processedIterations = job.iterations.map(iter => {
+        if (!iter.query) {
+          return {
+            ...iter,
+            query: job.query || "Research query"
+          };
+        }
+        return iter;
+      });
       
-      if (job.iterations.length > 0) {
-        setExpandedIterations([job.iterations.length]);
+      setIterations(processedIterations);
+      
+      if (processedIterations.length > 0) {
+        setExpandedIterations([processedIterations.length]);
       }
     }
     
@@ -353,7 +369,11 @@ export function JobQueueResearchCard({
         setJobStatus(job.status);
         
         if (job.status === 'completed') {
-          activeStreamSources.forEach(source => source.close());
+          activeStreamSources.forEach(source => {
+            if (source.eventSource) {
+              closeSSEConnection(source);
+            }
+          });
           setActiveStreamSources(new Map());
           
           setPolling(false);
@@ -391,7 +411,11 @@ export function JobQueueResearchCard({
           
           clearInterval(pollInterval);
         } else if (job.status === 'failed') {
-          activeStreamSources.forEach(source => source.close());
+          activeStreamSources.forEach(source => {
+            if (source.eventSource) {
+              closeSSEConnection(source);
+            }
+          });
           setActiveStreamSources(new Map());
           
           setPolling(false);
@@ -418,9 +442,17 @@ export function JobQueueResearchCard({
             const currentIteration = job.current_iteration || 0;
             
             setIterations(prevIterations => {
-              const newIterations = [...job.iterations];
+              const processedJobIterations = job.iterations.map(newIter => {
+                if (!newIter.query) {
+                  return {
+                    ...newIter,
+                    query: job.query || "Research query"
+                  };
+                }
+                return newIter;
+              });
               
-              return newIterations.map(newIter => {
+              return processedJobIterations.map(newIter => {
                 const existingIter = prevIterations.find(pi => pi.iteration === newIter.iteration);
                 
                 if (existingIter && activeStreamSources.has(newIter.iteration)) {
@@ -434,9 +466,14 @@ export function JobQueueResearchCard({
               });
             });
             
-            if (currentIteration > 0 && !activeStreamSources.has(currentIteration)) {
-              console.log(`Setting up new stream for iteration ${currentIteration}`);
-              setupStreamingForIteration(jobId, currentIteration);
+            if (currentIteration > 0) {
+              const hasActiveStream = activeStreamSources.has(currentIteration) && 
+                activeStreamSources.get(currentIteration)?.isConnected;
+                
+              if (!hasActiveStream) {
+                console.log(`Setting up new stream for iteration ${currentIteration}`);
+                setupStreamingForIteration(jobId, currentIteration);
+              }
             }
             
             if (currentIteration > 0 && !expandedIterations.includes(currentIteration)) {
@@ -451,7 +488,11 @@ export function JobQueueResearchCard({
     
     return () => {
       clearInterval(pollInterval);
-      activeStreamSources.forEach(source => source.close());
+      activeStreamSources.forEach(source => {
+        if (source.eventSource) {
+          closeSSEConnection(source);
+        }
+      });
     };
   }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, activeStreamSources]);
 
@@ -912,3 +953,4 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
+

@@ -1,12 +1,12 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ChevronUp, Clipboard, CheckCircle, Loader, ExternalLink } from "lucide-react";
 import { SitePreviewList } from "./SitePreviewList";
 import { AnalysisDisplay } from "./AnalysisDisplay";
 import { toast } from "@/components/ui/use-toast";
-import { setupSSEConnection, closeSSEConnection, StreamEventType } from "@/utils/sse-helpers";
+import { setupSSEConnection, closeSSEConnection, StreamEventType, SSEConnection } from "@/utils/sse-helpers";
 
 interface IterationCardProps {
   iteration: {
@@ -37,6 +37,24 @@ export function IterationCard({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isContentStreaming, setIsContentStreaming] = useState(isStreaming);
+  const [connection, setConnection] = useState<SSEConnection | null>(null);
+
+  // Update local state when props change
+  useEffect(() => {
+    if (iteration.analysis !== undefined) {
+      setAnalysis(iteration.analysis);
+    }
+    setIsContentStreaming(isStreaming);
+  }, [iteration.analysis, isStreaming]);
+
+  // Clean up connection on unmount
+  useEffect(() => {
+    return () => {
+      if (connection) {
+        closeSSEConnection(connection);
+      }
+    };
+  }, [connection]);
 
   const copyToClipboard = () => {
     navigator.clipboard.writeText(analysis);
@@ -52,50 +70,56 @@ export function IterationCard({
     setIsContentStreaming(true);
     
     try {
+      // Call parent component's streaming handler if provided
       if (onStartStreaming) {
         onStartStreaming(iterationNum);
+        setLoading(false);
+        return;
       }
       
-      // Set up SSE connection for streaming the analysis
+      // Standalone streaming setup (fallback)
       const SUPABASE_PROJECT_ID = 'lfmkoismabbhujycnqpn';
       const functionUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-research-insights`;
       const streamUrl = `${functionUrl}?stream=true&jobId=${jobId}&iteration=${iterationNum}`;
       
-      const connection = setupSSEConnection(streamUrl, {
+      // Close existing connection if any
+      if (connection) {
+        closeSSEConnection(connection);
+      }
+      
+      const newConnection = setupSSEConnection(streamUrl, {
         retryLimit: 3,
         retryDelay: 1500,
         onStart: () => {
           console.log(`Started streaming analysis for iteration ${iterationNum}`);
-          // Clear existing analysis if we're starting fresh
-          if (!analysis) {
-            setAnalysis('');
-          }
+          setLoading(false);
         },
         onContent: (content) => {
-          setAnalysis(prev => prev + content);
+          if (content) {
+            setAnalysis(prev => prev + content);
+          }
         },
         onError: (err) => {
           console.error(`Stream error for iteration ${iterationNum}:`, err);
           setError(`Error streaming analysis: ${err.message}`);
           setIsContentStreaming(false);
+          setLoading(false);
         },
         onComplete: () => {
           console.log(`Completed streaming analysis for iteration ${iterationNum}`);
           setIsContentStreaming(false);
+          setLoading(false);
         },
         onHeartbeat: () => {
           console.debug(`Received heartbeat for iteration ${iterationNum}`);
         }
       });
       
-      return () => {
-        closeSSEConnection(connection);
-      };
+      setConnection(newConnection);
     } catch (e) {
       console.error('Error setting up streaming:', e);
       setError(`Error setting up streaming: ${e instanceof Error ? e.message : 'Unknown error'}`);
       setIsContentStreaming(false);
-    } finally {
       setLoading(false);
     }
   };
@@ -119,7 +143,7 @@ export function IterationCard({
           </span>
         </div>
         <div className="flex items-center space-x-2">
-          {isStreaming && (
+          {isContentStreaming && (
             <div className="flex items-center mr-2">
               <Loader className="w-3 h-3 text-primary mr-1 animate-spin" />
               <span className="text-xs text-muted-foreground">Streaming</span>
@@ -140,7 +164,7 @@ export function IterationCard({
               <h4 className="text-sm font-medium">Search Query</h4>
             </div>
             <div className="text-sm bg-accent/5 p-2 rounded-md">
-              {iteration.query}
+              {iteration.query || "No query information available"}
             </div>
           </div>
           
