@@ -108,4 +108,53 @@ export class OpenRouter {
       throw error;
     }
   }
+
+  /**
+   * Process an SSE stream from OpenRouter API
+   * @param response The streaming response
+   * @param onChunk Callback function to process each chunk
+   */
+  async processStream(
+    response: Response,
+    onChunk: (chunk: string) => void
+  ): Promise<void> {
+    if (!response.body) {
+      throw new Error("Response body is null");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n").filter(line => line.trim() !== "");
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            
+            if (data === "[DONE]") continue;
+            
+            try {
+              const parsed = JSON.parse(data);
+              if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+                onChunk(parsed.choices[0].delta.content);
+              }
+            } catch (e) {
+              console.error("Error parsing SSE chunk:", e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error processing stream:", error);
+      throw error;
+    } finally {
+      reader.releaseLock();
+    }
+  }
 }

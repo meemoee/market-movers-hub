@@ -82,6 +82,8 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
+  const [streamingContent, setStreamingContent] = useState<string>('');
+  const [currentStreamingIteration, setCurrentStreamingIteration] = useState<number | null>(null);
   const { toast } = useToast()
 
   const resetState = () => {
@@ -96,6 +98,8 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    setStreamingContent('');
+    setCurrentStreamingIteration(null);
   }
 
   useEffect(() => {
@@ -275,6 +279,8 @@ export function JobQueueResearchCard({
           setPolling(false);
           setProgressPercent(100);
           setProgress(prev => [...prev, 'Job completed successfully!']);
+          setStreamingContent('');
+          setCurrentStreamingIteration(null);
           
           if (job.results) {
             try {
@@ -310,6 +316,8 @@ export function JobQueueResearchCard({
           setPolling(false);
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+          setStreamingContent('');
+          setCurrentStreamingIteration(null);
           
           fetchSavedJobs();
           
@@ -318,12 +326,47 @@ export function JobQueueResearchCard({
           if (job.max_iterations && job.current_iteration !== undefined) {
             const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
             setProgressPercent(percent);
+            
+            if (job.current_iteration > 0 && 
+                (iterations.length === 0 || iterations[iterations.length - 1].iteration < job.current_iteration)) {
+              setStreamingContent('');
+              setCurrentStreamingIteration(job.current_iteration);
+            }
           }
           
           if (job.progress_log && Array.isArray(job.progress_log)) {
             const newItems = job.progress_log.slice(progress.length);
             if (newItems.length > 0) {
               setProgress(prev => [...prev, ...newItems]);
+              
+              for (const item of newItems) {
+                if (item.includes("SSE_STREAM_URL:")) {
+                  const sseUrl = item.split("SSE_STREAM_URL:")[1].trim();
+                  console.log("Found SSE stream URL:", sseUrl);
+                  
+                  const eventSource = new EventSource(sseUrl);
+                  
+                  eventSource.onmessage = (event) => {
+                    try {
+                      const data = JSON.parse(event.data);
+                      if (data.type === 'chunk' && data.content) {
+                        setStreamingContent(prev => prev + data.content);
+                      }
+                    } catch (e) {
+                      console.error("Error parsing SSE message:", e);
+                    }
+                  };
+                  
+                  eventSource.onerror = (error) => {
+                    console.error("SSE stream error:", error);
+                    eventSource.close();
+                  };
+                  
+                  return () => {
+                    eventSource.close();
+                  };
+                }
+              }
             }
           }
           
@@ -758,7 +801,8 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                isStreaming={polling && iteration.iteration === currentStreamingIteration}
+                streamingContent={iteration.iteration === currentStreamingIteration ? streamingContent : undefined}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
