@@ -196,145 +196,37 @@ ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed
 
 Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
-    // Helper function to validate JSON response
-    const isValidInsightsResponse = (data: any): boolean => {
-      if (!data) return false;
-      
-      try {
-        // Check if we have the minimum required fields
-        if (typeof data.probability !== 'string') return false;
-        if (!Array.isArray(data.areasForResearch)) return false;
-        
-        // Check if reasoning exists and has the correct structure
-        if (!data.reasoning) return false;
-        if (!Array.isArray(data.reasoning.evidenceFor) && !Array.isArray(data.reasoning.evidenceAgainst)) {
-          // If neither evidenceFor nor evidenceAgainst is an array, check if reasoning is a string
-          return typeof data.reasoning === 'string';
-        }
-        
-        return true;
-      } catch (e) {
-        console.error('Error validating response format:', e);
-        return false;
-      }
-    };
+    // Non-streaming version for background jobs
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openRouterKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://hunchex.com',
+        'X-Title': 'Hunchex Analysis'
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.0-flash-lite-001",
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: prompt }
+        ],
+        // For background jobs, don't stream
+        stream: false,
+        temperature: 0.2,
+        response_format: { type: "json_object" }
+      }),
+    });
 
-    // Function to extract insights with retry logic
-    const getInsightsWithRetry = async (maxRetries = 3): Promise<any> => {
-      let retryCount = 0;
-      let responseData;
-      let validResponse = false;
-      
-      while (retryCount < maxRetries && !validResponse) {
-        try {
-          console.log(`Attempt #${retryCount + 1} to get insights from OpenRouter`);
-          
-          const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openRouterKey}`,
-              'Content-Type': 'application/json',
-              'HTTP-Referer': 'https://hunchex.com',
-              'X-Title': 'Hunchex Analysis'
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.0-flash-lite-001",
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: prompt }
-              ],
-              stream: false,
-              temperature: 0.2,
-              response_format: { type: "json_object" }
-            }),
-          });
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`API error: ${response.status} ${errorText}`);
+      throw new Error(`API error: ${response.status} ${errorText}`);
+    }
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            console.error(`API error: ${response.status} ${errorText}`);
-            throw new Error(`API error: ${response.status} ${errorText}`);
-          }
-
-          // Log the full raw response for debugging
-          const rawResponseText = await response.text();
-          console.log(`OpenRouter raw response (attempt #${retryCount + 1}):`, rawResponseText);
-          
-          try {
-            // Parse the raw response text
-            responseData = JSON.parse(rawResponseText);
-            console.log(`OpenRouter parsed response structure (attempt #${retryCount + 1}):`, 
-              JSON.stringify(Object.keys(responseData)));
-            
-            // Extract the actual model output
-            const modelContent = responseData?.choices?.[0]?.message?.content;
-            console.log(`Model content (attempt #${retryCount + 1}):`, 
-              typeof modelContent === 'string' ? modelContent.substring(0, 500) + '...' : modelContent);
-            
-            let insightsData;
-            
-            // Try to parse the content if it's a string
-            if (typeof modelContent === 'string') {
-              try {
-                insightsData = JSON.parse(modelContent);
-                console.log(`Parsed insights data structure (attempt #${retryCount + 1}):`, 
-                  JSON.stringify(Object.keys(insightsData)));
-              } catch (parseError) {
-                console.error(`Error parsing model content as JSON (attempt #${retryCount + 1}):`, parseError);
-                throw new Error(`Invalid JSON in model response: ${parseError.message}`);
-              }
-            } else {
-              insightsData = modelContent;
-            }
-            
-            // Validate the response
-            if (isValidInsightsResponse(insightsData)) {
-              console.log(`Valid insights response received (attempt #${retryCount + 1})`);
-              validResponse = true;
-              return {
-                ...responseData,
-                insights: insightsData
-              };
-            } else {
-              console.error(`Invalid insights format (attempt #${retryCount + 1}):`, insightsData);
-              throw new Error('Response did not contain valid insights data');
-            }
-          } catch (parseError) {
-            console.error(`Error processing OpenRouter response (attempt #${retryCount + 1}):`, parseError);
-            throw parseError;
-          }
-        } catch (error) {
-          console.error(`Error in attempt #${retryCount + 1}:`, error);
-          retryCount++;
-          
-          if (retryCount >= maxRetries) {
-            console.error(`Max retries (${maxRetries}) reached. Giving up.`);
-            throw error;
-          }
-          
-          // Wait a bit before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-        }
-      }
-      
-      throw new Error('Failed to get valid insights after maximum retries');
-    };
-
-    // Call the function with retry logic
-    const results = await getInsightsWithRetry();
-    
-    // Extract the insights from the response
-    const insightsData = results.insights;
-    
-    return new Response(JSON.stringify({
-      ...results,
-      choices: [{
-        ...results.choices?.[0],
-        message: {
-          ...results.choices?.[0]?.message,
-          content: insightsData
-        }
-      }]
-    }), {
+    // Parse the response as JSON and return it
+    const results = await response.json();
+    return new Response(JSON.stringify(results), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json',
