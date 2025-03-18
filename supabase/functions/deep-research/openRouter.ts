@@ -157,4 +157,30 @@ export class OpenRouter {
       reader.releaseLock();
     }
   }
+
+  /**
+   * Create an SSE ready URL for streaming OpenRouter responses
+   * @param model Model to use
+   * @param messages Messages for the model
+   * @param maxTokens Maximum tokens to generate
+   * @param temperature Temperature parameter
+   * @returns The SSE endpoint URL
+   */
+  async createStreamUrl(
+    functionUrl: string,
+    model: string, 
+    messages: Array<{role: string, content: string}>,
+    maxTokens: number = 500,
+    temperature: number = 0.7
+  ): Promise<string> {
+    // Create a new endpoint that will stream the OpenRouter response
+    const streamEndpoint = new URL(functionUrl);
+    streamEndpoint.searchParams.append("stream", "true");
+    streamEndpoint.searchParams.append("model", model);
+    streamEndpoint.searchParams.append("temperature", temperature.toString());
+    streamEndpoint.searchParams.append("max_tokens", maxTokens.toString());
+    streamEndpoint.searchParams.append("messages", JSON.stringify(messages));
+    
+    return streamEndpoint.toString();
+  }
 }
