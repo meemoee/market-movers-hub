@@ -19,6 +19,20 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [isPageVisible, setIsPageVisible] = useState<boolean>(!document.hidden)
+  
+  // Track page visibility
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(!document.hidden)
+    }
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
@@ -144,6 +158,12 @@ export function AnalysisDisplay({
         >
           Resume auto-scroll
         </button>
+      )}
+      
+      {!isPageVisible && isStreaming && (
+        <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-accent/20 px-2 py-1 rounded-sm">
+          Background mode
+        </div>
       )}
     </div>
   )
