@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -62,6 +61,15 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         progress_entry: JSON.stringify(`Research focus: ${focusText}`)
       })
     }
+    
+    // Get current date in a readable format for consistent use throughout the research
+    const currentDate = new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    console.log(`Current date for research job ${jobId}: ${currentDate}`);
     
     // Get market question from the database for more context
     let marketQuestion = query; // Default to query if we can't get the market question
@@ -307,7 +315,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                   console.log(`Found market price for ${marketId}: ${marketPrice}%`);
                 }
               } catch (priceError) {
-                console.error(`Error fetching market price for ${marketId}:`, priceError);
+                console.error(`Error fetching market price:`, priceError);
               }
               
               // Try to get related markets for context
@@ -351,7 +359,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                   }
                 }
               } catch (relatedError) {
-                console.error(`Error fetching related markets for ${marketId}:`, relatedError);
+                console.error(`Error fetching related markets:`, relatedError);
               }
               
               // Collect areas for research that may have been identified in previous iterations
@@ -745,7 +753,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         areasForResearch: areasForResearch,
         marketPrice: marketPrice,
         relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined,
-        focusText: focusText
+        focusText: focusText,
+        currentDate: currentDate // Pass the current date to ensure consistency
       };
       
       console.log(`Sending extract-research-insights payload with:
@@ -755,7 +764,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         - ${areasForResearch.length} areas for research
         - marketPrice: ${marketPrice || 'undefined'}
         - ${relatedMarkets.length} related markets
-        - focusText: ${focusText || 'undefined'}`);
+        - focusText: ${focusText || 'undefined'}
+        - currentDate: ${currentDate}`);
       
       // Call the extract-research-insights function to get structured insights (without streaming)
       const extractInsightsResponse = await fetch(
@@ -909,6 +919,13 @@ async function generateAnalysis(
   
   console.log(`Generating ${analysisType} using OpenRouter`);
   
+  // Get current date in a readable format
+  const currentDate = new Date().toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+  
   // Limit content length to avoid token limits
   const contentLimit = 20000;
   const truncatedContent = content.length > contentLimit 
@@ -974,6 +991,7 @@ Please provide:
 3. Probability Factors: What factors impact the likelihood of outcomes related to the query?${focusText ? ` Specifically analyze how these factors relate to: "${focusText}"` : ''}
 4. Areas for Further Research: Identify specific gaps in knowledge that would benefit from additional research.
 5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
+6. Temporal Context: Consider how the recency of information (relative to today's date, ${currentDate}) affects your assessment.
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
   

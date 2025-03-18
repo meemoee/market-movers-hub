@@ -21,6 +21,7 @@ interface InsightsRequest {
   focusText?: string;
   marketPrice?: number;
   relatedMarkets?: RelatedMarket[];
+  currentDate?: string; // Add explicit current date parameter
 }
 
 const corsHeaders = {
@@ -45,7 +46,8 @@ serve(async (req) => {
       areasForResearch,
       focusText,
       marketPrice,
-      relatedMarkets
+      relatedMarkets,
+      currentDate // Get current date from request if provided
     } = await req.json() as InsightsRequest;
     
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
@@ -58,7 +60,8 @@ serve(async (req) => {
       areasForResearchCount: areasForResearch?.length || 0,
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       marketPrice: marketPrice || 'Not provided',
-      relatedMarketsCount: relatedMarkets?.length || 0
+      relatedMarketsCount: relatedMarkets?.length || 0,
+      currentDate: currentDate || 'Not provided' // Log if we received a current date
     });
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -67,12 +70,14 @@ serve(async (req) => {
       throw new Error('No API key configured for OpenRouter');
     }
 
-    // Get current date in a readable format
-    const currentDate = new Date().toLocaleDateString('en-US', {
+    // Get current date in a readable format, prioritize the passed date if available
+    const formattedCurrentDate = currentDate || new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
+    
+    console.log(`Using current date for analysis: ${formattedCurrentDate}`);
 
     const contentLimit = 70000; // Arbitrary limit to prevent token overages
     const truncatedContent = webContent.length > contentLimit 
@@ -126,7 +131,7 @@ ${previousAnalyses.map((a, i) => `Iteration ${i+1}: ${a.substring(0, 2000)}${a.l
       ? `\nCRITICAL: This analysis is specifically focused on: "${focusText}"\nYou MUST ensure ALL evidence points directly address this specific focus area.\n`
       : '';
 
-    const dateContext = `\nTODAY'S DATE: ${currentDate}\nWhen generating probability estimates, consider the temporal relevance of information relative to today's date. Be explicit about how the recency or timeliness of information impacts your assessment.\n`;
+    const dateContext = `\nTODAY'S DATE: ${formattedCurrentDate}\nWhen generating probability estimates, consider the temporal relevance of information relative to today's date. Be explicit about how the recency or timeliness of information impacts your assessment.\n`;
 
     const systemPrompt = `You are an expert market research analyst and probabilistic forecaster.${marketContext}${focusContext}${dateContext}
 Your task is to analyze the provided web research and generate precise probability estimates based on concrete evidence.
@@ -139,7 +144,7 @@ CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
 5. Uncertainty: Acknowledge key areas of uncertainty and how they affect your estimate
 6. Competitive Analysis: When relevant, analyze competitor positions and market dynamics
 7. Timeline Considerations: Account for time-dependent factors and how they affect probability
-8. Temporal Relevance: Consider how the recency of information (relative to today, ${currentDate}) affects your probability assessment
+8. Temporal Relevance: Consider how the recency of information (relative to today, ${formattedCurrentDate}) affects your probability assessment
 ${focusText ? `9. FOCUS AREA: Every evidence point MUST explicitly connect to the focus area: "${focusText}". Prioritize evidence that directly addresses this specific aspect.\n` : ''}
 
 Format your analysis as a JSON object with:
@@ -165,7 +170,7 @@ IMPORTANT:
 - For resolved markets (0% or 100%), focus on explaining why the event did or didn't happen rather than probability assessment.
 - Consider all dimensions of the question including economic, political, social, and technological factors.
 - Each evidence point should be a complete, well-reasoned argument, not just a simple statement.
-- Evaluate the temporal relevance of all evidence - clearly indicate when information may be outdated relative to today (${currentDate}).${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
+- Evaluate the temporal relevance of all evidence - clearly indicate when information may be outdated relative to today (${formattedCurrentDate}).${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
 
     const prompt = `Here is the web content I've collected during research:
 ---
@@ -179,7 +184,7 @@ ${truncatedAnalysis}
 
 ${previousAnalysesContext}
 
-TODAY'S DATE: ${currentDate}
+TODAY'S DATE: ${formattedCurrentDate}
 
 Based on all this information, please provide:
 1. A specific probability estimate for the market question: "${marketQuestion}"
@@ -187,7 +192,7 @@ Based on all this information, please provide:
 3. A detailed reasoning section with:
    - Evidence FOR the event happening (with specific historical precedents, examples, statistics)
    - Evidence AGAINST the event happening (with specific historical precedents, examples, statistics)
-4. Consider the temporal relevance of all evidence relative to today's date (${currentDate})
+4. Consider the temporal relevance of all evidence relative to today's date (${formattedCurrentDate})
 ${focusText ? `\nCRITICAL: Your analysis MUST focus specifically on: "${focusText}"\nEnsure ALL evidence points directly address this specific focus area.\n` : ''}
 ${relatedMarkets && relatedMarkets.length > 0 ? 
   `5. Analysis of how the following related markets affect your assessment:
