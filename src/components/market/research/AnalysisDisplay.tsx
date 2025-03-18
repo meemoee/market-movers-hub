@@ -20,6 +20,7 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   const [lastScrollPosition, setLastScrollPosition] = useState<number>(0)
+  const lastContentRef = useRef(content)
   
   // More efficient scrolling with requestAnimationFrame
   useLayoutEffect(() => {
@@ -47,6 +48,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
+    lastContentRef.current = content
   }, [content, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll

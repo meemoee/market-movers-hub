@@ -1,158 +1,210 @@
 
-import { useState, useEffect } from 'react'
-import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { AnalysisDisplay } from "./AnalysisDisplay"
-import { cn } from "@/lib/utils"
-import { ResearchResult } from "./SitePreviewList"
-import { getFaviconUrl } from "@/utils/favicon"
+import { useState } from 'react';
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { ChevronDown, ChevronUp, Clipboard, CheckCircle, Loader, ExternalLink } from "lucide-react";
+import { SitePreviewList } from "./SitePreviewList";
+import { AnalysisDisplay } from "./AnalysisDisplay";
+import { toast } from "@/components/ui/use-toast";
+import { setupSSEConnection, closeSSEConnection, StreamEventType } from "@/utils/sse-helpers";
 
 interface IterationCardProps {
   iteration: {
     iteration: number;
-    queries: string[];
-    results: ResearchResult[];
-    analysis: string;
+    query: string;
+    results: any[];
+    analysis?: string;
+    processing?: boolean;
   };
   isExpanded: boolean;
+  isStreaming?: boolean;
+  isCurrentIteration?: boolean;
+  maxIterations?: number;
   onToggleExpand: () => void;
-  isStreaming: boolean;
-  isCurrentIteration: boolean;
-  maxIterations: number;
+  onStartStreaming?: (iteration: number) => void;
 }
 
-export function IterationCard({
-  iteration,
+export function IterationCard({ 
+  iteration, 
   isExpanded,
+  isStreaming = false,
+  isCurrentIteration = false,
+  maxIterations = 3,
   onToggleExpand,
-  isStreaming,
-  isCurrentIteration,
-  maxIterations
+  onStartStreaming
 }: IterationCardProps) {
-  const [activeTab, setActiveTab] = useState<string>("analysis")
-  const isFinalIteration = iteration.iteration === maxIterations
-  
-  // Auto-collapse when iteration completes and it's not the final iteration
-  useEffect(() => {
-    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
-      // Add a small delay to let the user see the completed results before collapsing
-      const timer = setTimeout(() => {
-        onToggleExpand();
-      }, 1500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+  const [analysis, setAnalysis] = useState(iteration.analysis || '');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isContentStreaming, setIsContentStreaming] = useState(isStreaming);
 
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(analysis);
+    toast({
+      title: "Copied to clipboard",
+      description: "The analysis has been copied to your clipboard",
+    });
+  };
+
+  const handleStartStreaming = async (jobId: string, iterationNum: number) => {
+    setLoading(true);
+    setError(null);
+    setIsContentStreaming(true);
+    
+    try {
+      if (onStartStreaming) {
+        onStartStreaming(iterationNum);
+      }
+      
+      // Set up SSE connection for streaming the analysis
+      const SUPABASE_PROJECT_ID = 'lfmkoismabbhujycnqpn';
+      const functionUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-research-insights`;
+      const streamUrl = `${functionUrl}?stream=true&jobId=${jobId}&iteration=${iterationNum}`;
+      
+      const connection = setupSSEConnection(streamUrl, {
+        retryLimit: 3,
+        retryDelay: 1500,
+        onStart: () => {
+          console.log(`Started streaming analysis for iteration ${iterationNum}`);
+          // Clear existing analysis if we're starting fresh
+          if (!analysis) {
+            setAnalysis('');
+          }
+        },
+        onContent: (content) => {
+          setAnalysis(prev => prev + content);
+        },
+        onError: (err) => {
+          console.error(`Stream error for iteration ${iterationNum}:`, err);
+          setError(`Error streaming analysis: ${err.message}`);
+          setIsContentStreaming(false);
+        },
+        onComplete: () => {
+          console.log(`Completed streaming analysis for iteration ${iterationNum}`);
+          setIsContentStreaming(false);
+        },
+        onHeartbeat: () => {
+          console.debug(`Received heartbeat for iteration ${iterationNum}`);
+        }
+      });
+      
+      return () => {
+        closeSSEConnection(connection);
+      };
+    } catch (e) {
+      console.error('Error setting up streaming:', e);
+      setError(`Error setting up streaming: ${e instanceof Error ? e.message : 'Unknown error'}`);
+      setIsContentStreaming(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   return (
-    <div className={cn(
-      "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
-    )}>
-      <div 
-        className={cn(
-          "iteration-card-header flex items-center justify-between p-3 w-full",
-          isExpanded ? "bg-accent/10" : "",
-          "hover:bg-accent/10 cursor-pointer"
-        )}
+    <Card className="overflow-hidden">
+      <div
+        className={`p-4 cursor-pointer flex items-center justify-between ${
+          isCurrentIteration ? 'bg-primary/10' : ''
+        }`}
         onClick={onToggleExpand}
       >
-        <div className="flex items-center gap-2 overflow-hidden">
-          <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
-            Iteration {iteration.iteration}
-            {isStreaming && isCurrentIteration && " (Streaming...)"}
-          </Badge>
-          <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
+        <div className="flex items-center space-x-2">
+          <span className="font-medium text-sm">
+            Iteration {iteration.iteration} of {maxIterations}
+            {isCurrentIteration && (
+              <span className="ml-2 text-xs bg-primary/20 py-0.5 px-1.5 rounded-full">
+                Current
+              </span>
+            )}
           </span>
         </div>
-        {isExpanded ? 
-          <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 
-          <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        }
+        <div className="flex items-center space-x-2">
+          {isStreaming && (
+            <div className="flex items-center mr-2">
+              <Loader className="w-3 h-3 text-primary mr-1 animate-spin" />
+              <span className="text-xs text-muted-foreground">Streaming</span>
+            </div>
+          )}
+          {isExpanded ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </div>
       </div>
       
       {isExpanded && (
-        <div className="p-3 w-full max-w-full">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
-            <TabsList className="w-full grid grid-cols-3 mb-3">
-              <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
-              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
-              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
-            </TabsList>
-            
-            <div className="tab-content-container h-[200px] w-full">
-              <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
-                  isStreaming={isStreaming && isCurrentIteration}
-                  maxHeight="100%"
-                />
-              </TabsContent>
-              
-              <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
-                  <div className="space-y-2 w-full">
-                    {iteration.results.map((result, idx) => (
-                      <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
-                        <div className="flex items-center gap-2">
-                          <img 
-                            src={getFaviconUrl(result.url)} 
-                            alt=""
-                            className="w-4 h-4 flex-shrink-0"
-                            onError={(e) => {
-                              e.currentTarget.src = `data:image/svg+xml,${encodeURIComponent(
-                                '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>'
-                              )}`;
-                            }}
-                          />
-                          <a 
-                            href={result.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-500 hover:underline truncate w-full"
-                            title={result.url}
-                          >
-                            {result.url}
-                          </a>
-                        </div>
-                      </div>
-                    ))}
-                    
-                    {iteration.results.length === 0 && (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No sources found for this iteration.
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-              
-              <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full">
-                  <div className="space-y-2 w-full">
-                    {iteration.queries.map((query, idx) => (
-                      <div key={idx} className="query-badge bg-accent/10 p-2 rounded-md flex items-center gap-1 w-full mb-2">
-                        <Search className="h-3 w-3 flex-shrink-0 mr-1" />
-                        <span className="text-xs break-words">{query}</span>
-                      </div>
-                    ))}
-                    
-                    {iteration.queries.length === 0 && (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No queries for this iteration.
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
+        <div className="p-4 border-t space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium">Search Query</h4>
             </div>
-          </Tabs>
+            <div className="text-sm bg-accent/5 p-2 rounded-md">
+              {iteration.query}
+            </div>
+          </div>
+          
+          {iteration.results && iteration.results.length > 0 && (
+            <div>
+              <h4 className="text-sm font-medium mb-2">Search Results</h4>
+              <SitePreviewList results={iteration.results} />
+            </div>
+          )}
+          
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium">Analysis</h4>
+              <div className="flex space-x-2">
+                {analysis && (
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    className="h-6 px-2" 
+                    onClick={copyToClipboard}
+                  >
+                    <Clipboard className="h-3 w-3 mr-1" />
+                    <span className="text-xs">Copy</span>
+                  </Button>
+                )}
+              </div>
+            </div>
+            
+            {error && (
+              <div className="text-sm text-red-500 mb-2">
+                {error}
+              </div>
+            )}
+            
+            {analysis ? (
+              <AnalysisDisplay 
+                content={analysis} 
+                isStreaming={isContentStreaming} 
+                maxHeight="300px" 
+              />
+            ) : loading ? (
+              <div className="flex items-center justify-center p-4 bg-accent/5 rounded-md">
+                <Loader className="h-4 w-4 mr-2 animate-spin" />
+                <span className="text-sm">Loading analysis...</span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center p-4 bg-accent/5 rounded-md">
+                <span className="text-sm text-muted-foreground mb-2">No analysis available</span>
+                {iteration.iteration && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleStartStreaming('job123', iteration.iteration)}
+                    disabled={loading}
+                  >
+                    <ExternalLink className="h-3 w-3 mr-1" />
+                    <span className="text-xs">Generate Analysis</span>
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }

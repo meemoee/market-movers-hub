@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -8,6 +7,24 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Stream event types for structured streaming
+enum StreamEventType {
+  START = 'start',
+  CONTENT = 'content',
+  ERROR = 'error',
+  DONE = 'done',
+  HEARTBEAT = 'heartbeat'
+}
+
+// Helper to send stream events
+function createStreamEvent(type: StreamEventType, data?: any) {
+  return `data: ${JSON.stringify({
+    type,
+    data,
+    timestamp: Date.now()
+  })}\n\n`;
 }
 
 serve(async (req) => {
@@ -24,7 +41,10 @@ serve(async (req) => {
     const stream = url.searchParams.get('stream') === 'true';
 
     if (!jobId || !iteration) {
-      return new Response(JSON.stringify({ error: 'Missing jobId or iteration parameter' }), {
+      return new Response(JSON.stringify({ 
+        type: StreamEventType.ERROR,
+        error: 'Missing jobId or iteration parameter' 
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -40,6 +60,9 @@ serve(async (req) => {
       try {
         console.log(`Starting insight extraction for job ${jobId}, iteration ${iteration}`);
         
+        // Send start event
+        await writer.write(encoder.encode(createStreamEvent(StreamEventType.START)));
+        
         const { data, error } = await fetch(`https://lfmkoismabbhujycnqpn.supabase.co/rest/v1/research_jobs?id=eq.${jobId}&select=*`, {
           headers: {
             'apikey': Deno.env.get('SUPABASE_ANON_KEY') || '',
@@ -49,7 +72,7 @@ serve(async (req) => {
         
         if (error || !data || data.length === 0) {
           console.error("Error fetching job data:", error || "Job not found");
-          await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error || "Job not found" })}\n\n`));
+          await writer.write(encoder.encode(createStreamEvent(StreamEventType.ERROR, "Error fetching job data")));
           await writer.close();
           return;
         }
@@ -57,7 +80,7 @@ serve(async (req) => {
         const job = data[0];
         
         if (!job.iterations || !Array.isArray(job.iterations)) {
-          await writer.write(encoder.encode(`data: ${JSON.stringify({ error: "No iterations found in job" })}\n\n`));
+          await writer.write(encoder.encode(createStreamEvent(StreamEventType.ERROR, "No iterations found in job")));
           await writer.close();
           return;
         }
@@ -65,13 +88,18 @@ serve(async (req) => {
         const iterationData = job.iterations.find(iter => iter.iteration === parseInt(iteration));
         
         if (!iterationData) {
-          await writer.write(encoder.encode(`data: ${JSON.stringify({ error: "Iteration not found" })}\n\n`));
+          await writer.write(encoder.encode(createStreamEvent(StreamEventType.ERROR, "Iteration not found")));
           await writer.close();
           return;
         }
         
         const sources = iterationData.results || [];
         const sourcesText = sources.map(source => `URL: ${source.url}\nTitle: ${source.title || 'No title'}\nContent: ${source.content}`).join('\n\n');
+        
+        // Send heartbeat every 5 seconds to keep connection alive
+        const heartbeatInterval = setInterval(async () => {
+          await writer.write(encoder.encode(createStreamEvent(StreamEventType.HEARTBEAT)));
+        }, 5000);
         
         // Prepare OpenAI request for analysis
         const prompt = `
@@ -109,36 +137,63 @@ Analyze the credibility, relevance, and implications of the information. Highlig
             })
           });
 
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error("OpenAI API error:", response.status, errorText);
+            await writer.write(encoder.encode(createStreamEvent(
+              StreamEventType.ERROR, 
+              `OpenAI API error: ${response.status} ${errorText}`
+            )));
+            clearInterval(heartbeatInterval);
+            await writer.close();
+            return;
+          }
+
           const reader = response.body!.getReader();
           const decoder = new TextDecoder();
           
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) {
-              await writer.write(encoder.encode("data: [DONE]\n\n"));
-              break;
-            }
-            
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n').filter(line => line.trim() !== '');
-            
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                const data = line.slice(6);
-                if (data === '[DONE]') {
-                  await writer.write(encoder.encode("data: [DONE]\n\n"));
-                  continue;
-                }
-                
-                try {
-                  // Forward the OpenAI streaming response directly
-                  await writer.write(encoder.encode(`${line}\n\n`));
-                } catch (e) {
-                  console.error('Error parsing or writing stream data:', e);
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                break;
+              }
+              
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n').filter(line => line.trim() !== '');
+              
+              for (const line of lines) {
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(6);
+                  if (data === '[DONE]') {
+                    await writer.write(encoder.encode(createStreamEvent(StreamEventType.DONE)));
+                    continue;
+                  }
+                  
+                  try {
+                    const parsed = JSON.parse(data);
+                    const content = parsed.choices?.[0]?.delta?.content || '';
+                    
+                    if (content) {
+                      // Send content in structured format
+                      await writer.write(encoder.encode(createStreamEvent(StreamEventType.CONTENT, content)));
+                    }
+                  } catch (e) {
+                    console.error('Error parsing or writing stream data:', e);
+                  }
                 }
               }
             }
+          } catch (streamError) {
+            console.error("Stream processing error:", streamError);
+            await writer.write(encoder.encode(createStreamEvent(
+              StreamEventType.ERROR, 
+              `Stream processing error: ${streamError.message}`
+            )));
           }
+          
+          // Send done event
+          await writer.write(encoder.encode(createStreamEvent(StreamEventType.DONE)));
         } else {
           // Non-streaming response
           const response = await fetch(OPENAI_URL, {
@@ -155,13 +210,21 @@ Analyze the credibility, relevance, and implications of the information. Highlig
           });
           
           const result = await response.json();
-          await writer.write(encoder.encode(`data: ${JSON.stringify(result)}\n\n`));
+          
+          // Send full content at once
+          const content = result.choices?.[0]?.message?.content || '';
+          await writer.write(encoder.encode(createStreamEvent(StreamEventType.CONTENT, content)));
+          await writer.write(encoder.encode(createStreamEvent(StreamEventType.DONE)));
         }
         
+        clearInterval(heartbeatInterval);
         await writer.close();
       } catch (error) {
         console.error("Error in extract-research-insights:", error);
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`));
+        await writer.write(encoder.encode(createStreamEvent(
+          StreamEventType.ERROR, 
+          `Server error: ${error.message}`
+        )));
         await writer.close();
       }
     })();
@@ -176,7 +239,10 @@ Analyze the credibility, relevance, and implications of the information. Highlig
     });
   } catch (error) {
     console.error("Error:", error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ 
+      type: StreamEventType.ERROR,
+      error: error.message 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

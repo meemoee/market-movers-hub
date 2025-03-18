@@ -5,35 +5,135 @@ export interface SSEConnection {
   error: Error | null;
 }
 
+export enum StreamEventType {
+  START = 'start',
+  CONTENT = 'content',
+  ERROR = 'error',
+  DONE = 'done',
+  HEARTBEAT = 'heartbeat'
+}
+
+export interface StreamEvent {
+  type: StreamEventType;
+  data?: any;
+  error?: string;
+  timestamp?: number;
+}
+
+export interface StreamOptions {
+  retryLimit?: number;
+  retryDelay?: number;
+  onStart?: () => void;
+  onContent: (content: string) => void;
+  onError?: (error: Error) => void;
+  onComplete?: () => void;
+  onHeartbeat?: () => void;
+}
+
 export const setupSSEConnection = (
   url: string,
-  onMessage: (data: any) => void,
-  onError?: (error: Error) => void,
-  onComplete?: () => void
+  options: StreamOptions
 ): SSEConnection => {
+  let retryCount = 0;
+  const retryLimit = options.retryLimit || 3;
+  const retryDelay = options.retryDelay || 2000;
+  
   try {
+    console.log(`Setting up SSE connection to ${url}`);
     const eventSource = new EventSource(url);
+    
+    eventSource.onopen = () => {
+      console.log('SSE connection opened');
+      retryCount = 0;
+      if (options.onStart) options.onStart();
+    };
     
     eventSource.onmessage = (event) => {
       try {
+        // Handle standard SSE messages
         if (event.data === '[DONE]') {
-          if (onComplete) onComplete();
+          console.log('SSE stream completed with [DONE] marker');
+          if (options.onComplete) options.onComplete();
           eventSource.close();
           return;
         }
         
         const parsed = JSON.parse(event.data);
-        onMessage(parsed);
+        
+        // Handle structured stream events
+        if (parsed.type) {
+          switch (parsed.type) {
+            case StreamEventType.START:
+              console.log('Stream started', parsed.data);
+              if (options.onStart) options.onStart();
+              break;
+              
+            case StreamEventType.CONTENT:
+              if (parsed.data) options.onContent(parsed.data);
+              break;
+              
+            case StreamEventType.ERROR:
+              console.error('Stream error event:', parsed.error);
+              if (options.onError) options.onError(new Error(parsed.error || 'Unknown stream error'));
+              break;
+              
+            case StreamEventType.DONE:
+              console.log('Stream completed');
+              if (options.onComplete) options.onComplete();
+              eventSource.close();
+              break;
+              
+            case StreamEventType.HEARTBEAT:
+              console.debug('Stream heartbeat received');
+              if (options.onHeartbeat) options.onHeartbeat();
+              break;
+              
+            default:
+              // Handle legacy format for backward compatibility
+              const content = parsed.choices?.[0]?.delta?.content || 
+                              parsed.choices?.[0]?.message?.content || 
+                              parsed.content || '';
+              if (content) options.onContent(content);
+          }
+        } else {
+          // Handle legacy format for backward compatibility
+          const content = parsed.choices?.[0]?.delta?.content || 
+                          parsed.choices?.[0]?.message?.content || 
+                          parsed.content || '';
+          if (content) options.onContent(content);
+        }
       } catch (e) {
         console.error('Error parsing SSE data:', e, 'Raw data:', event.data);
-        if (onError) onError(new Error(`Error parsing SSE data: ${e.message}`));
+        try {
+          // Try to handle raw content if JSON parsing fails
+          if (typeof event.data === 'string' && event.data.trim() && event.data !== '[DONE]') {
+            options.onContent(event.data);
+          }
+        } catch (innerError) {
+          console.error('Error handling raw SSE content:', innerError);
+        }
       }
     };
     
     eventSource.onerror = (error) => {
       console.error('EventSource error:', error);
-      if (onError) onError(new Error('EventSource connection error'));
-      eventSource.close();
+      
+      // Implement exponential backoff retry
+      if (retryCount < retryLimit) {
+        retryCount++;
+        console.log(`Retrying connection (${retryCount}/${retryLimit}) in ${retryDelay}ms...`);
+        
+        eventSource.close();
+        
+        setTimeout(() => {
+          console.log(`Attempting reconnection #${retryCount}...`);
+          setupSSEConnection(url, options);
+        }, retryDelay * retryCount);
+      } else {
+        console.error(`Max retry attempts (${retryLimit}) reached. Closing connection.`);
+        if (options.onError) options.onError(new Error('EventSource connection error: max retries reached'));
+        eventSource.close();
+      }
     };
     
     return {
@@ -43,7 +143,7 @@ export const setupSSEConnection = (
     };
   } catch (error) {
     console.error('Error setting up SSE connection:', error);
-    if (onError) onError(error instanceof Error ? error : new Error('Unknown error'));
+    if (options.onError) options.onError(error instanceof Error ? error : new Error('Unknown error'));
     return {
       eventSource: null,
       isConnected: false,
@@ -54,6 +154,7 @@ export const setupSSEConnection = (
 
 export const closeSSEConnection = (connection: SSEConnection): void => {
   if (connection.eventSource) {
+    console.log('Closing SSE connection');
     connection.eventSource.close();
   }
 };
@@ -71,8 +172,16 @@ export const cleanStreamContent = (chunk: string): { content: string } => {
     }
     
     const parsed = JSON.parse(dataStr);
+    
+    // Handle structured stream events
+    if (parsed.type === StreamEventType.CONTENT && parsed.data) {
+      return { content: parsed.data };
+    }
+    
+    // Handle legacy format for backward compatibility
     const content = parsed.choices?.[0]?.delta?.content || 
-                   parsed.choices?.[0]?.message?.content || '';
+                   parsed.choices?.[0]?.message?.content || 
+                   parsed.content || '';
     return { content };
   } catch (e) {
     console.debug('Chunk parse error (expected during streaming):', e);
