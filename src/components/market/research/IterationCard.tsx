@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,7 +38,6 @@ export function IterationCard({
   const [isContentStreaming, setIsContentStreaming] = useState(isStreaming);
   const [connection, setConnection] = useState<SSEConnection | null>(null);
 
-  // Update local state when props change
   useEffect(() => {
     if (iteration.analysis !== undefined) {
       setAnalysis(iteration.analysis);
@@ -47,7 +45,6 @@ export function IterationCard({
     setIsContentStreaming(isStreaming);
   }, [iteration.analysis, isStreaming]);
 
-  // Clean up connection on unmount
   useEffect(() => {
     return () => {
       if (connection) {
@@ -70,19 +67,16 @@ export function IterationCard({
     setIsContentStreaming(true);
     
     try {
-      // Call parent component's streaming handler if provided
       if (onStartStreaming) {
         onStartStreaming(iterationNum);
         setLoading(false);
         return;
       }
       
-      // Standalone streaming setup (fallback)
       const SUPABASE_PROJECT_ID = 'lfmkoismabbhujycnqpn';
       const functionUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-research-insights`;
       const streamUrl = `${functionUrl}?stream=true&jobId=${jobId}&iteration=${iterationNum}`;
       
-      // Close existing connection if any
       if (connection) {
         closeSSEConnection(connection);
       }

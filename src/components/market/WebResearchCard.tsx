@@ -57,6 +57,7 @@ interface StreamingState {
 interface ResearchIteration {
   iteration: number;
   queries: string[];
+  query: string;
   results: ResearchResult[];
   analysis: string;
 }
@@ -1160,7 +1161,12 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         {iterations.map((iter) => (
           <IterationCard
             key={`iteration-${iter.iteration}`}
-            iteration={iter}
+            iteration={{
+              iteration: iter.iteration,
+              query: iter.query || (iter.queries && iter.queries.length > 0 ? iter.queries[0] : description),
+              results: iter.results,
+              analysis: iter.analysis
+            }}
             isExpanded={expandedIterations.includes(`iteration-${iter.iteration}`)}
             onToggleExpand={() => toggleIterationExpand(`iteration-${iter.iteration}`)}
             isStreaming={isAnalyzing}
