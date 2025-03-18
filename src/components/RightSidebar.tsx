@@ -88,6 +88,9 @@ export default function RightSidebar() {
               }
               
               push()
+            }).catch(err => {
+              console.error('Error reading stream:', err)
+              controller.close()
             })
           }
           
