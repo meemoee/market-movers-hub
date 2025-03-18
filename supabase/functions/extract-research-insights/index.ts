@@ -48,8 +48,8 @@ serve(async (req) => {
       focusText,
       marketPrice,
       relatedMarkets,
-      currentDate, // Get current date from request if provided
-      stream = false // Default to non-streaming mode for backward compatibility
+      currentDate, 
+      stream = false 
     } = await req.json() as InsightsRequest;
     
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
@@ -63,8 +63,8 @@ serve(async (req) => {
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       marketPrice: marketPrice || 'Not provided',
       relatedMarketsCount: relatedMarkets?.length || 0,
-      currentDate: currentDate || 'Not provided', // Log if we received a current date
-      streamingMode: stream ? 'Enabled' : 'Disabled' // Log streaming mode
+      currentDate: currentDate || 'Not provided',
+      streamingMode: stream ? 'Enabled' : 'Disabled'
     });
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -250,6 +250,7 @@ Remember to format your response as a valid JSON object with probability, areasF
 
             let accumulatedJson = "";
             let buffer = "";
+            let streamPart = 0;  // To keep track of streaming progress
 
             while (true) {
               const { done, value } = await reader.read();
@@ -278,8 +279,25 @@ Remember to format your response as a valid JSON object with probability, areasF
                       const content = parsed.choices[0].delta.content || '';
                       if (content) {
                         accumulatedJson += content;
+                        streamPart++;
+                        
+                        // Send the data more frequently in smaller chunks
+                        // with additional metadata to help the client
+                        const streamData = {
+                          choices: [
+                            {
+                              delta: { content },
+                              index: 0,
+                              finish_reason: null
+                            }
+                          ],
+                          id: `stream-${streamPart}`,
+                          streamPart,
+                          partialComplete: false
+                        };
+                        
                         // Send the chunk to the client
-                        controller.enqueue(encoder.encode(data + '\n'));
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(streamData)}\n\n`));
                       }
                     }
                   } catch (e) {

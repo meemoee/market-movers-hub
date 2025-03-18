@@ -82,6 +82,7 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
+  const [activeStreamSources, setActiveStreamSources] = useState<Map<number, EventSource>>(new Map())
   const { toast } = useToast()
 
   const resetState = () => {
@@ -96,10 +97,16 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    activeStreamSources.forEach(source => source.close());
+    setActiveStreamSources(new Map());
   }
 
   useEffect(() => {
     fetchSavedJobs();
+    
+    return () => {
+      activeStreamSources.forEach(source => source.close());
+    };
   }, [marketId]);
 
   const fetchSavedJobs = async () => {
@@ -126,8 +133,12 @@ export function JobQueueResearchCard({
     }
   };
 
-  const handleStreamingContent = (jobId: string, iterationNumber: number) => {
+  const setupStreamingForIteration = (jobId: string, iterationNumber: number) => {
     console.log(`Setting up streaming for job ${jobId}, iteration ${iterationNumber}`);
+    
+    if (activeStreamSources.has(iterationNumber)) {
+      activeStreamSources.get(iterationNumber)?.close();
+    }
     
     const SUPABASE_PROJECT_ID = 'lfmkoismabbhujycnqpn';
     const functionUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-research-insights`;
@@ -136,13 +147,26 @@ export function JobQueueResearchCard({
       `${functionUrl}?stream=true&jobId=${jobId}&iteration=${iterationNumber}`
     );
     
+    setActiveStreamSources(prev => {
+      const newMap = new Map(prev);
+      newMap.set(iterationNumber, eventSource);
+      return newMap;
+    });
+    
     let accumulatedContent = '';
     
     eventSource.onmessage = (event) => {
       try {
         if (event.data === '[DONE]') {
-          console.log('Streaming complete');
+          console.log(`Streaming complete for iteration ${iterationNumber}`);
+          
           eventSource.close();
+          setActiveStreamSources(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(iterationNumber);
+            return newMap;
+          });
+          
           return;
         }
         
@@ -171,8 +195,13 @@ export function JobQueueResearchCard({
     };
     
     eventSource.onerror = (error) => {
-      console.error('EventSource error:', error);
+      console.error(`EventSource error for iteration ${iterationNumber}:`, error);
       eventSource.close();
+      setActiveStreamSources(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(iterationNumber);
+        return newMap;
+      });
     };
     
     return eventSource;
@@ -299,8 +328,6 @@ export function JobQueueResearchCard({
   useEffect(() => {
     if (!jobId || !polling) return;
     
-    let eventSource: EventSource | null = null;
-    
     const pollInterval = setInterval(async () => {
       try {
         console.log(`Polling for job status: ${jobId}`);
@@ -326,10 +353,8 @@ export function JobQueueResearchCard({
         setJobStatus(job.status);
         
         if (job.status === 'completed') {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
+          activeStreamSources.forEach(source => source.close());
+          setActiveStreamSources(new Map());
           
           setPolling(false);
           setProgressPercent(100);
@@ -366,10 +391,8 @@ export function JobQueueResearchCard({
           
           clearInterval(pollInterval);
         } else if (job.status === 'failed') {
-          if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-          }
+          activeStreamSources.forEach(source => source.close());
+          setActiveStreamSources(new Map());
           
           setPolling(false);
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
@@ -393,16 +416,28 @@ export function JobQueueResearchCard({
           
           if (job.iterations && Array.isArray(job.iterations)) {
             const currentIteration = job.current_iteration || 0;
-            const hasCurrentIterationInState = iterations.some(i => i.iteration === currentIteration);
             
-            if (currentIteration > 0 && !hasCurrentIterationInState) {
-              if (eventSource) {
-                eventSource.close();
-              }
-              eventSource = handleStreamingContent(jobId, currentIteration);
+            setIterations(prevIterations => {
+              const newIterations = [...job.iterations];
+              
+              return newIterations.map(newIter => {
+                const existingIter = prevIterations.find(pi => pi.iteration === newIter.iteration);
+                
+                if (existingIter && activeStreamSources.has(newIter.iteration)) {
+                  return {
+                    ...newIter,
+                    analysis: existingIter.analysis || newIter.analysis
+                  };
+                }
+                
+                return newIter;
+              });
+            });
+            
+            if (currentIteration > 0 && !activeStreamSources.has(currentIteration)) {
+              console.log(`Setting up new stream for iteration ${currentIteration}`);
+              setupStreamingForIteration(jobId, currentIteration);
             }
-            
-            setIterations(job.iterations);
             
             if (currentIteration > 0 && !expandedIterations.includes(currentIteration)) {
               setExpandedIterations(prev => [...prev, currentIteration]);
@@ -416,11 +451,9 @@ export function JobQueueResearchCard({
     
     return () => {
       clearInterval(pollInterval);
-      if (eventSource) {
-        eventSource.close();
-      }
+      activeStreamSources.forEach(source => source.close());
     };
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, activeStreamSources]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -837,7 +870,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                isStreaming={activeStreamSources.has(iteration.iteration)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />

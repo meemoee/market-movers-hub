@@ -8,7 +8,6 @@ import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
-import { useEventListener } from "@/hooks/use-event-listener"
 
 interface IterationCardProps {
   iteration: {
@@ -33,7 +32,6 @@ export function IterationCard({
   maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
-  const [streamedContent, setStreamedContent] = useState<string>("")
   const isFinalIteration = iteration.iteration === maxIterations
   
   // Auto-collapse when iteration completes and it's not the final iteration
@@ -47,11 +45,6 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
-
-  // Use the streamed content if we're currently streaming, otherwise use the saved analysis
-  const displayContent = isStreaming && isCurrentIteration 
-    ? (streamedContent || iteration.analysis || "Analysis in progress...") 
-    : (iteration.analysis || "Analysis in progress...");
 
   return (
     <div className={cn(
@@ -94,7 +87,7 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={displayContent} 
+                  content={iteration.analysis || "Analysis in progress..."} 
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
