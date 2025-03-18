@@ -1,14 +1,8 @@
-
 import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
-
-interface Message {
-  type: 'user' | 'assistant'
-  content?: string
-}
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
@@ -17,6 +11,11 @@ export default function RightSidebar() {
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  interface Message {
+    type: 'user' | 'assistant'
+    content?: string
+  }
 
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return

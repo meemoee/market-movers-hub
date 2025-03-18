@@ -168,7 +168,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         
         // Process each query sequentially
         for (let j = 0; j < queries.length; j++) {
-          const const currentQuery = queries[j];
+          const currentQuery = queries[j];
           
           try {
             // Call the brave-search function
@@ -275,21 +275,21 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             .select('iterations')
             .eq('id', jobId)
             .single()).data?.iterations || [];
-        
+          
           // Find the current iteration's results
           const currentIterationData = iterationResults.find(iter => iter.iteration === i);
-        
+          
           if (currentIterationData && currentIterationData.results && currentIterationData.results.length > 0) {
             await supabaseClient.rpc('append_research_progress', {
               job_id: jobId,
               progress_entry: JSON.stringify(`Analyzing ${currentIterationData.results.length} results for iteration ${i}...`)
             });
-          
+            
             // Combine all content from the results
             const combinedContent = currentIterationData.results
               .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
               .join('\n\n');
-          
+            
             if (combinedContent.length > 0) {
               // Get market price for context
               let marketPrice = undefined;
@@ -391,26 +391,35 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 console.error(`Error extracting areas for research:`, areasError);
               }
               
-              // Generate analysis for this iteration with market context using streaming
-              await generateAnalysisWithStreaming(
+              // Generate analysis for this iteration with market context
+              const analysisText = await generateAnalysis(
                 combinedContent, 
                 query, 
                 `Iteration ${i} analysis for "${query}"`,
-                supabaseClient,
-                jobId,
-                i,
-                iterationResults,
                 marketPrice,
                 relatedMarkets,
                 areasForResearch,
                 focusText,
                 iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
               );
-            
-              await supabaseClient.rpc('append_research_progress', {
-                job_id: jobId,
-                progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
-              });
+              
+              // Update the iteration with the analysis
+              const updatedIterations = [...iterationResults];
+              const iterationIndex = updatedIterations.findIndex(iter => iter.iteration === i);
+              
+              if (iterationIndex >= 0) {
+                updatedIterations[iterationIndex].analysis = analysisText;
+                
+                await supabaseClient
+                  .from('research_jobs')
+                  .update({ iterations: updatedIterations })
+                  .eq('id', jobId);
+                
+                await supabaseClient.rpc('append_research_progress', {
+                  job_id: jobId,
+                  progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
+                });
+              }
             }
           }
         } catch (analysisError) {
@@ -880,16 +889,209 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// Function to generate analysis using OpenRouter with streaming
-async function generateAnalysisWithStreaming(
+// Function to generate analysis using OpenRouter
+async function generateAnalysis(
   content: string, 
   query: string, 
   analysisType: string,
-  supabaseClient: any,
-  jobId: string,
-  iterationNumber: number,
-  existingIterations: any[],
   marketPrice?: number,
   relatedMarkets?: any[],
   areasForResearch?: string[],
-  focusText?:
+  focusText?: string,
+  previousAnalyses?: string[]
+): Promise<string> {
+  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+  
+  if (!openRouterKey) {
+    throw new Error('OPENROUTER_API_KEY is not set in environment');
+  }
+  
+  console.log(`Generating ${analysisType} using OpenRouter`);
+  
+  // Limit content length to avoid token limits
+  const contentLimit = 20000;
+  const truncatedContent = content.length > contentLimit 
+    ? content.substring(0, contentLimit) + "... [content truncated]" 
+    : content;
+  
+  // Add market context to the prompt
+  let contextInfo = '';
+  
+  if (marketPrice !== undefined) {
+    contextInfo += `\nCurrent market prediction: ${marketPrice}% probability\n`;
+  }
+  
+  if (relatedMarkets && relatedMarkets.length > 0) {
+    contextInfo += '\nRelated markets:\n';
+    relatedMarkets.forEach(market => {
+      if (market.question && market.probability !== undefined) {
+        const probability = Math.round(market.probability * 100);
+        contextInfo += `- ${market.question}: ${probability}% probability\n`;
+      }
+    });
+  }
+  
+  if (areasForResearch && areasForResearch.length > 0) {
+    contextInfo += '\nAreas identified for further research:\n';
+    areasForResearch.forEach(area => {
+      contextInfo += `- ${area}\n`;
+    });
+  }
+  
+  // Add focus text section if provided
+  let focusSection = '';
+  if (focusText && focusText.trim()) {
+    focusSection = `\nFOCUS AREA: "${focusText.trim()}"\n
+Your analysis must specifically address and deeply analyze this focus area. Connect all insights to this focus.`;
+  }
+  
+  // Add previous analyses section if provided
+  let previousAnalysesSection = '';
+  if (previousAnalyses && previousAnalyses.length > 0) {
+    previousAnalysesSection = `\n\nPREVIOUS ANALYSES: 
+${previousAnalyses.map((analysis, idx) => `--- Analysis ${idx+1} ---\n${analysis}\n`).join('\n')}
+
+IMPORTANT: DO NOT REPEAT information from previous analyses. Instead:
+1. Build upon them with NEW insights
+2. Address gaps and uncertainties from earlier analyses
+3. Deepen understanding of already identified points with NEW evidence
+4. Provide CONTRASTING perspectives where relevant`;
+  }
+  
+  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
+
+Content to analyze:
+${truncatedContent}
+${contextInfo}
+${focusSection}
+${previousAnalysesSection}
+
+Please provide:
+
+1. Key Facts and Insights: What are the most important NEW pieces of information relevant to the query?
+2. Evidence Assessment: Evaluate the strength of evidence regarding the query.${focusText ? ` Make EXPLICIT connections to the focus area: "${focusText}"` : ''}
+3. Probability Factors: What factors impact the likelihood of outcomes related to the query?${focusText ? ` Specifically analyze how these factors relate to: "${focusText}"` : ''}
+4. Areas for Further Research: Identify specific gaps in knowledge that would benefit from additional research.
+5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
+
+Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
+  
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+      "X-Title": "Market Research App",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-flash-1.5",
+      messages: [
+        {
+          role: "system",
+          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
+
+Your analysis should:
+1. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
+2. Avoid repeating information from previous analyses
+3. Build upon existing knowledge with new perspectives
+4. Identify connections between evidence and implications
+5. Be critical of source reliability and evidence quality
+6. Draw balanced conclusions based solely on the evidence provided`
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.3
+    })
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+  }
+  
+  const data = await response.json();
+  
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+  }
+  
+  return data.choices[0].message.content;
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+  
+  try {
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
+    
+    if (!marketId || !query) {
+      return new Response(
+        JSON.stringify({ error: 'marketId and query are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+    
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+    
+    // Create a new job record
+    const { data: jobData, error: jobError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        current_iteration: 0,
+        progress_log: [],
+        iterations: [],
+        focus_text: focusText,
+        notification_email: notificationEmail
+      })
+      .select('id')
+      .single()
+    
+    if (jobError) {
+      throw new Error(`Failed to create job: ${jobError.message}`)
+    }
+    
+    const jobId = jobData.id
+    
+    // Start the background process without EdgeRuntime
+    // Use standard Deno setTimeout for async operation instead
+    setTimeout(() => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
+        console.error(`Background research failed: ${err}`);
+      });
+    }, 0);
+    
+    // Return immediate response with job ID
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Research job started', 
+        jobId: jobId 
+      }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    )
+  } catch (error) {
+    console.error('Error:', error)
+    return new Response(
+      JSON.stringify({ error: error.message || 'Unknown error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
+})

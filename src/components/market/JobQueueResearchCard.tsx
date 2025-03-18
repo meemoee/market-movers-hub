@@ -151,8 +151,7 @@ export function JobQueueResearchCard({
       setIterations(job.iterations);
       
       if (job.iterations.length > 0) {
-        const currentIteration = Math.max(...job.iterations.map(iter => iter.iteration));
-        setExpandedIterations([currentIteration]);
+        setExpandedIterations([job.iterations.length]);
       }
     }
     
@@ -329,56 +328,19 @@ export function JobQueueResearchCard({
           }
           
           if (job.iterations && Array.isArray(job.iterations)) {
-            const updatedIterations = job.iterations;
-            setIterations(updatedIterations);
+            setIterations(job.iterations);
             
-            const streamingIterations = updatedIterations.filter(iter => iter.is_streaming);
-            
-            streamingIterations.forEach(iter => {
-              if (!expandedIterations.includes(iter.iteration)) {
-                setExpandedIterations(prev => [...prev, iter.iteration]);
-              }
-            });
+            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+              setExpandedIterations(prev => [...prev, job.current_iteration]);
+            }
           }
         }
       } catch (e) {
         console.error('Error in poll interval:', e);
       }
-    }, 2000);
+    }, 3000);
     
-    const channel = supabase
-      .channel('research-job-updates')
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'research_jobs',
-        filter: `id=eq.${jobId}`
-      }, (payload) => {
-        const job = payload.new as ResearchJob;
-        console.log('Received real-time update for job:', job.id);
-        
-        if (job.iterations && Array.isArray(job.iterations)) {
-          const streamingIterations = job.iterations.filter(iter => iter.is_streaming);
-          
-          if (streamingIterations.length > 0) {
-            console.log('Found streaming iterations:', streamingIterations.length);
-            
-            setIterations(job.iterations);
-            
-            streamingIterations.forEach(iter => {
-              if (!expandedIterations.includes(iter.iteration)) {
-                setExpandedIterations(prev => [...prev, iter.iteration]);
-              }
-            });
-          }
-        }
-      })
-      .subscribe();
-    
-    return () => {
-      clearInterval(pollInterval);
-      supabase.removeChannel(channel);
-    };
+    return () => clearInterval(pollInterval);
   }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
