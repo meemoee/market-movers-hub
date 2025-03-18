@@ -795,18 +795,26 @@ export function JobQueueResearchCard({
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
           <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === currentStreamingIteration}
-                streamingContent={iteration.iteration === currentStreamingIteration ? streamingContent : undefined}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={parseInt(maxIterations, 10)}
-              />
-            ))}
+            {iterations.map((iteration) => {
+              if (currentStreamingIteration === iteration.iteration && streamingContent) {
+                iteration = {
+                  ...iteration,
+                  analysis: streamingContent
+                };
+              }
+              
+              return (
+                <IterationCard
+                  key={iteration.iteration}
+                  iteration={iteration}
+                  isExpanded={expandedIterations.includes(iteration.iteration)}
+                  onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                  isStreaming={polling && iteration.iteration === currentStreamingIteration}
+                  isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                  maxIterations={parseInt(maxIterations, 10)}
+                />
+              );
+            })}
           </div>
         </div>
       )}
