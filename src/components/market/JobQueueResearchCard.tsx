@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -130,8 +129,8 @@ export function JobQueueResearchCard({
   const handleStreamingContent = (jobId: string, iterationNumber: number) => {
     console.log(`Setting up streaming for job ${jobId}, iteration ${iterationNumber}`);
     
-    // Fix: Using the correct way to get the function URL with the domain
-    const functionUrl = `${process.env.SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co'}/functions/v1/extract-research-insights`;
+    const SUPABASE_PROJECT_ID = 'lfmkoismabbhujycnqpn';
+    const functionUrl = `https://${SUPABASE_PROJECT_ID}.supabase.co/functions/v1/extract-research-insights`;
     
     const eventSource = new EventSource(
       `${functionUrl}?stream=true&jobId=${jobId}&iteration=${iterationNumber}`
