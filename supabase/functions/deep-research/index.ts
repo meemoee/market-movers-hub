@@ -1,4 +1,3 @@
-
 import { corsHeaders } from '../_shared/cors.ts';
 import { OpenRouter } from './openRouter.ts';
 
@@ -46,91 +45,131 @@ Deno.serve(async (req) => {
     console.log(`Description: ${description.substring(0, 100)}...`);
     console.log(`Iterations: ${iterations}`);
 
-    const openRouter = new OpenRouter(Deno.env.get("OPENROUTER_API_KEY") || "");
-    const model = DEFAULT_MODEL;
+    const transformStream = new TransformStream();
+    const writer = transformStream.writable.getWriter();
+    
+    // Start research in background and stream results
+    EdgeRuntime.waitUntil((async () => {
+      try {
+        const openRouter = new OpenRouter(Deno.env.get("OPENROUTER_API_KEY") || "");
+        const model = DEFAULT_MODEL;
 
-    // Initialize research state
-    const researchState = {
-      intent: description,
-      model,
-      totalIterations: iterations,
-      iteration: 1,
-      findings: [],
-      previousQueries: [],
-      steps: [] as ResearchStep[]
-    };
-    
-    // Formulate initial strategic query
-    const initialQuery = await formInitialQuery(description, model, openRouter);
-    let currentQuery = initialQuery;
-    
-    researchState.steps.push({
-      query: initialQuery,
-      results: "Initial query formulated. Starting research..."
-    });
-    
-    console.log(`Initial query: ${initialQuery}`);
-    
-    // Main research loop
-    while (researchState.iteration <= iterations) {
-      console.log(`Performing iteration ${researchState.iteration}/${iterations}`);
-      
-      // Perform research
-      const result = await performResearch(currentQuery, researchState, openRouter);
-      
-      // Store results
-      researchState.findings.push(result);
-      researchState.previousQueries.push(currentQuery);
-      
-      researchState.steps.push({
-        query: currentQuery,
-        results: `Research completed. Found ${result.keyFindings.length} key findings.`
-      });
-      
-      // Check if research should continue
-      if (researchState.iteration >= iterations || result.error) {
-        break;
+        // Initialize research state
+        const researchState = {
+          intent: description,
+          model,
+          totalIterations: iterations,
+          iteration: 1,
+          findings: [],
+          previousQueries: [],
+          steps: [] as ResearchStep[]
+        };
+        
+        // Formulate initial strategic query
+        const initialQuery = await formInitialQuery(description, model, openRouter);
+        let currentQuery = initialQuery;
+        
+        researchState.steps.push({
+          query: initialQuery,
+          results: "Initial query formulated. Starting research..."
+        });
+        
+        console.log(`Initial query: ${initialQuery}`);
+        
+        // Write initial state to stream
+        await writer.write(
+          new TextEncoder().encode(`data: ${JSON.stringify({
+            success: true,
+            report: null,
+            steps: researchState.steps,
+            isComplete: false
+          })}\n\n`)
+        );
+        
+        // Main research loop
+        while (researchState.iteration <= iterations) {
+          console.log(`Performing iteration ${researchState.iteration}/${iterations}`);
+          
+          // Perform research with streaming
+          await performResearch(currentQuery, researchState, openRouter, writer);
+          
+          // Check if research should continue
+          if (researchState.iteration >= iterations) {
+            break;
+          }
+          
+          // Generate next query based on findings
+          currentQuery = await generateNextQuery(
+            description, 
+            researchState.previousQueries, 
+            researchState.findings[researchState.findings.length - 1]?.keyFindings || [], 
+            model,
+            openRouter
+          );
+          
+          researchState.steps.push({
+            query: currentQuery,
+            results: "Generated follow-up query based on findings."
+          });
+          
+          // Write updated state to stream
+          await writer.write(
+            new TextEncoder().encode(`data: ${JSON.stringify({
+              success: true,
+              report: null,
+              steps: researchState.steps,
+              isComplete: false
+            })}\n\n`)
+          );
+          
+          // Increment iteration counter
+          researchState.iteration++;
+        }
+        
+        // Generate final report
+        console.log("Generating final report");
+        const finalReport = await generateFinalReport(researchState, openRouter);
+        
+        researchState.steps.push({
+          query: "Final synthesis",
+          results: "Generating comprehensive research report."
+        });
+        
+        console.log("Research completed successfully");
+        
+        // Write final result to stream
+        await writer.write(
+          new TextEncoder().encode(`data: ${JSON.stringify({
+            success: true,
+            report: finalReport,
+            steps: researchState.steps,
+            isComplete: true
+          })}\n\n`)
+        );
+        
+        await writer.write(new TextEncoder().encode(`data: [DONE]\n\n`));
+      } catch (error) {
+        console.error(`Error in deep-research stream: ${error.message}`);
+        await writer.write(
+          new TextEncoder().encode(`data: ${JSON.stringify({ 
+            success: false, 
+            error: `Error in deep-research: ${error.message}`,
+            isComplete: true
+          })}\n\n`)
+        );
+      } finally {
+        await writer.close();
       }
-      
-      // Generate next query based on findings
-      currentQuery = await generateNextQuery(
-        description, 
-        researchState.previousQueries, 
-        result.keyFindings, 
-        model,
-        openRouter
-      );
-      
-      researchState.steps.push({
-        query: currentQuery,
-        results: "Generated follow-up query based on findings."
-      });
-      
-      // Increment iteration counter
-      researchState.iteration++;
-    }
+    })());
     
-    // Generate final report
-    console.log("Generating final report");
-    const finalReport = await generateFinalReport(researchState, openRouter);
-    
-    researchState.steps.push({
-      query: "Final synthesis",
-      results: "Generating comprehensive research report."
-    });
-    
-    console.log("Research completed successfully");
-    
-    return new Response(
-      JSON.stringify({
-        success: true,
-        report: finalReport,
-        steps: researchState.steps
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    return new Response(transformStream.readable, {
+      headers: { 
+        ...corsHeaders, 
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
       }
-    );
+    });
     
   } catch (error) {
     console.error(`Error in deep-research function: ${error.message}`);
@@ -240,9 +279,9 @@ Return only the query text with no explanations.`;
 }
 
 /**
- * Perform a research iteration
+ * Perform a research iteration with streaming
  */
-async function performResearch(query: string, researchState: any, openRouter: OpenRouter) {
+async function performResearch(query: string, researchState: any, openRouter: OpenRouter, writer: WritableStreamDefaultWriter) {
   console.log(`[Iteration ${researchState.iteration}/${researchState.totalIterations}] Searching: "${query}"`);
   
   // Create a brief research context from previous findings
@@ -289,16 +328,99 @@ IMPORTANT:
     // The ":online" suffix is for web search, if available on OpenRouter
     const onlineModel = `${researchState.model}:online`;
     
-    const response = await openRouter.complete(onlineModel, [
+    // Use streaming for the request
+    const response = await openRouter.completeStreaming(onlineModel, [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `Search for information on: "${query}"` }
     ], 1200, 0.3);
     
-    // Process the content to extract structured data
-    const result = processContent(response, query);
-    result.iteration = researchState.iteration;
+    // Initialize result data structure
+    const result = {
+      iteration: researchState.iteration,
+      query,
+      analysis: '',
+      keyFindings: [] as string[],
+      importantQuestion: '',
+      finalSummary: '',
+      sources: [] as {url: string, label: string}[],
+      error: false
+    };
     
-    return result;
+    // Process the stream
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let accumulatedContent = '';
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n').filter(line => line.trim());
+      
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const jsonStr = line.slice(6).trim();
+          
+          if (jsonStr === '[DONE]') continue;
+          
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content;
+            
+            if (content) {
+              accumulatedContent += content;
+              
+              // Process partial content to extract structured data
+              const partialResult = processContent(accumulatedContent, query);
+              
+              // Update result with partial data
+              result.analysis = partialResult.analysis;
+              result.keyFindings = partialResult.keyFindings;
+              result.importantQuestion = partialResult.importantQuestion;
+              result.finalSummary = partialResult.finalSummary;
+              result.sources = partialResult.sources;
+              
+              // Stream current state to client
+              researchState.steps[researchState.steps.length - 1] = {
+                query,
+                results: `Analysis in progress... Found ${result.keyFindings.length} key findings so far.`
+              };
+              
+              await writer.write(
+                new TextEncoder().encode(`data: ${JSON.stringify({
+                  success: true,
+                  currentIteration: {
+                    iteration: researchState.iteration,
+                    analysis: result.analysis,
+                    keyFindings: result.keyFindings,
+                    query
+                  },
+                  steps: researchState.steps,
+                  isComplete: false
+                })}\n\n`)
+              );
+            }
+          } catch (e) {
+            console.error(`Error parsing SSE data: ${e}`);
+          }
+        }
+      }
+    }
+    
+    // Store final results
+    const finalResult = processContent(accumulatedContent, query);
+    finalResult.iteration = researchState.iteration;
+    
+    researchState.findings.push(finalResult);
+    researchState.previousQueries.push(query);
+    
+    researchState.steps[researchState.steps.length - 1] = {
+      query,
+      results: `Research completed. Found ${finalResult.keyFindings.length} key findings.`
+    };
+    
+    return finalResult;
   } catch (error) {
     console.error(`Research failed: ${error.message}`);
     // Try again without the :online suffix if it failed
@@ -313,10 +435,18 @@ IMPORTANT:
       const result = processContent(response, query);
       result.iteration = researchState.iteration;
       
+      researchState.findings.push(result);
+      researchState.previousQueries.push(query);
+      
+      researchState.steps[researchState.steps.length - 1] = {
+        query,
+        results: `Research completed (fallback method). Found ${result.keyFindings.length} key findings.`
+      };
+      
       return result;
     } catch (retryError) {
       console.error(`Retry also failed: ${retryError.message}`);
-      return {
+      const errorResult = {
         iteration: researchState.iteration,
         query,
         analysis: `Error occurred during research: ${error.message}`,
@@ -326,6 +456,16 @@ IMPORTANT:
         sources: [],
         error: true
       };
+      
+      researchState.findings.push(errorResult);
+      researchState.previousQueries.push(query);
+      
+      researchState.steps[researchState.steps.length - 1] = {
+        query,
+        results: `Research failed: ${error.message}`
+      };
+      
+      return errorResult;
     }
   }
 }
