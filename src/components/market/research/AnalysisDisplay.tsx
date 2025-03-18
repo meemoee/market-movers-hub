@@ -7,12 +7,14 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
+  onVisibilityChange?: (isVisible: boolean) => void
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px" 
+  maxHeight = "200px",
+  onVisibilityChange 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
@@ -24,15 +26,24 @@ export function AnalysisDisplay({
   // Track page visibility
   useEffect(() => {
     const handleVisibilityChange = () => {
-      setIsPageVisible(!document.hidden)
+      const visible = !document.hidden
+      setIsPageVisible(visible)
+      if (onVisibilityChange) {
+        onVisibilityChange(visible)
+      }
     }
     
     document.addEventListener('visibilitychange', handleVisibilityChange)
     
+    // Initial notification
+    if (onVisibilityChange) {
+      onVisibilityChange(isPageVisible)
+    }
+    
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
-  }, [])
+  }, [onVisibilityChange, isPageVisible])
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
