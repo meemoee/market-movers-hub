@@ -22,6 +22,7 @@ interface InsightsRequest {
   marketPrice?: number;
   relatedMarkets?: RelatedMarket[];
   currentDate?: string; // Add explicit current date parameter
+  stream?: boolean; // Add streaming option
 }
 
 const corsHeaders = {
@@ -47,7 +48,8 @@ serve(async (req) => {
       focusText,
       marketPrice,
       relatedMarkets,
-      currentDate // Get current date from request if provided
+      currentDate, // Get current date from request if provided
+      stream = false // Default to non-streaming mode for backward compatibility
     } = await req.json() as InsightsRequest;
     
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
@@ -61,7 +63,8 @@ serve(async (req) => {
       focusText: focusText ? `${focusText.substring(0, 100)}...` : 'None specified',
       marketPrice: marketPrice || 'Not provided',
       relatedMarketsCount: relatedMarkets?.length || 0,
-      currentDate: currentDate || 'Not provided' // Log if we received a current date
+      currentDate: currentDate || 'Not provided', // Log if we received a current date
+      streamingMode: stream ? 'Enabled' : 'Disabled' // Log streaming mode
     });
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
@@ -201,42 +204,150 @@ ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed
 
 Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
-    // Non-streaming version for background jobs
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openRouterKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://hunchex.com',
-        'X-Title': 'Hunchex Analysis'
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.0-flash-lite-001",
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: prompt }
-        ],
-        // For background jobs, don't stream
-        stream: false,
-        temperature: 0.2,
-        response_format: { type: "json_object" }
-      }),
-    });
+    // Implementation for streaming responses
+    if (stream) {
+      console.log("Using streaming mode for response");
+      
+      // Set up streaming response
+      const encoder = new TextEncoder();
+      const responseBody = new ReadableStream({
+        async start(controller) {
+          try {
+            const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${openRouterKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://hunchex.com',
+                'X-Title': 'Hunchex Analysis'
+              },
+              body: JSON.stringify({
+                model: "google/gemini-2.0-flash-lite-001",
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: prompt }
+                ],
+                stream: true,
+                temperature: 0.2,
+                response_format: { type: "json_object" }
+              }),
+            });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`API error: ${response.status} ${errorText}`);
-      throw new Error(`API error: ${response.status} ${errorText}`);
-    }
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`API error: ${response.status} ${errorText}`);
+              controller.enqueue(encoder.encode(JSON.stringify({ error: `API error: ${response.status}` })));
+              controller.close();
+              return;
+            }
 
-    // Parse the response as JSON and return it
-    const results = await response.json();
-    return new Response(JSON.stringify(results), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json',
+            const reader = response.body?.getReader();
+            if (!reader) {
+              controller.enqueue(encoder.encode(JSON.stringify({ error: "Failed to get reader from response" })));
+              controller.close();
+              return;
+            }
+
+            let accumulatedJson = "";
+            let buffer = "";
+
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              
+              const chunk = new TextDecoder().decode(value);
+              buffer += chunk;
+              
+              // Process the buffer line by line
+              let newlineIndex;
+              while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.slice(0, newlineIndex);
+                buffer = buffer.slice(newlineIndex + 1);
+                
+                if (line.startsWith('data: ')) {
+                  const data = line.slice(5).trim();
+                  
+                  // Handle the [DONE] message
+                  if (data === '[DONE]') {
+                    continue;
+                  }
+                  
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                      const content = parsed.choices[0].delta.content || '';
+                      if (content) {
+                        accumulatedJson += content;
+                        // Send the chunk to the client
+                        controller.enqueue(encoder.encode(data + '\n'));
+                      }
+                    }
+                  } catch (e) {
+                    console.error("Error parsing SSE data:", e);
+                  }
+                }
+              }
+            }
+            
+            // Signal the end of the stream
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+            
+          } catch (error) {
+            console.error('Streaming error:', error);
+            controller.enqueue(encoder.encode(JSON.stringify({ error: error.message || 'Unknown streaming error' })));
+            controller.close();
+          }
+        }
+      });
+
+      return new Response(responseBody, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        }
+      });
+    } 
+    else {
+      // Non-streaming version for background jobs
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openRouterKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://hunchex.com',
+          'X-Title': 'Hunchex Analysis'
+        },
+        body: JSON.stringify({
+          model: "google/gemini-2.0-flash-lite-001",
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: prompt }
+          ],
+          // For background jobs, don't stream
+          stream: false,
+          temperature: 0.2,
+          response_format: { type: "json_object" }
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`API error: ${response.status} ${errorText}`);
+        throw new Error(`API error: ${response.status} ${errorText}`);
       }
-    });
+
+      // Parse the response as JSON and return it
+      const results = await response.json();
+      return new Response(JSON.stringify(results), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+        }
+      });
+    }
   } catch (error) {
     console.error('Error in extract-research-insights:', error);
     
