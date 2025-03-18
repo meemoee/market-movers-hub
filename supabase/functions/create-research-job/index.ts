@@ -890,4 +890,132 @@ async function performWebResearch(jobId: string, query: string, marketId: string
 }
 
 // Function to generate analysis using OpenRouter
-async function generateAnalysis
+async function generateAnalysis(
+  content, 
+  query, 
+  title, 
+  marketPrice, 
+  relatedMarkets = [], 
+  areasForResearch = [], 
+  focusText = undefined,
+  previousAnalyses = []
+) {
+  try {
+    // Create a URL for the stream endpoint with the relevant parameters
+    const url = new URL(`${Deno.env.get('SUPABASE_URL')}/functions/v1/deep-research/stream`);
+    
+    // Build system prompt with context
+    let systemPrompt = `You are a research analyst tasked with analyzing web content about the topic: "${query}". `;
+    
+    if (marketPrice !== undefined) {
+      systemPrompt += `The current probability for this event is estimated at ${marketPrice}%. `;
+    }
+    
+    if (relatedMarkets && relatedMarkets.length > 0) {
+      systemPrompt += `Related questions and their probabilities: `;
+      for (const related of relatedMarkets.slice(0, 3)) {
+        systemPrompt += `"${related.question}" (${Math.round(related.probability * 100)}%), `;
+      }
+    }
+    
+    if (focusText) {
+      systemPrompt += `\n\nFocus your analysis specifically on: ${focusText}`;
+    }
+    
+    // Set up the messages array for the completion
+    const messages = [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: `I need you to analyze the following web content related to "${query}" and provide a detailed analysis.\n\n${content}`
+      }
+    ];
+    
+    if (previousAnalyses && previousAnalyses.length > 0) {
+      messages.push({
+        role: "assistant", 
+        content: `I've already done some analysis in previous iterations. Here's what I found:\n\n${previousAnalyses.join('\n\n')}`
+      });
+      
+      messages.push({
+        role: "user", 
+        content: `Now please provide a ${title} that builds upon your previous analysis.`
+      });
+    }
+    
+    // Set up the parameters for stream endpoint
+    url.searchParams.set("model", "google/gemini-flash-1.5");
+    url.searchParams.set("temperature", "0.7");
+    url.searchParams.set("max_tokens", "1500");
+    url.searchParams.set("messages", JSON.stringify(messages));
+    
+    console.log(`Analysis stream URL for job: ${url.toString()}`);
+    
+    // Try to use the streaming endpoint first
+    try {
+      // Get the analysis from the streaming endpoint
+      const response = await fetch(url.toString(), {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Stream request failed with status: ${response.status}`);
+      }
+      
+      // Read the entire response as text
+      const text = await response.text();
+      
+      // Parse events and collect content chunks
+      const lines = text.split("\n\n");
+      let analysisText = "";
+      
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const eventData = JSON.parse(line.substring(6));
+            if (eventData.type === "chunk") {
+              analysisText += eventData.content;
+            }
+          } catch (e) {
+            console.error("Error parsing event data:", e);
+          }
+        }
+      }
+      
+      return analysisText;
+    } catch (streamError) {
+      console.error(`Streaming analysis failed, falling back to non-streaming: ${streamError.message}`);
+      
+      // Fall back to non-streaming endpoint
+      const nonStreamingUrl = new URL(`${Deno.env.get('SUPABASE_URL')}/functions/v1/deep-research`);
+      
+      const response = await fetch(nonStreamingUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+        },
+        body: JSON.stringify({
+          query: `Generate a ${title} based on the following content:\n\n${content}\n\nBe comprehensive, analytical, and focus on extracting key insights about "${query}".`
+        })
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Non-streaming request failed with status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return data.result;
+    }
+  } catch (error) {
+    console.error(`Error generating analysis: ${error.message}`);
+    return `Error generating analysis: ${error.message}`;
+  }
+}
