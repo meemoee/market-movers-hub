@@ -890,4 +890,4 @@ async function performWebResearch(jobId: string, query: string, marketId: string
 }
 
 // Function to generate analysis using OpenRouter
-async
+async function generateAnalysis
