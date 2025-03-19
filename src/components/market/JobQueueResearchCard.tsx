@@ -366,6 +366,11 @@ export function JobQueueResearchCard({
         streamToClient: isPageVisible
       };
       
+      console.log("Creating research job with payload:", {
+        ...payload,
+        streamToClient: isPageVisible
+      });
+      
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
       });

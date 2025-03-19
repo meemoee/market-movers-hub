@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -194,9 +193,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             }
             
             const searchResults = await braveSearchResponse.json();
+            console.log(`Search results for query "${currentQuery}":`, searchResults);
             
             // Extract web results
             const webResults = searchResults.web?.results || [];
+            console.log(`Found ${webResults.length} web results for query "${currentQuery}"`);
             
             // Log search results count
             await supabaseClient.rpc('append_research_progress', {
