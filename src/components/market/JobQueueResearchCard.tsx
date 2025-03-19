@@ -761,7 +761,6 @@ export function JobQueueResearchCard({
                 isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
-                jobId={jobId}
               />
             ))}
           </div>
