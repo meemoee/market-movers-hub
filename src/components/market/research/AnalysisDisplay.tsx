@@ -7,45 +7,18 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
-  onVisibilityChange?: (isVisible: boolean) => void
-  onChunkReceived?: (chunk: string) => void
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px",
-  onVisibilityChange,
-  onChunkReceived
+  maxHeight = "200px" 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const [isPageVisible, setIsPageVisible] = useState<boolean>(!document.hidden)
-  
-  // Track page visibility
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      const visible = !document.hidden
-      setIsPageVisible(visible)
-      if (onVisibilityChange) {
-        onVisibilityChange(visible)
-      }
-    }
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    
-    // Initial notification
-    if (onVisibilityChange) {
-      onVisibilityChange(isPageVisible)
-    }
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
-  }, [onVisibilityChange, isPageVisible])
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
@@ -66,16 +39,10 @@ export function AnalysisDisplay({
       if (isStreaming) {
         setStreamStatus('streaming')
       }
-      
-      // Notify parent component of new content if chunks are coming in
-      if (currentContentLength > prevContentLength.current && onChunkReceived) {
-        const newChunk = content.substring(prevContentLength.current);
-        onChunkReceived(newChunk);
-      }
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll, onChunkReceived])
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -177,12 +144,6 @@ export function AnalysisDisplay({
         >
           Resume auto-scroll
         </button>
-      )}
-      
-      {!isPageVisible && isStreaming && (
-        <div className="absolute top-2 right-2 text-xs text-muted-foreground bg-accent/20 px-2 py-1 rounded-sm">
-          Background mode
-        </div>
       )}
     </div>
   )
