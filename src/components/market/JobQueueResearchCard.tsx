@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -955,3 +956,11 @@ export function JobQueueResearchCard({
       )}
       
       {results.length > 0 && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Source Documents</h3>
+          <SitePreviewList results={results} />
+        </div>
+      )}
+    </Card>
+  );
+}
