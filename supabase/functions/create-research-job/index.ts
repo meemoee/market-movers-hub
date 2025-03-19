@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -34,8 +35,8 @@ async function sendNotificationEmail(jobId: string, email: string) {
 }
 
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
-  console.log(`Starting background research for job ${jobId}`)
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string, streamToClient: boolean = false) {
+  console.log(`Starting background research for job ${jobId}, streamToClient: ${streamToClient}`);
   
   try {
     const supabaseClient = createClient(
@@ -88,7 +89,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     
     // Simulate iterations
     for (let i = 1; i <= maxIterations; i++) {
-      console.log(`Processing iteration ${i} for job ${jobId}`)
+      console.log(`Processing iteration ${i} for job ${jobId}`);
       
       // Update current iteration
       await supabaseClient
@@ -400,7 +401,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 relatedMarkets,
                 areasForResearch,
                 focusText,
-                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
+                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean),
+                streamToClient
               );
               
               // Update the iteration with the analysis
@@ -583,7 +585,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           relatedMarkets,
           areasForResearch,
           focusText,
-          previousAnalyses
+          previousAnalyses,
+          streamToClient
         );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
@@ -744,7 +747,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         areasForResearch: areasForResearch,
         marketPrice: marketPrice,
         relatedMarkets: relatedMarkets.length > 0 ? relatedMarkets : undefined,
-        focusText: focusText
+        focusText: focusText,
+        streamToClient: streamToClient
       };
       
       console.log(`Sending extract-research-insights payload with:
@@ -754,9 +758,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         - ${areasForResearch.length} areas for research
         - marketPrice: ${marketPrice || 'undefined'}
         - ${relatedMarkets.length} related markets
-        - focusText: ${focusText || 'undefined'}`);
+        - focusText: ${focusText || 'undefined'}
+        - streamToClient: ${streamToClient}`);
       
-      // Call the extract-research-insights function to get structured insights (without streaming)
+      // Call the extract-research-insights function (without streaming for background jobs)
       const extractInsightsResponse = await fetch(
         `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
         {
@@ -898,7 +903,8 @@ async function generateAnalysis(
   relatedMarkets?: any[],
   areasForResearch?: string[],
   focusText?: string,
-  previousAnalyses?: string[]
+  previousAnalyses?: string[],
+  streamToClient: boolean = false
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -906,7 +912,7 @@ async function generateAnalysis(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter`);
+  console.log(`Generating ${analysisType} using OpenRouter, streamToClient: ${streamToClient}`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -1030,7 +1036,7 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail, streamToClient = false } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -1070,7 +1076,7 @@ serve(async (req) => {
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail, streamToClient).catch(err => {
         console.error(`Background research failed: ${err}`);
       });
     }, 0);
