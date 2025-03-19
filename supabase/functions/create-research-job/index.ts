@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -48,8 +49,8 @@ function writeSSE(controller: ReadableStreamDefaultController, event: string, da
 }
 
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string, streamToClient: boolean = false) {
-  console.log(`Starting background research for job ${jobId}, streamToClient: ${streamToClient}`);
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string, streamAnalysis: boolean = false) {
+  console.log(`Starting background research for job ${jobId}, streamAnalysis: ${streamAnalysis}`);
   
   try {
     const supabaseClient = createClient(
@@ -415,7 +416,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 areasForResearch,
                 focusText,
                 iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean),
-                streamToClient,
+                streamAnalysis,
                 jobId,
                 i
               );
@@ -601,7 +602,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           areasForResearch,
           focusText,
           previousAnalyses,
-          streamToClient,
+          streamAnalysis,
           jobId,
           0,
           true
@@ -920,7 +921,7 @@ async function generateAnalysis(
   areasForResearch?: string[],
   focusText?: string,
   previousAnalyses?: string[],
-  streamToClient: boolean = false,
+  streamAnalysis: boolean = false,
   jobId?: string,
   iterationNumber?: number,
   isFinal: boolean = false
@@ -931,7 +932,7 @@ async function generateAnalysis(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter, streamToClient: ${streamToClient}`);
+  console.log(`Generating ${analysisType} using OpenRouter, streamAnalysis: ${streamAnalysis}, jobId: ${jobId}`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -1001,11 +1002,11 @@ Please provide:
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
 
-  // If stream is true and we have a jobId to stream to, use streaming response
-  if (streamToClient && jobId) {
+  // If streamAnalysis is true and we have a jobId to stream to, use streaming response
+  if (streamAnalysis && jobId) {
     console.log(`Using streaming response for job ${jobId}, iteration ${iterationNumber}, isFinal: ${isFinal}`);
     
-    const streamType = isFinal ? 'finalAnalysis' : `iteration${iterationNumber}`;
+    const streamType = isFinal ? 'finalAnalysis' : `iteration`;
     
     // Start streaming process
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -1050,74 +1051,38 @@ Your analysis should:
     // Set up output accumulation and handle streaming
     let accumulatedResponse = "";
     
-    // Create the ReadableStream for SSE
-    const sseStream = new ReadableStream({
-      async start(controller) {
-        // Process the streaming response from OpenRouter
-        const reader = response.body?.getReader();
-        if (!reader) {
-          controller.close();
-          return;
-        }
+    // Process the streaming response from OpenRouter
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Failed to get reader from OpenRouter response");
+    }
+    
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
         
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            const chunk = new TextDecoder().decode(value);
-            const lines = chunk.split("\n");
-            
-            for (const line of lines) {
-              if (line.startsWith("data: ") && line !== "data: [DONE]") {
-                try {
-                  const jsonData = JSON.parse(line.substring(6));
-                  if (jsonData.choices && jsonData.choices[0]?.delta?.content) {
-                    const content = jsonData.choices[0].delta.content;
-                    accumulatedResponse += content;
-                    
-                    // Send this chunk to the client
-                    writeSSE(controller, streamType, { 
-                      content, 
-                      jobId, 
-                      iterationNumber: iterationNumber || 0,
-                      isFinal 
-                    });
-                  }
-                } catch (e) {
-                  console.error("Error parsing OpenRouter stream chunk:", e);
-                }
+        const chunk = new TextDecoder().decode(value);
+        const lines = chunk.split("\n");
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ") && line !== "data: [DONE]") {
+            try {
+              const jsonData = JSON.parse(line.substring(6));
+              if (jsonData.choices && jsonData.choices[0]?.delta?.content) {
+                const content = jsonData.choices[0].delta.content;
+                accumulatedResponse += content;
               }
+            } catch (e) {
+              console.error("Error parsing OpenRouter stream chunk:", e);
             }
           }
-          
-          // Send a completion message
-          writeSSE(controller, `${streamType}Complete`, { 
-            jobId, 
-            iterationNumber: iterationNumber || 0,
-            isFinal 
-          });
-          
-          controller.close();
-        } catch (error) {
-          console.error("Error processing OpenRouter stream:", error);
-          controller.close();
         }
       }
-    });
-    
-    // Start a background task to handle the SSE stream
-    EdgeRuntime.waitUntil((async () => {
-      try {
-        const reader = sseStream.getReader();
-        while (true) {
-          const { done } = await reader.read();
-          if (done) break;
-        }
-      } catch (error) {
-        console.error("Error in background SSE processing:", error);
-      }
-    })());
+    } catch (error) {
+      console.error("Error processing OpenRouter stream:", error);
+      throw error;
+    }
     
     return accumulatedResponse;
   } else {
@@ -1176,133 +1141,101 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
   
+  // Check if this is a request for SSE streaming of an existing job
+  const url = new URL(req.url);
+  const jobId = url.searchParams.get('jobId');
+  const streamAnalysis = url.searchParams.get('streamAnalysis') === 'true';
+  
+  if (jobId && streamAnalysis) {
+    console.log(`Setting up SSE stream for existing job ${jobId}`);
+    
+    // Create a new SSE stream for this job
+    const stream = new ReadableStream({
+      start(controller) {
+        // Send initial confirmation message
+        writeSSE(controller, 'connected', { 
+          message: 'SSE connection established', 
+          jobId 
+        });
+      }
+    });
+    
+    return new Response(stream, { headers: sseHeaders });
+  }
+  
   try {
-    const { marketId, query, maxIterations = 3, focusText, notificationEmail, streamToClient = false } = await req.json()
+    // Regular job creation flow
+    const requestData = await req.json();
+    const { 
+      marketId, 
+      query, 
+      maxIterations = 3, 
+      focusText, 
+      notificationEmail, 
+      streamAnalysis: clientStreamRequest = false
+    } = requestData;
     
     if (!marketId || !query) {
       return new Response(
         JSON.stringify({ error: 'marketId and query are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      );
     }
     
-    // If streaming is requested, set up a streaming response
-    if (streamToClient) {
-      console.log(`Client requested streaming for market ${marketId}, query: ${query}`);
-      
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      )
-      
-      // Create a new job record
-      const { data: jobData, error: jobError } = await supabaseClient
-        .from('research_jobs')
-        .insert({
-          market_id: marketId,
-          query: query,
-          status: 'queued',
-          max_iterations: maxIterations,
-          current_iteration: 0,
-          progress_log: [],
-          iterations: [],
-          focus_text: focusText,
-          notification_email: notificationEmail
-        })
-        .select('id')
-        .single()
-      
-      if (jobError) {
-        throw new Error(`Failed to create job: ${jobError.message}`)
-      }
-      
-      const jobId = jobData.id
-      
-      // Start the research in the background
-      EdgeRuntime.waitUntil(performWebResearch(
-        jobId, 
-        query, 
-        marketId, 
-        maxIterations, 
-        focusText, 
-        notificationEmail, 
-        streamToClient
-      ));
-      
-      // Return a streaming response with SSE
-      const stream = new ReadableStream({
-        start(controller) {
-          // Send initial confirmation message
-          writeSSE(controller, 'connected', { 
-            message: 'SSE connection established', 
-            jobId 
-          });
-          
-          // Send job creation confirmation
-          writeSSE(controller, 'jobCreated', { 
-            message: 'Research job created and processing started', 
-            jobId 
-          });
-        }
-      });
-      
-      return new Response(stream, { headers: sseHeaders });
-    } else {
-      // Non-streaming response (original behavior)
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      )
-      
-      // Create a new job record
-      const { data: jobData, error: jobError } = await supabaseClient
-        .from('research_jobs')
-        .insert({
-          market_id: marketId,
-          query: query,
-          status: 'queued',
-          max_iterations: maxIterations,
-          current_iteration: 0,
-          progress_log: [],
-          iterations: [],
-          focus_text: focusText,
-          notification_email: notificationEmail
-        })
-        .select('id')
-        .single()
-      
-      if (jobError) {
-        throw new Error(`Failed to create job: ${jobError.message}`)
-      }
-      
-      const jobId = jobData.id
-      
-      // Start the background process without EdgeRuntime
-      // Use standard Deno setTimeout for async operation instead
-      setTimeout(() => {
-        performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail, streamToClient).catch(err => {
-          console.error(`Background research failed: ${err}`);
-        });
-      }, 0);
-      
-      // Return immediate response with job ID
-      return new Response(
-        JSON.stringify({ 
-          success: true, 
-          message: 'Research job started', 
-          jobId: jobId 
-        }),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      )
+    console.log(`Creating research job for market ${marketId}, query: ${query}, streamAnalysis: ${clientStreamRequest}`);
+    
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    // Create a new job record
+    const { data: jobData, error: jobError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        current_iteration: 0,
+        progress_log: [],
+        iterations: [],
+        focus_text: focusText,
+        notification_email: notificationEmail
+      })
+      .select('id')
+      .single();
+    
+    if (jobError) {
+      throw new Error(`Failed to create job: ${jobError.message}`);
     }
+    
+    const jobId = jobData.id;
+    
+    // Start the background process
+    setTimeout(() => {
+      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail, clientStreamRequest).catch(err => {
+        console.error(`Background research failed: ${err}`);
+      });
+    }, 0);
+    
+    // Return immediate response with job ID
+    return new Response(
+      JSON.stringify({ 
+        success: true, 
+        message: 'Research job started', 
+        jobId: jobId 
+      }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    );
   }
-})
+});

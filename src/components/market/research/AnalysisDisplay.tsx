@@ -8,13 +8,15 @@ interface AnalysisDisplayProps {
   isStreaming?: boolean
   maxHeight?: string | number
   onVisibilityChange?: (isVisible: boolean) => void
+  onChunkReceived?: (chunk: string) => void
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
   maxHeight = "200px",
-  onVisibilityChange 
+  onVisibilityChange,
+  onChunkReceived
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
@@ -64,10 +66,16 @@ export function AnalysisDisplay({
       if (isStreaming) {
         setStreamStatus('streaming')
       }
+      
+      // Notify parent component of new content if chunks are coming in
+      if (currentContentLength > prevContentLength.current && onChunkReceived) {
+        const newChunk = content.substring(prevContentLength.current);
+        onChunkReceived(newChunk);
+      }
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+  }, [content, isStreaming, shouldAutoScroll, onChunkReceived])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {

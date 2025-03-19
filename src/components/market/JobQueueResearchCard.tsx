@@ -83,6 +83,10 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const [isPageVisible, setIsPageVisible] = useState(true)
+  const [iterationStreams, setIterationStreams] = useState<{[key: number]: string}>({})
+  const [finalAnalysisStream, setFinalAnalysisStream] = useState('')
+  const [sseConnected, setSseConnected] = useState(false)
+  const [eventSource, setEventSource] = useState<EventSource | null>(null)
   const { toast } = useToast()
 
   const resetState = () => {
@@ -97,10 +101,24 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    setIterationStreams({});
+    setFinalAnalysisStream('');
+    setSseConnected(false);
+    
+    if (eventSource) {
+      eventSource.close();
+      setEventSource(null);
+    }
   }
 
   useEffect(() => {
     fetchSavedJobs();
+    
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+    };
   }, [marketId]);
 
   const fetchSavedJobs = async () => {
@@ -245,8 +263,101 @@ export function JobQueueResearchCard({
     }
   };
 
+  const setupSSEConnection = (jobId: string) => {
+    if (!isPageVisible) return;
+    
+    if (eventSource) {
+      eventSource.close();
+    }
+    
+    const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+    const newEventSource = new EventSource(
+      `${baseUrl}/functions/v1/create-research-job?jobId=${jobId}&streamAnalysis=true`
+    );
+    
+    newEventSource.onopen = () => {
+      console.log(`SSE connection opened for job ${jobId}`);
+      setSseConnected(true);
+    };
+    
+    newEventSource.addEventListener('connected', (e) => {
+      console.log('SSE connection confirmed:', e.data);
+    });
+    
+    newEventSource.addEventListener('jobCreated', (e) => {
+      const data = JSON.parse(e.data);
+      console.log('Job created confirmation:', data);
+    });
+    
+    newEventSource.addEventListener('iteration', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.content && data.iterationNumber) {
+          setIterationStreams(prev => ({
+            ...prev,
+            [data.iterationNumber]: (prev[data.iterationNumber] || '') + data.content
+          }));
+          
+          if (!expandedIterations.includes(data.iterationNumber)) {
+            setExpandedIterations(prev => [...prev, data.iterationNumber]);
+          }
+        }
+      } catch (error) {
+        console.error('Error processing iteration event:', error);
+      }
+    });
+    
+    newEventSource.addEventListener('iterationComplete', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        console.log(`Iteration ${data.iterationNumber} analysis completed`);
+      } catch (error) {
+        console.error('Error processing iterationComplete event:', error);
+      }
+    });
+    
+    newEventSource.addEventListener('finalAnalysis', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.content) {
+          setFinalAnalysisStream(prev => prev + data.content);
+        }
+      } catch (error) {
+        console.error('Error processing finalAnalysis event:', error);
+      }
+    });
+    
+    newEventSource.addEventListener('finalAnalysisComplete', (e) => {
+      try {
+        console.log('Final analysis completed');
+      } catch (error) {
+        console.error('Error processing finalAnalysisComplete event:', error);
+      }
+    });
+    
+    newEventSource.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      setSseConnected(false);
+      
+      if (jobStatus !== 'completed' && jobStatus !== 'failed') {
+        console.log('Reconnecting SSE...');
+        setTimeout(() => {
+          setupSSEConnection(jobId);
+        }, 3000);
+      } else {
+        newEventSource.close();
+      }
+    };
+    
+    setEventSource(newEventSource);
+  };
+
   useEffect(() => {
     if (!jobId || !polling) return;
+    
+    if (isPageVisible && jobStatus === 'processing' && !sseConnected) {
+      setupSSEConnection(jobId);
+    }
     
     const pollInterval = setInterval(async () => {
       try {
@@ -331,7 +442,7 @@ export function JobQueueResearchCard({
           if (job.iterations && Array.isArray(job.iterations)) {
             setIterations(job.iterations);
             
-            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+            if (!isPageVisible && job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
               setExpandedIterations(prev => [...prev, job.current_iteration]);
             }
           }
@@ -342,7 +453,18 @@ export function JobQueueResearchCard({
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, isPageVisible, sseConnected]);
+
+  useEffect(() => {
+    if (isPageVisible && jobId && jobStatus === 'processing' && !sseConnected) {
+      setupSSEConnection(jobId);
+    } else if (!isPageVisible && eventSource) {
+      console.log('Page not visible, closing SSE connection');
+      eventSource.close();
+      setEventSource(null);
+      setSseConnected(false);
+    }
+  }, [isPageVisible, jobId, jobStatus]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -359,7 +481,8 @@ export function JobQueueResearchCard({
         query: description,
         maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
-        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
+        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined,
+        streamAnalysis: isPageVisible
       };
       
       const response = await supabase.functions.invoke('create-research-job', {
@@ -382,6 +505,10 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
+      
+      if (isPageVisible) {
+        setupSSEConnection(jobId);
+      }
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
         ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
@@ -447,6 +574,10 @@ export function JobQueueResearchCard({
       const job = data as ResearchJob;
       
       loadJobData(job);
+      
+      if (isPageVisible && (job.status === 'processing' || job.status === 'queued')) {
+        setupSSEConnection(job.id);
+      }
       
       toast({
         title: "Research Loaded",
@@ -758,17 +889,25 @@ export function JobQueueResearchCard({
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
           <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={parseInt(maxIterations, 10)}
-              />
-            ))}
+            {iterations.map((iteration) => {
+              const streamContent = iterationStreams[iteration.iteration];
+              const analysisContent = streamContent || iteration.analysis;
+              const isCurrentlyStreaming = isPageVisible && sseConnected && jobStatus === 'processing' && 
+                                        iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0);
+                                        
+              return (
+                <IterationCard
+                  key={iteration.iteration}
+                  iteration={iteration}
+                  isExpanded={expandedIterations.includes(iteration.iteration)}
+                  onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                  isStreaming={isCurrentlyStreaming}
+                  isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                  maxIterations={parseInt(maxIterations, 10)}
+                  analysisContent={analysisContent}
+                />
+              );
+            })}
           </div>
         </div>
       )}
@@ -795,11 +934,12 @@ export function JobQueueResearchCard({
             <SitePreviewList results={results} />
           </div>
           
-          {analysis && (
+          {(analysis || finalAnalysisStream) && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
               <AnalysisDisplay 
-                content={analysis} 
+                content={finalAnalysisStream || analysis}
+                isStreaming={isPageVisible && sseConnected && jobStatus === 'processing'}
                 onVisibilityChange={handleVisibilityChange}
               />
             </div>
@@ -809,4 +949,3 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
-
