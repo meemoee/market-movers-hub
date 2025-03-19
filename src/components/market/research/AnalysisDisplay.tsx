@@ -21,6 +21,7 @@ export function AnalysisDisplay({
   maxHeight = '250px' 
 }: AnalysisDisplayProps) {
   const [streamingContent, setStreamingContent] = useState<string>('')
+  const [lastChunkTime, setLastChunkTime] = useState<number>(0)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
 
   // Always scroll to bottom when content updates
@@ -40,13 +41,16 @@ export function AnalysisDisplay({
       return;
     }
 
+    console.log(`Setting up realtime subscription for job ${jobId}, iteration ${iteration}`);
+    
     // Initialize the streaming content
     setStreamingContent('');
-    
-    console.log(`Setting up realtime subscription for job ${jobId}, iteration ${iteration}`);
+    setLastChunkTime(Date.now());
     
     // Sort existing chunks to ensure correct order
     const fetchExistingChunks = async () => {
+      console.log(`Fetching existing chunks for job ${jobId}, iteration ${iteration}`);
+      
       const { data: existingChunks, error } = await supabase
         .from('analysis_stream')
         .select('chunk, sequence')
@@ -60,17 +64,33 @@ export function AnalysisDisplay({
       }
       
       if (existingChunks && existingChunks.length > 0) {
-        const sortedChunks = existingChunks.sort((a, b) => a.sequence - b.sequence);
-        const combinedContent = sortedChunks.map(chunk => chunk.chunk).join('');
-        setStreamingContent(combinedContent);
+        console.log(`Found ${existingChunks.length} existing chunks for job ${jobId}, iteration ${iteration}`);
+        
+        // Instead of combining all at once, simulate gradual appearance
+        const displayChunksGradually = async () => {
+          const sortedChunks = existingChunks.sort((a, b) => a.sequence - b.sequence);
+          
+          for (let i = 0; i < sortedChunks.length; i++) {
+            setStreamingContent(prev => prev + sortedChunks[i].chunk);
+            setLastChunkTime(Date.now());
+            // Add a slight delay between chunks for more natural appearance
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        };
+        
+        displayChunksGradually();
+      } else {
+        console.log(`No existing chunks found for job ${jobId}, iteration ${iteration}`);
       }
     };
     
     fetchExistingChunks();
     
     // Subscribe to new chunks
+    console.log(`Creating realtime subscription for job ${jobId}, iteration ${iteration}`);
+    
     const channel = supabase
-      .channel('analysis-stream')
+      .channel(`analysis-stream-${jobId}-${iteration}`)
       .on(
         'postgres_changes',
         {
@@ -84,12 +104,15 @@ export function AnalysisDisplay({
           const newChunk = payload.new.chunk;
           
           setStreamingContent(prev => prev + newChunk);
+          setLastChunkTime(Date.now());
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`Subscription status for job ${jobId}, iteration ${iteration}:`, status);
+      });
 
     return () => {
-      console.log('Cleaning up realtime subscription');
+      console.log(`Cleaning up realtime subscription for job ${jobId}, iteration ${iteration}`);
       supabase.removeChannel(channel);
     };
   }, [isStreaming, jobId, iteration]);

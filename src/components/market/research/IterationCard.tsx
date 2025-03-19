@@ -22,6 +22,7 @@ interface IterationCardProps {
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
+  jobId?: string; // Add jobId prop
 }
 
 export function IterationCard({
@@ -30,7 +31,8 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations
+  maxIterations,
+  jobId  // Accept jobId from parent component
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
@@ -47,112 +49,151 @@ export function IterationCard({
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
+  // Use the job_id from the iteration if available, otherwise fall back to the jobId prop
+  const effectiveJobId = iteration.job_id || jobId;
+
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
+      isExpanded ? "mb-4" : "",
+      isCurrentIteration && isStreaming ? "border-blue-500 bg-blue-500/10" : "",
+      !isExpanded && iteration.analysis ? "bg-gray-900/30" : ""
     )}>
       <div 
-        className={cn(
-          "iteration-card-header flex items-center justify-between p-3 w-full",
-          isExpanded ? "bg-accent/10" : "",
-          "hover:bg-accent/10 cursor-pointer"
-        )}
+        className="flex justify-between items-center p-3 cursor-pointer hover:bg-accent/20"
         onClick={onToggleExpand}
       >
-        <div className="flex items-center gap-2 overflow-hidden">
-          <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
-            Iteration {iteration.iteration}
-            {isStreaming && isCurrentIteration && " (Streaming...)"}
-          </Badge>
-          <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
-          </span>
+        <div className="flex items-center space-x-2">
+          <div className="flex flex-col items-start">
+            <div className="flex items-center">
+              <span className="font-medium">
+                {isCurrentIteration && isStreaming ? (
+                  <Badge variant="outline" className="flex items-center gap-1 py-1 animate-pulse bg-blue-500/20">
+                    <span>Processing Iteration {iteration.iteration}</span>
+                  </Badge>
+                ) : (
+                  <span>Iteration {iteration.iteration}</span>
+                )}
+              </span>
+              
+              {iteration.analysis && (
+                <Badge variant="outline" className="ml-2 bg-green-500/20">
+                  Complete
+                </Badge>
+              )}
+              
+              {isCurrentIteration && !iteration.analysis && !isStreaming && (
+                <Badge variant="outline" className="ml-2 bg-amber-500/20">
+                  Pending
+                </Badge>
+              )}
+            </div>
+            
+            {iteration.queries && iteration.queries.length > 0 && (
+              <span className="text-xs text-muted-foreground mt-1">
+                {iteration.queries.length} search queries generated
+              </span>
+            )}
+          </div>
         </div>
-        {isExpanded ? 
-          <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 
-          <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        }
+        <div>
+          {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+        </div>
       </div>
-      
+
       {isExpanded && (
-        <div className="p-3 w-full max-w-full">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
-            <TabsList className="w-full grid grid-cols-3 mb-3">
-              <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
-              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
-              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
+        <div className="px-3 pb-3">
+          <Tabs defaultValue="analysis" value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="mb-2">
+              <TabsTrigger value="analysis" className="flex items-center">
+                <FileText className="h-4 w-4 mr-1" />
+                Analysis
+              </TabsTrigger>
+              <TabsTrigger value="queries" className="flex items-center">
+                <Search className="h-4 w-4 mr-1" />
+                Queries
+              </TabsTrigger>
+              {iteration.results && iteration.results.length > 0 && (
+                <TabsTrigger value="sources" className="flex items-center">
+                  <ExternalLink className="h-4 w-4 mr-1" />
+                  Sources ({iteration.results.length})
+                </TabsTrigger>
+              )}
             </TabsList>
             
-            <div className="tab-content-container h-[200px] w-full">
-              <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
+            <TabsContent value="analysis" className="mt-0">
+              {(iteration.analysis || isStreaming) && (
                 <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
-                  isStreaming={isStreaming && isCurrentIteration}
-                  jobId={iteration.job_id}
+                  content={iteration.analysis || ''} 
+                  isStreaming={isStreaming && isCurrentIteration} 
+                  jobId={effectiveJobId}
                   iteration={iteration.iteration}
-                  maxHeight="100%"
                 />
-              </TabsContent>
+              )}
               
-              <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
-                  <div className="space-y-2 w-full">
+              {!iteration.analysis && !isStreaming && (
+                <div className="text-sm text-muted-foreground p-2 rounded border border-border bg-accent/20">
+                  Analysis will be available once this iteration completes
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="queries" className="mt-0">
+              {iteration.queries && iteration.queries.length > 0 ? (
+                <ScrollArea className="h-[200px] rounded-md border p-2">
+                  <div className="space-y-2">
+                    {iteration.queries.map((query, idx) => (
+                      <div key={idx} className="text-sm p-2 rounded bg-accent/20">
+                        {query}
+                      </div>
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="text-sm text-muted-foreground p-2 rounded border border-border bg-accent/20">
+                  No queries generated yet
+                </div>
+              )}
+            </TabsContent>
+            
+            <TabsContent value="sources" className="mt-0">
+              {iteration.results && iteration.results.length > 0 ? (
+                <ScrollArea className="h-[200px] rounded-md border p-2">
+                  <div className="space-y-2">
                     {iteration.results.map((result, idx) => (
-                      <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
-                        <div className="flex items-center gap-2">
+                      <div key={idx} className="text-sm p-2 rounded bg-accent/20 flex items-start gap-2">
+                        {result.url && (
                           <img 
                             src={getFaviconUrl(result.url)} 
+                            className="w-4 h-4 mt-1 flex-shrink-0" 
                             alt=""
-                            className="w-4 h-4 flex-shrink-0"
-                            onError={(e) => {
-                              e.currentTarget.src = `data:image/svg+xml,${encodeURIComponent(
-                                '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>'
-                              )}`;
-                            }}
+                            onError={(e) => (e.target as HTMLImageElement).style.display = 'none'}
                           />
-                          <a 
-                            href={result.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-500 hover:underline truncate w-full"
-                            title={result.url}
-                          >
-                            {result.url}
-                          </a>
+                        )}
+                        <div>
+                          <div className="font-medium">{result.title || 'Untitled Source'}</div>
+                          {result.url && (
+                            <a 
+                              href={result.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-400 hover:underline flex items-center gap-1"
+                            >
+                              {result.url.split('/')[2]}
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
                         </div>
                       </div>
                     ))}
-                    
-                    {iteration.results.length === 0 && (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No sources found for this iteration.
-                      </div>
-                    )}
                   </div>
                 </ScrollArea>
-              </TabsContent>
-              
-              <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full">
-                  <div className="space-y-2 w-full">
-                    {iteration.queries.map((query, idx) => (
-                      <div key={idx} className="query-badge bg-accent/10 p-2 rounded-md flex items-center gap-1 w-full mb-2">
-                        <Search className="h-3 w-3 flex-shrink-0 mr-1" />
-                        <span className="text-xs break-words">{query}</span>
-                      </div>
-                    ))}
-                    
-                    {iteration.queries.length === 0 && (
-                      <div className="p-4 text-center text-muted-foreground">
-                        No queries for this iteration.
-                      </div>
-                    )}
-                  </div>
-                </ScrollArea>
-              </TabsContent>
-            </div>
+              ) : (
+                <div className="text-sm text-muted-foreground p-2 rounded border border-border bg-accent/20">
+                  No sources retrieved yet
+                </div>
+              )}
+            </TabsContent>
           </Tabs>
         </div>
       )}

@@ -59,7 +59,7 @@ function splitIntoChunks(text: string, numChunks: number): string[] {
   return chunks;
 }
 
-// Function to store chunks with controlled delay
+// Function to store chunks with controlled delay - now returns a Promise
 async function storeChunksWithDelay(jobId: string, iteration: number, chunks: string[]): Promise<void> {
   console.log(`Storing ${chunks.length} chunks for job ${jobId}, iteration ${iteration}`);
   
@@ -85,7 +85,7 @@ async function storeChunksWithDelay(jobId: string, iteration: number, chunks: st
     
     // Add a delay between chunks to simulate streaming
     // Vary the delay slightly for more realistic streaming
-    const baseDelay = 100; // 100ms base delay
+    const baseDelay = 200; // Increased base delay to 200ms
     const randomFactor = Math.random() * 0.5 + 0.75; // Random factor between 0.75 and 1.25
     const delay = Math.floor(baseDelay * randomFactor);
     
@@ -150,7 +150,7 @@ serve(async (req) => {
     // Determine number of chunks based on text length
     // Longer texts get more chunks for more realistic streaming
     const textLength = fullText.length
-    let numChunks = Math.max(5, Math.min(20, Math.floor(textLength / 50)))
+    let numChunks = Math.max(8, Math.min(25, Math.floor(textLength / 40)))
     
     // Split the text into chunks
     const chunks = splitIntoChunks(fullText, numChunks)
@@ -158,7 +158,11 @@ serve(async (req) => {
     
     // Start storing chunks with delay in the background
     // We don't await this so we can return a response immediately
-    storeChunksWithDelay(jobId, iteration, chunks)
+    // Using EdgeRuntime.waitUntil to ensure the function continues running
+    const storeChunksPromise = storeChunksWithDelay(jobId, iteration, chunks)
+    if (typeof EdgeRuntime !== 'undefined') {
+      EdgeRuntime.waitUntil(storeChunksPromise)
+    }
     
     // Return the initial response to let the client know processing has started
     return new Response(
