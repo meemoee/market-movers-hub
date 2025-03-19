@@ -931,5 +931,241 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         } catch (error) {
           console.error(`Error generating refined queries for iteration ${iteration + 1}:`, error);
           setError(`Error occurred during research iteration ${iteration + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-         
+          setIsLoading(false);
+          setIsAnalyzing(false);
+        }
+      }
+      
+    } catch (error) {
+      console.error(`Error in content analysis for iteration ${iteration}:`, error);
+      setError(`Error occurred during analysis: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsLoading(false);
+      setIsAnalyzing(false);
+    }
+  };
 
+  const extractInsights = async (allContent: string[], analysisContent: string) => {
+    try {
+      setProgress(prev => [...prev, "Extracting key insights from research..."]);
+      
+      const extractPayload = {
+        content: allContent.join('\n\n'),
+        analysis: analysisContent,
+        query: description,
+        marketId: marketId,
+        marketPrice: marketPrice
+      };
+      
+      const insightsResponse = await supabase.functions.invoke('extract-research-insights', {
+        body: JSON.stringify(extractPayload)
+      });
+
+      if (insightsResponse.error) {
+        throw new Error(insightsResponse.error.message || "Error extracting insights");
+      }
+
+      const reader = new Response(insightsResponse.data.body).body?.getReader();
+      
+      if (!reader) {
+        throw new Error('Failed to get reader from insights response');
+      }
+      
+      let insightsText = '';
+      const textDecoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          console.log("Insights stream complete");
+          break;
+        }
+        
+        const chunk = textDecoder.decode(value);
+        console.log("Received insights chunk of size:", chunk.length);
+        
+        const lines = chunk.split('\n\n');
+        
+        for (const line of lines) {
+          if (line.trim() && line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
+            
+            try {
+              const { content } = cleanStreamContent(jsonStr);
+              
+              if (content) {
+                insightsText += content;
+                
+                try {
+                  // Try to parse as we go, but don't fail if it's not complete JSON yet
+                  const parsedData = JSON.parse(insightsText);
+                  setStreamingState(prev => ({
+                    rawText: insightsText,
+                    parsedData: {
+                      probability: parsedData.probability || '',
+                      areasForResearch: parsedData.areasForResearch || [],
+                      reasoning: parsedData.reasoning || ''
+                    }
+                  }));
+                } catch (e) {
+                  setStreamingState(prev => ({
+                    ...prev,
+                    rawText: insightsText
+                  }));
+                }
+              }
+            } catch (e) {
+              console.debug('Error parsing insights SSE data:', e);
+            }
+          }
+        }
+      }
+      
+      if (insightsText) {
+        try {
+          const parsedInsights = JSON.parse(insightsText);
+          
+          setStreamingState({
+            rawText: insightsText,
+            parsedData: {
+              probability: parsedInsights.probability || '',
+              areasForResearch: parsedInsights.areasForResearch || [],
+              reasoning: parsedInsights.reasoning || ''
+            }
+          });
+          
+          console.log("Finished extracting insights:", parsedInsights);
+          setProgress(prev => [...prev, "Key insights extracted successfully!"]);
+          
+          await saveResearch();
+          
+        } catch (e) {
+          console.error("Failed to parse final insights JSON:", e);
+          setStreamingState(prev => ({
+            rawText: insightsText,
+            parsedData: null
+          }));
+        }
+      }
+      
+    } catch (error) {
+      console.error("Error extracting insights:", error);
+      setError(`Error extracting insights: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsLoading(false);
+      setIsAnalyzing(false);
+    }
+  };
+  
+  return (
+    <Card className="w-full shadow-md">
+      <ResearchHeader 
+        title={focusText ? `Focused Research: ${focusText}` : "Web Research"}
+        description={description}
+        onRunResearch={() => handleResearch()}
+        loadSavedResearch={loadSavedResearch}
+        savedResearch={savedResearch || []}
+        isLoading={isLoading}
+        marketId={marketId}
+      />
+      
+      {parentResearch && (
+        <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900 flex items-center gap-2 text-sm border-t">
+          <ArrowLeftCircle size={16} className="text-slate-500" />
+          <span className="text-slate-500">From parent research:</span>
+          <button
+            onClick={() => loadSavedResearch(parentResearch)}
+            className="text-blue-500 hover:underline overflow-hidden text-ellipsis whitespace-nowrap max-w-[400px]"
+            title={parentResearch.focus_text || "Parent research"}
+          >
+            {parentResearch.focus_text || "Main research"}
+          </button>
+        </div>
+      )}
+
+      <div className="p-4">
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md text-red-600 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+            {error}
+          </div>
+        )}
+        
+        {isLoading && (
+          <ProgressDisplay 
+            progress={progress}
+            currentIteration={currentIteration} 
+            maxIterations={maxIterations}
+            currentQueries={currentQueries}
+            currentQueryIndex={currentQueryIndex}
+            isAnalyzing={isAnalyzing}
+          />
+        )}
+        
+        {!isLoading && results.length > 0 && (
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-lg font-medium mb-2">Sources ({results.length})</h3>
+              <SitePreviewList results={results} />
+            </div>
+            
+            {iterations.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Research Iterations</h3>
+                {iterations.map((iteration) => (
+                  <IterationCard
+                    key={`iteration-${iteration.iteration}`}
+                    iteration={iteration}
+                    isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
+                    onToggle={() => {
+                      setExpandedIterations(prev => 
+                        prev.includes(`iteration-${iteration.iteration}`)
+                          ? prev.filter(id => id !== `iteration-${iteration.iteration}`)
+                          : [...prev, `iteration-${iteration.iteration}`]
+                      );
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            
+            {analysis && (
+              <div className="mt-4">
+                <h3 className="text-lg font-medium mb-2">Analysis</h3>
+                <AnalysisDisplay analysis={analysis} />
+              </div>
+            )}
+            
+            {streamingState.parsedData && (
+              <InsightsDisplay 
+                streamingState={streamingState}
+                onResearchArea={handleResearchArea}
+                parentResearch={parentResearch ? { 
+                  id: parentResearch.id, 
+                  focusText: parentResearch.focus_text || "", 
+                  onView: () => loadSavedResearch(parentResearch) 
+                } : undefined}
+                childResearches={childResearchList.map(research => ({
+                  id: research.id,
+                  focusText: research.focus_text || "",
+                  onView: () => loadSavedResearch(research)
+                }))}
+              />
+            )}
+          </div>
+        )}
+        
+        {!isLoading && results.length === 0 && (
+          <div className="py-8 text-center">
+            <Search className="mx-auto h-12 w-12 text-slate-300 dark:text-slate-600 mb-3" />
+            <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">Run web research</h3>
+            <p className="text-slate-500 dark:text-slate-400 mt-1 mb-4 max-w-md mx-auto">
+              Click the "Research" button to analyze web content related to this market.
+            </p>
+            <Button onClick={() => handleResearch()}>Start Research</Button>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
