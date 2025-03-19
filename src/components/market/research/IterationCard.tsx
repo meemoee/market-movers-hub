@@ -33,6 +33,7 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -45,6 +46,10 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+
+  const handleAnalysisScroll = (isAtBottom: boolean) => {
+    setAutoScrollEnabled(isAtBottom);
+  };
 
   return (
     <div className={cn(
@@ -90,6 +95,7 @@ export function IterationCard({
                   content={iteration.analysis || "Analysis in progress..."} 
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
+                  onScroll={handleAnalysisScroll}
                 />
               </TabsContent>
               

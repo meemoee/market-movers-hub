@@ -7,12 +7,14 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
+  onScroll?: (isAtBottom: boolean) => void
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px" 
+  maxHeight = "200px",
+  onScroll
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
@@ -58,11 +60,15 @@ export function AnalysisDisplay({
       ) < 30 // Small threshold for "close enough" to bottom
       
       setShouldAutoScroll(isAtBottom)
+      
+      if (onScroll) {
+        onScroll(isAtBottom)
+      }
     }
     
     scrollContainer.addEventListener('scroll', handleScroll)
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
-  }, [])
+  }, [onScroll])
   
   // Check for inactive streaming with longer intervals
   useEffect(() => {
