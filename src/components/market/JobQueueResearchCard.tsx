@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -82,10 +82,6 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const [streamSource, setStreamSource] = useState<EventSource | null>(null)
-  const [isStreaming, setIsStreaming] = useState<boolean>(false)
-  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
-  const currentIterationRef = useRef<number | null>(null)
   const { toast } = useToast()
 
   const resetState = () => {
@@ -100,14 +96,6 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    
-    // Close any existing stream connection
-    if (streamSource) {
-      streamSource.close();
-      setStreamSource(null);
-      setIsStreaming(false);
-    }
-    currentIterationRef.current = null;
   }
 
   useEffect(() => {
@@ -256,132 +244,6 @@ export function JobQueueResearchCard({
     }
   };
 
-  // Updated connectToStream function
-  const connectToStream = (jobId: string, iterationNumber: number) => {
-    // Close any existing stream
-    if (streamSource) {
-      streamSource.close();
-      setStreamSource(null);
-    }
-
-    console.log(`Attempting to connect to stream for job ${jobId}, iteration ${iterationNumber}`);
-    setIsStreaming(true);
-    currentIterationRef.current = iterationNumber;
-    
-    // Create URL for our streaming endpoint with query parameters
-    const streamUrl = `${supabase.functions.url('stream-analysis')}?jobId=${jobId}&iterationNumber=${iterationNumber}`;
-    
-    try {
-      // Create EventSource connection
-      const source = new EventSource(streamUrl, { withCredentials: true });
-      
-      // When connection opens, send the job and iteration info
-      source.onopen = (event) => {
-        console.log(`Stream connection opened for job ${jobId}, iteration ${iterationNumber}`);
-        
-        // Also send a POST to initialize the server-side connection
-        fetch(supabase.functions.url('stream-analysis'), {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.getSession()?.data?.session?.access_token}`
-          },
-          body: JSON.stringify({ jobId, iterationNumber })
-        }).catch(error => {
-          console.error('Error initializing stream:', error);
-        });
-      };
-      
-      // When we get a message, update the analysis content
-      source.onmessage = (event) => {
-        const chunk = event.data;
-        console.log(`Received chunk from stream: "${chunk.substring(0, 50)}${chunk.length > 50 ? '...' : ''}"`);
-        
-        setIterations(prevIterations => {
-          const newIterations = [...prevIterations];
-          const iterIndex = newIterations.findIndex(iter => iter.iteration === iterationNumber);
-          
-          if (iterIndex >= 0) {
-            const currentAnalysis = newIterations[iterIndex].analysis || '';
-            newIterations[iterIndex] = {
-              ...newIterations[iterIndex],
-              analysis: currentAnalysis + chunk
-            };
-          }
-          
-          return newIterations;
-        });
-        
-        // Update last update time to show active streaming
-        setLastUpdateTime(Date.now());
-      };
-      
-      // Handle keepalive events
-      source.addEventListener('keepalive', (event) => {
-        console.log('Received keepalive from server');
-      });
-      
-      // Handle errors
-      source.onerror = (event) => {
-        console.error('SSE Error:', event);
-        
-        // If connection fails, try to reconnect once after a delay
-        setTimeout(() => {
-          if (source.readyState === EventSource.CLOSED) {
-            console.log('Attempting to reconnect...');
-            connectToStream(jobId, iterationNumber);
-          }
-        }, 2000);
-        
-        // Close the problematic connection
-        source.close();
-        setIsStreaming(false);
-        setStreamSource(null);
-      };
-      
-      setStreamSource(source);
-      
-      // Set up a timeout to close the connection if no activity for 2 minutes
-      const inactivityTimeout = setTimeout(() => {
-        console.log('Stream connection inactive for too long, closing');
-        source.close();
-        setIsStreaming(false);
-        setStreamSource(null);
-      }, 2 * 60 * 1000);
-      
-      // Clear the timeout on new messages
-      source.onmessage = (event) => {
-        clearTimeout(inactivityTimeout);
-        
-        const chunk = event.data;
-        console.log(`Received chunk from stream: "${chunk.substring(0, 50)}${chunk.length > 50 ? '...' : ''}"`);
-        
-        setIterations(prevIterations => {
-          const newIterations = [...prevIterations];
-          const iterIndex = newIterations.findIndex(iter => iter.iteration === iterationNumber);
-          
-          if (iterIndex >= 0) {
-            const currentAnalysis = newIterations[iterIndex].analysis || '';
-            newIterations[iterIndex] = {
-              ...newIterations[iterIndex],
-              analysis: currentAnalysis + chunk
-            };
-          }
-          
-          return newIterations;
-        });
-        
-        // Update last update time to show active streaming
-        setLastUpdateTime(Date.now());
-      };
-      
-    } catch (error) {
-      console.error('Error connecting to stream:', error);
-      setIsStreaming(false);
-    }
-  };
-
-  // Updated polling effect that preserves streaming content
   useEffect(() => {
     if (!jobId || !polling) return;
     
@@ -413,13 +275,6 @@ export function JobQueueResearchCard({
           setPolling(false);
           setProgressPercent(100);
           setProgress(prev => [...prev, 'Job completed successfully!']);
-          
-          // Close any stream if job is completed
-          if (streamSource) {
-            streamSource.close();
-            setStreamSource(null);
-            setIsStreaming(false);
-          }
           
           if (job.results) {
             try {
@@ -456,13 +311,6 @@ export function JobQueueResearchCard({
           setError(`Job failed: ${job.error_message || 'Unknown error'}`);
           setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
           
-          // Close any stream if job failed
-          if (streamSource) {
-            streamSource.close();
-            setStreamSource(null);
-            setIsStreaming(false);
-          }
-          
           fetchSavedJobs();
           
           clearInterval(pollInterval);
@@ -480,35 +328,10 @@ export function JobQueueResearchCard({
           }
           
           if (job.iterations && Array.isArray(job.iterations)) {
-            // Update iterations while preserving streaming content
-            setIterations(prevIterations => {
-              const newIterations = [...job.iterations];
-              
-              // If we're actively streaming for current iteration, preserve its content
-              if (isStreaming && currentIterationRef.current) {
-                const streamingIterIndex = newIterations.findIndex(iter => iter.iteration === currentIterationRef.current);
-                const prevIterIndex = prevIterations.findIndex(iter => iter.iteration === currentIterationRef.current);
-                
-                if (streamingIterIndex >= 0 && prevIterIndex >= 0 && prevIterations[prevIterIndex].analysis) {
-                  console.log(`Preserving streaming analysis for iteration ${currentIterationRef.current}`);
-                  newIterations[streamingIterIndex].analysis = prevIterations[prevIterIndex].analysis;
-                }
-              }
-              
-              return newIterations;
-            });
+            setIterations(job.iterations);
             
             if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
               setExpandedIterations(prev => [...prev, job.current_iteration]);
-            }
-            
-            // Check if we should connect to stream for the current iteration
-            if (job.current_iteration > 0 && 
-                (!currentIterationRef.current || currentIterationRef.current !== job.current_iteration) && 
-                !isStreaming) {
-              console.log(`Connecting to stream for iteration ${job.current_iteration}`);
-              // Connect to stream for the current iteration
-              connectToStream(jobId, job.current_iteration);
             }
           }
         }
@@ -517,16 +340,8 @@ export function JobQueueResearchCard({
       }
     }, 3000);
     
-    return () => {
-      clearInterval(pollInterval);
-      // Close streaming connection on cleanup
-      if (streamSource) {
-        streamSource.close();
-        setStreamSource(null);
-        setIsStreaming(false);
-      }
-    };
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, isStreaming]);
+    return () => clearInterval(pollInterval);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -943,7 +758,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={isStreaming && currentIterationRef.current === iteration.iteration}
+                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
