@@ -226,12 +226,17 @@ export function JobQueueResearchCard({
         }
         
         if (parsedResults.structuredInsights) {
+          console.log('Found structuredInsights:', parsedResults.structuredInsights);
+          
           const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
-            rawText: JSON.stringify(parsedResults.structuredInsights),
+            rawText: typeof parsedResults.structuredInsights === 'string' 
+              ? parsedResults.structuredInsights 
+              : JSON.stringify(parsedResults.structuredInsights),
             parsedData: {
               ...parsedResults.structuredInsights,
               goodBuyOpportunities
@@ -306,12 +311,17 @@ export function JobQueueResearchCard({
           setAnalysis(parsedResults.analysis);
         }
         if (parsedResults.structuredInsights) {
+          console.log('Found structuredInsights in loadJobData:', parsedResults.structuredInsights);
+          
           const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
-            rawText: JSON.stringify(parsedResults.structuredInsights),
+            rawText: typeof parsedResults.structuredInsights === 'string' 
+              ? parsedResults.structuredInsights 
+              : JSON.stringify(parsedResults.structuredInsights),
             parsedData: {
               ...parsedResults.structuredInsights,
               goodBuyOpportunities
@@ -839,6 +849,7 @@ export function JobQueueResearchCard({
             marketData={{
               bestBid,
               bestAsk,
+              noBestAsk,
               outcomes
             }}
           />
