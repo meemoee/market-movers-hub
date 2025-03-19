@@ -21,8 +21,6 @@ interface IterationCardProps {
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
-  streamingAnalysis?: string;
-  isStreamingLive?: boolean;
 }
 
 export function IterationCard({
@@ -31,9 +29,7 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations,
-  streamingAnalysis,
-  isStreamingLive
+  maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
@@ -72,11 +68,6 @@ export function IterationCard({
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
-          {isStreamingLive && (
-            <Badge variant="outline" className="ml-2 bg-green-50 text-green-700 animate-pulse">
-              Live Analysis
-            </Badge>
-          )}
         </div>
         {isExpanded ? 
           <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 
@@ -96,8 +87,8 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={streamingAnalysis || iteration.analysis || "Analysis in progress..."} 
-                  isStreaming={isStreamingLive || (isStreaming && isCurrentIteration)}
+                  content={iteration.analysis || "Analysis in progress..."} 
+                  isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
               </TabsContent>

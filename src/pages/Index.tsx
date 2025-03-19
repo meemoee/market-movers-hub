@@ -11,7 +11,6 @@ import { Search } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { TopMoversHeader } from "@/components/market/TopMoversHeader";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { LiveAnalysisCard } from '@/components/market/research/LiveAnalysisCard';
 
 const formatInterval = (minutes: number): string => {
   if (minutes < 60) return `${minutes} minutes`;
@@ -49,7 +48,6 @@ export default function Index() {
   const [showVolumeMinThumb, setShowVolumeMinThumb] = useState(false);
   const [showVolumeMaxThumb, setShowVolumeMaxThumb] = useState(false);
   const [sortBy, setSortBy] = useState<'price_change' | 'volume'>('price_change');
-  const [showLiveAnalysis, setShowLiveAnalysis] = useState(false);
   const isMobile = useIsMobile();
 
   const handleIntervalChange = (newInterval: string) => {
@@ -163,14 +161,6 @@ export default function Index() {
             {/* Scrollable Content Area */}
             <div className="flex-grow overflow-y-auto">
               <div className={`w-full ${isMobile ? 'px-0 max-w-full' : 'px-4'}`}>
-                {/* Added Live Analysis Card here */}
-                <div className="mt-4">
-                  <LiveAnalysisCard 
-                    description="Analyze content for market insights" 
-                    maxHeight="400px" 
-                  />
-                </div>
-                
                 <TopMoversList
                   timeIntervals={TIME_INTERVALS}
                   selectedInterval={selectedInterval}

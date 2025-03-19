@@ -82,9 +82,6 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const [streamingAnalysis, setStreamingAnalysis] = useState<string>("")
-  const [streamingActive, setStreamingActive] = useState<boolean>(false)
-  const [streamAbortController, setStreamAbortController] = useState<AbortController | null>(null)
   const { toast } = useToast()
 
   const resetState = () => {
@@ -99,13 +96,6 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    setStreamingAnalysis("");
-    setStreamingActive(false);
-    
-    if (streamAbortController) {
-      streamAbortController.abort();
-      setStreamAbortController(null);
-    }
   }
 
   useEffect(() => {
@@ -155,13 +145,6 @@ export function JobQueueResearchCard({
     
     if (job.status === 'queued' || job.status === 'processing') {
       setPolling(true);
-      
-      if (job.iterations && Array.isArray(job.iterations) && 
-          job.iterations.length > 0 && 
-          job.current_iteration === job.max_iterations) {
-        const lastIteration = job.iterations[job.iterations.length - 1];
-        setupStreamingConnection(job.id, lastIteration);
-      }
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
@@ -261,128 +244,6 @@ export function JobQueueResearchCard({
     }
   };
 
-  const setupStreamingConnection = (jobId: string, iteration: any) => {
-    try {
-      if (streamAbortController) {
-        streamAbortController.abort();
-      }
-      
-      const controller = new AbortController();
-      setStreamAbortController(controller);
-      
-      const content = iteration?.results?.map((r: any) => r.content || "").join("\n\n");
-      
-      if (!content) {
-        console.error("No content available for streaming analysis");
-        return;
-      }
-      
-      setStreamingAnalysis("");
-      setStreamingActive(true);
-      
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stream-analysis`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          jobId,
-          content,
-          query: description,
-          focusText: focusText,
-          previousAnalyses: iterations.map(i => i.analysis || "").join("\n\n"),
-          areasForResearch: iterations.flatMap(i => i.areas_for_research || []),
-        }),
-        signal: controller.signal
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`Stream connection error: ${response.status}`);
-        }
-        
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("Response body reader is null");
-        }
-        
-        const processStream = async () => {
-          try {
-            let buffer = "";
-            
-            const processSSEMessage = (message: string) => {
-              if (!message.trim()) return;
-              
-              try {
-                const data = JSON.parse(message);
-                
-                if (data.error) {
-                  console.error("Stream error:", data.error);
-                  setProgress(prev => [...prev, `Streaming error: ${data.error}`]);
-                  return;
-                }
-                
-                if (data.done) {
-                  console.log("Stream completed");
-                  setStreamingActive(false);
-                  return;
-                }
-                
-                if (data.chunk) {
-                  setStreamingAnalysis(prev => prev + data.chunk);
-                }
-              } catch (e) {
-                console.error("Error parsing SSE message:", e, message);
-              }
-            };
-            
-            while (true) {
-              const { done, value } = await reader.read();
-              
-              if (done) {
-                setStreamingActive(false);
-                if (buffer.trim()) {
-                  processSSEMessage(buffer);
-                }
-                break;
-              }
-              
-              const chunk = new TextDecoder().decode(value);
-              buffer += chunk;
-              
-              const messages = buffer.split("\n\n");
-              
-              for (let i = 0; i < messages.length - 1; i++) {
-                const message = messages[i].replace(/^data: /, "");
-                processSSEMessage(message);
-              }
-              
-              buffer = messages[messages.length - 1];
-            }
-          } catch (error) {
-            if (error.name !== 'AbortError') {
-              console.error("Stream processing error:", error);
-              setProgress(prev => [...prev, `Stream error: ${error.message}`]);
-            }
-            setStreamingActive(false);
-          }
-        };
-        
-        processStream();
-      })
-      .catch(error => {
-        if (error.name !== 'AbortError') {
-          console.error("Stream fetch error:", error);
-          setProgress(prev => [...prev, `Stream connection error: ${error.message}`]);
-        }
-        setStreamingActive(false);
-      });
-    } catch (error) {
-      console.error("Setup streaming error:", error);
-      setStreamingActive(false);
-    }
-  };
-
   useEffect(() => {
     if (!jobId || !polling) return;
     
@@ -473,14 +334,6 @@ export function JobQueueResearchCard({
               setExpandedIterations(prev => [...prev, job.current_iteration]);
             }
           }
-          
-          if (job.max_iterations && job.current_iteration === job.max_iterations &&
-              job.iterations && Array.isArray(job.iterations) && job.iterations.length > 0) {
-            if (!streamingActive) {
-              const currentIteration = job.iterations[job.iterations.length - 1];
-              setupStreamingConnection(jobId, currentIteration);
-            }
-          }
         }
       } catch (e) {
         console.error('Error in poll interval:', e);
@@ -488,15 +341,7 @@ export function JobQueueResearchCard({
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, streamingActive]);
-
-  useEffect(() => {
-    return () => {
-      if (streamAbortController) {
-        streamAbortController.abort();
-      }
-    };
-  }, []);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -907,40 +752,17 @@ export function JobQueueResearchCard({
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
           <div className="space-y-2">
-            {iterations.map((iteration) => {
-              const isLastIteration = iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0);
-              const isFinalIteration = iteration.iteration === parseInt(maxIterations, 10);
-              
-              return (
-                <IterationCard
-                  key={iteration.iteration}
-                  iteration={iteration}
-                  isExpanded={expandedIterations.includes(iteration.iteration)}
-                  onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                  isStreaming={polling && isLastIteration}
-                  isCurrentIteration={isLastIteration}
-                  maxIterations={parseInt(maxIterations, 10)}
-                  streamingAnalysis={isLastIteration && isFinalIteration && streamingActive ? streamingAnalysis : undefined}
-                  isStreamingLive={isLastIteration && isFinalIteration && streamingActive}
-                />
-              );
-            })}
-          </div>
-        </div>
-      )}
-      
-      {streamingAnalysis && streamingActive && (
-        <div className="border-t pt-4 w-full max-w-full">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-medium">Live Analysis</h3>
-            <Badge className="animate-pulse bg-green-500">Streaming</Badge>
-          </div>
-          <div className="relative">
-            <AnalysisDisplay 
-              content={streamingAnalysis} 
-              isStreaming={true}
-              maxHeight="300px"
-            />
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={iteration.iteration}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(iteration.iteration)}
+                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                maxIterations={parseInt(maxIterations, 10)}
+              />
+            ))}
           </div>
         </div>
       )}
