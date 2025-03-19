@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -88,7 +87,6 @@ export function JobQueueResearchCard({
     
     if (job.status === 'completed' && job.results) {
       try {
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -116,7 +114,6 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
-          // Update: No longer wrap in streaming state structure
           setStructuredInsights({
             ...parsedResults.structuredInsights,
             goodBuyOpportunities
@@ -142,17 +139,14 @@ export function JobQueueResearchCard({
     }
     
     try {
-      // Extract the numeric percentage from strings like "75%" or "about 75%"
       const numericMatch = probabilityStr.match(/(\d+)/);
       if (!numericMatch) return null;
       
       const predictedProbability = parseInt(numericMatch[0], 10) / 100;
       
-      // Simple threshold for "good" opportunities
-      const MIN_DIFF_THRESHOLD = 0.05; // 5% difference
+      const MIN_DIFF_THRESHOLD = 0.05;
       const opportunities = [];
       
-      // Yes outcome
       if (Math.abs(predictedProbability - bestAsk) > MIN_DIFF_THRESHOLD && 
           predictedProbability > bestAsk) {
         opportunities.push({
@@ -163,7 +157,6 @@ export function JobQueueResearchCard({
         });
       }
       
-      // No outcome
       const noPredictedProbability = 1 - predictedProbability;
       const noMarketPrice = noBestAsk || (1 - bestBid);
       
@@ -217,7 +210,6 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     
     try {
-      // Create research job in Supabase
       const { data, error } = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify({
           description,
@@ -246,7 +238,6 @@ export function JobQueueResearchCard({
         setJobStatus('queued');
         setProgress(['Research job created. Waiting in queue...']);
         
-        // Start polling for job updates
         const interval = setInterval(async () => {
           const { data: jobData, error: jobError } = await supabase
             .from('research_jobs')
@@ -270,7 +261,6 @@ export function JobQueueResearchCard({
           }
         }, 2000);
         
-        // Cleanup interval
         return () => clearInterval(interval);
       } else {
         setError('No job ID returned from API');

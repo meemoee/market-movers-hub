@@ -91,7 +91,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
   const [maxIterations, setMaxIterations] = useState(3)
   const [currentIteration, setCurrentIteration] = useState(0)
   const [iterations, setIterations] = useState<ResearchIteration[]>([])
-  const [expandedIterations, setExpandedIterations] = useState<string[]>(['iteration-1'])
+  const [expandedIterations, setExpandedIterations] = useState<number[]>([1])
   const [currentQueries, setCurrentQueries] = useState<string[]>([])
   const [currentQueryIndex, setCurrentQueryIndex] = useState<number>(-1)
   const [focusText, setFocusText] = useState<string>('')
@@ -198,7 +198,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     
     if (research.iterations && research.iterations.length > 0) {
       setIterations(research.iterations)
-      setExpandedIterations([`iteration-${research.iterations.length}`])
+      setExpandedIterations([research.iterations.length])
     }
     
     setStreamingState({
@@ -427,7 +427,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setStreamingState({ rawText: '', parsedData: null });
     setCurrentIteration(0);
     setIterations([]);
-    setExpandedIterations(['iteration-1']);
+    setExpandedIterations([1]);
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
     
@@ -451,7 +451,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     setStreamingState({ rawText: '', parsedData: null });
     setCurrentIteration(0);
     setIterations([]);
-    setExpandedIterations(['iteration-1']);
+    setExpandedIterations([1]);
     setCurrentQueries([]);
     setCurrentQueryIndex(-1);
 
@@ -551,7 +551,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     try {
       setProgress(prev => [...prev, `Starting iteration ${iteration} of ${maxIterations}...`]);
       setCurrentIteration(iteration);
-      setExpandedIterations(prev => [...prev, `iteration-${iteration}`]);
+      setExpandedIterations(prev => [...prev, iteration]);
       
       console.log(`Calling web-scrape function with queries for iteration ${iteration}:`, queries);
       console.log(`Market ID for web-scrape: ${marketId}`);
@@ -768,8 +768,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       });
       
       setExpandedIterations(prev => {
-        if (!prev.includes(`iteration-${iteration}`)) {
-          return [...prev, `iteration-${iteration}`];
+        if (!prev.includes(iteration)) {
+          return [...prev, iteration];
         }
         return prev;
       });
@@ -1116,14 +1116,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                   <IterationCard
                     key={`iteration-${iteration.iteration}`}
                     iteration={iteration}
-                    isExpanded={expandedIterations.includes(`iteration-${iteration.iteration}`)}
-                    onToggle={() => {
+                    isExpanded={expandedIterations.includes(iteration.iteration)}
+                    onToggleExpand={() => {
                       setExpandedIterations(prev => 
-                        prev.includes(`iteration-${iteration.iteration}`)
-                          ? prev.filter(id => id !== `iteration-${iteration.iteration}`)
-                          : [...prev, `iteration-${iteration.iteration}`]
+                        prev.includes(iteration.iteration)
+                          ? prev.filter(id => id !== iteration.iteration)
+                          : [...prev, iteration.iteration]
                       );
                     }}
+                    isStreaming={isStreaming && isCurrentIteration === iteration.iteration}
+                    isCurrentIteration={isCurrentIteration === iteration.iteration}
+                    maxIterations={maxIterations}
                   />
                 ))}
               </div>
@@ -1139,6 +1142,11 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             {streamingState.parsedData && (
               <InsightsDisplay 
                 streamingState={streamingState}
+                insights={streamingState.parsedData ? {
+                  probability: streamingState.parsedData.probability || '',
+                  areasForResearch: streamingState.parsedData.areasForResearch || [],
+                  reasoning: streamingState.parsedData.reasoning || ''
+                } : null}
                 onResearchArea={handleResearchArea}
                 parentResearch={parentResearch ? { 
                   id: parentResearch.id, 
