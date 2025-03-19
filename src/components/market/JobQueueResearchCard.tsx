@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -232,11 +231,11 @@ export function JobQueueResearchCard({
             null;
           
           setStructuredInsights({
+            rawText: JSON.stringify(parsedResults.structuredInsights),
             parsedData: {
               ...parsedResults.structuredInsights,
               goodBuyOpportunities
-            },
-            rawText: JSON.stringify(parsedResults.structuredInsights)
+            }
           });
         }
         
@@ -312,11 +311,11 @@ export function JobQueueResearchCard({
             null;
           
           setStructuredInsights({
+            rawText: JSON.stringify(parsedResults.structuredInsights),
             parsedData: {
               ...parsedResults.structuredInsights,
               goodBuyOpportunities
-            },
-            rawText: JSON.stringify(parsedResults.structuredInsights)
+            }
           });
         }
       } catch (e) {
