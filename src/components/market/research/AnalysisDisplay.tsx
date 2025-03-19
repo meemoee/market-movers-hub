@@ -137,6 +137,15 @@ export function AnalysisDisplay({
     }
   }, [isStreaming, shouldAutoScroll])
 
+  // Update active tab when showReasoning prop changes
+  useEffect(() => {
+    if (showReasoning && reasoning) {
+      setActiveTab('reasoning');
+    } else {
+      setActiveTab('content');
+    }
+  }, [showReasoning, reasoning]);
+
   const displayContent = activeTab === 'content' ? content : reasoning
   const hasReasoning = reasoning && reasoning.length > 0
 
