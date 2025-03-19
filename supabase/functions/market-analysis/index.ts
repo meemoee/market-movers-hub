@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -14,10 +15,13 @@ serve(async (req) => {
   }
 
   try {
-    const { message, chatHistory } = await req.json()
-    console.log('Received request:', { message, chatHistory })
+    const { message, chatHistory, isPageVisible } = await req.json()
+    console.log('Received request:', { message, chatHistory, isPageVisible })
 
-    console.log('Making request to OpenRouter API...')
+    // Only stream when the page is visible to save resources
+    const shouldStream = isPageVisible !== false // Default to streaming if parameter isn't provided
+
+    console.log(`Making request to OpenRouter API with streaming=${shouldStream}...`)
     const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: 'POST',
       headers: {
@@ -38,7 +42,7 @@ serve(async (req) => {
             content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
           }
         ],
-        stream: true
+        stream: shouldStream
       })
     })
 
@@ -47,15 +51,27 @@ serve(async (req) => {
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    // Return the stream directly without transformation
-    return new Response(openRouterResponse.body, {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
-    })
+    if (shouldStream) {
+      // Return the stream for visible pages
+      return new Response(openRouterResponse.body, {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive'
+        }
+      })
+    } else {
+      // For non-visible pages, wait for the complete response and return it all at once
+      console.log('Page not visible, returning complete response...')
+      const completeResponse = await openRouterResponse.json()
+      return new Response(JSON.stringify(completeResponse), {
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      })
+    }
 
   } catch (error) {
     console.error('Error in market-analysis function:', error)

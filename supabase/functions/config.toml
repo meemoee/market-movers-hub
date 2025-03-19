@@ -53,3 +53,7 @@ verify_jwt = false
 [[functions]]
 name = "generate-queries"
 verify_jwt = false
+
+[[functions]]
+name = "send-research-notification"
+verify_jwt = false
