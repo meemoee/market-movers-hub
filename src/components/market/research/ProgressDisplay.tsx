@@ -11,6 +11,8 @@ interface ProgressDisplayProps {
   progress?: number
   status?: 'queued' | 'processing' | 'completed' | 'failed' | null
   autoScroll?: boolean
+  streamingMessage?: string
+  isStreaming?: boolean
 }
 
 export function ProgressDisplay({ 
@@ -18,7 +20,9 @@ export function ProgressDisplay({
   jobId, 
   progress, 
   status,
-  autoScroll = true 
+  autoScroll = true,
+  streamingMessage,
+  isStreaming = false
 }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -38,9 +42,9 @@ export function ProgressDisplay({
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
-  }, [messages, autoScroll]);
+  }, [messages, autoScroll, streamingMessage]);
 
-  if (!messages.length) return null
+  if (!messages.length && !streamingMessage) return null
   
   const renderStatusIcon = () => {
     if (!status) return null;
@@ -73,6 +77,7 @@ export function ProgressDisplay({
                   : status === 'failed' 
                   ? 'Failed'
                   : 'Processing in background'}</span>
+                {isStreaming && <span className="ml-2 text-primary animate-pulse">(Streaming)</span>}
               </div>
               {progress !== undefined && (
                 <Progress 
@@ -103,6 +108,14 @@ export function ProgressDisplay({
               </span>
             </div>
           ))}
+          
+          {streamingMessage && (
+            <div className="flex items-center gap-3 py-1 text-sm animate-pulse">
+              <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              <span className="text-foreground">{streamingMessage}</span>
+            </div>
+          )}
+          
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>

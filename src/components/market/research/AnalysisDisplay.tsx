@@ -8,13 +8,15 @@ interface AnalysisDisplayProps {
   isStreaming?: boolean
   maxHeight?: string | number
   onScroll?: (isAtBottom: boolean) => void
+  streamingContent?: string
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
   maxHeight = "200px",
-  onScroll
+  onScroll,
+  streamingContent = ""
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
@@ -22,12 +24,14 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
+  const combinedContent = streamingContent ? (content + streamingContent) : content
+  
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = content?.length || 0
+    const currentContentLength = combinedContent?.length || 0
     
     // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
@@ -44,7 +48,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+  }, [combinedContent, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -107,7 +111,7 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
-  if (!content) return null
+  if (!combinedContent) return null
 
   return (
     <div className="relative">
@@ -118,7 +122,7 @@ export function AnalysisDisplay({
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {content}
+            {combinedContent}
           </ReactMarkdown>
         </div>
       </ScrollArea>
