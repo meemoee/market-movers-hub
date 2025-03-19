@@ -583,17 +583,17 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       const response = await supabase.functions.invoke('web-scrape', {
         body: JSON.stringify(scrapePayload)
-      })
+      });
 
       if (response.error) {
-        console.error("Error from web-scrape:", response.error)
-        throw response.error
+        console.error("Error from web-scrape:", response.error);
+        throw response.error;
       }
 
-      console.log("Received response from web-scrape function:", response)
+      console.log("Received response from web-scrape function:", response);
       
-      const allContent: string[] = [...previousContent]
-      const iterationResults: ResearchResult[] = []
+      const allContent: string[] = [...previousContent];
+      const iterationResults: ResearchResult[] = [];
       let messageCount = 0;
       let hasResults = false;
 
@@ -674,33 +674,33 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         }
       }
 
-      const reader = new Response(response.data.body).body?.getReader()
+      const reader = new Response(response.data.body).body?.getReader();
       
       if (!reader) {
-        throw new Error('Failed to get reader from response')
+        throw new Error('Failed to get reader from response');
       }
       
-      await processStream(reader)
+      await processStream(reader);
 
-      console.log(`Results after stream processing for iteration ${iteration}:`, iterationResults.length)
-      console.log("Content collected:", allContent.length, "items")
+      console.log(`Results after stream processing for iteration ${iteration}:`, iterationResults.length);
+      console.log("Content collected:", allContent.length, "items");
 
       if (allContent.length === 0) {
-        setProgress(prev => [...prev, "No results found. Try rephrasing your query."])
-        setError('No content collected from web scraping. Try a more specific query or different keywords.')
-        setIsLoading(false)
-        setIsAnalyzing(false)
-        return
+        setProgress(prev => [...prev, "No results found. Try rephrasing your query."]);
+        setError('No content collected from web scraping. Try a more specific query or different keywords.');
+        setIsLoading(false);
+        setIsAnalyzing(false);
+        return;
       }
 
-      await processQueryResults(allContent, iteration, queries, iterationResults, focusArea)
+      await processQueryResults(allContent, iteration, queries, iterationResults, focusArea);
     } catch (error) {
-      console.error(`Error in web research iteration ${iteration}:`, error)
-      setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`)
-      setIsLoading(false)
-      setIsAnalyzing(false)
+      console.error(`Error in web research iteration ${iteration}:`, error);
+      setError(`Error occurred during research iteration ${iteration}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setIsLoading(false);
+      setIsAnalyzing(false);
     }
-  }
+  };
 
   const processQueryResults = async (allContent: string[], iteration: number, currentQueries: string[], iterationResults: ResearchResult[], focusArea?: string) => {
     if (focusArea && typeof focusArea !== 'string') {
@@ -927,4 +927,9 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             setProgress(prev => [...prev, `Refined Query ${index + 1}: "${query}"`]);
           });
 
-          await handleWebScrape(refinedQueriesData.queries, iteration +
+          await handleWebScrape(refinedQueriesData.queries, iteration + 1, focusArea, [...allContent]);
+        } catch (error) {
+          console.error(`Error generating refined queries for iteration ${iteration + 1}:`, error);
+          setError(`Error occurred during research iteration ${iteration + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+         
+
