@@ -10,19 +10,16 @@ interface ReasoningData {
   evidenceAgainst?: string[];
 }
 
-interface StreamingState {
-  rawText: string;
-  parsedData: {
-    probability: string;
-    areasForResearch: string[];
-    reasoning?: ReasoningData | string;
-    goodBuyOpportunities?: Array<{
-      outcome: string;
-      predictedProbability: number;
-      marketPrice: number;
-      difference: string;
-    }> | null;
-  } | null;
+interface InsightsData {
+  probability: string;
+  areasForResearch: string[];
+  reasoning?: ReasoningData | string;
+  goodBuyOpportunities?: Array<{
+    outcome: string;
+    predictedProbability: number;
+    marketPrice: number;
+    difference: string;
+  }> | null;
 }
 
 interface MarketData {
@@ -39,7 +36,8 @@ interface ResearchChild {
 }
 
 interface InsightsDisplayProps {
-  streamingState: StreamingState;
+  insights: InsightsData | null;
+  rawInsightsText?: string;
   onResearchArea?: (area: string) => void;
   parentResearch?: {
     id: string;
@@ -51,15 +49,16 @@ interface InsightsDisplayProps {
 }
 
 export function InsightsDisplay({ 
-  streamingState, 
+  insights, 
+  rawInsightsText = "",
   onResearchArea, 
   parentResearch,
   childResearches,
   marketData
 }: InsightsDisplayProps) {
-  if (!streamingState.parsedData) return null;
+  if (!insights) return null;
 
-  const { probability, areasForResearch, reasoning, goodBuyOpportunities } = streamingState.parsedData;
+  const { probability, areasForResearch, reasoning, goodBuyOpportunities } = insights;
   
   const hasErrorInProbability = 
     !probability || 
@@ -74,7 +73,7 @@ export function InsightsDisplay({
   const isResolved = probability === "100%" || probability === "0%";
 
   if ((hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) || 
-      streamingState.rawText.length < 10) {
+      rawInsightsText.length < 10) {
     return null;
   }
 
