@@ -9,6 +9,41 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      analysis_stream: {
+        Row: {
+          chunk: string
+          created_at: string
+          id: string
+          iteration: number
+          job_id: string
+          sequence: number
+        }
+        Insert: {
+          chunk: string
+          created_at?: string
+          id?: string
+          iteration: number
+          job_id: string
+          sequence: number
+        }
+        Update: {
+          chunk?: string
+          created_at?: string
+          id?: string
+          iteration?: number
+          job_id?: string
+          sequence?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_stream_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "research_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       events: {
         Row: {
           category: string | null
@@ -663,6 +698,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      append_analysis_chunk: {
+        Args: {
+          job_id: string
+          iteration: number
+          chunk: string
+          seq: number
+        }
+        Returns: string
+      }
       append_research_iteration: {
         Args: {
           job_id: string

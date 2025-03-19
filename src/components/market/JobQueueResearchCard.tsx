@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -70,7 +70,6 @@ export function JobQueueResearchCard({
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState('')
   const [jobId, setJobId] = useState<string | null>(null)
-  const [polling, setPolling] = useState(false)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
@@ -82,11 +81,11 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
+  const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
   const resetState = () => {
     setJobId(null);
-    setPolling(false);
     setProgress([]);
     setProgressPercent(0);
     setResults([]);
@@ -96,10 +95,24 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    
+    if (realtimeChannelRef.current) {
+      console.log('Removing realtime channel on reset');
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
   }
 
   useEffect(() => {
     fetchSavedJobs();
+    
+    return () => {
+      if (realtimeChannelRef.current) {
+        console.log('Removing realtime channel on unmount');
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
   }, [marketId]);
 
   const fetchSavedJobs = async () => {
@@ -126,6 +139,106 @@ export function JobQueueResearchCard({
     }
   };
 
+  const subscribeToJobUpdates = (id: string) => {
+    if (realtimeChannelRef.current) {
+      console.log('Removing existing realtime channel before creating new one');
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+    
+    console.log(`Setting up realtime subscription for job id: ${id}`);
+    
+    const channel = supabase
+      .channel(`job-updates-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'research_jobs',
+          filter: `id=eq.${id}`
+        },
+        (payload) => {
+          console.log('Received realtime update:', payload);
+          handleJobUpdate(payload.new as ResearchJob);
+        }
+      )
+      .subscribe((status) => {
+        console.log(`Realtime subscription status: ${status}`, id);
+      });
+    
+    realtimeChannelRef.current = channel;
+  };
+
+  const handleJobUpdate = (job: ResearchJob) => {
+    console.log('Processing job update:', job);
+    
+    setJobStatus(job.status);
+    
+    if (job.max_iterations && job.current_iteration !== undefined) {
+      const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
+      setProgressPercent(job.status === 'completed' ? 100 : percent);
+    }
+    
+    if (job.progress_log && Array.isArray(job.progress_log)) {
+      const currentProgress = progress;
+      const newItems = job.progress_log.slice(currentProgress.length);
+      
+      if (newItems.length > 0) {
+        console.log('Adding new progress items:', newItems);
+        setProgress(prev => [...prev, ...newItems]);
+      }
+    }
+    
+    if (job.iterations && Array.isArray(job.iterations)) {
+      setIterations(job.iterations);
+      
+      if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+        setExpandedIterations(prev => [...prev, job.current_iteration]);
+      }
+    }
+    
+    if (job.status === 'completed' && job.results) {
+      try {
+        console.log('Processing completed job results:', job.results);
+        const parsedResults = JSON.parse(job.results);
+        
+        if (parsedResults.data && Array.isArray(parsedResults.data)) {
+          setResults(parsedResults.data);
+        }
+        
+        if (parsedResults.analysis) {
+          setAnalysis(parsedResults.analysis);
+        }
+        
+        if (parsedResults.structuredInsights) {
+          const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
+            calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
+            null;
+          
+          setStructuredInsights({
+            parsedData: {
+              ...parsedResults.structuredInsights,
+              goodBuyOpportunities
+            },
+            rawText: JSON.stringify(parsedResults.structuredInsights)
+          });
+        }
+        
+        fetchSavedJobs();
+      } catch (e) {
+        console.error('Error parsing job results:', e);
+      }
+    }
+    
+    if (job.status === 'failed') {
+      setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+      setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+      
+      fetchSavedJobs();
+    }
+  };
+
   const loadJobData = (job: ResearchJob) => {
     setJobId(job.id);
     setJobStatus(job.status);
@@ -144,7 +257,7 @@ export function JobQueueResearchCard({
     }
     
     if (job.status === 'queued' || job.status === 'processing') {
-      setPolling(true);
+      subscribeToJobUpdates(job.id);
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
@@ -244,105 +357,6 @@ export function JobQueueResearchCard({
     }
   };
 
-  useEffect(() => {
-    if (!jobId || !polling) return;
-    
-    const pollInterval = setInterval(async () => {
-      try {
-        console.log(`Polling for job status: ${jobId}`);
-        const { data, error } = await supabase
-          .from('research_jobs')
-          .select('*')
-          .eq('id', jobId)
-          .single();
-          
-        if (error) {
-          console.error('Error polling job status:', error);
-          return;
-        }
-        
-        if (!data) {
-          console.log('No job data found');
-          return;
-        }
-        
-        const job = data as ResearchJob;
-        console.log('Job status:', job.status);
-        
-        setJobStatus(job.status);
-        
-        if (job.status === 'completed') {
-          setPolling(false);
-          setProgressPercent(100);
-          setProgress(prev => [...prev, 'Job completed successfully!']);
-          
-          if (job.results) {
-            try {
-              const parsedResults = JSON.parse(job.results);
-              if (parsedResults.data && Array.isArray(parsedResults.data)) {
-                setResults(parsedResults.data);
-              }
-              if (parsedResults.analysis) {
-                setAnalysis(parsedResults.analysis);
-              }
-              if (parsedResults.structuredInsights) {
-                const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
-                  calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
-                  null;
-                
-                setStructuredInsights({
-                  parsedData: {
-                    ...parsedResults.structuredInsights,
-                    goodBuyOpportunities
-                  },
-                  rawText: JSON.stringify(parsedResults.structuredInsights)
-                });
-              }
-            } catch (e) {
-              console.error('Error parsing job results:', e);
-            }
-          }
-          
-          fetchSavedJobs();
-          
-          clearInterval(pollInterval);
-        } else if (job.status === 'failed') {
-          setPolling(false);
-          setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-          
-          fetchSavedJobs();
-          
-          clearInterval(pollInterval);
-        } else if (job.status === 'processing') {
-          if (job.max_iterations && job.current_iteration !== undefined) {
-            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-            setProgressPercent(percent);
-          }
-          
-          if (job.progress_log && Array.isArray(job.progress_log)) {
-            const newItems = job.progress_log.slice(progress.length);
-            if (newItems.length > 0) {
-              setProgress(prev => [...prev, ...newItems]);
-            }
-          }
-          
-          if (job.iterations && Array.isArray(job.iterations)) {
-            setIterations(job.iterations);
-            
-            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-              setExpandedIterations(prev => [...prev, job.current_iteration]);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Error in poll interval:', e);
-      }
-    }, 3000);
-    
-    return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
-
   const handleResearch = async (initialFocusText = '') => {
     resetState();
     setIsLoading(true);
@@ -361,6 +375,8 @@ export function JobQueueResearchCard({
         notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
       
+      console.log('Creating research job with payload:', payload);
+      
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
       });
@@ -375,12 +391,15 @@ export function JobQueueResearchCard({
       }
       
       const jobId = response.data.jobId;
+      console.log(`Research job created with ID: ${jobId}`);
+      
       setJobId(jobId);
-      setPolling(true);
       setJobStatus('queued');
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
+      
+      subscribeToJobUpdates(jobId);
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
         ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
@@ -444,6 +463,7 @@ export function JobQueueResearchCard({
       }
       
       const job = data as ResearchJob;
+      console.log('Loaded research job:', job);
       
       loadJobData(job);
       
@@ -800,3 +820,4 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
+
