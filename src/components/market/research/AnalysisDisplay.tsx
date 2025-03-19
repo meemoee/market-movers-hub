@@ -7,14 +7,12 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
-  onContentUpdate?: (content: string) => void
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px",
-  onContentUpdate
+  maxHeight = "200px" 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
@@ -41,15 +39,10 @@ export function AnalysisDisplay({
       if (isStreaming) {
         setStreamStatus('streaming')
       }
-      
-      // Notify parent component about content updates if callback provided
-      if (onContentUpdate && currentContentLength > prevContentLength.current) {
-        onContentUpdate(content);
-      }
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll, onContentUpdate])
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
