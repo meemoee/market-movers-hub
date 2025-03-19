@@ -379,6 +379,41 @@ Be objective, thorough, and focus on providing a well-reasoned probability estim
   }
 }
 
+async function createResearchJob(marketId: string, query: string, maxIterations: number = 3, focusText?: string, notificationEmail?: string) {
+  try {
+    console.log(`Creating research job: market=${marketId}, query=${query}, maxIterations=${maxIterations}`)
+    console.log(`Focus text: ${focusText || 'none'}, Notification email: ${notificationEmail || 'none'}`)
+    
+    // Create a new research job record in the database
+    const { data: job, error } = await supabase
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        max_iterations: maxIterations,
+        focus_text: focusText,
+        notification_email: notificationEmail,
+        notification_sent: false,
+        status: 'queued',
+        progress_log: [],
+        iterations: []
+      })
+      .select()
+      .single()
+    
+    if (error) {
+      console.error("Error creating research job:", error)
+      throw error
+    }
+    
+    console.log(`Research job created with ID: ${job.id}`)
+    return job.id
+  } catch (error) {
+    console.error("Error in createResearchJob:", error)
+    throw error
+  }
+}
+
 async function processJob(jobId: string) {
   try {
     // Get job info from database
@@ -518,15 +553,28 @@ serve(async (req) => {
   }
   
   try {
-    const { jobId } = await req.json()
+    // Parse the request body to get marketId, query, maxIterations, etc.
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
     
-    if (!jobId) {
-      throw new Error("jobId is required")
+    if (!marketId || !query) {
+      throw new Error("marketId and query are required")
     }
     
+    // Create a new research job in the database
+    const jobId = await createResearchJob(
+      marketId, 
+      query, 
+      maxIterations, 
+      focusText, 
+      notificationEmail
+    )
+    
     // Process the job asynchronously
-    processJob(jobId).catch(error => 
-      console.error(`Unhandled error in job processing for ${jobId}:`, error)
+    // @ts-ignore - EdgeRuntime may not be recognized by TypeScript
+    EdgeRuntime.waitUntil(
+      processJob(jobId).catch(error => 
+        console.error(`Unhandled error in job processing for ${jobId}:`, error)
+      )
     )
     
     return new Response(
