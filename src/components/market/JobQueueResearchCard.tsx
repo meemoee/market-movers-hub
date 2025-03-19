@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -268,95 +267,128 @@ export function JobQueueResearchCard({
     if (!isPageVisible) return;
     
     if (eventSource) {
+      console.log('Closing existing SSE connection');
       eventSource.close();
     }
     
     const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co';
-    // Use the anon key directly to avoid Promise handling issues
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
                    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
     
-    // Construct the URL for the SSE connection
     const url = `${baseUrl}/functions/v1/create-research-job?jobId=${jobId}&streamAnalysis=true&apikey=${anonKey}`;
     console.log(`Establishing SSE connection to: ${url}`);
     
-    const newEventSource = new EventSource(url);
-    
-    newEventSource.onopen = () => {
-      console.log(`SSE connection opened for job ${jobId}`);
-      setSseConnected(true);
-    };
-    
-    newEventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      setSseConnected(false);
+    try {
+      const newEventSource = new EventSource(url);
       
-      if (jobStatus !== 'completed' && jobStatus !== 'failed') {
-        console.log('Reconnecting SSE...');
-        setTimeout(() => {
-          setupSSEConnection(jobId);
-        }, 3000);
-      } else {
-        newEventSource.close();
-      }
-    };
-    
-    newEventSource.addEventListener('connected', (e) => {
-      console.log('SSE connection confirmed:', e.data);
-    });
-    
-    newEventSource.addEventListener('jobCreated', (e) => {
-      const data = JSON.parse(e.data);
-      console.log('Job created confirmation:', data);
-    });
-    
-    newEventSource.addEventListener('iteration', (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.content && data.iterationNumber) {
-          setIterationStreams(prev => ({
-            ...prev,
-            [data.iterationNumber]: (prev[data.iterationNumber] || '') + data.content
-          }));
+      let hasConnected = false;
+      let connectionAttempts = 0;
+      const MAX_RECONNECTION_ATTEMPTS = 3;
+      
+      newEventSource.onopen = () => {
+        console.log(`SSE connection opened for job ${jobId}`);
+        hasConnected = true;
+        connectionAttempts = 0;
+        setSseConnected(true);
+        
+        setProgress(prev => [...prev, 'Live streaming analysis connected']);
+      };
+      
+      newEventSource.onerror = (error) => {
+        console.error('SSE connection error:', error);
+        setSseConnected(false);
+        
+        if (hasConnected) {
+          console.log('Reconnecting SSE...');
+          setTimeout(() => {
+            if (jobStatus !== 'completed' && jobStatus !== 'failed') {
+              setupSSEConnection(jobId);
+            }
+          }, 3000);
+        } else {
+          connectionAttempts++;
           
-          if (!expandedIterations.includes(data.iterationNumber)) {
-            setExpandedIterations(prev => [...prev, data.iterationNumber]);
+          if (connectionAttempts >= MAX_RECONNECTION_ATTEMPTS) {
+            console.log(`Failed to establish SSE connection after ${MAX_RECONNECTION_ATTEMPTS} attempts`);
+            setProgress(prev => [...prev, 'Unable to establish live streaming connection. Falling back to polling.']);
+            newEventSource.close();
+            return;
           }
+          
+          console.log(`SSE connection attempt ${connectionAttempts} failed. Retrying...`);
+          setTimeout(() => {
+            if (jobStatus !== 'completed' && jobStatus !== 'failed') {
+              setupSSEConnection(jobId);
+            }
+          }, 3000);
         }
-      } catch (error) {
-        console.error('Error processing iteration event:', error);
-      }
-    });
-    
-    newEventSource.addEventListener('iterationComplete', (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        console.log(`Iteration ${data.iterationNumber} analysis completed`);
-      } catch (error) {
-        console.error('Error processing iterationComplete event:', error);
-      }
-    });
-    
-    newEventSource.addEventListener('finalAnalysis', (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.content) {
-          setFinalAnalysisStream(prev => prev + data.content);
+      };
+      
+      newEventSource.addEventListener('connected', (e) => {
+        console.log('SSE connection confirmed:', e.data);
+        hasConnected = true;
+      });
+      
+      newEventSource.addEventListener('test', (e) => {
+        console.log('Received test message:', e.data);
+      });
+      
+      newEventSource.addEventListener('heartbeat', (e) => {
+        console.log('Heartbeat received:', e.data);
+      });
+      
+      newEventSource.addEventListener('iteration', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.content && data.iterationNumber) {
+            setIterationStreams(prev => ({
+              ...prev,
+              [data.iterationNumber]: (prev[data.iterationNumber] || '') + data.content
+            }));
+            
+            if (!expandedIterations.includes(data.iterationNumber)) {
+              setExpandedIterations(prev => [...prev, data.iterationNumber]);
+            }
+          }
+        } catch (error) {
+          console.error('Error processing iteration event:', error);
         }
-      } catch (error) {
-        console.error('Error processing finalAnalysis event:', error);
-      }
-    });
-    
-    newEventSource.addEventListener('finalAnalysisComplete', (e) => {
-      try {
-        console.log('Final analysis completed');
-      } catch (error) {
-        console.error('Error processing finalAnalysisComplete event:', error);
-      }
-    });
-    
-    setEventSource(newEventSource);
+      });
+      
+      newEventSource.addEventListener('iterationComplete', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          console.log(`Iteration ${data.iterationNumber} analysis completed`);
+        } catch (error) {
+          console.error('Error processing iterationComplete event:', error);
+        }
+      });
+      
+      newEventSource.addEventListener('finalAnalysis', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.content) {
+            setFinalAnalysisStream(prev => prev + data.content);
+          }
+        } catch (error) {
+          console.error('Error processing finalAnalysis event:', error);
+        }
+      });
+      
+      newEventSource.addEventListener('finalAnalysisComplete', (e) => {
+        try {
+          console.log('Final analysis completed');
+        } catch (error) {
+          console.error('Error processing finalAnalysisComplete event:', error);
+        }
+      });
+      
+      setEventSource(newEventSource);
+    } catch (error) {
+      console.error('Error creating EventSource:', error);
+      setProgress(prev => [...prev, 'Error connecting to streaming service. Using polling for updates.']);
+      setSseConnected(false);
+    }
   };
 
   useEffect(() => {
@@ -514,7 +546,9 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
       
       if (isPageVisible) {
-        setupSSEConnection(jobId);
+        setTimeout(() => {
+          setupSSEConnection(jobId);
+        }, 1000);
       }
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 

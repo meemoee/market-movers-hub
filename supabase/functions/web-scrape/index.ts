@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { corsHeaders } from "../_shared/cors.ts"
@@ -11,7 +10,7 @@ const DELAY_BETWEEN_REQUESTS_MS = 350; // 350ms between individual requests
 const MAX_CONTENT_RETRIES = 2; // Max retries for content fetching
 const FETCH_TIMEOUT_MS = 5000; // 5 second timeout for content fetches
 
-// SSE headers
+// Enhanced SSE headers with CORS
 const sseHeaders = {
   ...corsHeaders,
   'Content-Type': 'text/event-stream',
@@ -26,10 +25,27 @@ function writeSSE(controller: ReadableStreamDefaultController, event: string, da
 }
 
 serve(async (req) => {
+  console.log(`[web-scrape] Request received: ${req.method} ${new URL(req.url).pathname}`);
+  
   if (req.method === 'OPTIONS') {
+    console.log('[web-scrape] Handling CORS preflight request');
     return new Response(null, {
       headers: corsHeaders
     })
+  }
+
+  // Get API key from request - check multiple sources for flexibility
+  const apiKey = req.headers.get('apikey') || 
+                req.headers.get('Authorization')?.split(' ')[1] ||
+                new URL(req.url).searchParams.get('apikey');
+                
+  // Validate API key
+  if (!apiKey) {
+    console.error('[web-scrape] No API key provided');
+    return new Response(
+      JSON.stringify({ error: 'API key is required' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   try {

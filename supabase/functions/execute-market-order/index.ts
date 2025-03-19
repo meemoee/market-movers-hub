@@ -1,10 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+// Enhanced CORS headers for consistency
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
 
 // Price validation configuration
 const PRICE_TOLERANCE = 0.005 // 0.5% tolerance
@@ -227,8 +230,25 @@ class OrderbookManager {
 }
 
 serve(async (req) => {
+  console.log(`[execute-market-order] Request received: ${req.method} ${new URL(req.url).pathname}`);
+  
   if (req.method === 'OPTIONS') {
+    console.log('[execute-market-order] Handling CORS preflight request');
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Get API key from request - check multiple sources for flexibility
+  const apiKey = req.headers.get('apikey') || 
+                req.headers.get('Authorization')?.split(' ')[1] ||
+                new URL(req.url).searchParams.get('apikey');
+                
+  // Validate API key
+  if (!apiKey) {
+    console.error('[execute-market-order] No API key provided');
+    return new Response(
+      JSON.stringify({ error: 'API key is required' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   try {
