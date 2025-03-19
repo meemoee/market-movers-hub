@@ -73,7 +73,7 @@ serve(async (req) => {
           // Send initial keepalive
           controller.enqueue('event: keepalive\ndata: connected\n\n')
           
-          // First, check if a streaming analysis is already in progress
+          // First, check if the job and iteration exist
           const { data: jobData, error: jobError } = await supabaseClient
             .from('research_jobs')
             .select('iterations, status')
@@ -96,7 +96,7 @@ serve(async (req) => {
           
           // Find the specified iteration
           const iterationIndex = jobData.iterations.findIndex(
-            (iter: any) => iter.iteration === parseInt(iterationNumber)
+            (iter: any) => iter.iteration === parseInt(iterationNumber as string)
           )
           
           if (iterationIndex === -1) {
@@ -106,25 +106,34 @@ serve(async (req) => {
             return
           }
           
-          // If analysis already exists, send it immediately
-          if (jobData.iterations[iterationIndex].analysis) {
-            const existingAnalysis = jobData.iterations[iterationIndex].analysis
-            console.log(`Sending existing analysis for job ${jobId}, iteration ${iterationNumber}`)
+          // Get any existing chunks that might have been missed
+          try {
+            const { data: existingChunks, error: chunksError } = await supabaseClient
+              .from('analysis_stream')
+              .select('chunk, seq')
+              .eq('job_id', jobId)
+              .eq('iteration', parseInt(iterationNumber as string))
+              .order('seq', { ascending: true })
             
-            // Split existing analysis into smaller chunks to simulate streaming
-            const chunkSize = 100 // characters
-            for (let i = 0; i < existingAnalysis.length; i += chunkSize) {
-              const chunk = existingAnalysis.substring(i, i + chunkSize)
-              controller.enqueue(`data: ${chunk}\n\n`)
-              await new Promise(resolve => setTimeout(resolve, 10)) // Small delay between chunks
+            if (!chunksError && existingChunks && existingChunks.length > 0) {
+              console.log(`Found ${existingChunks.length} existing chunks for job ${jobId}, iteration ${iterationNumber}`)
+              
+              // Send each chunk to the client
+              for (const chunk of existingChunks) {
+                controller.enqueue(`data: ${chunk.chunk}\n\n`)
+                // Short delay to not overwhelm the client, but still fast enough
+                await new Promise(resolve => setTimeout(resolve, 5))
+              }
             }
+          } catch (chunksError) {
+            console.error(`Error fetching existing chunks for job ${jobId}, iteration ${iterationNumber}:`, chunksError)
           }
           
           // If job is still processing, set up a subscription for real-time updates
           if (jobData.status === 'processing') {
             console.log(`Setting up real-time subscription for job ${jobId}`)
             
-            // Subscribe to the analysis_stream table
+            // Subscribe to the analysis_stream table for new chunks
             const subscription = supabaseClient
               .channel('analysis_stream_changes')
               .on(
@@ -157,6 +166,16 @@ serve(async (req) => {
               subscription.unsubscribe()
               controller.close()
             })
+            
+            // Send periodic keepalives
+            const keepaliveInterval = setInterval(() => {
+              controller.enqueue('event: keepalive\ndata: ping\n\n')
+            }, 30000) // Every 30 seconds
+            
+            req.signal.addEventListener('abort', () => {
+              clearInterval(keepaliveInterval)
+            })
+            
           } else {
             // If job is not processing, we've sent all available data
             console.log(`Job ${jobId} is not processing (status: ${jobData.status}), closing stream`)
