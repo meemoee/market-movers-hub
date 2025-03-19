@@ -890,6 +890,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
 }
 
 // Function to generate analysis using OpenRouter
+// Modified generateAnalysis function with streaming support
 async function generateAnalysis(
   content: string, 
   query: string, 
@@ -898,7 +899,10 @@ async function generateAnalysis(
   relatedMarkets?: any[],
   areasForResearch?: string[],
   focusText?: string,
-  previousAnalyses?: string[]
+  previousAnalyses?: string[],
+  jobId?: string,
+  iterationNumber?: number,
+  useStreaming: boolean = false
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -906,7 +910,7 @@ async function generateAnalysis(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter`);
+  console.log(`Generating ${analysisType} using OpenRouter${useStreaming ? ' with streaming' : ''}`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -975,21 +979,14 @@ Please provide:
 5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
-  
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${openRouterKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
-      "X-Title": "Market Research App",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-flash-1.5",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+
+  // Setup parameters for OpenRouter API call
+  const requestBody = {
+    model: "google/gemini-flash-1.5",
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
 When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
 
 Your analysis should:
@@ -999,28 +996,134 @@ Your analysis should:
 4. Identify connections between evidence and implications
 5. Be critical of source reliability and evidence quality
 6. Draw balanced conclusions based solely on the evidence provided`
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ],
+    temperature: 0.3
+  };
+  
+  // Add streaming parameter if requested
+  if (useStreaming) {
+    requestBody.stream = true;
+  }
+
+  if (useStreaming && jobId && iterationNumber !== undefined) {
+    // Use streaming API
+    try {
+      console.log(`Starting streaming analysis for job ${jobId}, iteration ${iterationNumber}`);
+      
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openRouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+          "X-Title": "Market Research App",
+          "Accept": "text/event-stream"
         },
-        {
-          role: "user",
-          content: prompt
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+      }
+      
+      // Initialize Supabase client for storing chunks
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      // Process the stream
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let sequence = 0;
+      let completeAnalysis = '';
+      
+      while (reader) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // Decode the chunk
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // Process SSE format: data: {...}\n\n
+        const lines = chunk.split('\n\n');
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          
+          // Extract the JSON data
+          const dataMatch = line.match(/^data: (.+)$/m);
+          if (!dataMatch) continue;
+          
+          try {
+            // If the data is "[DONE]", we're finished
+            if (dataMatch[1].trim() === '[DONE]') {
+              break;
+            }
+            
+            const data = JSON.parse(dataMatch[1]);
+            
+            // Extract the text chunk from the OpenRouter response
+            if (data.choices && data.choices[0]?.delta?.content) {
+              const textChunk = data.choices[0].delta.content;
+              
+              // Store the chunk in the database
+              await supabaseClient.rpc('append_analysis_chunk', {
+                job_id: jobId,
+                iteration: iterationNumber,
+                chunk: textChunk,
+                seq: sequence++
+              });
+              
+              // Append to complete analysis
+              completeAnalysis += textChunk;
+            }
+          } catch (error) {
+            console.error('Error processing stream chunk:', error);
+            console.error('Problematic chunk:', line);
+          }
         }
-      ],
-      temperature: 0.3
-    })
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+      }
+      
+      console.log(`Completed streaming analysis for job ${jobId}, iteration ${iterationNumber}`);
+      return completeAnalysis;
+      
+    } catch (error) {
+      console.error(`Error in streaming analysis for job ${jobId}, iteration ${iterationNumber}:`, error);
+      throw error;
+    }
+  } else {
+    // Use non-streaming API (original implementation)
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+        "X-Title": "Market Research App",
+      },
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+    }
+    
+    return data.choices[0].message.content;
   }
-  
-  const data = await response.json();
-  
-  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
-  }
-  
-  return data.choices[0].message.content;
 }
 
 serve(async (req) => {
