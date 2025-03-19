@@ -248,103 +248,101 @@ export function JobQueueResearchCard({
   useEffect(() => {
     if (!jobId || !polling) return;
     
-    if (!isPageVisible || jobStatus !== 'processing') {
-      const pollInterval = setInterval(async () => {
-        try {
-          console.log(`Polling for job status: ${jobId}`);
-          const { data, error } = await supabase
-            .from('research_jobs')
-            .select('*')
-            .eq('id', jobId)
-            .single();
-            
-          if (error) {
-            console.error('Error polling job status:', error);
-            return;
-          }
+    const pollInterval = setInterval(async () => {
+      try {
+        console.log(`Polling for job status: ${jobId}`);
+        const { data, error } = await supabase
+          .from('research_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
           
-          if (!data) {
-            console.log('No job data found');
-            return;
-          }
-          
-          const job = data as ResearchJob;
-          console.log('Job status:', job.status);
-          
-          setJobStatus(job.status);
-          
-          if (job.status === 'completed') {
-            setPolling(false);
-            setProgressPercent(100);
-            setProgress(prev => [...prev, 'Job completed successfully!']);
-            
-            if (job.results) {
-              try {
-                const parsedResults = JSON.parse(job.results);
-                if (parsedResults.data && Array.isArray(parsedResults.data)) {
-                  setResults(parsedResults.data);
-                }
-                if (parsedResults.analysis) {
-                  setAnalysis(parsedResults.analysis);
-                }
-                if (parsedResults.structuredInsights) {
-                  const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
-                    calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
-                    null;
-                  
-                  setStructuredInsights({
-                    parsedData: {
-                      ...parsedResults.structuredInsights,
-                      goodBuyOpportunities
-                    },
-                    rawText: JSON.stringify(parsedResults.structuredInsights)
-                  });
-                }
-              } catch (e) {
-                console.error('Error parsing job results:', e);
-              }
-            }
-            
-            fetchSavedJobs();
-            
-            clearInterval(pollInterval);
-          } else if (job.status === 'failed') {
-            setPolling(false);
-            setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-            setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-            
-            fetchSavedJobs();
-            
-            clearInterval(pollInterval);
-          } else if (job.status === 'processing') {
-            if (job.max_iterations && job.current_iteration !== undefined) {
-              const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-              setProgressPercent(percent);
-            }
-            
-            if (job.progress_log && Array.isArray(job.progress_log)) {
-              const newItems = job.progress_log.slice(progress.length);
-              if (newItems.length > 0) {
-                setProgress(prev => [...prev, ...newItems]);
-              }
-            }
-            
-            if (job.iterations && Array.isArray(job.iterations)) {
-              setIterations(job.iterations);
-              
-              if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-                setExpandedIterations(prev => [...prev, job.current_iteration]);
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Error in poll interval:', e);
+        if (error) {
+          console.error('Error polling job status:', error);
+          return;
         }
-      }, 3000);
-      
-      return () => clearInterval(pollInterval);
-    }
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, isPageVisible, jobStatus]);
+        
+        if (!data) {
+          console.log('No job data found');
+          return;
+        }
+        
+        const job = data as ResearchJob;
+        console.log('Job status:', job.status);
+        
+        setJobStatus(job.status);
+        
+        if (job.status === 'completed') {
+          setPolling(false);
+          setProgressPercent(100);
+          setProgress(prev => [...prev, 'Job completed successfully!']);
+          
+          if (job.results) {
+            try {
+              const parsedResults = JSON.parse(job.results);
+              if (parsedResults.data && Array.isArray(parsedResults.data)) {
+                setResults(parsedResults.data);
+              }
+              if (parsedResults.analysis) {
+                setAnalysis(parsedResults.analysis);
+              }
+              if (parsedResults.structuredInsights) {
+                const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
+                  calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
+                  null;
+                
+                setStructuredInsights({
+                  parsedData: {
+                    ...parsedResults.structuredInsights,
+                    goodBuyOpportunities
+                  },
+                  rawText: JSON.stringify(parsedResults.structuredInsights)
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing job results:', e);
+            }
+          }
+          
+          fetchSavedJobs();
+          
+          clearInterval(pollInterval);
+        } else if (job.status === 'failed') {
+          setPolling(false);
+          setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+          
+          fetchSavedJobs();
+          
+          clearInterval(pollInterval);
+        } else if (job.status === 'processing') {
+          if (job.max_iterations && job.current_iteration !== undefined) {
+            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
+            setProgressPercent(percent);
+          }
+          
+          if (job.progress_log && Array.isArray(job.progress_log)) {
+            const newItems = job.progress_log.slice(progress.length);
+            if (newItems.length > 0) {
+              setProgress(prev => [...prev, ...newItems]);
+            }
+          }
+          
+          if (job.iterations && Array.isArray(job.iterations)) {
+            setIterations(job.iterations);
+            
+            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+              setExpandedIterations(prev => [...prev, job.current_iteration]);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error in poll interval:', e);
+      }
+    }, 3000);
+    
+    return () => clearInterval(pollInterval);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -361,8 +359,7 @@ export function JobQueueResearchCard({
         query: description,
         maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
-        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined,
-        streamToClient: isPageVisible // Pass page visibility status
+        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
       
       const response = await supabase.functions.invoke('create-research-job', {
@@ -812,3 +809,4 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
+
