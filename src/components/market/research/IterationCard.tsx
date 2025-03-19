@@ -15,6 +15,7 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
+    job_id?: string; // Added job_id for realtime streaming
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -89,6 +90,8 @@ export function IterationCard({
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
                   isStreaming={isStreaming && isCurrentIteration}
+                  jobId={iteration.job_id}
+                  iteration={iteration.iteration}
                   maxHeight="100%"
                 />
               </TabsContent>

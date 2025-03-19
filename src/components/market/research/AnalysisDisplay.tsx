@@ -2,30 +2,77 @@
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
+import { supabase } from "@/integrations/supabase/client"
 
 interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
+  jobId?: string
+  iteration?: number
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px" 
+  maxHeight = "200px",
+  jobId,
+  iteration = 0
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [streamedContent, setStreamedContent] = useState<string>(content || '')
+  
+  // Set up realtime subscription if jobId is provided
+  useEffect(() => {
+    if (!jobId || !isStreaming) return
+    
+    console.log(`Setting up realtime subscription for job ${jobId}, iteration ${iteration}`)
+    
+    // Reset streamed content if this is a new streaming session
+    setStreamedContent(content || '')
+    
+    const channel = supabase
+      .channel('analysis-stream')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'analysis_stream',
+          filter: `job_id=eq.${jobId}` + (iteration !== undefined ? `,iteration=eq.${iteration}` : '')
+        },
+        (payload) => {
+          console.log('Received chunk:', payload)
+          
+          // Extract the chunk and sequence
+          const newChunk = payload.new.chunk
+          const sequence = payload.new.sequence
+          
+          // Update the content state
+          setStreamedContent(prev => prev + newChunk)
+          setLastUpdateTime(Date.now())
+          setStreamStatus('streaming')
+        }
+      )
+      .subscribe()
+    
+    return () => {
+      console.log('Cleaning up realtime subscription')
+      supabase.removeChannel(channel)
+    }
+  }, [jobId, isStreaming, iteration])
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = content?.length || 0
+    const displayContent = jobId && isStreaming ? streamedContent : content
+    const currentContentLength = displayContent?.length || 0
     
     // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
@@ -42,7 +89,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+  }, [content, streamedContent, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -101,7 +148,10 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
-  if (!content) return null
+  // Determine which content to display
+  const displayContent = jobId && isStreaming ? streamedContent : content
+
+  if (!displayContent && !isStreaming) return null
 
   return (
     <div className="relative">
@@ -112,7 +162,7 @@ export function AnalysisDisplay({
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {content}
+            {displayContent || ''}
           </ReactMarkdown>
         </div>
       </ScrollArea>

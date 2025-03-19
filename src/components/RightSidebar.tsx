@@ -1,8 +1,10 @@
+
 import { Send } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
+import { v4 as uuidv4 } from 'uuid'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
@@ -10,12 +12,44 @@ export default function RightSidebar() {
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   interface Message {
     type: 'user' | 'assistant'
     content?: string
   }
+
+  // Set up realtime subscription for streaming content
+  useEffect(() => {
+    if (!currentJobId) return
+
+    console.log(`Setting up chat message realtime subscription for job ${currentJobId}`)
+    
+    const channel = supabase
+      .channel('chat-stream')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'analysis_stream',
+          filter: `job_id=eq.${currentJobId}`
+        },
+        (payload) => {
+          console.log('Received chat chunk:', payload)
+          const newChunk = payload.new.chunk
+          
+          setStreamingContent(prev => prev + newChunk)
+        }
+      )
+      .subscribe()
+    
+    return () => {
+      console.log('Cleaning up chat realtime subscription')
+      supabase.removeChannel(channel)
+    }
+  }, [currentJobId])
 
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
@@ -24,19 +58,24 @@ export default function RightSidebar() {
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
+    setStreamingContent('')
     
     try {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
 
-      abortControllerRef.current = new AbortController()
+      // Generate a unique job ID for this chat message
+      const jobId = uuidv4()
+      setCurrentJobId(jobId)
 
-      console.log('Sending request to market-analysis function...')
-      const { data, error } = await supabase.functions.invoke('market-analysis', {
+      console.log('Sending request to simulated-stream function...')
+      const { data, error } = await supabase.functions.invoke('simulated-stream', {
         body: {
           message: userMessage,
-          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
+          jobId: jobId,
+          iteration: 0
         }
       })
 
@@ -45,78 +84,37 @@ export default function RightSidebar() {
         throw error
       }
 
-      console.log('Received response from market-analysis:', data)
+      console.log('Received response from simulated-stream:', data)
       
-      let accumulatedContent = ''
+      // No need to process streaming here, it's handled by the realtime subscription
       
-      const stream = new ReadableStream({
-        start(controller) {
-          const textDecoder = new TextDecoder()
-          const reader = new Response(data.body).body?.getReader()
-          
-          function push() {
-            reader?.read().then(({done, value}) => {
-              if (done) {
-                console.log('Stream complete')
-                controller.close()
-                return
-              }
-              
-              const chunk = textDecoder.decode(value)
-              
-              const lines = chunk.split('\n').filter(line => line.trim())
-              
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  
-                  if (jsonStr === '[DONE]') continue
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr)
-                    
-                    const content = parsed.choices?.[0]?.delta?.content
-                    if (content) {
-                      accumulatedContent += content
-                      setStreamingContent(accumulatedContent)
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
-                  }
-                }
-              }
-              
-              push()
-            })
-          }
-          
-          push()
-        }
-      })
-
-      const reader = stream.getReader()
-      while (true) {
-        const { done } = await reader.read()
-        if (done) break
-      }
-
-      setMessages(prev => [...prev, { 
-        type: 'assistant', 
-        content: accumulatedContent 
-      }])
-
     } catch (error) {
       console.error('Error in chat:', error)
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         content: 'Sorry, I encountered an error processing your request.' 
       }])
-    } finally {
-      setIsLoading(false)
-      setStreamingContent('')
-      abortControllerRef.current = null
+      setCurrentJobId(null)
     }
   }
+
+  // When streaming content is complete, add it to messages
+  useEffect(() => {
+    if (!isLoading || !streamingContent || !currentJobId) return
+    
+    // Check if there's been no updates to streaming content for 2 seconds
+    const timer = setTimeout(() => {
+      setMessages(prev => [...prev, { 
+        type: 'assistant', 
+        content: streamingContent 
+      }])
+      setStreamingContent('')
+      setCurrentJobId(null)
+      setIsLoading(false)
+    }, 2000)
+    
+    return () => clearTimeout(timer)
+  }, [streamingContent, isLoading])
 
   const defaultContent = [
     {
