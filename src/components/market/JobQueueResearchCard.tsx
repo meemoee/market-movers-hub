@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -271,16 +272,15 @@ export function JobQueueResearchCard({
     }
     
     const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co';
+    // Use the anon key directly to avoid Promise handling issues
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 
                    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
     
-    const sessionToken = supabase.auth.getSession()
-      .then(response => response.data?.session?.access_token)
-      .catch(() => null);
+    // Construct the URL for the SSE connection
+    const url = `${baseUrl}/functions/v1/create-research-job?jobId=${jobId}&streamAnalysis=true&apikey=${anonKey}`;
+    console.log(`Establishing SSE connection to: ${url}`);
     
-    const newEventSource = new EventSource(
-      `${baseUrl}/functions/v1/create-research-job?jobId=${jobId}&streamAnalysis=true&apikey=${anonKey}`
-    );
+    const newEventSource = new EventSource(url);
     
     newEventSource.onopen = () => {
       console.log(`SSE connection opened for job ${jobId}`);

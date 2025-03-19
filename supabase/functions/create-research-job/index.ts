@@ -1142,41 +1142,61 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
   
-  // Get API key from request
+  // Get API key from request - check multiple sources
   const url = new URL(req.url);
-  const apiKey = url.searchParams.get('apikey') || req.headers.get('apikey') || req.headers.get('Authorization')?.split(' ')[1];
+  const apiKey = url.searchParams.get('apikey') || 
+                req.headers.get('apikey') || 
+                req.headers.get('Authorization')?.split(' ')[1];
+  
+  // Log the authentication attempt for debugging
+  console.log(`Auth attempt with apiKey present: ${!!apiKey ? 'Yes' : 'No'}, method: ${req.method}, path: ${url.pathname}`);
   
   // Check API key for authentication
   if (!apiKey) {
+    console.log("API key missing in request");
     return new Response(
       JSON.stringify({ error: 'API key is required' }),
       { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
   
-  // Check if this is a request for SSE streaming of an existing job
+  // Special handling for SSE streaming of an existing job
   const jobId = url.searchParams.get('jobId');
   const streamAnalysis = url.searchParams.get('streamAnalysis') === 'true';
   
+  // If SSE streaming is requested, set up the stream
   if (jobId && streamAnalysis) {
-    console.log(`Setting up SSE stream for existing job ${jobId}`);
+    console.log(`Setting up SSE stream for existing job ${jobId} (method: ${req.method})`);
     
-    // Create a new SSE stream for this job
+    // Create an SSE stream
     const stream = new ReadableStream({
       start(controller) {
-        // Send initial confirmation message
+        // Send initial connection confirmation
         writeSSE(controller, 'connected', { 
           message: 'SSE connection established', 
           jobId 
         });
+        
+        // We're not doing anything else in this simple stream setup
+        // The real streaming would happen in the performWebResearch function
       }
     });
     
-    return new Response(stream, { headers: sseHeaders });
+    // Return the stream with proper headers for SSE
+    return new Response(stream, { 
+      headers: sseHeaders 
+    });
   }
   
+  // Regular job creation flow (POST requests)
   try {
-    // Regular job creation flow
+    if (req.method !== 'POST' && !streamAnalysis) {
+      return new Response(
+        JSON.stringify({ error: 'Method not allowed' }),
+        { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     const requestData = await req.json();
     const { 
       marketId, 
