@@ -592,7 +592,7 @@ export function JobQueueResearchCard({
           ) : (
             <Button 
               onClick={() => handleResearch()} 
-              disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
+              disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
               className="flex items-center gap-2"
             >
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -672,7 +672,7 @@ export function JobQueueResearchCard({
                 placeholder="Add an optional focus area for your research..."
                 value={focusText}
                 onChange={(e) => setFocusText(e.target.value)}
-                disabled={isLoading || polling}
+                disabled={isLoading}
                 className="flex-1"
               />
             </div>
@@ -685,7 +685,7 @@ export function JobQueueResearchCard({
               <Select
                 value={maxIterations}
                 onValueChange={setMaxIterations}
-                disabled={isLoading || polling}
+                disabled={isLoading}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Number of iterations" />
@@ -730,7 +730,7 @@ export function JobQueueResearchCard({
               
               <Button 
                 onClick={() => handleResearch()} 
-                disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
+                disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
                 className="w-full"
               >
                 {isLoading ? (
@@ -778,7 +778,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                isStreaming={false}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
@@ -820,4 +820,3 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
-
