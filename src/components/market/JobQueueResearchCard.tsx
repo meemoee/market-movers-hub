@@ -255,69 +255,127 @@ export function JobQueueResearchCard({
     }
   };
 
-  const connectToStream = (jobId: string, iterationNumber: number) => {
-    // Close any existing stream
-    if (streamSource) {
-      streamSource.close();
-      setStreamSource(null);
-    }
+  // Replace the existing connectToStream method in JobQueueResearchCard.tsx with this improved version
+const connectToStream = (jobId: string, iterationNumber: number) => {
+  // Close any existing stream
+  if (streamSource) {
+    streamSource.close();
+    setStreamSource(null);
+  }
 
-    setIsStreaming(true);
-    currentIterationRef.current = iterationNumber;
+  setIsStreaming(true);
+  currentIterationRef.current = iterationNumber;
+  
+  // Create URL for our streaming endpoint with query parameters
+  const streamUrl = `${supabase.functions.url('stream-analysis')}?jobId=${jobId}&iterationNumber=${iterationNumber}`;
+  
+  try {
+    // Create EventSource connection
+    const source = new EventSource(streamUrl, { withCredentials: true });
     
-    // Create URL for our streaming endpoint
-    const streamUrl = `${supabase.functions.url('stream-analysis')}`
+    // When connection opens, send the job and iteration info
+    source.onopen = (event) => {
+      console.log(`Stream connection opened for job ${jobId}, iteration ${iterationNumber}`);
+      
+      // Also send a POST to initialize the server-side connection
+      fetch(supabase.functions.url('stream-analysis'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabase.auth.getSession()?.access_token}`
+        },
+        body: JSON.stringify({ jobId, iterationNumber })
+      }).catch(error => {
+        console.error('Error initializing stream:', error);
+      });
+    };
     
-    try {
-      // Create EventSource connection
-      const source = new EventSource(streamUrl, { withCredentials: true });
+    // When we get a message, update the analysis content
+    source.onmessage = (event) => {
+      const chunk = event.data;
       
-      // When connection opens, send the job and iteration info
-      source.onopen = (event) => {
-        fetch(streamUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabase.auth.getSession()?.access_token}`
-          },
-          body: JSON.stringify({ jobId, iterationNumber })
-        });
-      };
-      
-      // When we get a message, update the analysis content
-      source.onmessage = (event) => {
-        const chunk = event.data;
+      setIterations(prevIterations => {
+        const newIterations = [...prevIterations];
+        const iterIndex = newIterations.findIndex(iter => iter.iteration === iterationNumber);
         
-        setIterations(prevIterations => {
-          const newIterations = [...prevIterations];
-          const iterIndex = newIterations.findIndex(iter => iter.iteration === iterationNumber);
-          
-          if (iterIndex >= 0) {
-            const currentAnalysis = newIterations[iterIndex].analysis || '';
-            newIterations[iterIndex] = {
-              ...newIterations[iterIndex],
-              analysis: currentAnalysis + chunk
-            };
-          }
-          
-          return newIterations;
-        });
-      };
+        if (iterIndex >= 0) {
+          const currentAnalysis = newIterations[iterIndex].analysis || '';
+          newIterations[iterIndex] = {
+            ...newIterations[iterIndex],
+            analysis: currentAnalysis + chunk
+          };
+        }
+        
+        return newIterations;
+      });
       
-      // Handle errors
-      source.onerror = (event) => {
-        console.error('SSE Error:', event);
-        source.close();
-        setIsStreaming(false);
-        setStreamSource(null);
-      };
+      // Update last update time to show active streaming
+      setLastUpdateTime(Date.now());
+    };
+    
+    // Handle keepalive events
+    source.addEventListener('keepalive', (event) => {
+      console.log('Received keepalive from server');
+    });
+    
+    // Handle errors
+    source.onerror = (event) => {
+      console.error('SSE Error:', event);
       
-      setStreamSource(source);
-    } catch (error) {
-      console.error('Error connecting to stream:', error);
+      // If connection fails, try to reconnect once after a delay
+      setTimeout(() => {
+        if (source.readyState === EventSource.CLOSED) {
+          console.log('Attempting to reconnect...');
+          connectToStream(jobId, iterationNumber);
+        }
+      }, 2000);
+      
+      // Close the problematic connection
+      source.close();
       setIsStreaming(false);
-    }
-  };
+      setStreamSource(null);
+    };
+    
+    setStreamSource(source);
+    
+    // Set up a timeout to close the connection if no activity for 2 minutes
+    const inactivityTimeout = setTimeout(() => {
+      console.log('Stream connection inactive for too long, closing');
+      source.close();
+      setIsStreaming(false);
+      setStreamSource(null);
+    }, 2 * 60 * 1000);
+    
+    // Clear the timeout on new messages
+    source.onmessage = (event) => {
+      clearTimeout(inactivityTimeout);
+      
+      const chunk = event.data;
+      
+      setIterations(prevIterations => {
+        const newIterations = [...prevIterations];
+        const iterIndex = newIterations.findIndex(iter => iter.iteration === iterationNumber);
+        
+        if (iterIndex >= 0) {
+          const currentAnalysis = newIterations[iterIndex].analysis || '';
+          newIterations[iterIndex] = {
+            ...newIterations[iterIndex],
+            analysis: currentAnalysis + chunk
+          };
+        }
+        
+        return newIterations;
+      });
+      
+      // Update last update time to show active streaming
+      setLastUpdateTime(Date.now());
+    };
+    
+  } catch (error) {
+    console.error('Error connecting to stream:', error);
+    setIsStreaming(false);
+  }
+};
 
   useEffect(() => {
     if (!jobId || !polling) return;
