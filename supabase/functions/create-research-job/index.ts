@@ -1,11 +1,9 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
-// Define CORS headers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+// Import CORS headers and SSE helpers
+import { corsHeaders, getSSEHeaders } from '../_shared/cors.ts'
 
 // Function to send a notification email
 async function sendNotificationEmail(jobId: string, email: string) {
@@ -33,9 +31,46 @@ async function sendNotificationEmail(jobId: string, email: string) {
   }
 }
 
-// Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
-  console.log(`Starting background research for job ${jobId}`)
+// Function to perform web research with streaming support
+async function performWebResearch(
+  jobId: string, 
+  query: string, 
+  marketId: string, 
+  maxIterations: number, 
+  focusText?: string, 
+  notificationEmail?: string,
+  streamController?: ReadableStreamDefaultController,
+  streamOptions?: {
+    sendProgress?: (message: string) => void,
+    sendAnalysis?: (chunk: string, iterationNumber?: number) => void,
+    sendError?: (error: Error) => void,
+    sendComplete?: () => void
+  }
+) {
+  console.log(`Starting research for job ${jobId} with${streamController ? '' : 'out'} streaming`);
+  
+  // Helper to send progress updates both to stream and database
+  const sendProgress = async (message: string) => {
+    try {
+      // Always log to database
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(message)
+      });
+      
+      // Also send to stream if streaming enabled
+      if (streamController && streamOptions?.sendProgress) {
+        streamOptions.sendProgress(message);
+      }
+    } catch (error) {
+      console.error(`Error sending progress update for job ${jobId}:`, error);
+    }
+  };
   
   try {
     const supabaseClient = createClient(
@@ -50,16 +85,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     })
     
     // Log start
-    await supabaseClient.rpc('append_research_progress', {
-      job_id: jobId,
-      progress_entry: JSON.stringify(`Starting research for: ${query}`)
-    })
+    await sendProgress(`Starting research for: ${query}`);
     
     if (focusText) {
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Research focus: ${focusText}`)
-      })
+      await sendProgress(`Research focus: ${focusText}`);
     }
     
     // Get market question from the database for more context
@@ -97,17 +126,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         .eq('id', jobId)
       
       // Add progress log for this iteration
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Starting iteration ${i} of ${maxIterations}`)
-      })
+      await sendProgress(`Starting iteration ${i} of ${maxIterations}`);
       
       // Generate search queries
       try {
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Generating search queries for iteration ${i}`)
-        })
+        await sendProgress(`Generating search queries for iteration ${i}`);
         
         // Call the generate-queries function to get real queries
         const generateQueriesResponse = await fetch(
@@ -153,16 +176,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           iteration_data: iterationData
         });
         
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Generated ${queries.length} search queries for iteration ${i}`)
-        })
+        await sendProgress(`Generated ${queries.length} search queries for iteration ${i}`);
         
         // Process each query with Brave Search
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Executing Brave searches for iteration ${i}...`)
-        });
+        await sendProgress(`Executing Brave searches for iteration ${i}...`);
         
         let allResults = [];
         
@@ -198,10 +215,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             const webResults = searchResults.web?.results || [];
             
             // Log search results count
-            await supabaseClient.rpc('append_research_progress', {
-              job_id: jobId,
-              progress_entry: JSON.stringify(`Found ${webResults.length} results for "${currentQuery}"`)
-            });
+            await sendProgress(`Found ${webResults.length} results for "${currentQuery}"`);
             
             // Process results: fetch content from URLs
             const validResults = [];
@@ -256,17 +270,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
             
           } catch (queryError) {
             console.error(`Error processing query "${currentQuery}":`, queryError);
-            await supabaseClient.rpc('append_research_progress', {
-              job_id: jobId,
-              progress_entry: JSON.stringify(`Error processing query "${currentQuery}": ${queryError.message}`)
-            });
+            await sendProgress(`Error processing query "${currentQuery}": ${queryError.message}`);
           }
         }
         
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
-        });
+        await sendProgress(`Completed searches for iteration ${i} with ${allResults.length} total results`);
         
         // After each iteration, analyze the collected data using OpenRouter
         try {
@@ -280,10 +288,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           const currentIterationData = iterationResults.find(iter => iter.iteration === i);
           
           if (currentIterationData && currentIterationData.results && currentIterationData.results.length > 0) {
-            await supabaseClient.rpc('append_research_progress', {
-              job_id: jobId,
-              progress_entry: JSON.stringify(`Analyzing ${currentIterationData.results.length} results for iteration ${i}...`)
-            });
+            await sendProgress(`Analyzing ${currentIterationData.results.length} results for iteration ${i}...`);
             
             // Combine all content from the results
             const combinedContent = currentIterationData.results
@@ -392,7 +397,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               }
               
               // Generate analysis for this iteration with market context
-              const analysisText = await generateAnalysis(
+              const analysisText = await generateAnalysisWithStreaming(
                 combinedContent, 
                 query, 
                 `Iteration ${i} analysis for "${query}"`,
@@ -400,7 +405,15 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 relatedMarkets,
                 areasForResearch,
                 focusText,
-                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
+                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean),
+                // Pass streaming handlers
+                streamController ? {
+                  onChunk: (chunk) => {
+                    if (streamOptions?.sendAnalysis) {
+                      streamOptions.sendAnalysis(chunk, i);
+                    }
+                  }
+                } : undefined
               );
               
               // Update the iteration with the analysis
@@ -415,27 +428,18 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                   .update({ iterations: updatedIterations })
                   .eq('id', jobId);
                 
-                await supabaseClient.rpc('append_research_progress', {
-                  job_id: jobId,
-                  progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
-                });
+                await sendProgress(`Completed analysis for iteration ${i}`);
               }
             }
           }
         } catch (analysisError) {
           console.error(`Error analyzing iteration ${i} results:`, analysisError);
-          await supabaseClient.rpc('append_research_progress', {
-            job_id: jobId,
-            progress_entry: JSON.stringify(`Error analyzing iteration ${i} results: ${analysisError.message}`)
-          });
+          await sendProgress(`Error analyzing iteration ${i} results: ${analysisError.message}`);
         }
         
       } catch (error) {
         console.error(`Error generating queries for job ${jobId}:`, error);
-        await supabaseClient.rpc('append_research_progress', {
-          job_id: jobId,
-          progress_entry: JSON.stringify(`Error generating queries: ${error.message}`)
-        });
+        await sendProgress(`Error generating queries: ${error.message}`);
       }
     }
     
@@ -457,10 +461,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     }
     
     // Generate final analysis with OpenRouter
-    await supabaseClient.rpc('append_research_progress', {
-      job_id: jobId,
-      progress_entry: JSON.stringify(`Generating final analysis of ${allResults.length} total results...`)
-    });
+    await sendProgress(`Generating final analysis of ${allResults.length} total results...`);
     
     let finalAnalysis = "";
     try {
@@ -575,7 +576,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         .map(iter => iter.analysis);
       
       if (allContent.length > 0) {
-        finalAnalysis = await generateAnalysis(
+        finalAnalysis = await generateAnalysisWithStreaming(
           allContent, 
           query, 
           `Final comprehensive analysis for "${query}"`,
@@ -583,7 +584,15 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           relatedMarkets,
           areasForResearch,
           focusText,
-          previousAnalyses
+          previousAnalyses,
+          // Pass streaming handlers
+          streamController ? {
+            onChunk: (chunk) => {
+              if (streamOptions?.sendAnalysis) {
+                streamOptions.sendAnalysis(chunk);
+              }
+            }
+          } : undefined
         );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
@@ -592,10 +601,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       console.error(`Error generating final analysis for job ${jobId}:`, analysisError);
       finalAnalysis = `Error generating analysis: ${analysisError.message}`;
       
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Error generating final analysis: ${analysisError.message}`)
-      });
+      await sendProgress(`Error generating final analysis: ${analysisError.message}`);
     }
     
     // Create final results object with the text analysis
@@ -605,10 +611,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     };
     
     // Now generate the structured insights with the extract-research-insights function
-    await supabaseClient.rpc('append_research_progress', {
-      job_id: jobId,
-      progress_entry: JSON.stringify(`Generating structured insights with probability assessment...`)
-    });
+    await sendProgress(`Generating structured insights with probability assessment...`);
     
     let structuredInsights = null;
     try {
@@ -776,10 +779,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       // Parse the JSON response directly
       structuredInsights = await extractInsightsResponse.json();
       
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`)
-      });
+      await sendProgress(`Structured insights generated with probability: ${structuredInsights.choices[0].message.content.probability || "unknown"}`);
       
       // Extract the actual insights from the OpenRouter response
       if (structuredInsights.choices && 
@@ -818,10 +818,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     } catch (insightsError) {
       console.error(`Error extracting structured insights for job ${jobId}:`, insightsError);
       
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Error extracting structured insights: ${insightsError.message}`)
-      });
+      await sendProgress(`Error extracting structured insights: ${insightsError.message}`);
       
       structuredInsights = {
         probability: "Error: Failed to generate",
@@ -847,19 +844,21 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       new_status: 'completed'
     });
     
-    await supabaseClient.rpc('append_research_progress', {
-      job_id: jobId,
-      progress_entry: JSON.stringify('Research completed successfully!')
-    });
+    await sendProgress('Research completed successfully!');
     
     // Send notification email if provided
     if (notificationEmail) {
       await sendNotificationEmail(jobId, notificationEmail);
     }
     
-    console.log(`Completed background research for job ${jobId}`);
+    // Send the complete event if streaming
+    if (streamController && streamOptions?.sendComplete) {
+      streamOptions.sendComplete();
+    }
+    
+    console.log(`Completed research for job ${jobId}`);
   } catch (error) {
-    console.error(`Error in background job ${jobId}:`, error);
+    console.error(`Error in research job ${jobId}:`, error);
     
     try {
       const supabaseClient = createClient(
@@ -874,10 +873,12 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         error_msg: error.message || 'Unknown error'
       });
       
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
-      });
+      await sendProgress(`Research failed: ${error.message || 'Unknown error'}`);
+      
+      // Send error to stream if streaming
+      if (streamController && streamOptions?.sendError) {
+        streamOptions.sendError(error);
+      }
       
       // Send notification email for failure if provided
       if (notificationEmail) {
@@ -889,8 +890,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// Function to generate analysis using OpenRouter
-async function generateAnalysis(
+// Function to generate analysis using OpenRouter with streaming support
+async function generateAnalysisWithStreaming(
   content: string, 
   query: string, 
   analysisType: string,
@@ -898,7 +899,10 @@ async function generateAnalysis(
   relatedMarkets?: any[],
   areasForResearch?: string[],
   focusText?: string,
-  previousAnalyses?: string[]
+  previousAnalyses?: string[],
+  streamOptions?: {
+    onChunk?: (chunk: string) => void
+  }
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -906,7 +910,7 @@ async function generateAnalysis(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter`);
+  console.log(`Generating ${analysisType} using OpenRouter${streamOptions ? ' with streaming' : ''}`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -976,20 +980,13 @@ Please provide:
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
   
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${openRouterKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
-      "X-Title": "Market Research App",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-flash-1.5",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+  // Create request body with streaming if needed
+  const requestBody: any = {
+    model: "google/gemini-flash-1.5",
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
 When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
 
 Your analysis should:
@@ -999,14 +996,29 @@ Your analysis should:
 4. Identify connections between evidence and implications
 5. Be critical of source reliability and evidence quality
 6. Draw balanced conclusions based solely on the evidence provided`
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.3
-    })
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ],
+    temperature: 0.3
+  };
+  
+  // Add streaming parameter if streaming is enabled
+  if (streamOptions?.onChunk) {
+    requestBody.stream = true;
+  }
+  
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${openRouterKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+      "X-Title": "Market Research App",
+    },
+    body: JSON.stringify(requestBody)
   });
   
   if (!response.ok) {
@@ -1014,13 +1026,71 @@ Your analysis should:
     throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
   }
   
-  const data = await response.json();
-  
-  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+  // If we're streaming, process the response differently
+  if (streamOptions?.onChunk) {
+    // Set up streaming response handling
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = "";
+    
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        // Decode the chunk
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // Process JSON chunks in the stream
+        const lines = chunk
+          .split('\n')
+          .filter(line => line.trim() !== '')
+          .map(line => {
+            try {
+              if (line.startsWith('data: ')) {
+                return JSON.parse(line.substring(6));
+              } else if (line.startsWith('{')) {
+                return JSON.parse(line);
+              }
+              return null;
+            } catch (e) {
+              console.log(`Error parsing JSON in stream: ${e.message}`, line);
+              return null;
+            }
+          })
+          .filter(parsed => parsed !== null);
+        
+        // Extract content from each chunk
+        for (const parsed of lines) {
+          if (parsed.choices && parsed.choices[0]) {
+            const delta = parsed.choices[0].delta || parsed.choices[0].message;
+            if (delta && delta.content) {
+              // Send the content chunk to the caller
+              streamOptions.onChunk(delta.content);
+              fullContent += delta.content;
+            }
+          }
+        }
+      }
+      
+      return fullContent;
+    } catch (error) {
+      console.error('Error processing stream:', error);
+      throw error;
+    } finally {
+      // Make sure to release the reader
+      reader.releaseLock();
+    }
+  } else {
+    // Non-streaming response processing
+    const data = await response.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+    }
+    
+    return data.choices[0].message.content;
   }
-  
-  return data.choices[0].message.content;
 }
 
 serve(async (req) => {
@@ -1030,19 +1100,19 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail, streaming = false } = await req.json();
     
     if (!marketId || !query) {
       return new Response(
         JSON.stringify({ error: 'marketId and query are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      );
     }
     
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
+    );
     
     // Create a new job record
     const { data: jobData, error: jobError } = await supabaseClient
@@ -1059,39 +1129,99 @@ serve(async (req) => {
         notification_email: notificationEmail
       })
       .select('id')
-      .single()
+      .single();
     
     if (jobError) {
-      throw new Error(`Failed to create job: ${jobError.message}`)
+      throw new Error(`Failed to create job: ${jobError.message}`);
     }
     
-    const jobId = jobData.id
+    const jobId = jobData.id;
     
-    // Start the background process without EdgeRuntime
-    // Use standard Deno setTimeout for async operation instead
-    setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
-        console.error(`Background research failed: ${err}`);
+    // If streaming is requested, use Server-Sent Events
+    if (streaming) {
+      console.log(`Starting research job ${jobId} with streaming`);
+      
+      // Create a ReadableStream for SSE
+      const stream = new ReadableStream({
+        start(controller) {
+          // Helper to send SSE events
+          const sendEvent = (event: string, data: any) => {
+            const eventString = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+            controller.enqueue(new TextEncoder().encode(eventString));
+          };
+          
+          // Initial event with job ID
+          sendEvent('jobCreated', { jobId });
+          
+          // Define handlers for streaming events
+          const streamOptions = {
+            sendProgress: (message: string) => {
+              sendEvent('progress', { jobId, message });
+            },
+            sendAnalysis: (chunk: string, iterationNumber?: number) => {
+              sendEvent('analysis', { jobId, iterationNumber, chunk });
+            },
+            sendError: (error: Error) => {
+              sendEvent('error', { jobId, message: error.message });
+              controller.close();
+            },
+            sendComplete: () => {
+              sendEvent('complete', { jobId });
+              controller.close();
+            }
+          };
+          
+          // Start the background research process without blocking
+          performWebResearch(
+            jobId, 
+            query, 
+            marketId, 
+            maxIterations, 
+            focusText, 
+            notificationEmail,
+            controller,
+            streamOptions
+          ).catch(err => {
+            console.error(`Streaming research failed:`, err);
+            streamOptions.sendError(err);
+          });
+        }
       });
-    }, 0);
-    
-    // Return immediate response with job ID
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Research job started', 
-        jobId: jobId 
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    )
+      
+      // Return the stream as the response
+      return new Response(stream, {
+        headers: getSSEHeaders()
+      });
+    } else {
+      // Legacy non-streaming approach using background processing
+      console.log(`Starting non-streaming background research job ${jobId}`);
+      
+      // Start the background process without EdgeRuntime
+      // Use standard Deno setTimeout for async operation instead
+      setTimeout(() => {
+        performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
+          console.error(`Background research failed: ${err}`);
+        });
+      }, 0);
+      
+      // Return immediate response with job ID
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Research job started', 
+          jobId: jobId 
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
   } catch (error) {
-    console.error('Error:', error)
+    console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    );
   }
-})
+});

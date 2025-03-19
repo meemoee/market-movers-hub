@@ -10,9 +10,16 @@ interface ProgressDisplayProps {
   jobId?: string
   progress?: number
   status?: 'queued' | 'processing' | 'completed' | 'failed' | null
+  autoScroll?: boolean
 }
 
-export function ProgressDisplay({ messages, jobId, progress, status }: ProgressDisplayProps) {
+export function ProgressDisplay({ 
+  messages, 
+  jobId, 
+  progress, 
+  status,
+  autoScroll = true 
+}: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -25,13 +32,13 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   
   // Use useLayoutEffect to ensure scroll happens before browser paint
   useLayoutEffect(() => {
-    if (messagesEndRef.current && scrollAreaRef.current) {
+    if (messagesEndRef.current && scrollAreaRef.current && autoScroll) {
       const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
-  }, [messages]);
+  }, [messages, autoScroll]);
 
   if (!messages.length) return null
   
