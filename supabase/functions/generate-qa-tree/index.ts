@@ -182,23 +182,8 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
             if (dataStr === "[DONE]") continue;
             try {
               const parsed = JSON.parse(dataStr);
-              // Re-emit the SSE event, ensuring it contains proper markdown
-              const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || "";
-              if (content) {
-                // Ensure we're sending properly formatted chunks
-                controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
-                  ...parsed,
-                  choices: [
-                    {
-                      ...parsed.choices[0],
-                      delta: {
-                        ...parsed.choices[0].delta,
-                        content: content
-                      }
-                    }
-                  ]
-                })}\n\n`));
-              }
+              // Re-emit the SSE event unmodified.
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
             } catch (err) {
               console.debug("Error parsing SSE chunk:", err);
             }
@@ -209,22 +194,7 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
         if (buffer.trim()) {
           try {
             const parsed = JSON.parse(buffer.trim());
-            // Ensure we're sending properly formatted final chunk
-            const content = parsed.choices?.[0]?.delta?.content || parsed.choices?.[0]?.message?.content || "";
-            if (content) {
-              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({
-                ...parsed,
-                choices: [
-                  {
-                    ...parsed.choices[0],
-                    delta: {
-                      ...parsed.choices[0].delta,
-                      content: content
-                    }
-                  }
-                ]
-              })}\n\n`));
-            }
+            controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
           } catch (err) {
             console.debug("Error parsing final SSE chunk:", err);
           }

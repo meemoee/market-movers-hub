@@ -7,16 +7,12 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
-  onScroll?: (isAtBottom: boolean) => void
-  streamingContent?: string
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px",
-  onScroll,
-  streamingContent = ""
+  maxHeight = "200px" 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
@@ -24,14 +20,12 @@ export function AnalysisDisplay({
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
-  const combinedContent = streamingContent ? (content + streamingContent) : content
-  
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = combinedContent?.length || 0
+    const currentContentLength = content?.length || 0
     
     // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
@@ -48,7 +42,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [combinedContent, isStreaming, shouldAutoScroll])
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -64,15 +58,11 @@ export function AnalysisDisplay({
       ) < 30 // Small threshold for "close enough" to bottom
       
       setShouldAutoScroll(isAtBottom)
-      
-      if (onScroll) {
-        onScroll(isAtBottom)
-      }
     }
     
     scrollContainer.addEventListener('scroll', handleScroll)
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
-  }, [onScroll])
+  }, [])
   
   // Check for inactive streaming with longer intervals
   useEffect(() => {
@@ -111,7 +101,7 @@ export function AnalysisDisplay({
     return () => cancelAnimationFrame(rafId)
   }, [isStreaming, shouldAutoScroll])
 
-  if (!combinedContent) return null
+  if (!content) return null
 
   return (
     <div className="relative">
@@ -122,7 +112,7 @@ export function AnalysisDisplay({
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {combinedContent}
+            {content}
           </ReactMarkdown>
         </div>
       </ScrollArea>

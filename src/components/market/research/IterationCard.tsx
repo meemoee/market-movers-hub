@@ -21,7 +21,6 @@ interface IterationCardProps {
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
-  streamingContent?: string; // Add streaming content prop
 }
 
 export function IterationCard({
@@ -30,12 +29,10 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations,
-  streamingContent = "" // Add default value
+  maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true)
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -48,10 +45,6 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
-
-  const handleAnalysisScroll = (isAtBottom: boolean) => {
-    setAutoScrollEnabled(isAtBottom);
-  };
 
   return (
     <div className={cn(
@@ -97,8 +90,6 @@ export function IterationCard({
                   content={iteration.analysis || "Analysis in progress..."} 
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
-                  onScroll={handleAnalysisScroll}
-                  streamingContent={isCurrentIteration && isStreaming ? streamingContent : ""} // Pass streaming content only for current iteration
                 />
               </TabsContent>
               

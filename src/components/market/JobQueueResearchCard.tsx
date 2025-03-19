@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -82,13 +82,6 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const [eventSource, setEventSource] = useState<EventSource | null>(null)
-  const [streamingMessage, setStreamingMessage] = useState<string>("");
-  const [streamingContent, setStreamingContent] = useState<string>("");
-  const [streamingIteration, setStreamingIteration] = useState<number | null>(null);
-  const [isCurrentlyStreaming, setIsCurrentlyStreaming] = useState(false);
-  const [streamingErrors, setStreamingErrors] = useState<string[]>([]);
-  const reconnectTimeoutRef = useRef<number | null>(null);
   const { toast } = useToast()
 
   const resetState = () => {
@@ -103,12 +96,6 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    setEventSource(null);
-    setStreamingMessage("");
-    setStreamingContent("");
-    setStreamingIteration(null);
-    setIsCurrentlyStreaming(false);
-    setStreamingErrors([]);
   }
 
   useEffect(() => {
@@ -257,306 +244,103 @@ export function JobQueueResearchCard({
     }
   };
 
-  const establishSSEConnection = (jobId: string) => {
-    closeSSEConnection();
+  useEffect(() => {
+    if (!jobId || !polling) return;
     
-    try {
-      console.log(`Establishing SSE connection for job: ${jobId}`);
-      
-      const sse = new EventSource(
-        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/create-research-job?streaming=true&jobId=${jobId}`,
-        { withCredentials: false }
-      );
-      
-      setEventSource(sse);
-      setIsCurrentlyStreaming(true);
-      
-      sse.onopen = () => {
-        console.log('SSE connection opened successfully');
-        setStreamingErrors([]);
-      };
-      
-      sse.onmessage = (event) => {
-        console.log('SSE general message:', event.data);
-        try {
-          const data = JSON.parse(event.data);
-          if (data.message) {
-            setStreamingMessage(data.message);
-          }
-        } catch (e) {
-          console.error('Error parsing SSE message:', e);
-        }
-      };
-      
-      sse.addEventListener('progress', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('SSE progress event:', data);
+    const pollInterval = setInterval(async () => {
+      try {
+        console.log(`Polling for job status: ${jobId}`);
+        const { data, error } = await supabase
+          .from('research_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
           
-          if (data.message) {
-            setStreamingMessage(data.message);
-            setProgress(prev => [...prev, data.message]);
-          }
-          
-          if (data.percent !== undefined) {
-            setProgressPercent(data.percent);
-          }
-        } catch (e) {
-          console.error('Error handling progress event:', e);
-        }
-      });
-      
-      sse.addEventListener('analysis', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('SSE analysis event:', data);
-          
-          if (data.chunk) {
-            setStreamingContent(prev => prev + data.chunk);
-            
-            if (data.iterationNumber !== undefined) {
-              setStreamingIteration(data.iterationNumber);
-              
-              setIterations(prevIterations => {
-                const existingIterationIndex = prevIterations.findIndex(
-                  i => i.iteration === data.iterationNumber
-                );
-                
-                if (existingIterationIndex === -1) {
-                  return [
-                    ...prevIterations, 
-                    {
-                      iteration: data.iterationNumber,
-                      queries: [],
-                      results: [],
-                      analysis: data.chunk,
-                      streaming: true
-                    }
-                  ];
-                } else {
-                  const updatedIterations = [...prevIterations];
-                  const existingAnalysis = updatedIterations[existingIterationIndex].analysis || '';
-                  updatedIterations[existingIterationIndex] = {
-                    ...updatedIterations[existingIterationIndex],
-                    analysis: existingAnalysis + data.chunk,
-                    streaming: true
-                  };
-                  return updatedIterations;
-                }
-              });
-              
-              if (!expandedIterations.includes(data.iterationNumber)) {
-                setExpandedIterations(prev => [...prev, data.iterationNumber]);
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Error handling analysis event:', e);
-        }
-      });
-      
-      sse.addEventListener('error', (event) => {
-        console.error('SSE connection error:', event);
-        setStreamingErrors(prev => [...prev, 'Connection error. Will attempt to reconnect...']);
-        
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
+        if (error) {
+          console.error('Error polling job status:', error);
+          return;
         }
         
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (jobId) {
-            console.log('Attempting to reconnect SSE...');
-            establishSSEConnection(jobId);
-          }
-        }, 3000) as unknown as number;
-      });
-      
-      sse.addEventListener('complete', (event) => {
-        console.log('SSE complete event:', event.data);
+        if (!data) {
+          console.log('No job data found');
+          return;
+        }
         
-        try {
-          const data = JSON.parse(event.data);
-          
-          setProgress(prev => [...prev, 'Research completed successfully!']);
-          setStreamingMessage('');
-          setJobStatus('completed');
-          setProgressPercent(100);
+        const job = data as ResearchJob;
+        console.log('Job status:', job.status);
+        
+        setJobStatus(job.status);
+        
+        if (job.status === 'completed') {
           setPolling(false);
-          setIsCurrentlyStreaming(false);
+          setProgressPercent(100);
+          setProgress(prev => [...prev, 'Job completed successfully!']);
           
-          closeSSEConnection();
+          if (job.results) {
+            try {
+              const parsedResults = JSON.parse(job.results);
+              if (parsedResults.data && Array.isArray(parsedResults.data)) {
+                setResults(parsedResults.data);
+              }
+              if (parsedResults.analysis) {
+                setAnalysis(parsedResults.analysis);
+              }
+              if (parsedResults.structuredInsights) {
+                const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
+                  calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
+                  null;
+                
+                setStructuredInsights({
+                  parsedData: {
+                    ...parsedResults.structuredInsights,
+                    goodBuyOpportunities
+                  },
+                  rawText: JSON.stringify(parsedResults.structuredInsights)
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing job results:', e);
+            }
+          }
+          
           fetchSavedJobs();
-        } catch (e) {
-          console.error('Error handling complete event:', e);
-        }
-      });
-      
-      sse.addEventListener('jobCreated', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('SSE jobCreated event:', data);
           
-          if (data.jobId) {
-            setJobId(data.jobId);
-            setJobStatus('processing');
+          clearInterval(pollInterval);
+        } else if (job.status === 'failed') {
+          setPolling(false);
+          setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+          
+          fetchSavedJobs();
+          
+          clearInterval(pollInterval);
+        } else if (job.status === 'processing') {
+          if (job.max_iterations && job.current_iteration !== undefined) {
+            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
+            setProgressPercent(percent);
           }
           
-          if (data.message) {
-            setStreamingMessage(data.message);
-            setProgress(prev => [...prev, data.message]);
-          }
-        } catch (e) {
-          console.error('Error handling jobCreated event:', e);
-        }
-      });
-      
-      sse.addEventListener('iteration', (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          console.log('SSE iteration event:', data);
-          
-          if (data.iteration !== undefined) {
-            setStreamingIteration(data.iteration);
-            setStreamingMessage(`Processing iteration ${data.iteration}...`);
-            
-            if (!expandedIterations.includes(data.iteration)) {
-              setExpandedIterations(prev => [...prev, data.iteration]);
+          if (job.progress_log && Array.isArray(job.progress_log)) {
+            const newItems = job.progress_log.slice(progress.length);
+            if (newItems.length > 0) {
+              setProgress(prev => [...prev, ...newItems]);
             }
           }
-        } catch (e) {
-          console.error('Error handling iteration event:', e);
+          
+          if (job.iterations && Array.isArray(job.iterations)) {
+            setIterations(job.iterations);
+            
+            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+              setExpandedIterations(prev => [...prev, job.current_iteration]);
+            }
+          }
         }
-      });
-      
-      sse.addEventListener('heartbeat', (event) => {
-        console.log('SSE heartbeat received:', new Date().toISOString());
-      });
-      
-    } catch (error) {
-      console.error('Error establishing SSE connection:', error);
-      setStreamingErrors(prev => [...prev, `Failed to connect: ${error.message}`]);
-      setIsCurrentlyStreaming(false);
-    }
-  };
-
-  const closeSSEConnection = () => {
-    if (eventSource) {
-      console.log('Closing SSE connection');
-      eventSource.close();
-      setEventSource(null);
-    }
+      } catch (e) {
+        console.error('Error in poll interval:', e);
+      }
+    }, 3000);
     
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-  };
-
-  useEffect(() => {
-    return () => {
-      closeSSEConnection();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!jobId) return;
-    
-    if (polling && !isCurrentlyStreaming) {
-      const pollInterval = setInterval(async () => {
-        try {
-          console.log(`Polling for job status: ${jobId}`);
-          const { data, error } = await supabase
-            .from('research_jobs')
-            .select('*')
-            .eq('id', jobId)
-            .single();
-            
-          if (error) {
-            console.error('Error polling job status:', error);
-            return;
-          }
-          
-          if (!data) {
-            console.log('No job data found');
-            return;
-          }
-          
-          const job = data as ResearchJob;
-          console.log('Job status:', job.status);
-          
-          setJobStatus(job.status);
-          
-          if (job.status === 'completed') {
-            setPolling(false);
-            setProgressPercent(100);
-            setProgress(prev => [...prev, 'Job completed successfully!']);
-            
-            if (job.results) {
-              try {
-                const parsedResults = JSON.parse(job.results);
-                if (parsedResults.data && Array.isArray(parsedResults.data)) {
-                  setResults(parsedResults.data);
-                }
-                if (parsedResults.analysis) {
-                  setAnalysis(parsedResults.analysis);
-                }
-                if (parsedResults.structuredInsights) {
-                  const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
-                    calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
-                    null;
-                  
-                  setStructuredInsights({
-                    parsedData: {
-                      ...parsedResults.structuredInsights,
-                      goodBuyOpportunities
-                    },
-                    rawText: JSON.stringify(parsedResults.structuredInsights)
-                  });
-                }
-              } catch (e) {
-                console.error('Error parsing job results:', e);
-              }
-            }
-            
-            fetchSavedJobs();
-            
-            clearInterval(pollInterval);
-          } else if (job.status === 'failed') {
-            setPolling(false);
-            setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-            setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-            
-            fetchSavedJobs();
-            
-            clearInterval(pollInterval);
-          } else if (job.status === 'processing') {
-            if (job.max_iterations && job.current_iteration !== undefined) {
-              const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-              setProgressPercent(percent);
-            }
-            
-            if (job.progress_log && Array.isArray(job.progress_log)) {
-              const newItems = job.progress_log.slice(progress.length);
-              if (newItems.length > 0) {
-                setProgress(prev => [...prev, ...newItems]);
-              }
-            }
-            
-            if (job.iterations && Array.isArray(job.iterations)) {
-              setIterations(job.iterations);
-              
-              if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-                setExpandedIterations(prev => [...prev, job.current_iteration]);
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Error in poll interval:', e);
-        }
-      }, 3000);
-      
-      return () => clearInterval(pollInterval);
-    }
+    return () => clearInterval(pollInterval);
   }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
@@ -574,11 +358,8 @@ export function JobQueueResearchCard({
         query: description,
         maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
-        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined,
-        streaming: true
+        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
-      
-      establishSSEConnection('pending');
       
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
@@ -586,28 +367,19 @@ export function JobQueueResearchCard({
       
       if (response.error) {
         console.error("Error creating research job:", response.error);
-        closeSSEConnection();
         throw new Error(`Error creating research job: ${response.error.message}`);
       }
       
       if (!response.data || !response.data.jobId) {
-        closeSSEConnection();
         throw new Error("Invalid response from server - no job ID returned");
       }
       
       const jobId = response.data.jobId;
       setJobId(jobId);
-      
-      if (isCurrentlyStreaming) {
-        closeSSEConnection();
-        establishSSEConnection(jobId);
-      } else {
-        setPolling(true);
-      }
-      
-      setJobStatus('processing');
+      setPolling(true);
+      setJobStatus('queued');
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
-      setProgress(prev => [...prev, `${isCurrentlyStreaming ? 'Streaming' : 'Background'} processing started...`]);
+      setProgress(prev => [...prev, `Background processing started...`]);
       setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
@@ -615,7 +387,7 @@ export function JobQueueResearchCard({
         : `Job ID: ${jobId}. You can close this window and check back later.`;
       
       toast({
-        title: isCurrentlyStreaming ? "Streaming Research Started" : "Background Research Started",
+        title: "Background Research Started",
         description: toastMessage,
       });
       
@@ -625,7 +397,6 @@ export function JobQueueResearchCard({
       console.error('Error in research job:', error);
       setError(`Error occurred during research job: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setJobStatus('failed');
-      closeSSEConnection();
     } finally {
       setIsLoading(false);
     }
@@ -675,10 +446,6 @@ export function JobQueueResearchCard({
       const job = data as ResearchJob;
       
       loadJobData(job);
-      
-      if (job.status === 'processing' || job.status === 'queued') {
-        establishSSEConnection(job.id);
-      }
       
       toast({
         title: "Research Loaded",
@@ -972,22 +739,12 @@ export function JobQueueResearchCard({
         </div>
       )}
 
-      {streamingErrors.length > 0 && (
-        <div className="text-sm text-amber-500 bg-amber-50 dark:bg-amber-950/50 p-2 rounded w-full max-w-full space-y-1">
-          {streamingErrors.map((err, idx) => (
-            <div key={idx}>{err}</div>
-          ))}
-        </div>
-      )}
-
       {jobId && (
         <ProgressDisplay 
           messages={progress} 
           jobId={jobId || undefined} 
           progress={progressPercent}
           status={jobStatus}
-          streamingMessage={streamingMessage}
-          isStreaming={isCurrentlyStreaming}
         />
       )}
       
@@ -1001,7 +758,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={isCurrentlyStreaming && iteration.iteration === streamingIteration}
+                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
@@ -1032,19 +789,10 @@ export function JobQueueResearchCard({
             <SitePreviewList results={results} />
           </div>
           
-          {(analysis || streamingContent) && (
+          {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">
-                Final Analysis
-                {isCurrentlyStreaming && !streamingIteration && (
-                  <span className="ml-2 text-xs text-primary animate-pulse">(Streaming...)</span>
-                )}
-              </h3>
-              <AnalysisDisplay 
-                content={analysis} 
-                isStreaming={isCurrentlyStreaming && !streamingIteration}
-                streamingContent={streamingContent}
-              />
+              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
+              <AnalysisDisplay content={analysis} />
             </div>
           )}
         </>

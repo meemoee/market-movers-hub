@@ -10,20 +10,9 @@ interface ProgressDisplayProps {
   jobId?: string
   progress?: number
   status?: 'queued' | 'processing' | 'completed' | 'failed' | null
-  autoScroll?: boolean
-  streamingMessage?: string
-  isStreaming?: boolean
 }
 
-export function ProgressDisplay({ 
-  messages, 
-  jobId, 
-  progress, 
-  status,
-  autoScroll = true,
-  streamingMessage,
-  isStreaming = false
-}: ProgressDisplayProps) {
+export function ProgressDisplay({ messages, jobId, progress, status }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -36,15 +25,15 @@ export function ProgressDisplay({
   
   // Use useLayoutEffect to ensure scroll happens before browser paint
   useLayoutEffect(() => {
-    if (messagesEndRef.current && scrollAreaRef.current && autoScroll) {
+    if (messagesEndRef.current && scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
-  }, [messages, autoScroll, streamingMessage]);
+  }, [messages]);
 
-  if (!messages.length && !streamingMessage) return null
+  if (!messages.length) return null
   
   const renderStatusIcon = () => {
     if (!status) return null;
@@ -77,7 +66,6 @@ export function ProgressDisplay({
                   : status === 'failed' 
                   ? 'Failed'
                   : 'Processing in background'}</span>
-                {isStreaming && <span className="ml-2 text-primary animate-pulse">(Streaming)</span>}
               </div>
               {progress !== undefined && (
                 <Progress 
@@ -108,14 +96,6 @@ export function ProgressDisplay({
               </span>
             </div>
           ))}
-          
-          {streamingMessage && (
-            <div className="flex items-center gap-3 py-1 text-sm animate-pulse">
-              <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
-              <span className="text-foreground">{streamingMessage}</span>
-            </div>
-          )}
-          
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>

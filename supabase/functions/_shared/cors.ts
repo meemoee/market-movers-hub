@@ -1,4 +1,3 @@
-
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -263,14 +262,4 @@ export const braveRequestPool = {
       }
     };
   }
-};
-
-// Get SSE headers with CORS
-export const getSSEHeaders = () => {
-  return {
-    ...corsHeaders,
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive'
-  };
 };
