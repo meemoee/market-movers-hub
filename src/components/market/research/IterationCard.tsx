@@ -1,7 +1,6 @@
 
 import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -16,7 +15,6 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
-    reasoning?: string;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -34,7 +32,6 @@ export function IterationCard({
   maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
-  const [showReasoning, setShowReasoning] = useState(false)
   const isFinalIteration = iteration.iteration === maxIterations
   
   // Auto-collapse when iteration completes and it's not the final iteration
@@ -48,10 +45,6 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
-
-  const toggleReasoning = () => {
-    setShowReasoning(prev => !prev);
-  };
 
   return (
     <div className={cn(
@@ -93,24 +86,10 @@ export function IterationCard({
             
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                <div className="flex items-center justify-end mb-2">
-                  {iteration.reasoning && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      onClick={toggleReasoning}
-                      className="text-xs px-2 py-1 h-7"
-                    >
-                      {showReasoning ? 'Hide Reasoning' : 'Show Reasoning'}
-                    </Button>
-                  )}
-                </div>
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
-                  reasoning={iteration.reasoning}
-                  showReasoning={showReasoning}
                   isStreaming={isStreaming && isCurrentIteration}
-                  maxHeight="180px"
+                  maxHeight="100%"
                 />
               </TabsContent>
               

@@ -69,8 +69,6 @@ export function JobQueueResearchCard({
   const [results, setResults] = useState<ResearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState('')
-  const [reasoning, setReasoning] = useState('')
-  const [showReasoning, setShowReasoning] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
@@ -93,7 +91,8 @@ export function JobQueueResearchCard({
     setResults([]);
     setError(null);
     setAnalysis('');
-    setReasoning('');
+    setIterations([]);
+    setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
     
@@ -203,6 +202,7 @@ export function JobQueueResearchCard({
       try {
         console.log('Processing completed job results:', job.results);
         
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -225,10 +225,6 @@ export function JobQueueResearchCard({
           setAnalysis(parsedResults.analysis);
         }
         
-        if (parsedResults.reasoning) {
-          setReasoning(parsedResults.reasoning);
-        }
-        
         if (parsedResults.structuredInsights) {
           console.log('Found structuredInsights:', parsedResults.structuredInsights);
           
@@ -236,6 +232,7 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -292,6 +289,7 @@ export function JobQueueResearchCard({
     
     if (job.status === 'completed' && job.results) {
       try {
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -303,8 +301,7 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          console.error('Unexpected results type in loadJobData:', typeof job.results);
-          return;
+          throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
@@ -313,9 +310,6 @@ export function JobQueueResearchCard({
         if (parsedResults.analysis) {
           setAnalysis(parsedResults.analysis);
         }
-        if (parsedResults.reasoning) {
-          setReasoning(parsedResults.reasoning);
-        }
         if (parsedResults.structuredInsights) {
           console.log('Found structuredInsights in loadJobData:', parsedResults.structuredInsights);
           
@@ -323,6 +317,7 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -389,6 +384,7 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
+      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -554,10 +550,6 @@ export function JobQueueResearchCard({
   const handleClearDisplay = () => {
     resetState();
     setFocusText('');
-  };
-
-  const toggleReasoning = () => {
-    setShowReasoning(prev => !prev);
   };
 
   const renderStatusBadge = () => {
@@ -873,21 +865,8 @@ export function JobQueueResearchCard({
           
           {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-lg font-medium">Final Analysis</h3>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={toggleReasoning}
-                >
-                  {showReasoning ? 'Hide Reasoning' : 'Show Reasoning'}
-                </Button>
-              </div>
-              <AnalysisDisplay 
-                content={analysis} 
-                reasoning={reasoning}
-                showReasoning={showReasoning}
-              />
+              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
+              <AnalysisDisplay content={analysis} />
             </div>
           )}
         </>
@@ -895,4 +874,3 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
-
