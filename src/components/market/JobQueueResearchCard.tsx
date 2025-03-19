@@ -362,7 +362,7 @@ export function JobQueueResearchCard({
         maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
         notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined,
-        streamToClient: isPageVisible
+        streamToClient: isPageVisible // Pass page visibility status
       };
       
       const response = await supabase.functions.invoke('create-research-job', {
@@ -812,4 +812,3 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
-
