@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -201,7 +202,21 @@ export function JobQueueResearchCard({
     if (job.status === 'completed' && job.results) {
       try {
         console.log('Processing completed job results:', job.results);
-        const parsedResults = JSON.parse(job.results);
+        
+        // Handle both string and object results
+        let parsedResults;
+        if (typeof job.results === 'string') {
+          try {
+            parsedResults = JSON.parse(job.results);
+          } catch (parseError) {
+            console.error('Error parsing job.results string:', parseError);
+            throw new Error('Invalid results format (string parsing failed)');
+          }
+        } else if (typeof job.results === 'object') {
+          parsedResults = job.results;
+        } else {
+          throw new Error(`Unexpected results type: ${typeof job.results}`);
+        }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
@@ -227,7 +242,7 @@ export function JobQueueResearchCard({
         
         fetchSavedJobs();
       } catch (e) {
-        console.error('Error parsing job results:', e);
+        console.error('Error processing job results:', e);
       }
     }
     
@@ -270,7 +285,21 @@ export function JobQueueResearchCard({
     
     if (job.status === 'completed' && job.results) {
       try {
-        const parsedResults = JSON.parse(job.results);
+        // Handle both string and object results
+        let parsedResults;
+        if (typeof job.results === 'string') {
+          try {
+            parsedResults = JSON.parse(job.results);
+          } catch (parseError) {
+            console.error('Error parsing job.results string in loadJobData:', parseError);
+            throw new Error('Invalid results format (string parsing failed)');
+          }
+        } else if (typeof job.results === 'object') {
+          parsedResults = job.results;
+        } else {
+          throw new Error(`Unexpected results type: ${typeof job.results}`);
+        }
+        
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
         }
@@ -291,7 +320,7 @@ export function JobQueueResearchCard({
           });
         }
       } catch (e) {
-        console.error('Error parsing job results:', e);
+        console.error('Error processing loaded job results:', e);
       }
     }
     
@@ -346,7 +375,22 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      const parsedResults = JSON.parse(job.results);
+      // Handle both string and object results
+      let parsedResults;
+      if (typeof job.results === 'string') {
+        try {
+          parsedResults = JSON.parse(job.results);
+        } catch (parseError) {
+          console.error('Error parsing job.results string in extractProbability:', parseError);
+          return null;
+        }
+      } else if (typeof job.results === 'object') {
+        parsedResults = job.results;
+      } else {
+        console.error('Unexpected results type in extractProbability:', typeof job.results);
+        return null;
+      }
+      
       if (parsedResults.structuredInsights && parsedResults.structuredInsights.probability) {
         return parsedResults.structuredInsights.probability;
       }
