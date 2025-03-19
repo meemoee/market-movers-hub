@@ -1,4 +1,3 @@
-
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -35,8 +34,14 @@ interface ResearchChild {
   onView: () => void;
 }
 
+interface StreamingState {
+  rawText: string;
+  parsedData: InsightsData | null;
+}
+
 interface InsightsDisplayProps {
   insights: InsightsData | null;
+  streamingState?: StreamingState;
   rawInsightsText?: string;
   onResearchArea?: (area: string) => void;
   parentResearch?: {
@@ -50,15 +55,18 @@ interface InsightsDisplayProps {
 
 export function InsightsDisplay({ 
   insights, 
+  streamingState,
   rawInsightsText = "",
   onResearchArea, 
   parentResearch,
   childResearches,
   marketData
 }: InsightsDisplayProps) {
-  if (!insights) return null;
+  const insightsData = insights || (streamingState?.parsedData) || null;
+  
+  if (!insightsData) return null;
 
-  const { probability, areasForResearch, reasoning, goodBuyOpportunities } = insights;
+  const { probability, areasForResearch, reasoning, goodBuyOpportunities } = insightsData;
   
   const hasErrorInProbability = 
     !probability || 
@@ -73,7 +81,7 @@ export function InsightsDisplay({
   const isResolved = probability === "100%" || probability === "0%";
 
   if ((hasErrorInProbability && (!areasForResearch || areasForResearch.length === 0)) || 
-      rawInsightsText.length < 10) {
+      rawInsightsText && rawInsightsText.length < 10) {
     return null;
   }
 
@@ -164,7 +172,6 @@ export function InsightsDisplay({
           {goodBuyOpportunities && goodBuyOpportunities.length > 0 && (
             <div className="mt-4 space-y-3">
               {goodBuyOpportunities.map((opportunity, index) => {
-                // Calculate the potential multiplier
                 const potentialMultiplier = opportunity.predictedProbability / opportunity.marketPrice;
                 const formattedMultiplier = potentialMultiplier.toFixed(1);
                 
