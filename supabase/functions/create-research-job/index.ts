@@ -6,7 +6,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+};
 
 // SSE headers for streaming responses
 const sseHeaders = {
@@ -1141,8 +1142,19 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
   
-  // Check if this is a request for SSE streaming of an existing job
+  // Get API key from request
   const url = new URL(req.url);
+  const apiKey = url.searchParams.get('apikey') || req.headers.get('apikey') || req.headers.get('Authorization')?.split(' ')[1];
+  
+  // Check API key for authentication
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({ error: 'API key is required' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+  
+  // Check if this is a request for SSE streaming of an existing job
   const jobId = url.searchParams.get('jobId');
   const streamAnalysis = url.searchParams.get('streamAnalysis') === 'true';
   

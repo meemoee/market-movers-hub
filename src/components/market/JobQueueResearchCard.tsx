@@ -271,8 +271,12 @@ export function JobQueueResearchCard({
     }
     
     const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co';
+    const anonKey = supabase.auth.getSession()?.data?.session?.access_token || 
+                   import.meta.env.VITE_SUPABASE_ANON_KEY ||
+                   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbWtvaXNtYWJiaHVqeWNucXBuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzcwNzQ2NTAsImV4cCI6MjA1MjY1MDY1MH0.OXlSfGb1nSky4rF6IFm1k1Xl-kz7K_u3YgebgP_hBJc";
+    
     const newEventSource = new EventSource(
-      `${baseUrl}/functions/v1/create-research-job?jobId=${jobId}&streamAnalysis=true`
+      `${baseUrl}/functions/v1/create-research-job?jobId=${jobId}&streamAnalysis=true&apikey=${anonKey}`
     );
     
     newEventSource.onopen = () => {
