@@ -83,6 +83,9 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const { toast } = useToast()
+  const [streamingAnalysis, setStreamingAnalysis] = useState<string>("")
+  const [streamingActive, setStreamingActive] = useState<boolean>(false)
+  const [streamAbortController, setStreamAbortController] = useState<AbortController | null>(null)
 
   const resetState = () => {
     setJobId(null);
@@ -96,6 +99,14 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
+    setFocusText('');
+    setStreamingAnalysis("");
+    setStreamingActive(false);
+    
+    if (streamAbortController) {
+      streamAbortController.abort();
+      setStreamAbortController(null);
+    }
   }
 
   useEffect(() => {
@@ -126,6 +137,141 @@ export function JobQueueResearchCard({
     }
   };
 
+  const setupStreamingConnection = (jobId: string, iteration: any) => {
+    try {
+      // Abort previous connection if it exists
+      if (streamAbortController) {
+        streamAbortController.abort();
+      }
+      
+      // Create a new abort controller for this connection
+      const controller = new AbortController();
+      setStreamAbortController(controller);
+      
+      // Get the content to analyze
+      const content = iteration?.results?.map((r: any) => r.content || "").join("\n\n");
+      
+      if (!content) {
+        console.error("No content available for streaming analysis");
+        return;
+      }
+      
+      // Reset streaming state
+      setStreamingAnalysis("");
+      setStreamingActive(true);
+      
+      // Connect to streaming endpoint
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stream-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+        },
+        body: JSON.stringify({
+          jobId,
+          content,
+          query: description,
+          question: description,
+          focusText: focusText,
+          previousAnalyses: iterations.map(i => i.analysis || "").join("\n\n"),
+          areasForResearch: iterations.flatMap(i => i.areas_for_research || []),
+        }),
+        signal: controller.signal
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Stream connection error: ${response.status}`);
+        }
+        
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("Response body reader is null");
+        }
+        
+        // Start processing the stream
+        const processStream = async () => {
+          try {
+            let buffer = "";
+            
+            // Function to process SSE messages
+            const processSSEMessage = (message: string) => {
+              if (!message.trim()) return;
+              
+              try {
+                const data = JSON.parse(message);
+                
+                if (data.error) {
+                  console.error("Stream error:", data.error);
+                  setProgress(prev => [...prev, `Streaming error: ${data.error}`]);
+                  return;
+                }
+                
+                if (data.done) {
+                  console.log("Stream completed");
+                  setStreamingActive(false);
+                  return;
+                }
+                
+                if (data.chunk) {
+                  setStreamingAnalysis(prev => prev + data.chunk);
+                }
+              } catch (e) {
+                console.error("Error parsing SSE message:", e, message);
+              }
+            };
+            
+            // Read stream chunks
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) {
+                setStreamingActive(false);
+                if (buffer.trim()) {
+                  processSSEMessage(buffer);
+                }
+                break;
+              }
+              
+              // Decode and process the chunk
+              const chunk = new TextDecoder().decode(value);
+              buffer += chunk;
+              
+              // Process complete SSE messages (data: {...}\n\n)
+              const messages = buffer.split("\n\n");
+              
+              // Process all complete messages
+              for (let i = 0; i < messages.length - 1; i++) {
+                const message = messages[i].replace(/^data: /, "");
+                processSSEMessage(message);
+              }
+              
+              // Keep the last incomplete message in the buffer
+              buffer = messages[messages.length - 1];
+            }
+          } catch (error) {
+            if (error.name !== 'AbortError') {
+              console.error("Stream processing error:", error);
+              setProgress(prev => [...prev, `Stream error: ${error.message}`]);
+            }
+            setStreamingActive(false);
+          }
+        };
+        
+        processStream();
+      })
+      .catch(error => {
+        if (error.name !== 'AbortError') {
+          console.error("Stream fetch error:", error);
+          setProgress(prev => [...prev, `Stream connection error: ${error.message}`]);
+        }
+        setStreamingActive(false);
+      });
+    } catch (error) {
+      console.error("Setup streaming error:", error);
+      setStreamingActive(false);
+    }
+  };
+
   const loadJobData = (job: ResearchJob) => {
     setJobId(job.id);
     setJobStatus(job.status);
@@ -145,6 +291,14 @@ export function JobQueueResearchCard({
     
     if (job.status === 'queued' || job.status === 'processing') {
       setPolling(true);
+      
+      // If the job is on its last iteration, set up streaming
+      if (job.iterations && Array.isArray(job.iterations) && 
+          job.iterations.length > 0 && 
+          job.current_iteration === job.max_iterations) {
+        const lastIteration = job.iterations[job.iterations.length - 1];
+        setupStreamingConnection(job.id, lastIteration);
+      }
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
@@ -334,6 +488,15 @@ export function JobQueueResearchCard({
               setExpandedIterations(prev => [...prev, job.current_iteration]);
             }
           }
+
+          if (job.max_iterations && job.current_iteration === job.max_iterations &&
+              job.iterations && Array.isArray(job.iterations) && job.iterations.length > 0) {
+            // Last iteration - set up streaming if not already active
+            if (!streamingActive) {
+              const currentIteration = job.iterations[job.iterations.length - 1];
+              setupStreamingConnection(jobId, currentIteration);
+            }
+          }
         }
       } catch (e) {
         console.error('Error in poll interval:', e);
@@ -341,7 +504,16 @@ export function JobQueueResearchCard({
     }, 3000);
     
     return () => clearInterval(pollInterval);
-  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes, streamingActive]);
+
+  useEffect(() => {
+    // Clean up streaming connection on component unmount
+    return () => {
+      if (streamAbortController) {
+        streamAbortController.abort();
+      }
+    };
+  }, []);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -783,20 +955,3 @@ export function JobQueueResearchCard({
       )}
       
       {results.length > 0 && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
-          </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
