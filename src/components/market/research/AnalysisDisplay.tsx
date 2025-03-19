@@ -1,42 +1,38 @@
+
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
 interface AnalysisDisplayProps {
-  content?: string
-  analysis?: string // Legacy prop name
+  content: string
   isStreaming?: boolean
   maxHeight?: string | number
 }
 
 export function AnalysisDisplay({ 
   content, 
-  analysis, // Support for legacy code
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
-  // Use content if provided, otherwise fall back to analysis
-  const displayContent = content || analysis || "";
-  
   const scrollRef = useRef<HTMLDivElement>(null)
-  const prevContentLength = useRef(displayContent?.length || 0)
+  const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   
   // Debug logging
   useEffect(() => {
-    if (displayContent && displayContent.length > 0) {
-      console.log(`AnalysisDisplay: Content updated - length: ${displayContent.length}, isStreaming: ${isStreaming}`);
+    if (content && content.length > 0) {
+      console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
     }
-  }, [displayContent, isStreaming]);
+  }, [content, isStreaming]);
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = displayContent?.length || 0
+    const currentContentLength = content?.length || 0
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
@@ -56,7 +52,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [displayContent, isStreaming, shouldAutoScroll])
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -127,7 +123,7 @@ export function AnalysisDisplay({
     }
   }, [isStreaming, shouldAutoScroll])
 
-  if (!displayContent) return null
+  if (!content) return null
 
   return (
     <div className="relative">
@@ -138,7 +134,7 @@ export function AnalysisDisplay({
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {displayContent}
+            {content}
           </ReactMarkdown>
         </div>
       </ScrollArea>

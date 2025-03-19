@@ -4,45 +4,19 @@ import { Loader2, Search } from "lucide-react"
 
 interface ResearchHeaderProps {
   isLoading: boolean
-  isAnalyzing?: boolean
+  isAnalyzing: boolean
   onResearch: () => void
-  title?: string
-  description?: string
-  onRunResearch?: () => Promise<void>
-  loadSavedResearch?: (research: any) => void
-  savedResearch?: any[]
-  marketId?: string
-  subtitle?: string
-  badgeText?: string
-  badgeVariant?: string
 }
 
-export function ResearchHeader({ 
-  isLoading, 
-  isAnalyzing = false, 
-  onResearch,
-  title,
-  description, 
-  onRunResearch,
-  loadSavedResearch,
-  savedResearch,
-  marketId,
-  subtitle,
-  badgeText,
-  badgeVariant
-}: ResearchHeaderProps) {
+export function ResearchHeader({ isLoading, isAnalyzing, onResearch }: ResearchHeaderProps) {
   // Ensure we call onResearch without any parameters to prevent passing the event object
   const handleResearchClick = () => {
-    if (onRunResearch) {
-      onRunResearch();
-    } else {
-      onResearch();
-    }
+    onResearch();
   };
 
   return (
     <div className="flex items-center justify-between">
-      <h3 className="text-lg font-semibold">{title || "Web Research"}</h3>
+      <h3 className="text-lg font-semibold">Web Research</h3>
       <Button 
         onClick={handleResearchClick} 
         disabled={isLoading || isAnalyzing}

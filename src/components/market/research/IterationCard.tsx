@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
@@ -17,44 +18,33 @@ interface IterationCardProps {
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
-  isStreaming?: boolean;
-  isCurrentIteration?: boolean;
-  maxIterations?: number;
-  onToggle?: () => void; // Alias for onToggleExpand for backward compatibility
+  isStreaming: boolean;
+  isCurrentIteration: boolean;
+  maxIterations: number;
 }
 
 export function IterationCard({
   iteration,
   isExpanded,
   onToggleExpand,
-  onToggle,
-  isStreaming = false,
-  isCurrentIteration = false,
-  maxIterations = 3
+  isStreaming,
+  isCurrentIteration,
+  maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  
-  // Handle both onToggleExpand and onToggle for backward compatibility
-  const handleToggle = () => {
-    if (onToggleExpand) {
-      onToggleExpand();
-    } else if (onToggle) {
-      onToggle();
-    }
-  };
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
     if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
       const timer = setTimeout(() => {
-        handleToggle();
+        onToggleExpand();
       }, 1500);
       
       return () => clearTimeout(timer);
     }
-  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, handleToggle]);
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
   return (
     <div className={cn(
@@ -67,7 +57,7 @@ export function IterationCard({
           isExpanded ? "bg-accent/10" : "",
           "hover:bg-accent/10 cursor-pointer"
         )}
-        onClick={handleToggle}
+        onClick={onToggleExpand}
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
