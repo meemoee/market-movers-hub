@@ -89,7 +89,7 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
-  // Check for inactive streaming with shorter intervals when page is visible
+  // Check for inactive streaming with longer intervals
   useEffect(() => {
     if (!isStreaming) {
       setStreamStatus('idle')
@@ -98,25 +98,19 @@ export function AnalysisDisplay({
     
     const interval = setInterval(() => {
       const timeSinceUpdate = Date.now() - lastUpdateTime
-      // Use a shorter timeout when page is visible for more responsive UI
-      const timeoutThreshold = isPageVisible ? 1500 : 2500
-      
-      if (timeSinceUpdate > timeoutThreshold) {
+      if (timeSinceUpdate > 1500) { // Reduced from 2000ms to 1500ms
         setStreamStatus('waiting')
       } else if (streamStatus !== 'streaming') {
         setStreamStatus('streaming')
       }
-    }, isPageVisible ? 1000 : 2000) // Check less frequently when page is not visible
+    }, 1000)
     
     return () => clearInterval(interval)
-  }, [isStreaming, lastUpdateTime, streamStatus, isPageVisible])
+  }, [isStreaming, lastUpdateTime, streamStatus])
   
-  // For continuous smooth scrolling during active streaming - optimized for visibility
+  // For continuous smooth scrolling during active streaming
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
-    
-    // Only use requestAnimationFrame for continuous scrolling when page is visible
-    if (!isPageVisible) return
     
     let rafId: number
     
@@ -130,7 +124,7 @@ export function AnalysisDisplay({
     rafId = requestAnimationFrame(scrollToBottom)
     
     return () => cancelAnimationFrame(rafId)
-  }, [isStreaming, shouldAutoScroll, isPageVisible])
+  }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
 
