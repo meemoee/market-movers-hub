@@ -7,25 +7,34 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
+  reasoning?: string
+  showReasoning?: boolean
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px" 
+  maxHeight = "200px",
+  reasoning,
+  showReasoning = false
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
+  const prevReasoningLength = useRef(reasoning?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [activeTab, setActiveTab] = useState<'content' | 'reasoning'>(showReasoning ? 'reasoning' : 'content')
   
   // Debug logging
   useEffect(() => {
     if (content && content.length > 0) {
       console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
     }
-  }, [content, isStreaming]);
+    if (reasoning && reasoning.length > 0) {
+      console.log(`AnalysisDisplay: Reasoning updated - length: ${reasoning.length}`);
+    }
+  }, [content, reasoning, isStreaming]);
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
@@ -33,11 +42,15 @@ export function AnalysisDisplay({
     
     const scrollContainer = scrollRef.current
     const currentContentLength = content?.length || 0
+    const currentReasoningLength = reasoning?.length || 0
+    const activeContent = activeTab === 'content' ? content : reasoning
+    const prevActiveLength = activeTab === 'content' ? prevContentLength.current : prevReasoningLength.current
+    const currentActiveLength = activeTab === 'content' ? currentContentLength : currentReasoningLength
     
-    console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
+    console.log(`AnalysisDisplay: AutoScroll check - current ${activeTab}: ${currentActiveLength}, prev: ${prevActiveLength}, shouldScroll: ${shouldAutoScroll}`);
     
     // Only auto-scroll if content is growing or streaming
-    if (currentContentLength > prevContentLength.current || isStreaming) {
+    if (currentActiveLength > prevActiveLength || isStreaming) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
@@ -52,7 +65,8 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+    prevReasoningLength.current = currentReasoningLength
+  }, [content, reasoning, isStreaming, shouldAutoScroll, activeTab])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -123,10 +137,30 @@ export function AnalysisDisplay({
     }
   }, [isStreaming, shouldAutoScroll])
 
-  if (!content) return null
+  const displayContent = activeTab === 'content' ? content : reasoning
+  const hasReasoning = reasoning && reasoning.length > 0
+
+  if (!content && !reasoning) return null
 
   return (
     <div className="relative">
+      {hasReasoning && (
+        <div className="flex space-x-2 mb-2">
+          <button 
+            onClick={() => setActiveTab('reasoning')}
+            className={`px-3 py-1 text-xs rounded-md ${activeTab === 'reasoning' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          >
+            Reasoning
+          </button>
+          <button 
+            onClick={() => setActiveTab('content')}
+            className={`px-3 py-1 text-xs rounded-md ${activeTab === 'content' ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
+          >
+            Final Analysis
+          </button>
+        </div>
+      )}
+      
       <ScrollArea 
         className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}
@@ -134,7 +168,7 @@ export function AnalysisDisplay({
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {content}
+            {displayContent || "Waiting for data..."}
           </ReactMarkdown>
         </div>
       </ScrollArea>
@@ -143,7 +177,7 @@ export function AnalysisDisplay({
         <div className="absolute bottom-2 right-2">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
-              {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
+              {streamStatus === 'waiting' ? "Waiting for data..." : `Streaming ${activeTab === 'reasoning' ? 'reasoning' : 'analysis'}...`}
             </span>
             <div className="flex space-x-1">
               <div className={`w-2 h-2 rounded-full ${streamStatus === 'streaming' ? 'bg-primary animate-pulse' : 'bg-muted-foreground'}`} />
