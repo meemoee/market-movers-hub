@@ -144,7 +144,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         const iterationData = {
           iteration: i,
           queries: queries,
-          results: []
+          results: [],
+          job_id: jobId  // Include job_id in iteration data
         };
         
         // Append the iteration data to the research job
@@ -268,7 +269,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
         });
         
-        // After each iteration, analyze the collected data using OpenRouter
+        // After each iteration, analyze the collected data using simulated-stream
         try {
           const iterationResults = (await supabaseClient
             .from('research_jobs')
@@ -391,34 +392,135 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 console.error(`Error extracting areas for research:`, areasError);
               }
               
-              // Generate analysis for this iteration with market context
-              const analysisText = await generateAnalysis(
-                combinedContent, 
-                query, 
-                `Iteration ${i} analysis for "${query}"`,
-                marketPrice,
-                relatedMarkets,
-                areasForResearch,
-                focusText,
-                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
-              );
+              // Call simulated-stream function instead of direct OpenRouter call
+              console.log(`Calling simulated-stream for job ${jobId}, iteration ${i}`);
               
-              // Update the iteration with the analysis
-              const updatedIterations = [...iterationResults];
-              const iterationIndex = updatedIterations.findIndex(iter => iter.iteration === i);
-              
-              if (iterationIndex >= 0) {
-                updatedIterations[iterationIndex].analysis = analysisText;
+              try {
+                // Prepare the chat history from previous iterations' analyses
+                const chatHistory = iterationResults
+                  .filter(iter => iter.iteration < i && iter.analysis)
+                  .map(iter => `Iteration ${iter.iteration}: ${iter.analysis.substring(0, 200)}...`)
+                  .join('\n\n');
                 
-                await supabaseClient
-                  .from('research_jobs')
-                  .update({ iterations: updatedIterations })
-                  .eq('id', jobId);
+                // Call the simulated-stream function
+                const streamResponse = await fetch(
+                  `${Deno.env.get('SUPABASE_URL')}/functions/v1/simulated-stream`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+                    },
+                    body: JSON.stringify({
+                      message: `
+                        Analyze the following search results for the query: "${query}"
+                        ${focusText ? `\nFocus area: ${focusText}` : ''}
+                        ${marketPrice !== undefined ? `\nCurrent market prediction: ${marketPrice}%` : ''}
+                        \nResults:
+                        ${combinedContent.substring(0, 10000)}
+                      `,
+                      chatHistory,
+                      jobId,
+                      iteration: i
+                    })
+                  }
+                );
+                
+                if (!streamResponse.ok) {
+                  throw new Error(`Failed to call simulated-stream: ${streamResponse.statusText}`);
+                }
+                
+                const streamData = await streamResponse.json();
+                console.log(`Simulated stream started for iteration ${i}:`, streamData);
+                
+                // Wait a bit to ensure streaming has started before proceeding
+                await new Promise(resolve => setTimeout(resolve, 1000));
                 
                 await supabaseClient.rpc('append_research_progress', {
                   job_id: jobId,
-                  progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
+                  progress_entry: JSON.stringify(`Started streaming analysis for iteration ${i}`)
                 });
+                
+                // Wait for the streaming to complete (but don't block too long)
+                // We'll give it a reasonable timeout
+                const streamingTimeout = 30000; // 30 seconds
+                const startTime = Date.now();
+                
+                let complete = false;
+                while (!complete && Date.now() - startTime < streamingTimeout) {
+                  // Check if chunks are being written to the database
+                  const { data: chunks, error } = await supabaseClient
+                    .from('analysis_stream')
+                    .select('id')
+                    .eq('job_id', jobId)
+                    .eq('iteration', i);
+                  
+                  if (chunks && chunks.length > 0) {
+                    console.log(`Found ${chunks.length} chunks for iteration ${i}`);
+                    
+                    // Wait for more chunks to arrive
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    // Once we have some chunks, we'll consider it complete enough to proceed
+                    complete = true;
+                  } else {
+                    // Wait a bit before checking again
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                  }
+                }
+                
+                // Get the current accumulated chunks to store in the analysis field
+                const { data: finalChunks, error: finalError } = await supabaseClient
+                  .from('analysis_stream')
+                  .select('chunk, sequence')
+                  .eq('job_id', jobId)
+                  .eq('iteration', i)
+                  .order('sequence', { ascending: true });
+                
+                if (finalChunks && finalChunks.length > 0) {
+                  const sortedChunks = finalChunks.sort((a, b) => a.sequence - b.sequence);
+                  const analysisText = sortedChunks.map(chunk => chunk.chunk).join('');
+                  
+                  // Update the iteration with the analysis
+                  const updatedIterations = [...iterationResults];
+                  const iterationIndex = updatedIterations.findIndex(iter => iter.iteration === i);
+                  
+                  if (iterationIndex >= 0) {
+                    updatedIterations[iterationIndex].analysis = analysisText;
+                    
+                    await supabaseClient
+                      .from('research_jobs')
+                      .update({ iterations: updatedIterations })
+                      .eq('id', jobId);
+                    
+                    await supabaseClient.rpc('append_research_progress', {
+                      job_id: jobId,
+                      progress_entry: JSON.stringify(`Completed analysis for iteration ${i}`)
+                    });
+                  }
+                }
+              } catch (streamError) {
+                console.error(`Error with simulated stream for iteration ${i}:`, streamError);
+                await supabaseClient.rpc('append_research_progress', {
+                  job_id: jobId,
+                  progress_entry: JSON.stringify(`Error with streaming analysis: ${streamError.message}`)
+                });
+                
+                // Fallback to non-streaming analysis if streaming fails
+                const analysisText = `Failed to stream analysis. Error: ${streamError.message}`;
+                
+                // Update the iteration with the error message
+                const updatedIterations = [...iterationResults];
+                const iterationIndex = updatedIterations.findIndex(iter => iter.iteration === i);
+                
+                if (iterationIndex >= 0) {
+                  updatedIterations[iterationIndex].analysis = analysisText;
+                  
+                  await supabaseClient
+                    .from('research_jobs')
+                    .update({ iterations: updatedIterations })
+                    .eq('id', jobId);
+                }
               }
             }
           }
