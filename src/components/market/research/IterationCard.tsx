@@ -38,48 +38,48 @@ export function IterationCard({
   
   return (
     <Card className="overflow-hidden">
-      <CardHeader className="py-3 px-4">
-        <CollapsibleTrigger asChild onClick={onToggleExpand}>
-          <div className="flex justify-between items-center cursor-pointer">
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                Iteration {iteration.iteration}
-                {isStreaming && (
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex gap-1 items-center">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    <span>Processing</span>
-                  </Badge>
-                )}
-                {isCurrentIteration && iteration.iteration === maxIterations && !isStreaming && (
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    Final
-                  </Badge>
-                )}
-              </CardTitle>
-              
-              <div className="flex gap-1.5">
-                <div className="text-xs text-muted-foreground">
-                  {iteration.queries.length} queries
-                </div>
-                <div className="text-xs text-muted-foreground">•</div>
-                <div className="text-xs text-muted-foreground">
-                  {iteration.results?.length || 0} results
+      <Collapsible open={isExpanded}>
+        <CardHeader className="py-3 px-4">
+          <CollapsibleTrigger asChild onClick={onToggleExpand}>
+            <div className="flex justify-between items-center cursor-pointer">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  Iteration {iteration.iteration}
+                  {isStreaming && (
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 flex gap-1 items-center">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Processing</span>
+                    </Badge>
+                  )}
+                  {isCurrentIteration && iteration.iteration === maxIterations && !isStreaming && (
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                      Final
+                    </Badge>
+                  )}
+                </CardTitle>
+                
+                <div className="flex gap-1.5">
+                  <div className="text-xs text-muted-foreground">
+                    {iteration.queries.length} queries
+                  </div>
+                  <div className="text-xs text-muted-foreground">•</div>
+                  <div className="text-xs text-muted-foreground">
+                    {iteration.results?.length || 0} results
+                  </div>
                 </div>
               </div>
+              
+              <div className="flex items-center">
+                {isExpanded ? (
+                  <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                )}
+              </div>
             </div>
-            
-            <div className="flex items-center">
-              {isExpanded ? (
-                <ChevronUp className="h-4 w-4 text-muted-foreground" />
-              ) : (
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              )}
-            </div>
-          </div>
-        </CollapsibleTrigger>
-      </CardHeader>
-      
-      <Collapsible open={isExpanded}>
+          </CollapsibleTrigger>
+        </CardHeader>
+        
         <CollapsibleContent>
           <CardContent className="pt-0 px-0">
             <div className="flex border-b px-4">

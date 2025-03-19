@@ -270,7 +270,7 @@ export function JobQueueResearchCard({
       eventSource.close();
     }
     
-    const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+    const baseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lfmkoismabbhujycnqpn.supabase.co';
     const newEventSource = new EventSource(
       `${baseUrl}/functions/v1/create-research-job?jobId=${jobId}&streamAnalysis=true`
     );
@@ -278,6 +278,20 @@ export function JobQueueResearchCard({
     newEventSource.onopen = () => {
       console.log(`SSE connection opened for job ${jobId}`);
       setSseConnected(true);
+    };
+    
+    newEventSource.onerror = (error) => {
+      console.error('SSE connection error:', error);
+      setSseConnected(false);
+      
+      if (jobStatus !== 'completed' && jobStatus !== 'failed') {
+        console.log('Reconnecting SSE...');
+        setTimeout(() => {
+          setupSSEConnection(jobId);
+        }, 3000);
+      } else {
+        newEventSource.close();
+      }
     };
     
     newEventSource.addEventListener('connected', (e) => {
@@ -334,20 +348,6 @@ export function JobQueueResearchCard({
         console.error('Error processing finalAnalysisComplete event:', error);
       }
     });
-    
-    newEventSource.onerror = (error) => {
-      console.error('SSE connection error:', error);
-      setSseConnected(false);
-      
-      if (jobStatus !== 'completed' && jobStatus !== 'failed') {
-        console.log('Reconnecting SSE...');
-        setTimeout(() => {
-          setupSSEConnection(jobId);
-        }, 3000);
-      } else {
-        newEventSource.close();
-      }
-    };
     
     setEventSource(newEventSource);
   };
