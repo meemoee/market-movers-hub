@@ -400,7 +400,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 relatedMarkets,
                 areasForResearch,
                 focusText,
-                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
+                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean),
+                jobId,        // Pass the job ID
+                i,            // Pass the iteration number
+                true          // Enable streaming
               );
               
               // Update the iteration with the analysis
