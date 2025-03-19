@@ -1,30 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { OpenAI } from "https://esm.sh/openai@4.0.0"
-import { corsHeaders } from "../_shared/cors.ts"
-
-// Enhanced CORS headers
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
-
-// SSE specific headers
-const sseHeaders = {
-  'Content-Type': 'text/event-stream',
-  'Cache-Control': 'no-cache',
-  'Connection': 'keep-alive',
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
-
-// Helper function to write SSE messages
-function writeSSE(controller: ReadableStreamDefaultController, event: string, data: any) {
-  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  controller.enqueue(new TextEncoder().encode(message));
-}
+import { corsHeaders, sseHeaders, handleCorsPreflightRequest, createJsonResponse, createErrorResponse, createSseResponse } from "../_shared/cors.ts"
+import { OpenRouter } from "../deep-research/openRouter.ts"
 
 // Main serve function
 serve(async (req) => {
@@ -33,7 +10,7 @@ serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     console.log('Handling CORS preflight request');
-    return new Response(null, { headers: corsHeaders });
+    return handleCorsPreflightRequest();
   }
   
   const url = new URL(req.url);
@@ -51,10 +28,7 @@ serve(async (req) => {
     
     if (!apiKey) {
       console.error('No API key provided for SSE stream');
-      return new Response(
-        JSON.stringify({ error: 'API key is required' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return createErrorResponse('API key is required', 401);
     }
     
     console.log('API key found in URL parameters, setting up SSE stream');
@@ -92,7 +66,7 @@ serve(async (req) => {
       }
     });
     
-    return new Response(stream, { headers: sseHeaders });
+    return createSseResponse(stream);
   }
   
   // For regular POST requests (job creation)
@@ -104,10 +78,7 @@ serve(async (req) => {
       
       if (!authHeader && !apiKeyHeader) {
         console.error('No authorization headers found in POST request');
-        return new Response(
-          JSON.stringify({ error: 'API key is required' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return createErrorResponse('API key is required', 401);
       }
       
       // Continue with regular job creation
@@ -116,10 +87,7 @@ serve(async (req) => {
       const { marketId, query, maxIterations = 3, focusText, notificationEmail, streamAnalysis = false } = requestData;
       
       if (!marketId || !query) {
-        return new Response(
-          JSON.stringify({ error: 'Market ID and query are required' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
-        );
+        return createErrorResponse('Market ID and query are required', 400);
       }
       
       console.log(`Creating research job for market ${marketId} with ${maxIterations} iterations`);
@@ -174,10 +142,10 @@ serve(async (req) => {
             })
             .eq('id', jobId);
           
-          // Initialize OpenAI client
-          const openai = new OpenAI({
-            apiKey: Deno.env.get('OPENAI_API_KEY') || '',
-          });
+          // Initialize OpenRouter client (NOT OpenAI)
+          const routerApiKey = Deno.env.get('OPENROUTER_API_KEY') || '';
+          console.log(`Using OpenRouter API with key ${routerApiKey ? 'provided' : 'missing'}`);
+          const openRouter = new OpenRouter(routerApiKey);
           
           // Perform the research iterations
           let currentIteration = 0;
@@ -276,35 +244,32 @@ serve(async (req) => {
             // Analyze content
             console.log(`Analyzing content for iteration ${currentIteration}`);
             
-            // Simulate content analysis with streaming
+            // Simulate content analysis with OpenRouter
             let iterationAnalysis = '';
             
-            // Create a streaming completion
-            const completion = await openai.chat.completions.create({
-              model: "gpt-4-turbo",
-              messages: [
-                {
-                  role: "system",
-                  content: "You are analyzing web search results for a prediction market question."
-                },
-                {
-                  role: "user",
-                  content: `Analyze the following search results for the question: ${query}. Iteration ${currentIteration}/${maxIterations}.`
-                }
-              ],
-              stream: true,
-              temperature: 0.7,
-            });
-            
-            // Process the streaming response
-            for await (const chunk of completion) {
-              const content = chunk.choices[0]?.delta?.content || '';
-              if (content) {
-                iterationAnalysis += content;
-                
-                // In a real implementation, you would send this to the client via SSE
-                console.log(`Streaming analysis chunk for iteration ${currentIteration}`);
-              }
+            try {
+              console.log(`Using OpenRouter for analysis in iteration ${currentIteration}`);
+              // Use OpenRouter.complete instead of OpenAI streaming
+              iterationAnalysis = await openRouter.complete(
+                "anthropic/claude-3-opus:beta", // Model
+                [
+                  {
+                    role: "system",
+                    content: "You are analyzing web search results for a prediction market question."
+                  },
+                  {
+                    role: "user",
+                    content: `Analyze the following search results for the question: ${query}. Iteration ${currentIteration}/${maxIterations}.`
+                  }
+                ],
+                1000, // maxTokens
+                0.7   // temperature
+              );
+              
+              console.log(`OpenRouter analysis completed for iteration ${currentIteration}`);
+            } catch (error) {
+              console.error(`Error using OpenRouter for iteration ${currentIteration}:`, error);
+              iterationAnalysis = `Analysis error: ${error.message}`;
             }
             
             console.log(`Completed analysis for iteration ${currentIteration}`);
@@ -344,41 +309,57 @@ serve(async (req) => {
                 })
                 .eq('id', jobId);
               
-              // Create a streaming completion for final analysis
-              const finalCompletion = await openai.chat.completions.create({
-                model: "gpt-4-turbo",
-                messages: [
-                  {
-                    role: "system",
-                    content: "You are providing a final analysis of research results for a prediction market question."
-                  },
-                  {
-                    role: "user",
-                    content: `Provide a final analysis for the question: ${query}. Consider all iterations of research.`
-                  }
-                ],
-                stream: true,
-                temperature: 0.7,
-              });
-              
-              // Process the streaming response
-              for await (const chunk of finalCompletion) {
-                const content = chunk.choices[0]?.delta?.content || '';
-                if (content) {
-                  finalAnalysis += content;
-                  
-                  // In a real implementation, you would send this to the client via SSE
-                  console.log('Streaming final analysis chunk');
-                }
+              try {
+                console.log(`Using OpenRouter for final analysis`);
+                // Use OpenRouter for final analysis
+                finalAnalysis = await openRouter.complete(
+                  "anthropic/claude-3-opus:beta", // Model
+                  [
+                    {
+                      role: "system",
+                      content: "You are providing a final analysis of research results for a prediction market question."
+                    },
+                    {
+                      role: "user",
+                      content: `Provide a final analysis for the question: ${query}. Consider all iterations of research.`
+                    }
+                  ],
+                  1500, // maxTokens
+                  0.7   // temperature
+                );
+                
+                console.log('OpenRouter final analysis complete');
+              } catch (error) {
+                console.error('Error using OpenRouter for final analysis:', error);
+                finalAnalysis = `Final analysis error: ${error.message}`;
               }
               
-              console.log('Final analysis complete');
+              // Get market price from logs (example of retrieving data)
+              const marketPriceLog = await supabaseAdmin
+                .from('edge_function_logs')
+                .select('event_message')
+                .ilike('event_message', `%Found market price for final analysis ${marketId}%`)
+                .order('timestamp', { ascending: false })
+                .limit(1)
+                .single();
+              
+              console.log('Market price log:', marketPriceLog);
+              
+              // Extract probability from logs if available
+              let probabilityFromLogs = "Unknown";
+              if (!marketPriceLog.error && marketPriceLog.data?.event_message) {
+                const match = marketPriceLog.data.event_message.match(/(\d+)%/);
+                if (match && match[1]) {
+                  probabilityFromLogs = `${match[1]}%`;
+                  console.log(`Found probability in logs: ${probabilityFromLogs}`);
+                }
+              }
               
               // Extract structured insights
               console.log('Extracting structured insights');
               
               const structuredInsights = {
-                probability: "65%", // This would be extracted from the analysis
+                probability: probabilityFromLogs, // Use from logs or default
                 areasForResearch: [
                   "Economic indicators",
                   "Political developments",
@@ -467,35 +448,26 @@ serve(async (req) => {
       EdgeRuntime.waitUntil(performWebResearch());
       
       // Return immediate response with job ID
-      return new Response(
-        JSON.stringify({ 
-          jobId, 
-          message: "Research job created and started in background" 
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 202 // Accepted
-        }
-      );
+      return createJsonResponse({ 
+        jobId, 
+        message: "Research job created and started in background" 
+      }, 202);
       
     } catch (error) {
       console.error(`Error in create-research-job:`, error);
-      return new Response(
-        JSON.stringify({ 
-          error: 'Error processing research job request',
-          details: error instanceof Error ? error.message : 'Unknown error'
-        }),
-        { 
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        }
+      return createErrorResponse(
+        `Error processing research job request: ${error instanceof Error ? error.message : 'Unknown error'}`, 
+        500
       );
     }
   }
   
   // If we reach here, it's an unsupported request method
-  return new Response(
-    JSON.stringify({ error: 'Method not allowed' }),
-    { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
+  return createErrorResponse('Method not allowed', 405);
 });
+
+// Helper function to write SSE messages
+function writeSSE(controller: ReadableStreamDefaultController, event: string, data: any) {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  controller.enqueue(new TextEncoder().encode(message));
+}

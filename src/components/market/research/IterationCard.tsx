@@ -20,7 +20,7 @@ interface IterationCardProps {
   isStreaming?: boolean;
   isCurrentIteration?: boolean;
   maxIterations: number;
-  analysisContent?: string; // New prop for streaming analysis content
+  analysisContent?: string; // For streaming analysis content
 }
 
 export function IterationCard({ 
@@ -60,7 +60,7 @@ export function IterationCard({
                 
                 <div className="flex gap-1.5">
                   <div className="text-xs text-muted-foreground">
-                    {iteration.queries.length} queries
+                    {iteration.queries?.length || 0} queries
                   </div>
                   <div className="text-xs text-muted-foreground">•</div>
                   <div className="text-xs text-muted-foreground">
@@ -132,11 +132,16 @@ export function IterationCard({
               ) : (
                 <ScrollArea className="border rounded-md p-3 max-h-[300px]">
                   <div className="space-y-2">
-                    {iteration.queries.map((query, idx) => (
+                    {(iteration.queries || []).map((query, idx) => (
                       <div key={idx} className="px-3 py-2 bg-accent/10 rounded text-sm">
                         {query}
                       </div>
                     ))}
+                    {(!iteration.queries || iteration.queries.length === 0) && (
+                      <div className="text-center text-muted-foreground py-2">
+                        No queries available yet
+                      </div>
+                    )}
                   </div>
                 </ScrollArea>
               )}
