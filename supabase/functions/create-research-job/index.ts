@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -191,8 +192,8 @@ Be concise but thorough. Focus on data and evidence rather than speculation.`;
 }
 
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string, streamToClient: boolean = false) {
-  console.log(`Starting background research for job ${jobId}, streamToClient: ${streamToClient}`);
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
+  console.log(`Starting background research for job ${jobId}`);
   
   try {
     const supabaseClient = createClient(
@@ -551,6 +552,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               }
               
               // Generate analysis for this iteration with market context
+              const isPageVisible = false; // Don't stream intermediate analyses
               const analysisText = await generateAnalysis(
                 combinedContent, 
                 query, 
@@ -560,7 +562,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 areasForResearch,
                 focusText,
                 iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean),
-                streamToClient
+                false // Never stream for iteration analyses
               );
               
               // Update the iteration with the analysis
@@ -735,6 +737,17 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         .map(iter => iter.analysis);
       
       if (allContent.length > 0) {
+        // This is where the streaming for the final analysis should happen
+        // Get whether the page is visible from the job data
+        const { data: jobVisibilityData } = await supabaseClient
+          .from('research_jobs')
+          .select('stream_to_client')
+          .eq('id', jobId)
+          .single();
+          
+        const shouldStream = jobVisibilityData?.stream_to_client === true;
+        console.log(`Should stream final analysis: ${shouldStream}`);
+        
         finalAnalysis = await generateAnalysis(
           allContent, 
           query, 
@@ -744,7 +757,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           areasForResearch,
           focusText,
           previousAnalyses,
-          streamToClient
+          shouldStream // Stream only for final analysis if page is visible
         );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
@@ -896,4 +909,204 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       // Prepare payload with all the same information as non-background research
       const insightsPayload = {
         webContent: webContentWithAnalyses,
-        analysis: finalAnalysis
+        analysis: finalAnalysis,
+        marketId: marketId,
+        marketQuestion: marketQuestion,
+        marketDescription: query,
+        focusText: focusText,
+        queries: allQueries,
+        currentMarketPrice: marketPrice ? marketPrice / 100 : undefined,
+        relatedMarkets: relatedMarkets
+      };
+      
+      // Call extract-research-insights
+      const extractInsightsResponse = await fetch(
+        `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+          },
+          body: JSON.stringify(insightsPayload)
+        }
+      );
+      
+      if (!extractInsightsResponse.ok) {
+        throw new Error(`Failed to extract insights: ${extractInsightsResponse.statusText}`);
+      }
+      
+      const insightsData = await extractInsightsResponse.json();
+      console.log("Extracted insights:", insightsData);
+      
+      structuredInsights = insightsData;
+    } catch (insightsError) {
+      console.error(`Error extracting insights for job ${jobId}:`, insightsError);
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error extracting insights: ${insightsError.message}`)
+      });
+    }
+    
+    // Create final comprehensive results object
+    const finalResults = {
+      ...textAnalysisResults,
+      structuredInsights: structuredInsights || null
+    };
+    
+    // Update the results in the database
+    await supabaseClient.rpc('update_research_results', {
+      job_id: jobId,
+      result_data: finalResults
+    });
+    
+    // Update job status to completed
+    await supabaseClient.rpc('update_research_job_status', {
+      job_id: jobId,
+      new_status: 'completed'
+    });
+    
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Research completed successfully with ${allResults.length} results`)
+    });
+    
+    // If there's a notification email, send it now
+    if (notificationEmail) {
+      await sendNotificationEmail(jobId, notificationEmail);
+    }
+    
+    return finalResults;
+  } catch (error) {
+    console.error(`Error in background research job ${jobId}:`, error);
+    
+    // Create an error client to update the job status
+    try {
+      const errorClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      await errorClient.rpc('update_research_job_status', {
+        job_id: jobId,
+        new_status: 'failed',
+        error_msg: error.message || 'Unknown error'
+      });
+      
+      await errorClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
+      });
+      
+      // If there's a notification email, send it now even for failed jobs
+      if (notificationEmail) {
+        await sendNotificationEmail(jobId, notificationEmail);
+      }
+    } catch (updateError) {
+      console.error(`Failed to update job status for ${jobId}:`, updateError);
+    }
+    
+    return { error: error.message || 'Unknown error' };
+  }
+}
+
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+  
+  try {
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail, streamToClient } = await req.json();
+    
+    if (!marketId || !query) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters: marketId and query' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    console.log(`Creating research job for market ${marketId} with query: ${query.slice(0, 50)}...`);
+    console.log(`Max iterations: ${maxIterations}, focus: ${focusText || 'None'}, notify: ${notificationEmail || 'None'}`);
+    console.log(`Stream to client: ${streamToClient}`);
+    
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    // Create the research job entry
+    const { data: jobData, error: jobError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        current_iteration: 0,
+        progress_log: [`Job created at ${new Date().toISOString()}`],
+        iterations: [],
+        focus_text: focusText,
+        notification_email: notificationEmail,
+        notification_sent: false,
+        stream_to_client: streamToClient
+      })
+      .select('id')
+      .single();
+      
+    if (jobError) {
+      console.error('Error creating research job:', jobError);
+      return new Response(
+        JSON.stringify({ error: `Failed to create research job: ${jobError.message}` }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+    
+    const jobId = jobData.id;
+    console.log(`Created research job with ID: ${jobId}`);
+    
+    // Start the background research process in a non-blocking way
+    // Do this by disowning the promise and not awaiting it
+    (async () => {
+      try {
+        await performWebResearch(
+          jobId, 
+          query, 
+          marketId, 
+          maxIterations, 
+          focusText,
+          notificationEmail
+        );
+      } catch (backgroundError) {
+        console.error(`Background processing error for job ${jobId}:`, backgroundError);
+      }
+    })();
+    
+    return new Response(
+      JSON.stringify({ 
+        message: 'Research job created and started in background',
+        jobId: jobId
+      }),
+      { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+    
+  } catch (error) {
+    console.error('Error processing request:', error);
+    return new Response(
+      JSON.stringify({ error: error.message || 'Unknown error' }),
+      { 
+        status: 500, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      }
+    );
+  }
+});
