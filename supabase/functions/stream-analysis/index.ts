@@ -1,197 +1,217 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
-import { corsHeaders } from "../_shared/cors.ts"
+import "https://deno.land/x/xhr@0.1.0/mod.ts"
+
+// SSE headers for streaming
+const sseHeaders = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive',
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, {
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      }
+    })
   }
 
   try {
-    const { jobId, iterationNumber } = await req.json()
-    
-    if (!jobId) {
+    // First check if it's a POST request (initial connection setup)
+    if (req.method === 'POST') {
+      const { jobId, iterationNumber } = await req.json()
+      
+      if (!jobId || !iterationNumber) {
+        return new Response(
+          JSON.stringify({ error: 'jobId and iterationNumber are required' }),
+          { status: 400, headers: { 'Content-Type': 'application/json' } }
+        )
+      }
+      
+      // Store the connection params in KV (could use a different method if KV not available)
+      await Deno.env.get('KV_REST_API_URL') ? 
+        storeConnectionParams(jobId, iterationNumber) : 
+        console.log('KV not available, skipping connection param storage')
+      
       return new Response(
-        JSON.stringify({ error: 'jobId is required' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+        JSON.stringify({ success: true }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
       )
     }
-
-    // Set up streaming response
-    const encoder = new TextEncoder()
+    
+    // For GET requests, establish the SSE connection
+    const url = new URL(req.url)
+    const jobId = url.searchParams.get('jobId')
+    const iterationNumber = url.searchParams.get('iterationNumber')
+    
+    if (!jobId || !iterationNumber) {
+      return new Response(
+        JSON.stringify({ error: 'jobId and iterationNumber are required query parameters' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      )
+    }
+    
+    // Create a readable stream to send SSE events
     const stream = new ReadableStream({
-      async start(controller) {
+      start: async (controller) => {
         try {
-          // Get job data from Supabase
+          console.log(`SSE connection established for job ${jobId}, iteration ${iterationNumber}`)
+          
+          // Initialize Supabase client
           const supabaseClient = createClient(
             Deno.env.get('SUPABASE_URL') ?? '',
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
           )
           
-          const { data: job, error: jobError } = await supabaseClient
+          // Send initial keepalive
+          controller.enqueue('event: keepalive\ndata: connected\n\n')
+          
+          // First, check if a streaming analysis is already in progress
+          const { data: jobData, error: jobError } = await supabaseClient
             .from('research_jobs')
-            .select('*')
+            .select('iterations, status')
             .eq('id', jobId)
             .single()
-            
+          
           if (jobError) {
-            controller.enqueue(encoder.encode(JSON.stringify({ error: jobError.message })))
+            console.error(`Error fetching job ${jobId}:`, jobError)
+            controller.enqueue(`data: Error fetching job: ${jobError.message}\n\n`)
             controller.close()
             return
           }
           
-          // Get current iteration data
-          const currentIteration = iterationNumber || job.current_iteration
-          
-          // Extract data needed for analysis
-          const iterations = job.iterations || []
-          const currentIterationData = iterations.find(i => i.iteration === currentIteration)
-          
-          if (!currentIterationData) {
-            controller.enqueue(encoder.encode(JSON.stringify({ error: 'Iteration not found' })))
+          if (!jobData || !jobData.iterations) {
+            console.error(`No iterations found for job ${jobId}`)
+            controller.enqueue(`data: No iterations found\n\n`)
             controller.close()
             return
           }
           
-          // Combine search results for the current iteration
-          const results = currentIterationData.results || []
-          const combinedContent = results
-            .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
-            .join('\n\n')
-
-          // Get previous analyses for context
-          const previousAnalyses = iterations
-            .filter(i => i.iteration < currentIteration && i.analysis)
-            .map(i => i.analysis)
-
-          // Build the prompt (similar to generateAnalysis in create-research-job)
-          const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${job.query}"
-
-Content to analyze:
-${combinedContent.slice(0, 20000)}
-${job.focus_text ? `\nFOCUS AREA: "${job.focus_text}"\n` : ''}
-${previousAnalyses.length ? `\nPREVIOUS ANALYSES:\n${previousAnalyses.join('\n\n')}\n` : ''}
-
-Please provide:
-1. Key Facts and Insights
-2. Evidence Assessment
-3. Probability Factors
-4. Areas for Further Research
-5. Conclusions
-
-Present in a structured format with clear sections and bullet points where appropriate.`
-
-          // Call OpenRouter with streaming enabled
-          const openRouterKey = Deno.env.get('OPENROUTER_API_KEY')
+          // Find the specified iteration
+          const iterationIndex = jobData.iterations.findIndex(
+            (iter: any) => iter.iteration === parseInt(iterationNumber)
+          )
           
-          if (!openRouterKey) {
-            controller.enqueue(encoder.encode(JSON.stringify({ error: 'OpenRouter API key not found' })))
+          if (iterationIndex === -1) {
+            console.error(`Iteration ${iterationNumber} not found for job ${jobId}`)
+            controller.enqueue(`data: Iteration not found\n\n`)
             controller.close()
             return
           }
-
-          const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${openRouterKey}`,
-              "Content-Type": "application/json",
-              "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
-              "X-Title": "Market Research App",
-            },
-            body: JSON.stringify({
-              model: "google/gemini-flash-1.5",
-              messages: [
-                {
-                  role: "system",
-                  content: `You are an expert market research analyst who specializes in providing insightful analysis.`
-                },
-                {
-                  role: "user",
-                  content: prompt
-                }
-              ],
-              temperature: 0.3,
-              stream: true // Enable streaming!
-            })
-          })
-
-          if (!openRouterResponse.ok) {
-            controller.enqueue(encoder.encode(JSON.stringify({ error: `OpenRouter API error: ${openRouterResponse.status}` })))
-            controller.close()
-            return
-          }
-
-          const reader = openRouterResponse.body?.getReader()
-          if (!reader) {
-            controller.enqueue(encoder.encode(JSON.stringify({ error: 'Failed to get reader from response' })))
-            controller.close()
-            return
-          }
-
-          // Track accumulated text for database updates
-          let accumulatedText = ''
           
-          // Process the stream
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+          // If analysis already exists, send it immediately
+          if (jobData.iterations[iterationIndex].analysis) {
+            const existingAnalysis = jobData.iterations[iterationIndex].analysis
+            console.log(`Sending existing analysis for job ${jobId}, iteration ${iterationNumber}`)
             
-            const chunk = new TextDecoder().decode(value)
-            const lines = chunk.split('\n')
-            
-            for (const line of lines) {
-              if (line.trim().startsWith('data: ')) {
-                const data = line.trim().substring(6)
-                if (data === '[DONE]') continue
-                
-                try {
-                  const parsed = JSON.parse(data)
-                  if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
-                    const content = parsed.choices[0].delta.content
-                    accumulatedText += content
-                    
-                    // Forward content to client
-                    controller.enqueue(encoder.encode(content))
-                    
-                    // Update database with accumulated text
-                    const updatedIterations = [...iterations]
-                    const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration)
-                    
-                    if (iterIndex >= 0) {
-                      updatedIterations[iterIndex].analysis = accumulatedText
-                      await supabaseClient
-                        .from('research_jobs')
-                        .update({ iterations: updatedIterations })
-                        .eq('id', jobId)
-                    }
-                  }
-                } catch (e) {
-                  console.error('Error parsing streaming data:', e)
-                }
-              }
+            // Split existing analysis into smaller chunks to simulate streaming
+            const chunkSize = 100 // characters
+            for (let i = 0; i < existingAnalysis.length; i += chunkSize) {
+              const chunk = existingAnalysis.substring(i, i + chunkSize)
+              controller.enqueue(`data: ${chunk}\n\n`)
+              await new Promise(resolve => setTimeout(resolve, 10)) // Small delay between chunks
             }
           }
           
-          controller.close()
+          // If job is still processing, set up a subscription for real-time updates
+          if (jobData.status === 'processing') {
+            console.log(`Setting up real-time subscription for job ${jobId}`)
+            
+            // Subscribe to the analysis_stream table
+            const subscription = supabaseClient
+              .channel('analysis_stream_changes')
+              .on(
+                'postgres_changes',
+                {
+                  event: 'INSERT',
+                  schema: 'public',
+                  table: 'analysis_stream',
+                  filter: `job_id=eq.${jobId},iteration=eq.${iterationNumber}`
+                },
+                (payload) => {
+                  console.log(`New chunk received for job ${jobId}, iteration ${iterationNumber}`)
+                  // Send the chunk to the client
+                  controller.enqueue(`data: ${payload.new.chunk}\n\n`)
+                }
+              )
+              .subscribe()
+            
+            // Keep the connection open for a reasonable time (5 minutes max)
+            const timeout = setTimeout(() => {
+              console.log(`Stream timeout for job ${jobId}, iteration ${iterationNumber}`)
+              subscription.unsubscribe()
+              controller.close()
+            }, 5 * 60 * 1000)
+            
+            // Clean up on client disconnect
+            req.signal.addEventListener('abort', () => {
+              console.log(`Client disconnected for job ${jobId}, iteration ${iterationNumber}`)
+              clearTimeout(timeout)
+              subscription.unsubscribe()
+              controller.close()
+            })
+          } else {
+            // If job is not processing, we've sent all available data
+            console.log(`Job ${jobId} is not processing (status: ${jobData.status}), closing stream`)
+            controller.close()
+          }
         } catch (error) {
-          controller.enqueue(encoder.encode(JSON.stringify({ error: error.message })))
+          console.error('Stream error:', error)
+          controller.enqueue(`data: Error: ${error.message}\n\n`)
           controller.close()
         }
       }
     })
-
-    return new Response(stream, {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
-      }
-    })
+    
+    return new Response(stream, { headers: sseHeaders })
+    
   } catch (error) {
+    console.error('Error in stream-analysis function:', error)
     return new Response(
       JSON.stringify({ error: error.message }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
   }
 })
+
+// Helper function to store connection parameters in KV
+async function storeConnectionParams(jobId: string, iterationNumber: number) {
+  try {
+    const kvUrl = Deno.env.get('KV_REST_API_URL')
+    const kvToken = Deno.env.get('KV_REST_API_TOKEN')
+    
+    if (!kvUrl || !kvToken) {
+      console.log('KV environment variables not set')
+      return
+    }
+    
+    const response = await fetch(`${kvUrl}/set`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${kvToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        key: `stream:${jobId}:${iterationNumber}`,
+        value: { 
+          jobId,
+          iterationNumber,
+          connectedAt: new Date().toISOString()
+        }
+      })
+    })
+    
+    if (!response.ok) {
+      console.error('Failed to store connection params in KV:', await response.text())
+    }
+  } catch (error) {
+    console.error('Error storing connection params in KV:', error)
+  }
+}
