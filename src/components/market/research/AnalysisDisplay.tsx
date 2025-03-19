@@ -2,15 +2,18 @@
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 
 interface AnalysisDisplayProps {
   content: string
+  reasoning?: string
   isStreaming?: boolean
   maxHeight?: string | number
 }
 
 export function AnalysisDisplay({ 
   content, 
+  reasoning,
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
@@ -19,20 +22,25 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [activeTab, setActiveTab] = useState<string>("analysis")
   
   // Debug logging
   useEffect(() => {
     if (content && content.length > 0) {
       console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
     }
-  }, [content, isStreaming]);
+    
+    if (reasoning && reasoning.length > 0) {
+      console.log(`AnalysisDisplay: Reasoning updated - length: ${reasoning.length}`);
+    }
+  }, [content, reasoning, isStreaming]);
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const currentContentLength = content?.length || 0
+    const currentContentLength = (activeTab === "analysis" ? content : reasoning)?.length || 0
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
@@ -52,7 +60,7 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+  }, [content, reasoning, isStreaming, shouldAutoScroll, activeTab])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -123,21 +131,63 @@ export function AnalysisDisplay({
     }
   }, [isStreaming, shouldAutoScroll])
 
-  if (!content) return null
+  if (!content && !reasoning) return null
 
+  // Show tabs only when reasoning is available
+  const showTabs = !!reasoning;
+  
   return (
     <div className="relative">
-      <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
-        style={{ height: maxHeight }}
-        ref={scrollRef}
-      >
-        <div className="overflow-x-hidden w-full max-w-full">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {content}
-          </ReactMarkdown>
-        </div>
-      </ScrollArea>
+      {showTabs && (
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2 mb-2">
+            <TabsTrigger value="analysis">Analysis</TabsTrigger>
+            <TabsTrigger value="reasoning">Reasoning</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="analysis" className="mt-0">
+            <ScrollArea 
+              className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
+              style={{ height: maxHeight }}
+              ref={scrollRef}
+            >
+              <div className="overflow-x-hidden w-full max-w-full">
+                <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+                  {content}
+                </ReactMarkdown>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+          
+          <TabsContent value="reasoning" className="mt-0">
+            <ScrollArea 
+              className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
+              style={{ height: maxHeight }}
+              ref={activeTab === "reasoning" ? scrollRef : undefined}
+            >
+              <div className="overflow-x-hidden w-full max-w-full">
+                <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full bg-accent/10 p-2 rounded">
+                  {reasoning || "No reasoning available for this analysis."}
+                </ReactMarkdown>
+              </div>
+            </ScrollArea>
+          </TabsContent>
+        </Tabs>
+      )}
+      
+      {!showTabs && (
+        <ScrollArea 
+          className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
+          style={{ height: maxHeight }}
+          ref={scrollRef}
+        >
+          <div className="overflow-x-hidden w-full max-w-full">
+            <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+              {content}
+            </ReactMarkdown>
+          </div>
+        </ScrollArea>
+      )}
       
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
