@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -5,6 +6,14 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// SSE headers for streaming responses
+const sseHeaders = {
+  ...corsHeaders,
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive'
 }
 
 // Function to send a notification email
@@ -33,9 +42,15 @@ async function sendNotificationEmail(jobId: string, email: string) {
   }
 }
 
+// Function to write SSE messages
+function writeSSE(controller: ReadableStreamDefaultController, event: string, data: any) {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  controller.enqueue(new TextEncoder().encode(message));
+}
+
 // Function to perform web research
-async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
-  console.log(`Starting background research for job ${jobId}`)
+async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string, streamToClient: boolean = false) {
+  console.log(`Starting background research for job ${jobId}, streamToClient: ${streamToClient}`);
   
   try {
     const supabaseClient = createClient(
@@ -400,7 +415,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 relatedMarkets,
                 areasForResearch,
                 focusText,
-                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean)
+                iterationResults.filter(iter => iter.iteration < i).map(iter => iter.analysis).filter(Boolean),
+                streamToClient,
+                jobId,
+                i
               );
               
               // Update the iteration with the analysis
@@ -583,7 +601,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           relatedMarkets,
           areasForResearch,
           focusText,
-          previousAnalyses
+          previousAnalyses,
+          streamToClient,
+          jobId,
+          0,
+          true
         );
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
@@ -898,7 +920,11 @@ async function generateAnalysis(
   relatedMarkets?: any[],
   areasForResearch?: string[],
   focusText?: string,
-  previousAnalyses?: string[]
+  previousAnalyses?: string[],
+  streamToClient: boolean = false,
+  jobId?: string,
+  iterationNumber?: number,
+  isFinal: boolean = false
 ): Promise<string> {
   const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
   
@@ -906,7 +932,7 @@ async function generateAnalysis(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter`);
+  console.log(`Generating ${analysisType} using OpenRouter, streamToClient: ${streamToClient}`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -975,21 +1001,28 @@ Please provide:
 5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
-  
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${openRouterKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
-      "X-Title": "Market Research App",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-flash-1.5",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+
+  // If stream is true and we have a jobId to stream to, use streaming response
+  if (streamToClient && jobId) {
+    console.log(`Using streaming response for job ${jobId}, iteration ${iterationNumber}, isFinal: ${isFinal}`);
+    
+    const streamType = isFinal ? 'finalAnalysis' : `iteration${iterationNumber}`;
+    
+    // Start streaming process
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+        "X-Title": "Market Research App",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
 When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
 
 Your analysis should:
@@ -999,28 +1032,143 @@ Your analysis should:
 4. Identify connections between evidence and implications
 5. Be critical of source reliability and evidence quality
 6. Draw balanced conclusions based solely on the evidence provided`
-        },
-        {
-          role: "user",
-          content: prompt
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.3,
+        stream: true
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+    }
+    
+    // Set up output accumulation and handle streaming
+    let accumulatedResponse = "";
+    
+    // Create the ReadableStream for SSE
+    const sseStream = new ReadableStream({
+      async start(controller) {
+        // Process the streaming response from OpenRouter
+        const reader = response.body?.getReader();
+        if (!reader) {
+          controller.close();
+          return;
         }
-      ],
-      temperature: 0.3
-    })
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            const chunk = new TextDecoder().decode(value);
+            const lines = chunk.split("\n");
+            
+            for (const line of lines) {
+              if (line.startsWith("data: ") && line !== "data: [DONE]") {
+                try {
+                  const jsonData = JSON.parse(line.substring(6));
+                  if (jsonData.choices && jsonData.choices[0]?.delta?.content) {
+                    const content = jsonData.choices[0].delta.content;
+                    accumulatedResponse += content;
+                    
+                    // Send this chunk to the client
+                    writeSSE(controller, streamType, { 
+                      content, 
+                      jobId, 
+                      iterationNumber: iterationNumber || 0,
+                      isFinal 
+                    });
+                  }
+                } catch (e) {
+                  console.error("Error parsing OpenRouter stream chunk:", e);
+                }
+              }
+            }
+          }
+          
+          // Send a completion message
+          writeSSE(controller, `${streamType}Complete`, { 
+            jobId, 
+            iterationNumber: iterationNumber || 0,
+            isFinal 
+          });
+          
+          controller.close();
+        } catch (error) {
+          console.error("Error processing OpenRouter stream:", error);
+          controller.close();
+        }
+      }
+    });
+    
+    // Start a background task to handle the SSE stream
+    EdgeRuntime.waitUntil((async () => {
+      try {
+        const reader = sseStream.getReader();
+        while (true) {
+          const { done } = await reader.read();
+          if (done) break;
+        }
+      } catch (error) {
+        console.error("Error in background SSE processing:", error);
+      }
+    })());
+    
+    return accumulatedResponse;
+  } else {
+    // Use non-streaming response
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+        "X-Title": "Market Research App",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-flash-1.5",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
+When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
+
+Your analysis should:
+1. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
+2. Avoid repeating information from previous analyses
+3. Build upon existing knowledge with new perspectives
+4. Identify connections between evidence and implications
+5. Be critical of source reliability and evidence quality
+6. Draw balanced conclusions based solely on the evidence provided`
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.3
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+      throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
+    }
+    
+    return data.choices[0].message.content;
   }
-  
-  const data = await response.json();
-  
-  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
-  }
-  
-  return data.choices[0].message.content;
 }
 
 serve(async (req) => {
@@ -1030,7 +1178,7 @@ serve(async (req) => {
   }
   
   try {
-    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail, streamToClient = false } = await req.json()
     
     if (!marketId || !query) {
       return new Response(
@@ -1039,54 +1187,118 @@ serve(async (req) => {
       )
     }
     
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-    
-    // Create a new job record
-    const { data: jobData, error: jobError } = await supabaseClient
-      .from('research_jobs')
-      .insert({
-        market_id: marketId,
-        query: query,
-        status: 'queued',
-        max_iterations: maxIterations,
-        current_iteration: 0,
-        progress_log: [],
-        iterations: [],
-        focus_text: focusText,
-        notification_email: notificationEmail
-      })
-      .select('id')
-      .single()
-    
-    if (jobError) {
-      throw new Error(`Failed to create job: ${jobError.message}`)
-    }
-    
-    const jobId = jobData.id
-    
-    // Start the background process without EdgeRuntime
-    // Use standard Deno setTimeout for async operation instead
-    setTimeout(() => {
-      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
-        console.error(`Background research failed: ${err}`);
-      });
-    }, 0);
-    
-    // Return immediate response with job ID
-    return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Research job started', 
-        jobId: jobId 
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+    // If streaming is requested, set up a streaming response
+    if (streamToClient) {
+      console.log(`Client requested streaming for market ${marketId}, query: ${query}`);
+      
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      )
+      
+      // Create a new job record
+      const { data: jobData, error: jobError } = await supabaseClient
+        .from('research_jobs')
+        .insert({
+          market_id: marketId,
+          query: query,
+          status: 'queued',
+          max_iterations: maxIterations,
+          current_iteration: 0,
+          progress_log: [],
+          iterations: [],
+          focus_text: focusText,
+          notification_email: notificationEmail
+        })
+        .select('id')
+        .single()
+      
+      if (jobError) {
+        throw new Error(`Failed to create job: ${jobError.message}`)
       }
-    )
+      
+      const jobId = jobData.id
+      
+      // Start the research in the background
+      EdgeRuntime.waitUntil(performWebResearch(
+        jobId, 
+        query, 
+        marketId, 
+        maxIterations, 
+        focusText, 
+        notificationEmail, 
+        streamToClient
+      ));
+      
+      // Return a streaming response with SSE
+      const stream = new ReadableStream({
+        start(controller) {
+          // Send initial confirmation message
+          writeSSE(controller, 'connected', { 
+            message: 'SSE connection established', 
+            jobId 
+          });
+          
+          // Send job creation confirmation
+          writeSSE(controller, 'jobCreated', { 
+            message: 'Research job created and processing started', 
+            jobId 
+          });
+        }
+      });
+      
+      return new Response(stream, { headers: sseHeaders });
+    } else {
+      // Non-streaming response (original behavior)
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      )
+      
+      // Create a new job record
+      const { data: jobData, error: jobError } = await supabaseClient
+        .from('research_jobs')
+        .insert({
+          market_id: marketId,
+          query: query,
+          status: 'queued',
+          max_iterations: maxIterations,
+          current_iteration: 0,
+          progress_log: [],
+          iterations: [],
+          focus_text: focusText,
+          notification_email: notificationEmail
+        })
+        .select('id')
+        .single()
+      
+      if (jobError) {
+        throw new Error(`Failed to create job: ${jobError.message}`)
+      }
+      
+      const jobId = jobData.id
+      
+      // Start the background process without EdgeRuntime
+      // Use standard Deno setTimeout for async operation instead
+      setTimeout(() => {
+        performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail, streamToClient).catch(err => {
+          console.error(`Background research failed: ${err}`);
+        });
+      }, 0);
+      
+      // Return immediate response with job ID
+      return new Response(
+        JSON.stringify({ 
+          success: true, 
+          message: 'Research job started', 
+          jobId: jobId 
+        }),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      )
+    }
   } catch (error) {
     console.error('Error:', error)
     return new Response(
