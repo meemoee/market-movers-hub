@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -365,11 +364,6 @@ export function JobQueueResearchCard({
         notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined,
         streamToClient: isPageVisible
       };
-      
-      console.log("Creating research job with payload:", {
-        ...payload,
-        streamToClient: isPageVisible
-      });
       
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
@@ -818,3 +812,4 @@ export function JobQueueResearchCard({
     </Card>
   );
 }
+
