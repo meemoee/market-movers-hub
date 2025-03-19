@@ -53,3 +53,7 @@ verify_jwt = false
 [[functions]]
 name = "generate-queries"
 verify_jwt = false
+
+[[functions]]
+name = "stream-analysis"
+verify_jwt = false
