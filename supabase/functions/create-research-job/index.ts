@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.21.0"
@@ -38,7 +37,6 @@ async function appendProgressLog(jobId: string, message: string) {
       updated_at: new Date().toISOString()
     })
     .eq('id', jobId)
-    .is('deleted_at', null)
   
   if (error) {
     console.error("Error appending to progress log:", error)
