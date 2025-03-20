@@ -964,5 +964,251 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         </div>
         {isExpanded && (
           <div className="space-y-2">
-            <div className="prose
+            <div className="prose prose-sm prose-invert max-w-none">
+              <ReactMarkdown components={markdownComponents}>
+                {analysisContent || ''}
+              </ReactMarkdown>
+              {renderCitations(citations)}
+            </div>
+            
+            {node.evaluation && (
+              <div className="mt-2 text-sm">
+                <span className="text-xs text-muted-foreground">Quality score: </span>
+                <span className={`font-medium ${node.evaluation.score >= 8 ? 'text-green-500' : 
+                                             node.evaluation.score >= 5 ? 'text-yellow-500' : 
+                                             'text-red-500'}`}>
+                  {node.evaluation.score}/10
+                </span>
+                <p className="text-xs text-muted-foreground mt-1">{node.evaluation.reason}</p>
+              </div>
+            )}
+            
+            {nodeExtensions.length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-medium mb-2">Expanded analysis:</p>
+                <div className="space-y-2">
+                  {nodeExtensions.map(ext => (
+                    <Button 
+                      key={ext.id} 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full flex justify-between"
+                      onClick={() => navigateToExtension(ext)}
+                    >
+                      <span className="truncate">{getPreviewText(ext.analysis)}</span>
+                      <ArrowRight className="h-4 w-4 ml-2 shrink-0" />
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {node.children.length > 0 && (
+              <div className="mt-4 space-y-4 pl-4 border-l-2 border-muted">
+                {node.children.map(childNode => (
+                  <div key={childNode.id} onClick={() => toggleNode(childNode.id)} className="cursor-pointer">
+                    {renderQANode(childNode, depth + 1)}
+                  </div>
+                ))}
+              </div>
+            )}
+            
+            {depth === 0 && node.children.length === 0 && isAnalyzing && (
+              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <MessageSquare className="h-4 w-4 animate-pulse" />
+                <span>Generating follow-up questions...</span>
+              </div>
+            )}
+            
+            {depth === 0 && !isAnalyzing && (
+              <div className="flex justify-end">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => handleExpandQuestion(node)}
+                  disabled={isAnalyzing}
+                >
+                  Expand Analysis
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
+  return (
+    <div className="flex flex-col h-full space-y-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex-1">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-bold">Question Analysis</h2>
+            {navigationHistory.length > 0 && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                className="h-7 gap-1"
+                onClick={navigateBack}
+              >
+                <ChevronUp className="h-3 w-3" />
+                Back
+              </Button>
+            )}
+          </div>
+          <p className="text-muted-foreground">{marketDescription}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {savedQATrees && savedQATrees.length > 0 && (
+            <Select value={selectedQATree} onValueChange={value => {
+              if (value !== 'none') {
+                const treeData = savedQATrees.find(tree => tree.id === value)?.tree_data;
+                if (treeData) {
+                  loadSavedQATree(treeData);
+                  setSelectedQATree(value);
+                }
+              } else {
+                setSelectedQATree('none');
+              }
+            }}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select saved analysis" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">New analysis</SelectItem>
+                {savedQATrees.map(tree => (
+                  <SelectItem key={tree.id} value={tree.id}>
+                    {new Date(tree.created_at).toLocaleString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          {savedResearch && savedResearch.length > 0 && (
+            <Select value={selectedResearch} onValueChange={setSelectedResearch}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select research" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No research</SelectItem>
+                {savedResearch.map(research => (
+                  <SelectItem key={research.id} value={research.id}>
+                    {new Date(research.created_at).toLocaleString()}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+            {isAnalyzing ? 'Analyzing...' : 'Analyze'}
+          </Button>
+          
+          {qaData.length > 0 && (
+            <Button 
+              onClick={saveQATree} 
+              variant="outline" 
+              disabled={isAnalyzing || saveInProgress}
+            >
+              {saveInProgress ? 'Saving...' : 'Save'}
+            </Button>
+          )}
+        </div>
+      </div>
+      
+      <Card className="flex-1 flex flex-col overflow-hidden">
+        {qaData.length > 0 ? (
+          <ScrollArea className="flex-1 p-4">
+            <div className="space-y-6">
+              {qaData.map(node => (
+                <div 
+                  key={node.id} 
+                  onClick={() => toggleNode(node.id)} 
+                  className="cursor-pointer"
+                >
+                  {renderQANode(node)}
+                </div>
+              ))}
+              
+              {finalEvaluation && !isAnalyzing && !isFinalEvaluating && (
+                <Card className="p-4 mt-6 bg-muted/10">
+                  <h3 className="text-lg font-semibold mb-2">Final Evaluation</h3>
+                  <div className="text-sm space-y-4">
+                    <div>
+                      <p className="font-medium">Probability Assessment:</p>
+                      <p className="text-muted-foreground">{finalEvaluation.probability}</p>
+                    </div>
+                    
+                    {finalEvaluation.areasForResearch.length > 0 && (
+                      <div>
+                        <p className="font-medium">Areas for Further Research:</p>
+                        <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+                          {finalEvaluation.areasForResearch.map((area, i) => (
+                            <li key={i}>{area}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <p className="font-medium">Analysis:</p>
+                      <p className="text-muted-foreground">{finalEvaluation.analysis}</p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+              
+              {activeFinalEvaluation && !finalEvaluation && !isAnalyzing && !isFinalEvaluating && (
+                <Card className="p-4 mt-6 bg-muted/10">
+                  <h3 className="text-lg font-semibold mb-2">Previous Evaluation</h3>
+                  <div className="text-sm space-y-4">
+                    <div>
+                      <p className="font-medium">Probability Assessment:</p>
+                      <p className="text-muted-foreground">{activeFinalEvaluation.probability}</p>
+                    </div>
+                    
+                    {activeFinalEvaluation.areasForResearch.length > 0 && (
+                      <div>
+                        <p className="font-medium">Areas for Further Research:</p>
+                        <ul className="list-disc pl-5 text-muted-foreground space-y-1">
+                          {activeFinalEvaluation.areasForResearch.map((area, i) => (
+                            <li key={i}>{area}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    <div>
+                      <p className="font-medium">Analysis:</p>
+                      <p className="text-muted-foreground">{activeFinalEvaluation.analysis}</p>
+                    </div>
+                  </div>
+                </Card>
+              )}
+              
+              {isFinalEvaluating && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="flex items-center space-x-2">
+                    <div className="h-4 w-4 rounded-full bg-primary animate-pulse" />
+                    <p className="text-sm text-muted-foreground">Generating final evaluation...</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        ) : (
+          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+            <h3 className="text-lg font-medium mb-2">Analyze Question</h3>
+            <p className="text-muted-foreground mb-4">
+              Use AI to analyze "{marketQuestion}" and evaluate possible outcomes
+            </p>
+            <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+              {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
+            </Button>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
