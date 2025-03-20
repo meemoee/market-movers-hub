@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -373,7 +374,7 @@ async function processIteration(jobId: string, iteration: number, query: string,
     
     // Perform web search and content gathering
     await appendProgress(jobId, `Running web search for iteration ${iteration}`)
-    const searchResults = await performWebSearch(queries, query, marketId)
+    const searchResults = await performWebSearch(queries, marketId, query)
     await appendProgress(jobId, `Found ${searchResults.length} search results for iteration ${iteration}`)
     
     // Analyze content
@@ -432,86 +433,48 @@ async function processIteration(jobId: string, iteration: number, query: string,
 }
 
 // Perform web search using queries
-async function performWebSearch(queries: string[], originalQuery: string, marketId?: string) {
+async function performWebSearch(queries: string[], marketId?: string, focusText?: string) {
   let allResults: any[] = []
   
   try {
-    for (const query of queries) {
-      console.log(`Searching for: ${query}`)
-      
-      const searchBody = {
-        query: query,
-        marketId: marketId,
-        limit: 3,
-      }
-      
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/web-scrape`, {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(searchBody)
-      })
-      
-      if (!response.ok) {
-        console.warn(`Search request failed: ${response.status}`)
-        continue
-      }
-      
-      const reader = response.body?.getReader()
-      if (!reader) {
-        console.warn('No response body reader')
-        continue
-      }
-      
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let queryResults: any[] = []
-      
-      while (true) {
-        const { done, value } = await reader.read()
-        
-        if (done) {
-          break
-        }
-        
-        buffer += decoder.decode(value, { stream: true })
-        
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const jsonData = JSON.parse(line.slice(5))
-              
-              if (jsonData.type === 'results' && Array.isArray(jsonData.data)) {
-                queryResults = [...queryResults, ...jsonData.data]
-              }
-            } catch (e) {
-              // Ignore parse errors for non-JSON lines
-            }
-          }
-        }
-      }
-      
-      allResults = [...allResults, ...queryResults]
-      
-      // Limit to prevent too much content
-      if (allResults.length >= 10) {
-        allResults = allResults.slice(0, 10)
-        break
-      }
+    console.log(`Performing web search with ${queries.length} queries`)
+    
+    // Fixed: Send an array of queries to web-scrape function instead of a single query
+    const searchBody = {
+      queries: queries,
+      marketId: marketId,
+      focusText: focusText
     }
     
-    // Deduplicate by URL
-    const uniqueResults = Array.from(
-      new Map(allResults.map(item => [item.url, item])).values()
-    )
+    console.log(`Sending request to web-scrape endpoint:`, searchBody)
     
-    console.log(`Got ${uniqueResults.length} unique search results`)
-    return uniqueResults
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/web-scrape`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(searchBody)
+    })
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error(`Web scrape request failed: ${response.status} - ${errorText}`)
+      throw new Error(`Web scrape request failed: ${response.status} - ${errorText}`)
+    }
+    
+    // Fetch the response content
+    const responseData = await response.json()
+    console.log(`Received response from web-scrape:`, responseData)
+    
+    // Check if we got a job ID back (background processing)
+    if (responseData.jobId) {
+      console.log(`Web scrape running in background with job ID: ${responseData.jobId}`)
+      // For now, return an empty array as the actual content will be processed in the background
+      return []
+    }
+    
+    return allResults
   } catch (error) {
     console.error('Error in web search:', error)
     return []
