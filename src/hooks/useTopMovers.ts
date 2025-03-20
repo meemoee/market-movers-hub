@@ -28,7 +28,7 @@ interface TopMover {
   final_best_ask: number;
   final_best_bid: number;
   final_no_best_ask?: number; 
-  final_no_best_bid?: number;
+  final_no_best_bid?: number; // Add this property for the No bid price
   final_volume: number;
   initial_last_traded_price: number;
   initial_volume: number;
