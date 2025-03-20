@@ -25,9 +25,14 @@ export function Markdown({ children }: MarkdownProps) {
     React.Children.forEach(children, child => {
       if (typeof child === 'string') {
         stringParts.push(child);
-      } else if (React.isValidElement(child) && 
-                 child.props && 
-                 child.props.className === 'animate-pulse') {
+      } else if (
+        React.isValidElement(child) && 
+        child.props !== undefined && 
+        typeof child.props === 'object' && 
+        child.props !== null &&
+        'className' in child.props &&
+        child.props.className === 'animate-pulse'
+      ) {
         hasCursor = true;
       }
     });
