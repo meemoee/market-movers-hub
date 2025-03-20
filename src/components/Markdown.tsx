@@ -26,7 +26,8 @@ export function Markdown({ children }: MarkdownProps) {
       if (typeof child === 'string') {
         stringParts.push(child);
       } else if (React.isValidElement(child) && 
-                child.props.className === 'animate-pulse') {
+                 child.props && 
+                 child.props.className === 'animate-pulse') {
         hasCursor = true;
       }
     });
@@ -35,10 +36,10 @@ export function Markdown({ children }: MarkdownProps) {
     if (stringParts.length > 0 && hasCursor) {
       const content = stringParts.join('');
       return (
-        <ReactMarkdown className="prose prose-sm prose-invert max-w-none">
-          {content}
+        <div className="prose prose-sm prose-invert max-w-none">
+          <ReactMarkdown>{content}</ReactMarkdown>
           <span className="animate-pulse">▌</span>
-        </ReactMarkdown>
+        </div>
       );
     }
   }
