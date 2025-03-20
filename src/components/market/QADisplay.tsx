@@ -18,7 +18,6 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Database } from '@/integrations/supabase/types';
 import { InsightsDisplay } from "@/components/market/insights/InsightsDisplay";
-import { Markdown } from "@/components/Markdown";
 
 interface QANode {
   id: string;
@@ -939,276 +938,225 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
         <blockquote className="border-l-2 border-muted pl-4 italic my-3">{children}</blockquote>
       ),
       a: ({ href, children }) => (
-        <a 
-          href={href}
-          className="text-primary hover:underline"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
+        <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
           {children}
         </a>
       ),
+      em: ({ children }) => <em className="italic">{children}</em>,
+      strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+      h1: ({ children }) => <h1 className="text-2xl font-bold mb-4 mt-6">{children}</h1>,
+      h2: ({ children }) => <h2 className="text-xl font-bold mb-3 mt-5">{children}</h2>,
+      h3: ({ children }) => <h3 className="text-lg font-bold mb-2 mt-4">{children}</h3>,
+      hr: () => <hr className="my-4 border-muted" />,
     };
 
     return (
-      <div className="flex flex-col space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <p className="text-lg font-semibold">{node.question}</p>
-            {getExtensionInfo(node)}
-          </div>
-          <div className="flex items-center">
-            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            {isStreaming && <MessageSquare className="h-4 w-4 ml-2" />}
-          </div>
-        </div>
-        {isExpanded && (
-          <div className="space-y-2">
-            <div className="prose prose-sm prose-invert max-w-none">
-              <ReactMarkdown components={markdownComponents}>
-                {analysisContent || ''}
-              </ReactMarkdown>
-              {renderCitations(citations)}
+      <div key={node.id} className="relative flex flex-col">
+        <div className="flex items-stretch">
+          {depth > 0 && (
+            <div className="relative w-6 sm:w-9 flex-shrink-0">
+              <div className="absolute top-0 bottom-0 left-6 sm:left-9 w-[2px] bg-border" />
             </div>
-            
-            {node.evaluation && (
-              <div className="mt-2 text-sm">
-                <span className="text-xs text-muted-foreground">Quality score: </span>
-                <span className={`font-medium ${node.evaluation.score >= 8 ? 'text-green-500' : 
-                                             node.evaluation.score >= 5 ? 'text-yellow-500' : 
-                                             'text-red-500'}`}>
-                  {node.evaluation.score}/10
-                </span>
-                <p className="text-xs text-muted-foreground mt-1">{node.evaluation.reason}</p>
-              </div>
+          )}
+          <div className="flex-grow min-w-0 pl-2 sm:pl-[72px] pb-6 relative">
+            {depth > 0 && (
+              <div className="absolute left-0 top-4 h-[2px] w-4 sm:w-6 bg-border" />
             )}
-            
-            {nodeExtensions.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm font-medium mb-2">Expanded analysis:</p>
-                <div className="space-y-2">
-                  {nodeExtensions.map(ext => (
-                    <Button 
-                      key={ext.id} 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full flex justify-between"
-                      onClick={() => navigateToExtension(ext)}
-                    >
-                      <span className="truncate">{getPreviewText(ext.analysis)}</span>
-                      <ArrowRight className="h-4 w-4 ml-2 shrink-0" />
-                    </Button>
-                  ))}
+            <div className="absolute left-[12px] sm:left-[24px] top-0">
+              <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border-2 border-background">
+                <AvatarFallback className="bg-primary/10">
+                  <MessageSquare className="h-3 w-3" />
+                </AvatarFallback>
+              </Avatar>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-start gap-2">
+                <h3 className="font-medium text-sm leading-none pt-2 flex-grow">
+                  {node.question}
+                  {getExtensionInfo(node)}
+                </h3>
+                {!node.isExtendedRoot && (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleExpandQuestion(node);
+                    }}
+                    className="p-1 hover:bg-accent/50 rounded-full transition-colors"
+                    title="Expand this question into a follow-up analysis"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <div className="text-sm text-muted-foreground cursor-pointer" onClick={() => toggleNode(node.id)}>
+                <div className="flex items-start gap-2">
+                  <button className="mt-1 hover:bg-accent/50 rounded-full p-0.5">
+                    {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </button>
+                  <div className="flex-1">
+                    {isExpanded ? (
+                      <>
+                        <ReactMarkdown
+                          components={markdownComponents}
+                          className="prose prose-sm prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+                        >
+                          {analysisContent}
+                        </ReactMarkdown>
+                        {renderCitations(citations)}
+                        
+                        <div className="mt-4 flex items-center gap-2">
+                          {node.evaluation && (
+                            <div className="flex items-center gap-2">
+                              <div className={`px-2 py-1 rounded text-xs font-medium ${
+                                node.evaluation.score >= 80 ? 'bg-green-500/20 text-green-500' :
+                                node.evaluation.score >= 60 ? 'bg-yellow-500/20 text-yellow-500' :
+                                'bg-red-500/20 text-red-500'
+                              }`}>
+                                Score: {node.evaluation.score}%
+                              </div>
+                              <span className="text-xs text-muted-foreground">{node.evaluation.reason}</span>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {nodeExtensions.length > 0 && (
+                          <div className="mt-4 space-y-2">
+                            <div className="text-xs font-medium text-muted-foreground">
+                              Follow-up Analyses ({nodeExtensions.length}):
+                            </div>
+                            <div className="space-y-4">
+                              {nodeExtensions.map((extension, index) => (
+                                <div 
+                                  key={extension.id}
+                                  className="border border-border rounded-lg p-4 hover:bg-accent/50 cursor-pointer transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigateToExtension(extension);
+                                  }}
+                                >
+                                  <div className="text-xs text-muted-foreground mb-2">
+                                    Continuation #{index + 1}
+                                  </div>
+                                  <div className="line-clamp-3">
+                                    {getPreviewText(extension.analysis)}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <p className="line-clamp-3">{getPreviewText(analysisContent)}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
-            
-            {node.children.length > 0 && (
-              <div className="mt-4 space-y-4 pl-4 border-l-2 border-muted">
-                {node.children.map(childNode => (
-                  <div key={childNode.id} onClick={() => toggleNode(childNode.id)} className="cursor-pointer">
-                    {renderQANode(childNode, depth + 1)}
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {depth === 0 && node.children.length === 0 && isAnalyzing && (
-              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                <MessageSquare className="h-4 w-4 animate-pulse" />
-                <span>Generating follow-up questions...</span>
-              </div>
-            )}
-            
-            {depth === 0 && !isAnalyzing && (
-              <div className="flex justify-end">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => handleExpandQuestion(node)}
-                  disabled={isAnalyzing}
-                >
-                  Expand Analysis
-                </Button>
+            </div>
+            {node.children.length > 0 && isExpanded && (
+              <div className="mt-6">
+                {node.children.map(child => renderQANode(child, depth + 1))}
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold">Question Analysis</h2>
-            {navigationHistory.length > 0 && (
-              <Button 
-                size="sm" 
-                variant="outline" 
-                className="h-7 gap-1"
-                onClick={navigateBack}
-              >
-                <ChevronUp className="h-3 w-3" />
-                Back
-              </Button>
-            )}
-          </div>
-          <p className="text-muted-foreground">{marketDescription}</p>
+    <Card className="p-4 mt-4 bg-card relative">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+        {navigationHistory.length > 0 && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={navigateBack}
+            className="mb-4 sm:mb-0"
+          >
+            ← Back to Previous Analysis
+          </Button>
+        )}
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedResearch}
+            onValueChange={setSelectedResearch}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved research" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved research</SelectItem>
+              {savedResearch?.map((research) => (
+                <SelectItem key={research.id} value={research.id}>
+                  {research.query.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="flex items-center gap-2">
-          {savedQATrees && savedQATrees.length > 0 && (
-            <Select value={selectedQATree} onValueChange={value => {
+        <div className="flex-1 min-w-[200px] max-w-[300px]">
+          <Select
+            value={selectedQATree}
+            onValueChange={(value) => {
+              setSelectedQATree(value);
+              setNavigationHistory([]); // Reset navigation history when loading new tree
+              setFinalEvaluation(null); // Reset final evaluation
               if (value !== 'none') {
-                const treeData = savedQATrees.find(tree => tree.id === value)?.tree_data;
-                if (treeData) {
-                  loadSavedQATree(treeData);
-                  setSelectedQATree(value);
+                const tree = savedQATrees?.find(t => t.id === value);
+                if (tree) {
+                  loadSavedQATree(tree.tree_data);
                 }
-              } else {
-                setSelectedQATree('none');
               }
-            }}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select saved analysis" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">New analysis</SelectItem>
-                {savedQATrees.map(tree => (
-                  <SelectItem key={tree.id} value={tree.id}>
-                    {new Date(tree.created_at).toLocaleString()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
-          {savedResearch && savedResearch.length > 0 && (
-            <Select value={selectedResearch} onValueChange={setSelectedResearch}>
-              <SelectTrigger className="w-[180px]">
-                <SelectValue placeholder="Select research" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">No research</SelectItem>
-                {savedResearch.map(research => (
-                  <SelectItem key={research.id} value={research.id}>
-                    {new Date(research.created_at).toLocaleString()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          
-          <Button onClick={handleAnalyze} disabled={isAnalyzing}>
+            }}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select saved QA tree" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No saved QA tree</SelectItem>
+              {savedQATrees?.map((tree) => (
+                <SelectItem key={tree.id} value={tree.id}>
+                  {tree.title.substring(0, 50)}...
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4 sm:mt-0">
+          <Button onClick={handleAnalyze} disabled={isAnalyzing || isFinalEvaluating || saveInProgress}>
             {isAnalyzing ? 'Analyzing...' : 'Analyze'}
           </Button>
-          
-          {qaData.length > 0 && (
-            <Button 
-              onClick={saveQATree} 
-              variant="outline" 
-              disabled={isAnalyzing || saveInProgress}
-            >
-              {saveInProgress ? 'Saving...' : 'Save'}
+          {qaData.length > 0 && !isAnalyzing && (
+            <Button onClick={saveQATree} variant="outline" disabled={isFinalEvaluating || saveInProgress}>
+              {saveInProgress ? 'Saving...' : 'Save Analysis'}
             </Button>
           )}
         </div>
       </div>
       
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        {qaData.length > 0 ? (
-          <ScrollArea className="flex-1 p-4">
-            <div className="space-y-6">
-              {qaData.map(node => (
-                <div 
-                  key={node.id} 
-                  onClick={() => toggleNode(node.id)} 
-                  className="cursor-pointer"
-                >
-                  {renderQANode(node)}
-                </div>
-              ))}
-              
-              {finalEvaluation && !isAnalyzing && !isFinalEvaluating && (
-                <Card className="p-4 mt-6 bg-muted/10">
-                  <h3 className="text-lg font-semibold mb-2">Final Evaluation</h3>
-                  <div className="text-sm space-y-4">
-                    <div>
-                      <p className="font-medium">Probability Assessment:</p>
-                      <p className="text-muted-foreground">{finalEvaluation.probability}</p>
-                    </div>
-                    
-                    {finalEvaluation.areasForResearch.length > 0 && (
-                      <div>
-                        <p className="font-medium">Areas for Further Research:</p>
-                        <ul className="list-disc pl-5 text-muted-foreground space-y-1">
-                          {finalEvaluation.areasForResearch.map((area, i) => (
-                            <li key={i}>{area}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    <div>
-                      <p className="font-medium">Analysis:</p>
-                      <p className="text-muted-foreground">{finalEvaluation.analysis}</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-              
-              {activeFinalEvaluation && !finalEvaluation && !isAnalyzing && !isFinalEvaluating && (
-                <Card className="p-4 mt-6 bg-muted/10">
-                  <h3 className="text-lg font-semibold mb-2">Previous Evaluation</h3>
-                  <div className="text-sm space-y-4">
-                    <div>
-                      <p className="font-medium">Probability Assessment:</p>
-                      <p className="text-muted-foreground">{activeFinalEvaluation.probability}</p>
-                    </div>
-                    
-                    {activeFinalEvaluation.areasForResearch.length > 0 && (
-                      <div>
-                        <p className="font-medium">Areas for Further Research:</p>
-                        <ul className="list-disc pl-5 text-muted-foreground space-y-1">
-                          {activeFinalEvaluation.areasForResearch.map((area, i) => (
-                            <li key={i}>{area}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    
-                    <div>
-                      <p className="font-medium">Analysis:</p>
-                      <p className="text-muted-foreground">{activeFinalEvaluation.analysis}</p>
-                    </div>
-                  </div>
-                </Card>
-              )}
-              
-              {isFinalEvaluating && (
-                <div className="flex items-center justify-center py-8">
-                  <div className="flex items-center space-x-2">
-                    <div className="h-4 w-4 rounded-full bg-primary animate-pulse" />
-                    <p className="text-sm text-muted-foreground">Generating final evaluation...</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-            <h3 className="text-lg font-medium mb-2">Analyze Question</h3>
-            <p className="text-muted-foreground mb-4">
-              Use AI to analyze "{marketQuestion}" and evaluate possible outcomes
-            </p>
-            <Button onClick={handleAnalyze} disabled={isAnalyzing}>
-              {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
-            </Button>
+      {(finalEvaluation || activeFinalEvaluation) && (
+        <div className="mb-4">
+          <InsightsDisplay 
+            probability={(finalEvaluation || activeFinalEvaluation)?.probability || ''} 
+            areasForResearch={(finalEvaluation || activeFinalEvaluation)?.areasForResearch || []} 
+          />
+          <div className="mt-4 bg-accent/5 rounded-md p-4">
+            <h3 className="text-sm font-medium mb-2">Final Analysis</h3>
+            <p className="text-sm text-muted-foreground">{(finalEvaluation || activeFinalEvaluation)?.analysis || ''}</p>
           </div>
-        )}
-      </Card>
-    </div>
+        </div>
+      )}
+      
+      {isFinalEvaluating && (
+        <div className="mb-4 p-4 bg-accent/5 rounded-md">
+          <p className="text-sm animate-pulse">Generating final evaluation...</p>
+        </div>
+      )}
+      
+      <ScrollArea className="h-[500px] pr-4">
+        {qaData.map(node => renderQANode(node))}
+      </ScrollArea>
+    </Card>
   );
 }
