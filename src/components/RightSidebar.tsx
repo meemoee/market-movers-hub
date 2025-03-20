@@ -1,4 +1,3 @@
-
 import { Send } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -21,7 +20,6 @@ export default function RightSidebar() {
     id?: string // Add unique ID for each message
   }
 
-  // Load messages from localStorage on component mount
   useEffect(() => {
     try {
       const savedMessages = localStorage.getItem('chatMessages')
@@ -45,7 +43,6 @@ export default function RightSidebar() {
     }
   }, [])
 
-  // Save messages to localStorage whenever they change
   useEffect(() => {
     try {
       if (messages.length > 0) {
@@ -57,7 +54,6 @@ export default function RightSidebar() {
     }
   }, [messages, hasStartedChat])
 
-  // Save streaming content to localStorage whenever it changes
   useEffect(() => {
     try {
       if (streamingContent) {
@@ -70,7 +66,6 @@ export default function RightSidebar() {
     }
   }, [streamingContent])
 
-  // Clean up any unfinished streaming content when component unmounts
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (streamingContent && isLoading) {
@@ -88,19 +83,16 @@ export default function RightSidebar() {
     }
   }, [streamingContent, isLoading])
 
-  // Handle reconnection if there was streaming content
   useEffect(() => {
     if (isReconnecting && streamingContent) {
       const completeMessage = async () => {
         try {
           setIsLoading(true)
-          // Add the streaming content as a completed message
           setMessages(prev => [...prev, { 
-            type: 'assistant', 
+            type: 'assistant' as const, 
             content: streamingContent,
             id: `msg-${Date.now()}`
           }])
-          // Clear the streaming content
           setStreamingContent('')
           setIsReconnecting(false)
         } catch (error) {
@@ -121,7 +113,7 @@ export default function RightSidebar() {
     setIsLoading(true)
     
     const newMessages = [...messages, { 
-      type: 'user', 
+      type: 'user' as const, 
       content: userMessage,
       id: `msg-${Date.now()}`
     }]
@@ -209,7 +201,7 @@ export default function RightSidebar() {
       }
 
       setMessages(prev => [...prev, { 
-        type: 'assistant', 
+        type: 'assistant' as const, 
         content: accumulatedContent,
         id: `msg-${Date.now()}`
       }])
@@ -217,7 +209,7 @@ export default function RightSidebar() {
     } catch (error) {
       console.error('Error in chat:', error)
       setMessages(prev => [...prev, { 
-        type: 'assistant', 
+        type: 'assistant' as const, 
         content: 'Sorry, I encountered an error processing your request.',
         id: `msg-${Date.now()}`
       }])
@@ -225,7 +217,6 @@ export default function RightSidebar() {
       setIsLoading(false)
       setStreamingContent('')
       abortControllerRef.current = null
-      // Clear the streaming content from localStorage when done
       localStorage.removeItem('streamingContent')
     }
   }
