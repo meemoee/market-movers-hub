@@ -23,7 +23,7 @@ interface IterationCardProps {
   onToggleExpand: () => void;
   isStreaming: boolean;
   isCurrentIteration: boolean;
-  maxIterations: number;
+  isFinalIteration: boolean;
 }
 
 export function IterationCard({
@@ -32,10 +32,9 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations
+  isFinalIteration
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
-  const isFinalIteration = iteration.iteration === maxIterations
   const [analysisCompleted, setAnalysisCompleted] = useState(false)
   
   useEffect(() => {
