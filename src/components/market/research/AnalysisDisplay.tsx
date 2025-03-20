@@ -5,27 +5,34 @@ import ReactMarkdown from 'react-markdown'
 
 interface AnalysisDisplayProps {
   content: string
+  reasoning?: string
   isStreaming?: boolean
   maxHeight?: string | number
 }
 
 export function AnalysisDisplay({ 
   content, 
+  reasoning,
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
+  const prevReasoningLength = useRef(reasoning?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [showReasoning, setShowReasoning] = useState(false)
   
   // Debug logging
   useEffect(() => {
     if (content && content.length > 0) {
       console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
     }
-  }, [content, isStreaming]);
+    if (reasoning && reasoning.length > 0) {
+      console.log(`AnalysisDisplay: Reasoning updated - length: ${reasoning.length}`);
+    }
+  }, [content, reasoning, isStreaming]);
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
@@ -33,11 +40,14 @@ export function AnalysisDisplay({
     
     const scrollContainer = scrollRef.current
     const currentContentLength = content?.length || 0
+    const currentReasoningLength = reasoning?.length || 0
     
-    console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
+    console.log(`AnalysisDisplay: AutoScroll check - current content: ${currentContentLength}, prev: ${prevContentLength.current}, current reasoning: ${currentReasoningLength}, prev reasoning: ${prevReasoningLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
-    // Only auto-scroll if content is growing or streaming
-    if (currentContentLength > prevContentLength.current || isStreaming) {
+    // Only auto-scroll if content or reasoning is growing or streaming
+    if (currentContentLength > prevContentLength.current || 
+        currentReasoningLength > prevReasoningLength.current || 
+        isStreaming) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
@@ -52,7 +62,8 @@ export function AnalysisDisplay({
     }
     
     prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+    prevReasoningLength.current = currentReasoningLength
+  }, [content, reasoning, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -123,16 +134,36 @@ export function AnalysisDisplay({
     }
   }, [isStreaming, shouldAutoScroll])
 
-  if (!content) return null
+  if (!content && !reasoning) return null
 
   return (
     <div className="relative">
+      {reasoning && (
+        <div className="mb-2 flex justify-end">
+          <button 
+            onClick={() => setShowReasoning(!showReasoning)}
+            className="text-xs text-muted-foreground hover:text-primary transition-colors bg-background/50 px-2 py-1 rounded-full border"
+          >
+            {showReasoning ? "Hide Reasoning" : "Show Reasoning"}
+          </button>
+        </div>
+      )}
+      
       <ScrollArea 
         className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
+          {reasoning && showReasoning && (
+            <div className="mb-4 p-3 bg-muted/30 rounded-md border border-muted">
+              <h4 className="text-sm font-medium mb-2 text-muted-foreground">Model Reasoning</h4>
+              <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full text-muted-foreground">
+                {reasoning}
+              </ReactMarkdown>
+            </div>
+          )}
+          
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
             {content}
           </ReactMarkdown>
