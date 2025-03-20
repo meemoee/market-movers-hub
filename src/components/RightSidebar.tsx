@@ -1,3 +1,4 @@
+
 import { Send } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -11,8 +12,10 @@ export default function RightSidebar() {
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [isReconnecting, setIsReconnecting] = useState(false)
+  const [streamError, setStreamError] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
   const chatSessionIdRef = useRef<string>(`chat-session-${Date.now()}`)
+  const retryTimeoutRef = useRef<number | null>(null)
 
   interface Message {
     type: 'user' | 'assistant'
@@ -80,8 +83,34 @@ export default function RightSidebar() {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort()
       }
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current)
+      }
     }
   }, [streamingContent, isLoading])
+
+  // Network status monitoring
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('Network is back online')
+      if (isLoading && streamingContent) {
+        setIsReconnecting(true)
+      }
+    }
+    
+    const handleOffline = () => {
+      console.log('Network is offline')
+      setStreamError('Network connection lost. Waiting to reconnect...')
+    }
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [isLoading, streamingContent])
 
   useEffect(() => {
     if (isReconnecting && streamingContent) {
@@ -95,6 +124,7 @@ export default function RightSidebar() {
           }])
           setStreamingContent('')
           setIsReconnecting(false)
+          setStreamError(null)
         } catch (error) {
           console.error('Error handling reconnection:', error)
         } finally {
@@ -106,20 +136,46 @@ export default function RightSidebar() {
     }
   }, [isReconnecting, streamingContent])
 
-  const handleChatMessage = async (userMessage: string) => {
-    if (!userMessage.trim() || isLoading) return
+  const retryStreamConnection = (userMessage: string) => {
+    // Clear any existing retry timeout
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current)
+    }
     
-    setHasStartedChat(true)
+    console.log('Retrying stream connection...')
+    setStreamError('Reconnecting...')
+    
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+    }
+    
+    // Retry after a short delay
+    retryTimeoutRef.current = window.setTimeout(() => {
+      handleChatMessage(userMessage, true)
+    }, 2000)
+  }
+
+  const handleChatMessage = async (userMessage: string, isRetry = false) => {
+    if ((!userMessage.trim() && !isRetry) || isLoading) return
+    
+    if (!isRetry) {
+      setHasStartedChat(true)
+      
+      const newMessages = [...messages, { 
+        type: 'user' as const, 
+        content: userMessage,
+        id: `msg-${Date.now()}`
+      }]
+      
+      setMessages(newMessages)
+      setChatMessage('')
+    }
+    
+    setStreamError(null)
     setIsLoading(true)
     
-    const newMessages = [...messages, { 
-      type: 'user' as const, 
-      content: userMessage,
-      id: `msg-${Date.now()}`
-    }]
-    
-    setMessages(newMessages)
-    setChatMessage('')
+    let lastMessageTime = Date.now()
+    let accumulatedContent = isRetry ? streamingContent : ''
     
     try {
       if (abortControllerRef.current) {
@@ -132,7 +188,7 @@ export default function RightSidebar() {
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
-          chatHistory: newMessages.map(m => `${m.type}: ${m.content}`).join('\n'),
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
           sessionId: chatSessionIdRef.current
         }
       })
@@ -144,7 +200,18 @@ export default function RightSidebar() {
 
       console.log('Received response from market-analysis:', data)
       
-      let accumulatedContent = ''
+      // Setup a heartbeat check to detect stalled streams
+      const heartbeatInterval = setInterval(() => {
+        const currentTime = Date.now()
+        const timeSinceLastMessage = currentTime - lastMessageTime
+        
+        // If no message received for 15 seconds, attempt to retry
+        if (timeSinceLastMessage > 15000 && isLoading) {
+          console.warn('Stream appears stalled, reconnecting...')
+          clearInterval(heartbeatInterval)
+          retryStreamConnection(userMessage)
+        }
+      }, 5000)
       
       const stream = new ReadableStream({
         start(controller) {
@@ -155,9 +222,13 @@ export default function RightSidebar() {
             reader?.read().then(({done, value}) => {
               if (done) {
                 console.log('Stream complete')
+                clearInterval(heartbeatInterval)
                 controller.close()
                 return
               }
+              
+              // Update the last message time on each chunk
+              lastMessageTime = Date.now()
               
               const chunk = textDecoder.decode(value)
               
@@ -185,7 +256,15 @@ export default function RightSidebar() {
               
               push()
             }).catch(error => {
+              clearInterval(heartbeatInterval)
               console.error('Error reading stream:', error)
+              
+              // Only retry if we're still loading and the error isn't an abort
+              if (isLoading && error.name !== 'AbortError') {
+                setStreamError('Stream interrupted. Reconnecting...')
+                retryStreamConnection(userMessage)
+              }
+              
               controller.error(error)
             })
           }
@@ -200,6 +279,9 @@ export default function RightSidebar() {
         if (done) break
       }
 
+      // Clear the heartbeat check
+      clearInterval(heartbeatInterval)
+
       setMessages(prev => [...prev, { 
         type: 'assistant' as const, 
         content: accumulatedContent,
@@ -208,11 +290,22 @@ export default function RightSidebar() {
 
     } catch (error) {
       console.error('Error in chat:', error)
-      setMessages(prev => [...prev, { 
-        type: 'assistant' as const, 
-        content: 'Sorry, I encountered an error processing your request.',
-        id: `msg-${Date.now()}`
-      }])
+      
+      // If we already have accumulated content but hit an error, save the partial response
+      if (accumulatedContent.length > 0) {
+        console.log('Saving partial response of length:', accumulatedContent.length)
+        setMessages(prev => [...prev, { 
+          type: 'assistant' as const, 
+          content: accumulatedContent,
+          id: `msg-${Date.now()}`
+        }])
+      } else {
+        setMessages(prev => [...prev, { 
+          type: 'assistant' as const, 
+          content: 'Sorry, I encountered an error processing your request.',
+          id: `msg-${Date.now()}`
+        }])
+      }
     } finally {
       setIsLoading(false)
       setStreamingContent('')
@@ -225,6 +318,7 @@ export default function RightSidebar() {
     setMessages([])
     setStreamingContent('')
     setHasStartedChat(false)
+    setStreamError(null)
     localStorage.removeItem('chatMessages')
     localStorage.removeItem('streamingContent')
     localStorage.removeItem('hasStartedChat')
@@ -288,6 +382,11 @@ export default function RightSidebar() {
                   {streamingContent}
                   <span className="animate-pulse">▌</span>
                 </Markdown>
+              </div>
+            )}
+            {streamError && (
+              <div className="bg-red-900/20 border border-red-900 p-2 rounded text-xs text-red-300">
+                {streamError}
               </div>
             )}
             {isLoading && !streamingContent && (
