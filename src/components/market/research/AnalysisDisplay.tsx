@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -25,25 +24,42 @@ export function AnalysisDisplay({
   const contentRef = useRef<HTMLDivElement>(null);
   const reasoningRef = useRef<HTMLDivElement>(null);
   
+  const [renderedContent, setRenderedContent] = useState(content);
+  const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
+  
   useEffect(() => {
-    // Auto-scroll to bottom when content is streaming
+    if (content && content.length > 0) {
+      setRenderedContent(prevContent => {
+        return content.length >= prevContent.length ? content : prevContent;
+      });
+    }
+  }, [content]);
+  
+  useEffect(() => {
+    if (reasoning && reasoning.length > 0) {
+      setRenderedReasoning(prevReasoning => {
+        return reasoning.length >= prevReasoning.length ? reasoning : prevReasoning;
+      });
+    }
+  }, [reasoning]);
+  
+  useEffect(() => {
     if (isStreaming && contentRef.current) {
       const scrollElement = contentRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [content, isStreaming]);
+  }, [renderedContent, isStreaming]);
 
   useEffect(() => {
-    // Auto-scroll reasoning to bottom when streaming
     if (isReasoningStreaming && reasoningRef.current && showReasoning) {
       const scrollElement = reasoningRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [reasoning, isReasoningStreaming, showReasoning]);
+  }, [renderedReasoning, isReasoningStreaming, showReasoning]);
 
   return (
     <div className="flex flex-col h-full">
@@ -66,19 +82,19 @@ export function AnalysisDisplay({
         <ScrollArea className="h-full" style={{ maxHeight }}>
           <div className="p-2">
             <Markdown>
-              {content}
+              {renderedContent}
               {isStreaming && <span className="animate-pulse">▌</span>}
             </Markdown>
           </div>
         </ScrollArea>
       </div>
       
-      {reasoning && (
+      {(reasoning || isReasoningStreaming) && (
         <div className={cn("h-full overflow-hidden", showReasoning ? "block" : "hidden")} ref={reasoningRef}>
           <ScrollArea className="h-full" style={{ maxHeight }}>
             <div className="p-2 bg-muted/20">
               <Markdown>
-                {reasoning}
+                {renderedReasoning}
                 {isReasoningStreaming && <span className="animate-pulse">▌</span>}
               </Markdown>
             </div>

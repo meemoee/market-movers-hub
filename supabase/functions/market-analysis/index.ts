@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -77,7 +78,8 @@ serve(async (req) => {
                   content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
                 }
               ],
-              stream: true
+              stream: true,
+              max_tokens: 4096  // Increase max tokens to ensure we get complete responses
             })
           })
 
@@ -124,6 +126,8 @@ serve(async (req) => {
               
               // Process and forward the chunk
               const chunk = textDecoder.decode(value)
+              
+              // Ensure we're properly forwarding the chunk without modification
               await writer.write(value)
             }
           } catch (streamError) {
