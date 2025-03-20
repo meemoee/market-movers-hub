@@ -941,4 +941,28 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       a: ({ href, children }) => (
         <a 
           href={href}
-          className="text
+          className="text-primary hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {children}
+        </a>
+      ),
+    };
+
+    return (
+      <div className="flex flex-col space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <p className="text-lg font-semibold">{node.question}</p>
+            {getExtensionInfo(node)}
+          </div>
+          <div className="flex items-center">
+            {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            {isStreaming && <MessageSquare className="h-4 w-4 ml-2" />}
+          </div>
+        </div>
+        {isExpanded && (
+          <div className="space-y-2">
+            <div className="prose
+
