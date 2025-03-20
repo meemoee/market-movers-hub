@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react';
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -24,25 +25,25 @@ export function AnalysisDisplay({
   const contentRef = useRef<HTMLDivElement>(null);
   const reasoningRef = useRef<HTMLDivElement>(null);
   
+  // Always store the latest content passed in props
   const [renderedContent, setRenderedContent] = useState(content);
   const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
   
+  // Always accept and display the incoming content as-is
   useEffect(() => {
-    if (content && content.length > 0) {
-      setRenderedContent(prevContent => {
-        return content.length >= prevContent.length ? content : prevContent;
-      });
+    if (content) {
+      setRenderedContent(content);
     }
   }, [content]);
   
+  // Always accept and display the incoming reasoning as-is
   useEffect(() => {
-    if (reasoning && reasoning.length > 0) {
-      setRenderedReasoning(prevReasoning => {
-        return reasoning.length >= prevReasoning.length ? reasoning : prevReasoning;
-      });
+    if (reasoning) {
+      setRenderedReasoning(reasoning);
     }
   }, [reasoning]);
   
+  // Auto-scroll content when streaming
   useEffect(() => {
     if (isStreaming && contentRef.current) {
       const scrollElement = contentRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -52,6 +53,7 @@ export function AnalysisDisplay({
     }
   }, [renderedContent, isStreaming]);
 
+  // Auto-scroll reasoning when streaming
   useEffect(() => {
     if (isReasoningStreaming && reasoningRef.current && showReasoning) {
       const scrollElement = reasoningRef.current.querySelector('[data-radix-scroll-area-viewport]');
