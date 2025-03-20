@@ -4,8 +4,9 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const MAX_RETRIES = 3
-const HEARTBEAT_INTERVAL = 15000 // 15 seconds
+const HEARTBEAT_INTERVAL = 5000 // 5 seconds (reduced from 15s for more frequent heartbeats)
 const RECONNECT_DELAY = 2000 // 2 seconds
+const STREAM_TIMEOUT = 60000 // 60 seconds timeout threshold
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,6 +30,10 @@ serve(async (req) => {
     let heartbeatInterval: number | undefined
     
     const startHeartbeat = () => {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval)
+      }
+      
       heartbeatInterval = setInterval(async () => {
         try {
           // Send a comment as heartbeat to keep the connection alive
@@ -46,6 +51,39 @@ serve(async (req) => {
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval)
         heartbeatInterval = undefined
+      }
+    }
+
+    // Queue for processing large chunks in the background
+    const streamQueue: {value: Uint8Array, timestamp: number}[] = []
+    let processingQueue = false
+    
+    // Process the queue in the background
+    const processQueue = async () => {
+      if (processingQueue || streamQueue.length === 0) return
+      
+      processingQueue = true
+      
+      try {
+        while (streamQueue.length > 0) {
+          const chunk = streamQueue.shift()
+          if (chunk) {
+            try {
+              await writer.write(chunk.value)
+            } catch (error) {
+              console.error('Error writing chunk from queue:', error)
+              // If we can't write, stop processing
+              break
+            }
+          }
+        }
+      } finally {
+        processingQueue = false
+        
+        // If there are more chunks, process them
+        if (streamQueue.length > 0) {
+          processQueue()
+        }
       }
     }
 
@@ -79,7 +117,8 @@ serve(async (req) => {
                 }
               ],
               stream: true,
-              max_tokens: 4096  // Increase max tokens to ensure we get complete responses
+              max_tokens: 4096,  // Increase max tokens to ensure we get complete responses
+              temperature: 0.2   // Lower temperature for more consistent outputs
             })
           })
 
@@ -101,14 +140,15 @@ serve(async (req) => {
           let lastDataTimestamp = Date.now()
           const connectionTimeoutId = setInterval(() => {
             const now = Date.now()
-            if (now - lastDataTimestamp > 30000) { // 30 seconds without data
-              console.warn('Connection appears stalled, no data received for 30 seconds')
+            if (now - lastDataTimestamp > STREAM_TIMEOUT) { 
+              console.warn('Connection appears stalled, no data received for 60 seconds')
               clearInterval(connectionTimeoutId)
-              // Don't throw here as the reader loop will handle it
+              throw new Error('Stream connection timeout after 60 seconds of inactivity')
             }
           }, 5000)
 
           const textDecoder = new TextDecoder()
+          let chunkCounter = 0
           
           try {
             while (true) {
@@ -123,16 +163,48 @@ serve(async (req) => {
               
               // Update the last data timestamp
               lastDataTimestamp = Date.now()
+              chunkCounter++
               
-              // Process and forward the chunk
-              const chunk = textDecoder.decode(value)
-              
-              // Ensure we're properly forwarding the chunk without modification
-              await writer.write(value)
+              try {
+                // Add to queue with timestamp
+                streamQueue.push({
+                  value,
+                  timestamp: Date.now()
+                })
+                
+                // Start or continue processing the queue
+                if (!processingQueue) {
+                  processQueue()
+                }
+                
+                // For debugging - log every 50 chunks
+                if (chunkCounter % 50 === 0) {
+                  console.log(`Processed ${chunkCounter} chunks, queue size: ${streamQueue.length}`)
+                }
+              } catch (queueError) {
+                console.error(`Error processing chunk ${chunkCounter}:`, queueError)
+              }
             }
           } catch (streamError) {
             console.error('Error reading stream:', streamError)
             clearInterval(connectionTimeoutId)
+            
+            // Attempt to recover by sending what we have
+            if (streamQueue.length > 0) {
+              console.log(`Attempting to flush ${streamQueue.length} remaining chunks after stream error`)
+              while (streamQueue.length > 0) {
+                const chunk = streamQueue.shift()
+                if (chunk) {
+                  try {
+                    await writer.write(chunk.value)
+                  } catch (error) {
+                    console.error('Error flushing queue after stream error:', error)
+                    break
+                  }
+                }
+              }
+            }
+            
             throw streamError
           } finally {
             reader.releaseLock()
@@ -160,6 +232,22 @@ serve(async (req) => {
       }
       
       try {
+        // Flush any remaining chunks in the queue
+        if (streamQueue.length > 0) {
+          console.log(`Flushing ${streamQueue.length} remaining chunks before closing`)
+          while (streamQueue.length > 0) {
+            const chunk = streamQueue.shift()
+            if (chunk) {
+              try {
+                await writer.write(chunk.value)
+              } catch (error) {
+                console.error('Error in final queue flush:', error)
+                break
+              }
+            }
+          }
+        }
+        
         // Close the writer to signal the end
         await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
         await writer.close()
