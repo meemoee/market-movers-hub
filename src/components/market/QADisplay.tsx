@@ -562,7 +562,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
             if (node.children.length > 0) return { ...node, children: updateChildren(node.children) };
             return node;
           });
-        return updateChildren(prev);\
+        return updateChildren(prev);
       });
 
       setStreamingContent(prev => ({
@@ -657,7 +657,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
     try {
       await analyzeQuestion(marketQuestion);
     } finally {
-      setIsAnalyzing(false);\
+      setIsAnalyzing(false);
       setCurrentNodeId(null);
     }
   };
@@ -941,3 +941,4 @@ export function QADisplay({ marketId, marketQuestion, marketDescription }: QADis
       a: ({ href, children }) => (
         <a 
           href={href}
+          className="text
