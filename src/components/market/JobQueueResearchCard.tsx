@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -940,4 +941,31 @@ export function JobQueueResearchCard({
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
                 isStreaming={streamingIterations.has(iteration.iteration)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i
+                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                isFinalIteration={iteration.iteration === parseInt(maxIterations, 10)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <SitePreviewList results={results} />
+        </div>
+      )}
+      
+      {analysis && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <AnalysisDisplay analysis={analysis} />
+        </div>
+      )}
+      
+      {structuredInsights && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <InsightsDisplay insights={structuredInsights} />
+        </div>
+      )}
+    </Card>
+  );
+}
