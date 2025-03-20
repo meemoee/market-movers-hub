@@ -1,3 +1,4 @@
+
 import React, { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 
@@ -6,8 +7,7 @@ interface MarkdownProps {
 }
 
 export function Markdown({ children }: MarkdownProps) {
-  // If children is a string, render it with ReactMarkdown
-  // Otherwise, render it directly (for when children includes JSX elements)
+  // Handle string content with optional streaming cursor
   if (typeof children === 'string') {
     return (
       <ReactMarkdown className="prose prose-sm prose-invert max-w-none">
@@ -16,6 +16,33 @@ export function Markdown({ children }: MarkdownProps) {
     );
   }
   
-  // If children includes JSX elements, render them directly
+  // Handle case where children is an array with content and cursor
+  if (Array.isArray(children)) {
+    // Check if all non-string children are just the cursor element
+    const stringParts: string[] = [];
+    let hasCursor = false;
+    
+    React.Children.forEach(children, child => {
+      if (typeof child === 'string') {
+        stringParts.push(child);
+      } else if (React.isValidElement(child) && 
+                child.props.className === 'animate-pulse') {
+        hasCursor = true;
+      }
+    });
+    
+    // If we have string content and just a cursor, combine and use ReactMarkdown
+    if (stringParts.length > 0 && hasCursor) {
+      const content = stringParts.join('');
+      return (
+        <ReactMarkdown className="prose prose-sm prose-invert max-w-none">
+          {content}
+          <span className="animate-pulse">▌</span>
+        </ReactMarkdown>
+      );
+    }
+  }
+  
+  // Fall back to rendering children directly for other cases
   return <div className="prose prose-sm prose-invert max-w-none">{children}</div>;
 }

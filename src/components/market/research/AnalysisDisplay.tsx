@@ -4,7 +4,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Markdown } from "@/components/Markdown"
 import { cn } from "@/lib/utils"
-import { Check, Eye, EyeOff } from "lucide-react"
+import { Check, Eye } from "lucide-react"
 
 interface AnalysisDisplayProps {
   content: string;
