@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -110,7 +109,7 @@ const createSupabaseClient = () => {
           return response.json().then(data => ({ data, error: null }))
         })
         .catch(error => ({ data: null, error }))
-      }),
+      },
       select: (columns: string) => ({
         eq: (column: string, value: any) => {
           return fetch(`${SUPABASE_URL}/rest/v1/${table}?select=${columns}&${column}=eq.${value}`, {
@@ -799,3 +798,4 @@ async function updateIterationStreamingState(
     throw error
   }
 }
+
