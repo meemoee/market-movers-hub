@@ -23,7 +23,7 @@ interface IterationCardProps {
   onToggleExpand: () => void;
   isStreaming: boolean;
   isCurrentIteration: boolean;
-  isFinalIteration: boolean;
+  maxIterations: number;
 }
 
 export function IterationCard({
@@ -32,17 +32,10 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  isFinalIteration
+  maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
-  const [analysisCompleted, setAnalysisCompleted] = useState(false)
-  
-  useEffect(() => {
-    // Track when analysis is completed
-    if (iteration.analysis && !isStreaming && isCurrentIteration) {
-      setAnalysisCompleted(true)
-    }
-  }, [iteration.analysis, isStreaming, isCurrentIteration])
+  const isFinalIteration = iteration.iteration === maxIterations
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -55,20 +48,6 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
-
-  // Signal completion for the final iteration
-  useEffect(() => {
-    // Only fire this effect when analysis has completed streaming AND this is the final iteration
-    if (analysisCompleted && isFinalIteration && isCurrentIteration) {
-      console.log(`Final iteration (${iteration.iteration}) analysis has completed streaming. Signaling completion.`);
-      
-      // Dispatch a custom event to signal final iteration completion
-      const completionEvent = new CustomEvent('finalIterationCompleted', {
-        detail: { iterationNumber: iteration.iteration }
-      });
-      window.dispatchEvent(completionEvent);
-    }
-  }, [analysisCompleted, isFinalIteration, isCurrentIteration, iteration.iteration]);
 
   // Determine streaming status based on individual properties
   const isAnalysisStreaming = isStreaming && isCurrentIteration && (iteration.isAnalysisStreaming !== false);
@@ -94,7 +73,7 @@ export function IterationCard({
             {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${iteration.results?.length || 0} sources found`}
+            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
         </div>
         {isExpanded ? 
@@ -108,8 +87,8 @@ export function IterationCard({
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
             <TabsList className="w-full grid grid-cols-3 mb-3">
               <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
-              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results?.length || 0})</TabsTrigger>
-              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries?.length || 0})</TabsTrigger>
+              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
+              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
             </TabsList>
             
             <div className="tab-content-container h-[200px] w-full">
@@ -126,7 +105,7 @@ export function IterationCard({
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
                   <div className="space-y-2 w-full">
-                    {(iteration.results || []).map((result, idx) => (
+                    {iteration.results.map((result, idx) => (
                       <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
                         <div className="flex items-center gap-2">
                           <img 
@@ -152,7 +131,7 @@ export function IterationCard({
                       </div>
                     ))}
                     
-                    {(!iteration.results || iteration.results.length === 0) && (
+                    {iteration.results.length === 0 && (
                       <div className="p-4 text-center text-muted-foreground">
                         No sources found for this iteration.
                       </div>
@@ -164,14 +143,14 @@ export function IterationCard({
               <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full">
                   <div className="space-y-2 w-full">
-                    {(iteration.queries || []).map((query, idx) => (
+                    {iteration.queries.map((query, idx) => (
                       <div key={idx} className="query-badge bg-accent/10 p-2 rounded-md flex items-center gap-1 w-full mb-2">
                         <Search className="h-3 w-3 flex-shrink-0 mr-1" />
                         <span className="text-xs break-words">{query}</span>
                       </div>
                     ))}
                     
-                    {(!iteration.queries || iteration.queries.length === 0) && (
+                    {iteration.queries.length === 0 && (
                       <div className="p-4 text-center text-muted-foreground">
                         No queries for this iteration.
                       </div>
