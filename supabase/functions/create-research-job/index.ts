@@ -27,16 +27,14 @@ async function updateJobStatus(jobId: string, status: string, errorMsg?: string)
 }
 
 async function appendProgressLog(jobId: string, message: string) {
-  // Convert the string message to a proper JSON string
-  const progressEntry = JSON.stringify(message)
+  const jsonString = JSON.stringify(message)
   
-  // Use raw SQL query to append to the JSONB array
-  const { error } = await supabase.from('research_jobs')
-    .update({ 
-      progress_log: `progress_log || '${progressEntry}'::jsonb`,
-      updated_at: new Date().toISOString()
-    })
-    .eq('id', jobId)
+  console.log(`Appending to progress log: ${jsonString} for job ${jobId}`)
+  
+  const { error } = await supabase.rpc('append_progress_log', {
+    job_id: jobId,
+    log_message: message
+  })
   
   if (error) {
     console.error("Error appending to progress log:", error)
@@ -111,7 +109,6 @@ Be objective, thorough, and focus on providing actionable insights.`
     const currentIterationIndex = updatedIterations.findIndex(i => i.iteration === iteration)
     
     if (currentIterationIndex === -1) {
-      // Create a new iteration entry if it doesn't exist
       updatedIterations.push({
         iteration,
         analysis: "",
@@ -197,7 +194,6 @@ Be objective, thorough, and focus on providing actionable insights.`
                 reasoningText += reasoning
               }
               
-              // Update both content and reasoning in the iterations
               const updatedIterationIndex = updatedIterations.findIndex(i => i.iteration === iteration)
               if (updatedIterationIndex >= 0) {
                 updatedIterations[updatedIterationIndex] = {
@@ -206,7 +202,6 @@ Be objective, thorough, and focus on providing actionable insights.`
                   reasoning: reasoningText
                 }
                 
-                // Update iterations in the database
                 const { error } = await supabase.rpc('update_research_results', {
                   job_id: jobId,
                   result_data: { iterations: updatedIterations }
@@ -349,7 +344,6 @@ Be objective, thorough, and focus on providing a well-reasoned probability estim
                 reasoningText += reasoning
               }
               
-              // Update results in the database
               const results = {
                 analysis: analysisText,
                 reasoning: reasoningText,
@@ -389,7 +383,6 @@ async function createResearchJob(marketId: string, query: string, maxIterations:
     console.log(`Creating research job: market=${marketId}, query=${query}, maxIterations=${maxIterations}`)
     console.log(`Focus text: ${focusText || 'none'}, Notification email: ${notificationEmail || 'none'}`)
     
-    // Create a new research job record in the database
     const { data: job, error } = await supabase
       .from('research_jobs')
       .insert({
@@ -421,7 +414,6 @@ async function createResearchJob(marketId: string, query: string, maxIterations:
 
 async function processJob(jobId: string) {
   try {
-    // Get job info from database
     const { data: job, error } = await supabase
       .from('research_jobs')
       .select('*')
@@ -432,34 +424,25 @@ async function processJob(jobId: string) {
       throw error || new Error("Job not found")
     }
     
-    // Update job status to processing
     await updateJobStatus(jobId, 'processing')
     await appendProgressLog(jobId, "Research job started")
     
-    // Extract the market ID and query
     const { market_id: marketId, query, max_iterations: maxIterations } = job
     
-    // Log job information
     console.log(`Processing research job ${jobId} for market ${marketId}`)
     console.log(`Query: ${query}`)
     console.log(`Max iterations: ${maxIterations}`)
     
-    // For each iteration
     for (let iteration = 1; iteration <= maxIterations; iteration++) {
-      // Update the current iteration in the job
       await supabase
         .from('research_jobs')
         .update({ current_iteration: iteration })
         .eq('id', jobId)
       
-      // Log the start of the iteration
       await appendProgressLog(jobId, `Starting iteration ${iteration}`)
       
-      // TODO: Implement actual research steps here
-      // For now, we'll just simulate the process with a delay
       await new Promise(resolve => setTimeout(resolve, 2000))
       
-      // Generate some placeholder analysis for this iteration
       const placeholderResults = {
         iteration,
         queries: [`Query for iteration ${iteration}`],
@@ -472,7 +455,6 @@ async function processJob(jobId: string) {
         reasoning: ""
       }
       
-      // Get the current iterations
       const { data: currentJob } = await supabase
         .from('research_jobs')
         .select('results')
@@ -484,10 +466,8 @@ async function processJob(jobId: string) {
         currentIterations = currentJob.results.iterations
       }
       
-      // Add the new iteration
       currentIterations.push(placeholderResults)
       
-      // Generate analysis with streaming (if this were a real implementation)
       await generateAnalysisWithStreaming(
         iteration,
         "Sample content to analyze for research.",
@@ -496,14 +476,11 @@ async function processJob(jobId: string) {
         currentIterations
       )
       
-      // Log the completion of the iteration
       await appendProgressLog(jobId, `Completed iteration ${iteration}`)
     }
     
-    // Get the market price for the final analysis
     const marketPrice = await getMarketPrice(marketId)
     
-    // Generate the final analysis
     const { data: finalJob } = await supabase
       .from('research_jobs')
       .select('results')
@@ -515,12 +492,10 @@ async function processJob(jobId: string) {
       finalIterations = finalJob.results.iterations
     }
     
-    // Combine all analyses from iterations
     const combinedAnalysis = finalIterations
       .map(iter => iter.analysis || "")
       .join("\n\n")
     
-    // Generate the final analysis with streaming
     await generateFinalAnalysisWithStreaming(
       combinedAnalysis,
       query,
@@ -529,7 +504,6 @@ async function processJob(jobId: string) {
       finalIterations
     )
     
-    // Update job status to completed
     await updateJobStatus(jobId, 'completed')
     await appendProgressLog(jobId, "Research job completed successfully")
     
@@ -539,7 +513,6 @@ async function processJob(jobId: string) {
   } catch (error) {
     console.error(`Error processing job ${jobId}:`, error)
     
-    // Update job status to failed
     try {
       await updateJobStatus(jobId, 'failed', error.message)
       await appendProgressLog(jobId, `Research job failed: ${error.message}`)
@@ -552,20 +525,17 @@ async function processJob(jobId: string) {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
   
   try {
-    // Parse the request body to get marketId, query, maxIterations, etc.
     const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
     
     if (!marketId || !query) {
       throw new Error("marketId and query are required")
     }
     
-    // Create a new research job in the database
     const jobId = await createResearchJob(
       marketId, 
       query, 
@@ -574,8 +544,6 @@ serve(async (req) => {
       notificationEmail
     )
     
-    // Process the job asynchronously
-    // @ts-ignore - EdgeRuntime may not be recognized by TypeScript
     EdgeRuntime.waitUntil(
       processJob(jobId).catch(error => 
         console.error(`Unhandled error in job processing for ${jobId}:`, error)
