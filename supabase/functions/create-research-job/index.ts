@@ -28,15 +28,17 @@ async function updateJobStatus(jobId: string, status: string, errorMsg?: string)
 }
 
 async function appendProgressLog(jobId: string, message: string) {
-  // Convert the string message to a JSON object to be consistent
+  // Convert the string message to a proper JSON string
   const progressEntry = JSON.stringify(message)
   
+  // Use raw SQL query to append to the JSONB array
   const { error } = await supabase.from('research_jobs')
     .update({ 
-      progress_log: supabase.sql`progress_log || ${progressEntry}::jsonb`,
+      progress_log: `progress_log || '${progressEntry}'::jsonb`,
       updated_at: new Date().toISOString()
     })
     .eq('id', jobId)
+    .is('deleted_at', null)
   
   if (error) {
     console.error("Error appending to progress log:", error)
