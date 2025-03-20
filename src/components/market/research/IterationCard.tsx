@@ -12,8 +12,8 @@ import { getFaviconUrl } from "@/utils/favicon"
 interface IterationCardProps {
   iteration: {
     iteration: number;
-    queries: string[] | undefined;
-    results: ResearchResult[] | undefined;
+    queries: string[];
+    results: ResearchResult[];
     analysis: string;
     reasoning?: string;
     isAnalysisStreaming?: boolean;
@@ -36,10 +36,6 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  
-  // Make sure queries and results are always arrays (handle undefined cases)
-  const queries = iteration.queries || [];
-  const results = iteration.results || [];
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -77,7 +73,7 @@ export function IterationCard({
             {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${results.length} sources found`}
+            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
         </div>
         {isExpanded ? 
@@ -91,8 +87,8 @@ export function IterationCard({
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
             <TabsList className="w-full grid grid-cols-3 mb-3">
               <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
-              <TabsTrigger value="sources" className="text-xs">Sources ({results.length})</TabsTrigger>
-              <TabsTrigger value="queries" className="text-xs">Queries ({queries.length})</TabsTrigger>
+              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
+              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
             </TabsList>
             
             <div className="tab-content-container h-[200px] w-full">
@@ -109,7 +105,7 @@ export function IterationCard({
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
                   <div className="space-y-2 w-full">
-                    {results.map((result, idx) => (
+                    {iteration.results.map((result, idx) => (
                       <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
                         <div className="flex items-center gap-2">
                           <img 
@@ -135,7 +131,7 @@ export function IterationCard({
                       </div>
                     ))}
                     
-                    {results.length === 0 && (
+                    {iteration.results.length === 0 && (
                       <div className="p-4 text-center text-muted-foreground">
                         No sources found for this iteration.
                       </div>
@@ -147,14 +143,14 @@ export function IterationCard({
               <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full">
                   <div className="space-y-2 w-full">
-                    {queries.map((query, idx) => (
+                    {iteration.queries.map((query, idx) => (
                       <div key={idx} className="query-badge bg-accent/10 p-2 rounded-md flex items-center gap-1 w-full mb-2">
                         <Search className="h-3 w-3 flex-shrink-0 mr-1" />
                         <span className="text-xs break-words">{query}</span>
                       </div>
                     ))}
                     
-                    {queries.length === 0 && (
+                    {iteration.queries.length === 0 && (
                       <div className="p-4 text-center text-muted-foreground">
                         No queries for this iteration.
                       </div>
