@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -191,6 +192,9 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
+      // Log the iterations structure to see if reasoning is included
+      console.log('Received iterations with reasoning data:', job.iterations);
+      
       setIterations(job.iterations);
       
       if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {

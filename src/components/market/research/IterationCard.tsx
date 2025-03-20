@@ -15,6 +15,7 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
+    reasoning?: string;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -88,6 +89,7 @@ export function IterationCard({
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
+                  reasoning={iteration.reasoning}
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
