@@ -347,7 +347,10 @@ ${item.content || 'No content'}
               // Update existing iteration with analysis
               iterations[existingIndex] = {
                 ...iterations[existingIndex],
-                analysis: openaiResponse
+                analysis: openaiResponse,
+                // Ensure these arrays exist
+                queries: iterations[existingIndex].queries || [],
+                results: iterations[existingIndex].results || []
               };
               
               // Update the job record

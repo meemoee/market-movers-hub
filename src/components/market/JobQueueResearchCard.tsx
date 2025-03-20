@@ -221,6 +221,8 @@ export function JobQueueResearchCard({
       
       const enhancedIterations = job.iterations.map(iter => ({
         ...iter,
+        queries: iter.queries || [],
+        results: iter.results || [],
         isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
         isReasoningStreaming: newStreamingIterations.has(iter.iteration)
       }));
@@ -324,6 +326,8 @@ export function JobQueueResearchCard({
     if (job.iterations && Array.isArray(job.iterations)) {
       const enhancedIterations = job.iterations.map(iter => ({
         ...iter,
+        queries: iter.queries || [],
+        results: iter.results || [],
         isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
         isReasoningStreaming: newStreamingIterations.has(iter.iteration)
       }));
@@ -348,6 +352,7 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
