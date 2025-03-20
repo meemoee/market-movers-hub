@@ -1,180 +1,314 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0"
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
-const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: {
-    persistSession: false
-  }
-});
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { marketId, query, maxIterations = 3, focusText, notificationEmail, action, jobId } = await req.json();
+    const { jobId } = await req.json();
     
-    // Handle action for checking job completion
-    if (action === 'check_completion' && jobId) {
-      console.log(`Received request to check completion status of job: ${jobId}`);
-      
-      // Get job details
-      const { data: job, error: jobError } = await supabase
-        .from('research_jobs')
-        .select('*')
-        .eq('id', jobId)
-        .single();
-      
-      if (jobError) {
-        throw new Error(`Error getting job: ${jobError.message}`);
-      }
-      
-      if (!job) {
-        throw new Error(`Job not found: ${jobId}`);
-      }
-      
-      console.log(`Job status: ${job.status}, current iteration: ${job.current_iteration}, max iterations: ${job.max_iterations}`);
-      
-      // If the job is in processing state and has reached max iterations, complete it
-      if (job.status === 'processing' && job.current_iteration >= job.max_iterations) {
-        console.log(`Marking job ${jobId} as complete because it has reached max iterations.`);
+    if (!jobId) {
+      return new Response(
+        JSON.stringify({ error: 'jobId is required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    console.log(`Processing job ${jobId}`);
+    
+    // Update job status to processing
+    await supabase.rpc('update_research_job_status', {
+      job_id: jobId,
+      new_status: 'processing'
+    });
+    
+    // Send realtime update about job status
+    await supabase.channel('job-updates')
+      .send({
+        type: 'broadcast',
+        event: 'job_update',
+        topic: `job-${jobId}`,
+        payload: { 
+          status: 'processing',
+          message: 'Job processing started' 
+        }
+      });
+    
+    // Start processing the job in the background
+    const processJob = async () => {
+      try {
+        // Fetch job data
+        const { data: job, error: jobError } = await supabase
+          .from('research_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
         
-        // Update job status to completed
-        const { error: updateError } = await supabase
-          .rpc('update_research_job_status', {
-            job_id: jobId,
-            new_status: 'completed'
-          });
-        
-        if (updateError) {
-          throw new Error(`Error completing job: ${updateError.message}`);
+        if (jobError || !job) {
+          console.error('Error fetching job:', jobError);
+          throw new Error('Failed to fetch job data');
         }
         
-        // Send notification email if provided
+        // Log progress
+        await supabase.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: 'Starting research process...'
+        });
+        
+        // Send realtime update
+        await supabase.channel('job-updates')
+          .send({
+            type: 'broadcast',
+            event: 'job_update',
+            topic: `job-${jobId}`,
+            payload: { 
+              message: 'Starting research process...',
+              current_iteration: 0,
+              max_iterations: job.max_iterations
+            }
+          });
+        
+        // Start the research process by calling web-scrape function
+        const queries = [
+          `${job.query} latest information`,
+          `${job.query} analysis`,
+          `${job.query} statistics`
+        ];
+        
+        if (job.focus_text) {
+          queries.push(`${job.query} ${job.focus_text}`);
+          queries.push(`${job.focus_text} analysis`);
+        }
+        
+        // Update progress
+        await supabase.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: `Generated ${queries.length} initial search queries`
+        });
+        
+        // Send realtime update
+        await supabase.channel('job-updates')
+          .send({
+            type: 'broadcast',
+            event: 'job_update',
+            topic: `job-${jobId}`,
+            payload: { 
+              message: `Generated ${queries.length} initial search queries`,
+              current_iteration: 1,
+              max_iterations: job.max_iterations,
+              progress: (1 / job.max_iterations) * 100
+            }
+          });
+        
+        // Update job iteration
+        await supabase
+          .from('research_jobs')
+          .update({ current_iteration: 1 })
+          .eq('id', jobId);
+        
+        // Call web-scrape function
+        const scrapingResponse = await fetch(`${supabaseUrl}/functions/v1/web-scrape`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({
+            queries,
+            marketId: job.market_id,
+            focusText: job.focus_text
+          })
+        });
+        
+        if (!scrapingResponse.ok) {
+          const errorText = await scrapingResponse.text();
+          throw new Error(`Web scraping failed: ${errorText}`);
+        }
+        
+        const scrapingData = await scrapingResponse.json();
+        
+        // Update progress
+        await supabase.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: 'Web scraping completed, starting analysis...'
+        });
+        
+        // Send realtime update
+        await supabase.channel('job-updates')
+          .send({
+            type: 'broadcast',
+            event: 'job_update',
+            topic: `job-${jobId}`,
+            payload: { 
+              message: 'Web scraping completed, starting analysis...',
+              current_iteration: 2,
+              max_iterations: job.max_iterations,
+              progress: (2 / job.max_iterations) * 100
+            }
+          });
+        
+        // Update job iteration
+        await supabase
+          .from('research_jobs')
+          .update({ current_iteration: 2 })
+          .eq('id', jobId);
+        
+        // Analyze the content
+        const analysisResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-web-content`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`
+          },
+          body: JSON.stringify({
+            marketId: job.market_id,
+            marketQuestion: job.query,
+            webContent: scrapingData.results || []
+          })
+        });
+        
+        if (!analysisResponse.ok) {
+          const errorText = await analysisResponse.text();
+          throw new Error(`Content analysis failed: ${errorText}`);
+        }
+        
+        const analysisData = await analysisResponse.json();
+        
+        // Save results
+        const jobResults = {
+          data: scrapingData.results || [],
+          analysis: analysisData.analysis,
+          structuredInsights: analysisData.structuredInsights || {
+            probability: "Unknown",
+            areasForResearch: []
+          }
+        };
+        
+        // Update research job with results
+        await supabase.rpc('update_research_results', {
+          job_id: jobId,
+          result_data: jobResults
+        });
+        
+        // Mark job as completed
+        await supabase.rpc('update_research_job_status', {
+          job_id: jobId,
+          new_status: 'completed'
+        });
+        
+        // Update progress
+        await supabase.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: 'Research completed successfully'
+        });
+        
+        // Send realtime update
+        await supabase.channel('job-updates')
+          .send({
+            type: 'broadcast',
+            event: 'job_update',
+            topic: `job-${jobId}`,
+            payload: { 
+              status: 'completed',
+              message: 'Research completed successfully',
+              current_iteration: job.max_iterations,
+              max_iterations: job.max_iterations,
+              progress: 100
+            }
+          });
+        
+        // Send email notification if requested
         if (job.notification_email && !job.notification_sent) {
-          console.log(`Sending notification email to ${job.notification_email}`);
-          
           try {
-            await supabase.functions.invoke('send-research-notification', {
-              body: { 
-                jobId: job.id,
+            await fetch(`${supabaseUrl}/functions/v1/send-research-notification`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseServiceKey}`
+              },
+              body: JSON.stringify({
+                jobId,
                 email: job.notification_email,
-                marketId: job.market_id
-              }
+                marketId: job.market_id,
+                query: job.query
+              })
             });
             
             // Mark notification as sent
             await supabase
               .from('research_jobs')
               .update({ notification_sent: true })
-              .eq('id', job.id);
-              
-            console.log(`Notification email sent to ${job.notification_email}`);
-          } catch (emailError) {
-            console.error('Error sending notification email:', emailError);
+              .eq('id', jobId);
+          } catch (notificationError) {
+            console.error('Error sending notification:', notificationError);
           }
         }
         
-        return new Response(
-          JSON.stringify({ 
-            message: `Job ${jobId} marked as complete.`,
-            status: 'completed'
-          }),
-          { 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-            status: 200 
-          }
-        );
-      }
-      
-      return new Response(
-        JSON.stringify({ 
-          message: `Job ${jobId} is already in ${job.status} status.`,
-          status: job.status
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200 
-        }
-      );
-    }
-    
-    // Create a new research job
-    console.log(`Creating research job for market ID: ${marketId} with query: ${query}`);
-
-    const { data: researchJob, error: researchError } = await supabase
-      .from('research_jobs')
-      .insert({
-        market_id: marketId,
-        query: query,
-        status: 'queued',
-        max_iterations: maxIterations,
-        current_iteration: 0,
-        progress_log: [],
-        iterations: [],
-        results: null,
-        error_message: null,
-        user_id: (await supabase.auth.getUser()).data?.user?.id,
-        focus_text: focusText,
-        notification_email: notificationEmail,
-        notification_sent: false
-      })
-      .select()
-      .single();
-
-    if (researchError) {
-      console.error('Error creating research job:', researchError);
-      throw new Error(researchError.message);
-    }
-
-    const jobId = researchJob.id;
-    console.log(`Research job created with ID: ${jobId}`);
-
-    // Call the web-research function
-    console.log(`Invoking web-research function for job ID: ${jobId}`);
-    
-    const { data: webResearchResult, error: webResearchError } = await supabase.functions.invoke('web-research', {
-      body: {
-        query: query,
-        focusText: focusText
-      }
-    });
-
-    if (webResearchError) {
-      console.error('Error invoking web-research function:', webResearchError);
-      
-      // Update the research job with the error message
-      await supabase
-        .from('research_jobs')
-        .update({
-          status: 'failed',
-          error_message: webResearchError.message
-        })
-        .eq('id', jobId);
+      } catch (error) {
+        console.error(`Error processing job ${jobId}:`, error);
         
-      throw new Error(webResearchError.message);
-    }
-
-    console.log(`Web-research function invoked successfully for job ID: ${jobId}`);
-
+        // Update job status to failed
+        await supabase.rpc('update_research_job_status', {
+          job_id: jobId,
+          new_status: 'failed',
+          error_msg: error instanceof Error ? error.message : 'Unknown error'
+        });
+        
+        // Update progress
+        await supabase.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+        });
+        
+        // Send realtime update
+        await supabase.channel('job-updates')
+          .send({
+            type: 'broadcast',
+            event: 'job_update',
+            topic: `job-${jobId}`,
+            payload: { 
+              status: 'failed',
+              message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+            }
+          });
+      }
+    };
+    
+    // Process job in the background
+    EdgeRuntime.waitUntil(processJob());
+    
     return new Response(
-      JSON.stringify({ jobId: jobId }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      JSON.stringify({ 
+        success: true, 
+        message: "Job processing started in background",
+        jobId
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-
   } catch (error) {
     console.error('Error:', error);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        status: 500 
+        status: 500
       }
     );
   }
