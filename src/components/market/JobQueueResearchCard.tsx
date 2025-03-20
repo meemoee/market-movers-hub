@@ -664,6 +664,69 @@ export function JobQueueResearchCard({
     }
   };
 
+  // Add a new event listener for the final iteration completion event
+  useEffect(() => {
+    const handleFinalIterationComplete = (event: CustomEvent) => {
+      console.log(`JobQueueResearchCard received final iteration complete event:`, event.detail);
+      
+      // If we have a job ID and it's the final iteration that completed, check for job completion
+      if (jobId && jobStatus === 'processing') {
+        console.log(`Checking if job ${jobId} should be marked as complete`);
+        
+        // If we have the correct iteration number (matching max iterations)
+        if (iterations.length > 0 && iterations[iterations.length - 1].iteration === parseInt(maxIterations, 10)) {
+          console.log(`Final iteration ${maxIterations} is complete. Checking job status...`);
+          
+          // Check if the job is already marked as completed by the server
+          supabase
+            .from('research_jobs')
+            .select('*')
+            .eq('id', jobId)
+            .single()
+            .then(({ data, error }) => {
+              if (error) {
+                console.error('Error checking job status:', error);
+                return;
+              }
+              
+              if (data && data.status === 'processing') {
+                console.log(`Job ${jobId} still in processing state. Forcing completion check...`);
+                
+                // Force a check for job completion
+                supabase.functions.invoke('create-research-job', {
+                  body: JSON.stringify({
+                    action: 'check_completion',
+                    jobId: jobId
+                  })
+                }).then(response => {
+                  console.log('Completion check response:', response);
+                  
+                  // Refetch job data after forcing completion check
+                  setTimeout(() => {
+                    fetchSavedJobs();
+                  }, 2000);
+                }).catch(err => {
+                  console.error('Error forcing completion check:', err);
+                });
+              } else {
+                console.log(`Job already in ${data?.status || 'unknown'} state. No need to force completion.`);
+              }
+            });
+        }
+      }
+    };
+
+    // Add the event listener with type assertion
+    window.addEventListener('finalIterationCompleted', 
+      handleFinalIterationComplete as EventListener);
+
+    return () => {
+      // Remove the event listener when component unmounts
+      window.removeEventListener('finalIterationCompleted', 
+        handleFinalIterationComplete as EventListener);
+    };
+  }, [jobId, jobStatus, iterations, maxIterations]);
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -877,45 +940,4 @@ export function JobQueueResearchCard({
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
                 isStreaming={streamingIterations.has(iteration.iteration)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={parseInt(maxIterations, 10)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {structuredInsights && structuredInsights.parsedData && (
-        <div className="border-t pt-4 w-full max-w-full">
-          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
-          <InsightsDisplay 
-            streamingState={structuredInsights} 
-            onResearchArea={handleResearchArea}
-            marketData={{
-              bestBid,
-              bestAsk,
-              noBestAsk,
-              outcomes
-            }}
-          />
-        </div>
-      )}
-      
-      {results.length > 0 && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
-          </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
+                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i
