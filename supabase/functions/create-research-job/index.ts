@@ -27,9 +27,7 @@ async function updateJobStatus(jobId: string, status: string, errorMsg?: string)
 }
 
 async function appendProgressLog(jobId: string, message: string) {
-  const jsonString = JSON.stringify(message)
-  
-  console.log(`Appending to progress log: ${jsonString} for job ${jobId}`)
+  console.log(`Appending to progress log: "${message}" for job ${jobId}`)
   
   const { error } = await supabase.rpc('append_progress_log', {
     job_id: jobId,
