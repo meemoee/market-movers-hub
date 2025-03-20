@@ -172,7 +172,7 @@ const createSupabaseClient = () => {
         return response.json().then(data => ({ data, error: null }))
       })
       .catch(error => ({ data: null, error }))
-    })
+    }
   }
 }
 
