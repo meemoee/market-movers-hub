@@ -30,6 +30,7 @@ const BRAVE_SEARCH_URL = "https://lfmkoismabbhujycnqpn.functions.supabase.co/bra
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
+// Use the correct createClient implementation with options parameter
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 serve(async (req) => {
