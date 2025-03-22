@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -883,7 +882,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// NEW IMPLEMENTATION: Function to generate analysis with streaming using OpenRouter
+// Function to generate analysis with streaming using OpenRouter
 async function generateAnalysisWithStreaming(
   supabaseClient: any,
   jobId: string,
@@ -903,7 +902,7 @@ async function generateAnalysisWithStreaming(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled`);
+  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled and reasoning tokens`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -975,10 +974,11 @@ Present the analysis in a structured, concise format with clear sections and bul
 
   try {
     // Initialize the response stream handling
-    console.log(`Starting streaming response for iteration ${iterationNumber}`);
+    console.log(`Starting streaming response for iteration ${iterationNumber} with reasoning tokens`);
     
-    // Initialize a string to collect the analysis text
+    // Initialize strings to collect the analysis text and reasoning text
     let analysisText = '';
+    let reasoningText = '';
     let chunkSequence = 0;
     
     // First, get the current iterations
@@ -1014,7 +1014,7 @@ Present the analysis in a structured, concise format with clear sections and bul
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "deepseek/deepseek-r1",
         messages: [
           {
             role: "system",
@@ -1035,7 +1035,12 @@ Your analysis should:
           }
         ],
         stream: true, // Enable streaming response
-        temperature: 0.3
+        temperature: 0.3,
+        max_tokens: 6000, // Increase max tokens to ensure we get complete responses
+        reasoning: {
+          effort: "high", // Allocate a high amount of tokens for reasoning
+          exclude: false  // Include reasoning in the response
+        }
       })
     });
     
@@ -1056,6 +1061,12 @@ Your analysis should:
     // Log the start of streaming
     console.log(`Starting to process streaming response chunks for iteration ${iterationNumber}`);
     
+    // Buffer for updates to reduce database writes
+    const updateBufferSize = 10; // Update DB every 10 chunks
+    let analysisBuffer = '';
+    let reasoningBuffer = '';
+    let bufferCount = 0;
+    
     // Process chunks as they come in
     async function processStream() {
       try {
@@ -1064,6 +1075,12 @@ Your analysis should:
           
           if (done) {
             console.log(`Stream complete for iteration ${iterationNumber}`);
+            
+            // Flush any remaining buffered content
+            if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
+              await updateDatabase();
+            }
+            
             break;
           }
           
@@ -1098,42 +1115,49 @@ Your analysis should:
                 // Parse the JSON data
                 const jsonData = JSON.parse(data);
                 
-                if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                  const content = jsonData.choices[0].delta.content;
-                  
-                  // Append to the full analysis text
-                  analysisText += content;
-                  
-                  // Increment chunk sequence
-                  chunkSequence++;
-                  
-                  // Update the iteration in the database with the latest text
-                  // Make a new (not nested) call to get the current iterations
-                  const { data: currentData } = await supabaseClient
-                    .from('research_jobs')
-                    .select('iterations')
-                    .eq('id', jobId)
-                    .single();
-                  
-                  if (currentData && currentData.iterations) {
-                    // Get the current iteration data
-                    let updatedIterations = [...currentData.iterations];
-                    let currentIterationIndex = updatedIterations.findIndex(iter => iter.iteration === iterationNumber);
+                if (jsonData.choices && jsonData.choices[0]) {
+                  // Check for delta content
+                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                    const content = jsonData.choices[0].delta.content;
                     
-                    if (currentIterationIndex !== -1) {
-                      // Update the analysis for this iteration
-                      updatedIterations[currentIterationIndex].analysis = analysisText;
-                      
-                      // Update the database with the new iterations array
-                      const { error: updateError } = await supabaseClient
-                        .from('research_jobs')
-                        .update({ iterations: updatedIterations })
-                        .eq('id', jobId);
-                      
-                      if (updateError) {
-                        console.error(`Error updating iterations with streaming chunk:`, updateError);
-                      }
+                    // Append to the full analysis text
+                    analysisText += content;
+                    analysisBuffer += content;
+                  }
+                  
+                  // Check for delta reasoning
+                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
+                    const reasoning = jsonData.choices[0].delta.reasoning;
+                    
+                    // Append to the full reasoning text
+                    reasoningText += reasoning;
+                    reasoningBuffer += reasoning;
+                  }
+                  
+                  // Or check if we have full message object
+                  if (jsonData.choices[0].message) {
+                    if (jsonData.choices[0].message.content) {
+                      analysisText += jsonData.choices[0].message.content;
+                      analysisBuffer += jsonData.choices[0].message.content;
                     }
+                    
+                    if (jsonData.choices[0].message.reasoning) {
+                      reasoningText += jsonData.choices[0].message.reasoning;
+                      reasoningBuffer += jsonData.choices[0].message.reasoning;
+                    }
+                  }
+                  
+                  // Increment chunk sequence and buffer count
+                  chunkSequence++;
+                  bufferCount++;
+                  
+                  // Only update the database periodically to reduce load
+                  if (bufferCount >= updateBufferSize) {
+                    await updateDatabase();
+                    // Reset buffer
+                    analysisBuffer = '';
+                    reasoningBuffer = '';
+                    bufferCount = 0;
                   }
                 }
               } catch (parseError) {
@@ -1152,6 +1176,50 @@ Your analysis should:
         throw streamError;
       } finally {
         console.log(`Finished processing streaming response for iteration ${iterationNumber}`);
+      }
+    }
+    
+    // Function to update the database with current buffer content
+    async function updateDatabase() {
+      // Get the current iteration data again to ensure we're not overwriting changes
+      const { data: currentData } = await supabaseClient
+        .from('research_jobs')
+        .select('iterations')
+        .eq('id', jobId)
+        .single();
+      
+      if (currentData && currentData.iterations) {
+        // Get the current iteration data
+        let updatedIterations = [...currentData.iterations];
+        let currentIterationIndex = updatedIterations.findIndex(iter => iter.iteration === iterationNumber);
+        
+        if (currentIterationIndex !== -1) {
+          // Get current values or initialize if they don't exist
+          const currentAnalysis = updatedIterations[currentIterationIndex].analysis || '';
+          const currentReasoning = updatedIterations[currentIterationIndex].reasoning || '';
+          
+          // Update with the latest full content instead of just the buffer
+          // This ensures we never lose content due to concurrent updates
+          updatedIterations[currentIterationIndex].analysis = analysisText;
+          updatedIterations[currentIterationIndex].reasoning = reasoningText;
+          
+          try {
+            // Update the database with the new iterations array
+            const { error: updateError } = await supabaseClient
+              .from('research_jobs')
+              .update({ iterations: updatedIterations })
+              .eq('id', jobId);
+            
+            if (updateError) {
+              console.error(`Error updating iterations with streaming chunk:`, updateError);
+              // If error, we'll retry on next buffer
+            } else {
+              console.log(`Successfully updated iteration ${iterationNumber} with ${analysisBuffer.length} analysis chars and ${reasoningBuffer.length} reasoning chars`);
+            }
+          } catch (dbError) {
+            console.error(`Database update error:`, dbError);
+          }
+        }
       }
     }
     
@@ -1257,15 +1325,23 @@ Please provide a comprehensive final analysis including:
 Present the analysis in a structured, comprehensive format with clear sections and bullet points where appropriate.`;
 
   try {
-    // Initialize a string to collect the analysis text
+    // Initialize a string to collect the analysis text and reasoning text
     let finalAnalysis = '';
+    let finalReasoning = '';
     let chunkSequence = 0;
     
     // Create temporary results object for updates during streaming
     let temporaryResults = {
       analysis: '',
+      reasoning: '',
       data: []
     };
+    
+    // Buffer for updates to reduce database writes
+    const updateBufferSize = 10; // Update DB every 10 chunks
+    let analysisBuffer = '';
+    let reasoningBuffer = '';
+    let bufferCount = 0;
     
     // Start the fetch with stream: true
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -1277,7 +1353,7 @@ Present the analysis in a structured, comprehensive format with clear sections a
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "deepseek/deepseek-r1",
         messages: [
           {
             role: "system",
@@ -1298,7 +1374,12 @@ Your final analysis should:
           }
         ],
         stream: true, // Enable streaming response
-        temperature: 0.3
+        temperature: 0.3,
+        max_tokens: 6000, // Increase max tokens to ensure complete responses
+        reasoning: {
+          effort: "high", // Allocate a high amount of tokens for reasoning
+          exclude: false  // Include reasoning in the response
+        }
       })
     });
     
@@ -1319,12 +1400,37 @@ Your final analysis should:
     // Log the start of streaming
     console.log(`Starting to process streaming response chunks for final analysis`);
     
+    // Function to update the database with current content
+    async function updateDatabase() {
+      try {
+        // Update the temporary results
+        temporaryResults.analysis = finalAnalysis;
+        temporaryResults.reasoning = finalReasoning;
+        
+        // Update the research_job with intermediate results
+        await supabaseClient.rpc('update_research_results', {
+          job_id: jobId,
+          result_data: JSON.stringify(temporaryResults)
+        });
+        
+        console.log(`Updated results with streaming chunk ${chunkSequence}`);
+      } catch (updateError) {
+        console.error(`Error updating results with streaming chunk:`, updateError);
+      }
+    }
+    
     // Process chunks as they come in
     while (true) {
       const { done, value } = await reader.read();
       
       if (done) {
         console.log(`Stream complete for final analysis`);
+        
+        // Flush any remaining buffered content
+        if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
+          await updateDatabase();
+        }
+        
         break;
       }
       
@@ -1359,31 +1465,49 @@ Your final analysis should:
             // Parse the JSON data
             const jsonData = JSON.parse(data);
             
-            if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-              const content = jsonData.choices[0].delta.content;
+            if (jsonData.choices && jsonData.choices[0]) {
+              // Check for delta content
+              if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                const content = jsonData.choices[0].delta.content;
+                
+                // Append to the full analysis text
+                finalAnalysis += content;
+                analysisBuffer += content;
+              }
               
-              // Append to the full analysis text
-              finalAnalysis += content;
+              // Check for delta reasoning
+              if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
+                const reasoning = jsonData.choices[0].delta.reasoning;
+                
+                // Append to the full reasoning text
+                finalReasoning += reasoning;
+                reasoningBuffer += reasoning;
+              }
               
-              // Increment chunk sequence
-              chunkSequence++;
-              
-              // Update the temporary results
-              temporaryResults.analysis = finalAnalysis;
-              
-              // Update the results in the database every few chunks to avoid too many updates
-              if (chunkSequence % 5 === 0) {
-                try {
-                  // Update the research_job with intermediate results
-                  await supabaseClient.rpc('update_research_results', {
-                    job_id: jobId,
-                    result_data: JSON.stringify(temporaryResults)
-                  });
-                  
-                  console.log(`Updated results with streaming chunk ${chunkSequence}`);
-                } catch (updateError) {
-                  console.error(`Error updating results with streaming chunk:`, updateError);
+              // Or check if we have full message object
+              if (jsonData.choices[0].message) {
+                if (jsonData.choices[0].message.content) {
+                  finalAnalysis += jsonData.choices[0].message.content;
+                  analysisBuffer += jsonData.choices[0].message.content;
                 }
+                
+                if (jsonData.choices[0].message.reasoning) {
+                  finalReasoning += jsonData.choices[0].message.reasoning;
+                  reasoningBuffer += jsonData.choices[0].message.reasoning;
+                }
+              }
+              
+              // Increment chunk sequence and buffer count
+              chunkSequence++;
+              bufferCount++;
+              
+              // Only update the database periodically to reduce load
+              if (bufferCount >= updateBufferSize) {
+                await updateDatabase();
+                // Reset buffer
+                analysisBuffer = '';
+                reasoningBuffer = '';
+                bufferCount = 0;
               }
             }
           } catch (parseError) {
