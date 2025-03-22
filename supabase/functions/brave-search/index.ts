@@ -123,8 +123,12 @@ Deno.serve(async (req) => {
   try {
     const BRAVE_API_KEY = Deno.env.get("BRAVE_API_KEY");
     if (!BRAVE_API_KEY) {
+      console.error("BRAVE_API_KEY environment variable is not set");
       return new Response(
-        JSON.stringify({ error: "BRAVE_API_KEY is not set in environment" }),
+        JSON.stringify({ 
+          error: "BRAVE_API_KEY is not set in environment",
+          details: "Server configuration error: Missing API key"
+        }),
         {
           status: 500,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -133,12 +137,16 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const requestData: SearchRequest = await req.json();
-    const { query, count = 5, offset = 0 } = requestData;
-
-    if (!query) {
+    let requestData: SearchRequest;
+    try {
+      requestData = await req.json();
+    } catch (parseError) {
+      console.error("Failed to parse request JSON:", parseError.message);
       return new Response(
-        JSON.stringify({ error: "Query parameter is required" }),
+        JSON.stringify({ 
+          error: "Invalid JSON in request body",
+          details: parseError.message
+        }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -146,6 +154,24 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Validate required fields
+    const { query, count = 5, offset = 0 } = requestData;
+
+    if (!query) {
+      console.error("Missing required 'query' parameter in request");
+      return new Response(
+        JSON.stringify({ 
+          error: "Query parameter is required",
+          details: "The 'query' field must be provided in the request body"
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Log request details for debugging
     console.log(`Executing Brave search for query: "${query}"`, {
       queryLength: query.length,
       requestedCount: count,
@@ -171,11 +197,17 @@ Deno.serve(async (req) => {
 
     const url = `${braveApiUrl}?${searchParams.toString()}`;
 
-    // Use our new executeBraveSearch function with pooling and retries
+    // Use our executeBraveSearch function with pooling and retries
     const response = await executeBraveSearch(url, BRAVE_API_KEY);
 
     if (!response.ok) {
-      const errorText = await response.text();
+      let errorText = "";
+      try {
+        errorText = await response.text();
+      } catch (e) {
+        errorText = "Could not read error response";
+      }
+      
       console.error(`Brave API error ${response.status}: ${errorText}`, {
         statusCode: response.status,
         errorText,
@@ -184,7 +216,8 @@ Deno.serve(async (req) => {
       
       return new Response(
         JSON.stringify({ 
-          error: `Brave search failed: ${response.status} ${errorText}`,
+          error: `Brave search failed: ${response.status} ${response.statusText}`,
+          details: errorText,
           status: response.status
         }),
         {
@@ -194,8 +227,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    const data = await response.json();
-    const resultCount = data.web?.results?.length || 0;
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      console.error("Failed to parse Brave API response as JSON:", jsonError.message);
+      return new Response(
+        JSON.stringify({ 
+          error: "Invalid JSON response from Brave API",
+          details: jsonError.message
+        }),
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    
+    const resultCount = data?.web?.results?.length || 0;
     
     console.log(`Brave search success: Found ${resultCount} results`, {
       resultCount,
@@ -219,7 +268,10 @@ Deno.serve(async (req) => {
     });
     
     return new Response(
-      JSON.stringify({ error: `Brave search error: ${error.message}` }),
+      JSON.stringify({ 
+        error: `Brave search error: ${error.message}`,
+        details: error.stack
+      }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

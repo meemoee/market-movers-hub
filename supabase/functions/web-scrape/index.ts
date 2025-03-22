@@ -19,24 +19,69 @@ serve(async (req) => {
   }
 
   try {
-    const { queries, marketId, focusText } = await req.json();
-    
-    // Log incoming data for debugging
-    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not a string'}`);
-    
-    // Ensure queries don't have the market ID accidentally appended
-    const cleanedQueries = queries.map((query: string) => {
-      return query.replace(new RegExp(` ${marketId}$`), '').trim();
-    });
-    
-    if (!cleanedQueries || !Array.isArray(cleanedQueries) || cleanedQueries.length === 0) {
+    // Parse the request body
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (parseError) {
+      console.error("Error parsing request JSON:", parseError);
       return new Response(
-        JSON.stringify({ error: 'Invalid queries parameter' }),
+        JSON.stringify({ 
+          error: 'Invalid JSON in request body',
+          details: parseError.message 
+        }),
         { 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           status: 400
         }
       );
+    }
+    
+    const { queries, marketId, focusText } = requestBody;
+    
+    // Log incoming data for debugging
+    console.log(`Received request with ${queries?.length || 0} queries, marketId: ${marketId}, focusText: ${typeof focusText === 'string' ? focusText : 'not provided'}`);
+    
+    // Basic validation
+    if (!queries || !Array.isArray(queries) || queries.length === 0) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Invalid queries parameter: must be a non-empty array',
+          details: `Received: ${typeof queries}${Array.isArray(queries) ? ' (empty array)' : ''}` 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
+    }
+    
+    if (!marketId) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Missing marketId parameter',
+          details: 'The marketId field is required' 
+        }),
+        { 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        }
+      );
+    }
+    
+    // Ensure queries don't have the market ID accidentally appended
+    const cleanedQueries = queries.map((query: string) => {
+      if (typeof query !== 'string') {
+        return String(query).trim(); // Convert to string if not already
+      }
+      return query.replace(new RegExp(` ${marketId}$`), '').trim();
+    });
+    
+    if (cleanedQueries.some(q => !q)) {
+      console.warn("Some queries are empty after cleaning", { 
+        original: queries,
+        cleaned: cleanedQueries
+      });
     }
     
     const jobId = crypto.randomUUID();
@@ -66,6 +111,12 @@ serve(async (req) => {
             console.log(`[Background][${jobId}] Processing query ${queryIndex + 1}/${cleanedQueries.length}: ${query}`);
 
             try {
+              // Check if query is valid
+              if (!query || query.trim() === '') {
+                console.warn(`[Background][${jobId}] Skipping empty query at index ${queryIndex}`);
+                continue;
+              }
+              
               // Directly call our Brave search endpoint
               const braveSearchUrl = "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/brave-search";
               const braveResponse = await fetch(braveSearchUrl, {
@@ -74,11 +125,18 @@ serve(async (req) => {
                   "Content-Type": "application/json",
                   "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
                 },
-                body: JSON.stringify({ query, count: 5 })
+                body: JSON.stringify({ query: query, count: 5 })
               });
               
               if (!braveResponse.ok) {
-                const errorText = await braveResponse.text();
+                let errorText;
+                try {
+                  const errorData = await braveResponse.json();
+                  errorText = errorData.error || errorData.details || `Status ${braveResponse.status}`;
+                } catch (e) {
+                  errorText = await braveResponse.text();
+                }
+                
                 console.error(`[Background][${jobId}] Brave search failed: ${braveResponse.status} ${errorText}`);
                 console.log(`[Background][${jobId}] Brave search error details:`, {
                   status: braveResponse.status,
@@ -90,7 +148,14 @@ serve(async (req) => {
                 continue; // Skip to next query on failure
               }
               
-              const braveData: BraveSearchResult = await braveResponse.json();
+              let braveData: BraveSearchResult;
+              try {
+                braveData = await braveResponse.json();
+              } catch (jsonError) {
+                console.error(`[Background][${jobId}] Failed to parse Brave search response:`, jsonError);
+                continue; // Skip to next query on JSON parsing failure
+              }
+              
               const webPages = braveData.web?.results || [];
               
               console.log(`[Background][${jobId}] Found ${webPages.length} pages for query: ${query}`, {
@@ -265,7 +330,10 @@ serve(async (req) => {
       errorStack: error.stack
     });
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ 
+        error: error.message,
+        details: error.stack
+      }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500

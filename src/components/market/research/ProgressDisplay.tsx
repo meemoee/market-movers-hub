@@ -3,16 +3,17 @@ import { cn } from "@/lib/utils"
 import { useEffect, useState, useRef, useLayoutEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Progress } from "@/components/ui/progress"
-import { Clock, Loader2, CheckCircle, AlertCircle } from "lucide-react"
+import { Clock, Loader2, CheckCircle, AlertCircle, AlertTriangle } from "lucide-react"
 
 interface ProgressDisplayProps {
   messages: string[]
   jobId?: string
   progress?: number
   status?: 'queued' | 'processing' | 'completed' | 'failed' | null
+  error?: string
 }
 
-export function ProgressDisplay({ messages, jobId, progress, status }: ProgressDisplayProps) {
+export function ProgressDisplay({ messages, jobId, progress, status, error }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -33,7 +34,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
     }
   }, [messages]);
 
-  if (!messages.length) return null
+  if (!messages.length && !error) return null
   
   const renderStatusIcon = () => {
     if (!status) return null;
@@ -77,6 +78,13 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
                   )} 
                 />
               )}
+            </div>
+          )}
+          
+          {error && (
+            <div className="flex items-center gap-2 py-2 px-3 bg-red-50 text-red-800 rounded border border-red-200">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span className="text-sm font-medium">Error: {error}</span>
             </div>
           )}
           
