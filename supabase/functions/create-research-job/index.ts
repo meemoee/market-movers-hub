@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -261,8 +262,12 @@ async function searchForInformation(query: string, jobId: string, iteration: num
     console.log(`Searching for information with query: "${query}"`);
 
     // Call the Brave search API via an edge function
+    // FIXED: Update the payload structure to match what brave-search expects
     const { data, error } = await supabaseAdmin.functions.invoke('brave-search', {
-      body: { query }
+      body: { 
+        query: query,  // Use explicit property name
+        count: 5       // Include count parameter
+      }
     });
 
     if (error) {
