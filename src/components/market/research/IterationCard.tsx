@@ -15,9 +15,6 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
-    reasoning?: string;
-    isAnalysisStreaming?: boolean;
-    isReasoningStreaming?: boolean;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -48,10 +45,6 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
-
-  // Determine streaming status based on individual properties
-  const isAnalysisStreaming = isStreaming && isCurrentIteration && (iteration.isAnalysisStreaming !== false);
-  const isReasoningStreaming = isStreaming && isCurrentIteration && (iteration.isReasoningStreaming !== false);
 
   return (
     <div className={cn(
@@ -95,9 +88,7 @@ export function IterationCard({
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
-                  reasoning={iteration.reasoning}
-                  isStreaming={isAnalysisStreaming}
-                  isReasoningStreaming={isReasoningStreaming}
+                  isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
               </TabsContent>
