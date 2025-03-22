@@ -262,7 +262,6 @@ async function searchForInformation(query: string, jobId: string, iteration: num
     console.log(`Searching for information with query: "${query}"`);
 
     // Call the Brave search API via an edge function
-    // FIXED: Update the payload structure to match what brave-search expects
     const { data, error } = await supabaseAdmin.functions.invoke('brave-search', {
       body: { 
         query: query,  // Use explicit property name
@@ -275,15 +274,24 @@ async function searchForInformation(query: string, jobId: string, iteration: num
       throw new Error(`Search API error: ${error.message}`);
     }
 
-    if (!data || !Array.isArray(data.results)) {
-      console.warn('No results found or invalid response format');
+    // Check if data exists and has the expected structure
+    if (!data) {
+      console.warn('No data returned from brave-search');
       return [];
     }
 
-    console.log(`Search returned ${data.results.length} results`);
+    // Properly access the results array from the Brave search response
+    const searchResults = data.web?.results || [];
+    
+    if (!searchResults.length) {
+      console.warn('No results found in brave-search response');
+      return [];
+    }
+
+    console.log(`Search returned ${searchResults.length} results`);
 
     // For each result, scrape the content
-    const scrapingPromises = data.results.map(async (result: any) => {
+    const scrapingPromises = searchResults.map(async (result: any) => {
       try {
         // Sometimes the URL in the API response is not the canonical URL
         const url = result.url;
