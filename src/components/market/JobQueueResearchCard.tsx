@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -463,6 +464,13 @@ export function JobQueueResearchCard({
     const numIterations = parseInt(maxIterations, 10);
 
     try {
+      // Check if user is authenticated
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      if (!sessionData.session) {
+        throw new Error("You must be logged in to create a research job");
+      }
+      
       setProgress(prev => [...prev, "Starting research job..."]);
       
       const payload = {
@@ -475,8 +483,18 @@ export function JobQueueResearchCard({
       
       console.log('Creating research job with payload:', payload);
       
+      // Get the access token to pass in the Authorization header
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error("Authentication session not found");
+      }
+      
       const response = await supabase.functions.invoke('create-research-job', {
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
       });
       
       if (response.error) {
@@ -514,6 +532,12 @@ export function JobQueueResearchCard({
       console.error('Error in research job:', error);
       setError(`Error occurred during research job: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setJobStatus('failed');
+      
+      toast({
+        title: "Research Error",
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+        variant: "destructive"
+      });
     } finally {
       setIsLoading(false);
     }

@@ -19,13 +19,39 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const { data: user } = await supabase.auth.getUser();
+    // Extract the authorization header
+    const authHeader = req.headers.get('Authorization');
     
-    if (!user.user) {
-      throw new Error('Not authenticated');
+    if (!authHeader) {
+      console.error('No Authorization header found');
+      return new Response(
+        JSON.stringify({ error: 'No authorization header provided' }),
+        { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
     }
 
+    // Create client with the JWT from the request
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      global: {
+        headers: {
+          Authorization: authHeader
+        }
+      }
+    });
+    
+    // Verify the user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      console.error('Authentication error:', authError?.message || 'User not found');
+      return new Response(
+        JSON.stringify({ error: 'Not authenticated', details: authError?.message }),
+        { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } }
+      );
+    }
+
+    console.log(`Authenticated user: ${user.id}`);
+    
     const { marketId, marketQuestion, marketDescription } = await req.json();
     
     if (!marketId || !marketQuestion) {
@@ -38,7 +64,7 @@ serve(async (req) => {
     const { data: job, error: jobError } = await supabase
       .from('research_jobs')
       .insert({
-        user_id: user.user.id,
+        user_id: user.id,
         market_id: marketId,
         question: marketQuestion,
         description: marketDescription || null,
