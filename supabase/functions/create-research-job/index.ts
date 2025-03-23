@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -885,3 +886,466 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     await supabaseClient
       .from('research_jobs')
       .update({
+        status: finalStatus,
+        completed_at: new Date().toISOString(),
+        results: textAnalysisResults
+      })
+      .eq('id', jobId);
+    
+    // Send notification email if requested
+    if (notificationEmail) {
+      await sendNotificationEmail(jobId, notificationEmail);
+      
+      // Mark notification as sent
+      await supabaseClient
+        .from('research_jobs')
+        .update({ notification_sent: true })
+        .eq('id', jobId);
+    }
+    
+    console.log(`Research job ${jobId} completed with status: ${finalStatus}`);
+    
+    return textAnalysisResults;
+    
+  } catch (error) {
+    console.error(`Error in performWebResearch for job ${jobId}:`, error);
+    
+    // Create Supabase client for error handling
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    // Update status to error
+    await supabaseClient.rpc('update_research_job_status', {
+      job_id: jobId,
+      new_status: 'failed',
+      error_msg: error.message
+    });
+    
+    // Log the error
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Error: ${error.message}`)
+    });
+    
+    throw error;
+  }
+}
+
+// Helper functions for streaming analysis
+async function generateAnalysisWithStreaming(
+  supabaseClient,
+  jobId,
+  iteration,
+  content,
+  query,
+  title,
+  marketPrice,
+  relatedMarkets,
+  areasForResearch,
+  focusText,
+  previousAnalyses
+) {
+  await supabaseClient.rpc('append_research_progress', {
+    job_id: jobId,
+    progress_entry: JSON.stringify(`Streaming analysis for iteration ${iteration}...`)
+  });
+  
+  try {
+    // Mark the iteration as streaming
+    const { data: iterationsData } = await supabaseClient
+      .from('research_jobs')
+      .select('iterations')
+      .eq('id', jobId)
+      .single();
+    
+    if (iterationsData && iterationsData.iterations) {
+      const updatedIterations = [...iterationsData.iterations];
+      const iterIndex = updatedIterations.findIndex(iter => iter.iteration === iteration);
+      
+      if (iterIndex !== -1) {
+        updatedIterations[iterIndex].isAnalysisStreaming = true;
+        
+        await supabaseClient
+          .from('research_jobs')
+          .update({ iterations: updatedIterations })
+          .eq('id', jobId);
+      }
+    }
+    
+    console.log(`Analysis streaming started for iteration ${iteration}`);
+    
+    // Call analyze-web-content with streaming enabled
+    const analyzeResponse = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/analyze-web-content`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+        },
+        body: JSON.stringify({
+          webContent: content,
+          prompt: `Iteration ${iteration}: ${query}${focusText ? ` (Focus: ${focusText})` : ''}`,
+          title: title,
+          marketPrice,
+          relatedMarkets,
+          areasForResearch,
+          streaming: true,
+          jobId,
+          iteration,
+          previousAnalyses
+        })
+      }
+    );
+    
+    if (!analyzeResponse.ok) {
+      throw new Error(`Failed to analyze content: ${analyzeResponse.statusText}`);
+    }
+    
+    const responseData = await analyzeResponse.json();
+    
+    // Mark the iteration as complete
+    const { data: updatedIterationsData } = await supabaseClient
+      .from('research_jobs')
+      .select('iterations')
+      .eq('id', jobId)
+      .single();
+    
+    if (updatedIterationsData && updatedIterationsData.iterations) {
+      const finalUpdatedIterations = [...updatedIterationsData.iterations];
+      const finalIterIndex = finalUpdatedIterations.findIndex(iter => iter.iteration === iteration);
+      
+      if (finalIterIndex !== -1) {
+        finalUpdatedIterations[finalIterIndex].isAnalysisStreaming = false;
+        finalUpdatedIterations[finalIterIndex].isAnalysisComplete = true;
+        
+        await supabaseClient
+          .from('research_jobs')
+          .update({ iterations: finalUpdatedIterations })
+          .eq('id', jobId);
+          
+        console.log(`Analysis streaming completed for iteration ${iteration}`);
+      }
+    }
+    
+    // Return combined analysis text
+    return responseData.analysis || '';
+    
+  } catch (error) {
+    console.error(`Error in generateAnalysisWithStreaming for job ${jobId}, iteration ${iteration}:`, error);
+    
+    // Update the streaming status to false in case of error
+    try {
+      const { data: errorIterationsData } = await supabaseClient
+        .from('research_jobs')
+        .select('iterations')
+        .eq('id', jobId)
+        .single();
+      
+      if (errorIterationsData && errorIterationsData.iterations) {
+        const errorUpdatedIterations = [...errorIterationsData.iterations];
+        const errorIterIndex = errorUpdatedIterations.findIndex(iter => iter.iteration === iteration);
+        
+        if (errorIterIndex !== -1) {
+          errorUpdatedIterations[errorIterIndex].isAnalysisStreaming = false;
+          errorUpdatedIterations[errorIterIndex].analysis = 
+            errorUpdatedIterations[errorIterIndex].analysis || `Error analyzing data: ${error.message}`;
+          
+          await supabaseClient
+            .from('research_jobs')
+            .update({ iterations: errorUpdatedIterations })
+            .eq('id', jobId);
+        }
+      }
+    } catch (updateError) {
+      console.error('Error updating iteration status after streaming error:', updateError);
+    }
+    
+    throw error;
+  }
+}
+
+async function generateFinalAnalysisWithStreaming(
+  supabaseClient,
+  jobId,
+  content,
+  query,
+  marketPrice,
+  relatedMarkets,
+  areasForResearch,
+  focusText,
+  previousAnalyses
+) {
+  await supabaseClient.rpc('append_research_progress', {
+    job_id: jobId,
+    progress_entry: JSON.stringify(`Streaming final analysis...`)
+  });
+  
+  try {
+    // Get max iteration number to use for the final analysis
+    const { data: jobData } = await supabaseClient
+      .from('research_jobs')
+      .select('max_iterations')
+      .eq('id', jobId)
+      .single();
+    
+    const maxIterations = jobData?.max_iterations || 1;
+    
+    // Mark the final iteration as streaming
+    const { data: iterationsData } = await supabaseClient
+      .from('research_jobs')
+      .select('iterations')
+      .eq('id', jobId)
+      .single();
+    
+    if (iterationsData && iterationsData.iterations) {
+      const updatedIterations = [...iterationsData.iterations];
+      
+      // Check if we already have a final iteration entry
+      const finalIterIndex = updatedIterations.findIndex(iter => iter.iteration === maxIterations);
+      
+      if (finalIterIndex !== -1) {
+        // Update existing final iteration entry
+        updatedIterations[finalIterIndex].isAnalysisStreaming = true;
+        
+        await supabaseClient
+          .from('research_jobs')
+          .update({ iterations: updatedIterations })
+          .eq('id', jobId);
+      } else {
+        // Create a new final iteration entry
+        const finalIteration = {
+          iteration: maxIterations,
+          queries: [],
+          results: [],
+          isAnalysisStreaming: true,
+          isReasoningStreaming: false,
+          isAnalysisComplete: false,
+          isReasoningComplete: false,
+          isComplete: false
+        };
+        
+        await supabaseClient.rpc('append_research_iteration', {
+          job_id: jobId,
+          iteration_data: finalIteration
+        });
+      }
+    }
+    
+    console.log(`Final analysis streaming started`);
+    
+    // Call analyze-web-content with streaming enabled for final analysis
+    const analyzeResponse = await fetch(
+      `${Deno.env.get('SUPABASE_URL')}/functions/v1/analyze-web-content`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+        },
+        body: JSON.stringify({
+          webContent: content,
+          prompt: `Final analysis: ${query}${focusText ? ` (Focus: ${focusText})` : ''}`,
+          title: `Final analysis for "${query}"`,
+          marketPrice,
+          relatedMarkets,
+          areasForResearch,
+          streaming: true,
+          jobId,
+          iteration: maxIterations, // Use max iterations as the iteration number for final analysis
+          previousAnalyses,
+          isFinalAnalysis: true
+        })
+      }
+    );
+    
+    if (!analyzeResponse.ok) {
+      throw new Error(`Failed to analyze final content: ${analyzeResponse.statusText}`);
+    }
+    
+    const responseData = await analyzeResponse.json();
+    
+    // Mark the final iteration as complete
+    const { data: updatedIterationsData } = await supabaseClient
+      .from('research_jobs')
+      .select('iterations')
+      .eq('id', jobId)
+      .single();
+    
+    if (updatedIterationsData && updatedIterationsData.iterations) {
+      const finalUpdatedIterations = [...updatedIterationsData.iterations];
+      const finalIterIndex = finalUpdatedIterations.findIndex(iter => iter.iteration === maxIterations);
+      
+      if (finalIterIndex !== -1) {
+        finalUpdatedIterations[finalIterIndex].isAnalysisStreaming = false;
+        finalUpdatedIterations[finalIterIndex].isAnalysisComplete = true;
+        
+        await supabaseClient
+          .from('research_jobs')
+          .update({ iterations: finalUpdatedIterations })
+          .eq('id', jobId);
+          
+        console.log(`Final analysis streaming completed`);
+      }
+    }
+    
+    // Return combined analysis text
+    return responseData.analysis || '';
+    
+  } catch (error) {
+    console.error(`Error in generateFinalAnalysisWithStreaming for job ${jobId}:`, error);
+    
+    // Update the streaming status to false in case of error
+    try {
+      const { data: jobData } = await supabaseClient
+        .from('research_jobs')
+        .select('max_iterations, iterations')
+        .eq('id', jobId)
+        .single();
+      
+      if (jobData) {
+        const maxIterations = jobData.max_iterations || 1;
+        
+        if (jobData.iterations) {
+          const errorUpdatedIterations = [...jobData.iterations];
+          const errorIterIndex = errorUpdatedIterations.findIndex(iter => iter.iteration === maxIterations);
+          
+          if (errorIterIndex !== -1) {
+            errorUpdatedIterations[errorIterIndex].isAnalysisStreaming = false;
+            errorUpdatedIterations[errorIterIndex].analysis = 
+              errorUpdatedIterations[errorIterIndex].analysis || `Error analyzing final data: ${error.message}`;
+            
+            await supabaseClient
+              .from('research_jobs')
+              .update({ iterations: errorUpdatedIterations })
+              .eq('id', jobId);
+          }
+        }
+      }
+    } catch (updateError) {
+      console.error('Error updating final iteration status after streaming error:', updateError);
+    }
+    
+    throw error;
+  }
+}
+
+serve(async (req) => {
+  // This is needed if you're planning to invoke your function from a browser.
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
+  try {
+    // Extract the request body
+    const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
+    
+    // Make sure we have required params
+    if (!marketId || !query) {
+      throw new Error('Missing required parameters: marketId and query are required')
+    }
+    
+    // Create a new entry in the research_jobs table
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+    
+    // Create new research job record
+    const { data: newJob, error: jobError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        progress_log: [],
+        iterations: [],
+        focus_text: focusText || null,
+        notification_email: notificationEmail || null
+      })
+      .select()
+      .single()
+    
+    if (jobError) {
+      throw new Error(`Failed to create research job: ${jobError.message}`)
+    }
+    
+    const jobId = newJob.id
+    
+    // Start the research process in the background
+    // This will return immediately but the processing will continue
+    performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail)
+      .catch(error => {
+        console.error(`Background research job ${jobId} failed:`, error)
+      })
+    
+    // Return the job ID for tracking
+    return new Response(
+      JSON.stringify({ jobId }),
+      { 
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json' 
+        } 
+      }
+    )
+  } catch (error) {
+    console.error('Error:', error)
+    
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      { 
+        status: 400, 
+        headers: { 
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        } 
+      }
+    )
+  }
+})
+
+// Define this function for debugging
+function createFixedObject() {
+  return {
+    id: '123',
+    market_id: 'test-market',
+    query: 'test query',
+    status: 'completed',
+    max_iterations: 3,
+    current_iteration: 3,
+    progress_log: ['Started', 'Processing', 'Complete'],
+    iterations: [
+      {
+        iteration: 1,
+        queries: ['query1', 'query2'],
+        results: [],
+        analysis: 'Analysis for iteration 1',
+        isComplete: true
+      },
+      {
+        iteration: 2,
+        queries: ['query3', 'query4'],
+        results: [],
+        analysis: 'Analysis for iteration 2',
+        isComplete: true
+      },
+      {
+        iteration: 3, 
+        queries: [],
+        results: [],
+        analysis: 'Final analysis',
+        isComplete: true
+      }
+    ],
+    results: {
+      data: [],
+      analysis: 'Test analysis'
+    },
+    created_at: new Date().toISOString(),
+    completed_at: new Date().toISOString()
+  };
+}
