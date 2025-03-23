@@ -81,7 +81,6 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const [streamingIterations, setStreamingIterations] = useState<Set<number>>(new Set())
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
@@ -96,7 +95,6 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    setStreamingIterations(new Set());
     
     if (realtimeChannelRef.current) {
       console.log('Removing realtime channel on reset');
@@ -172,26 +170,6 @@ export function JobQueueResearchCard({
     realtimeChannelRef.current = channel;
   };
 
-  const detectStreamingIterations = (job: ResearchJob) => {
-    if (job.status !== 'processing' || job.current_iteration <= 0) {
-      return new Set<number>();
-    }
-    
-    const streamingSet = new Set<number>();
-    const currentIteration = job.current_iteration;
-    
-    if (job.iterations && Array.isArray(job.iterations)) {
-      const currentIterationObj = job.iterations.find(iter => iter.iteration === currentIteration);
-      
-      if (currentIterationObj && !currentIterationObj.isComplete) {
-        streamingSet.add(currentIteration);
-        console.log(`Detected streaming iteration: ${currentIteration}`);
-      }
-    }
-    
-    return streamingSet;
-  };
-
   const handleJobUpdate = (job: ResearchJob) => {
     console.log('Processing job update:', job);
     
@@ -213,22 +191,7 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      console.log('Received iterations with reasoning data:', job.iterations);
-      
-      const newStreamingIterations = job.status === 'processing' 
-        ? detectStreamingIterations(job) 
-        : new Set<number>();
-        
-      setStreamingIterations(newStreamingIterations);
-      
-      const enhancedIterations = job.iterations.map(iter => ({
-        ...iter,
-        isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
-        isReasoningStreaming: newStreamingIterations.has(iter.iteration),
-        isComplete: iter.isComplete || false
-      }));
-      
-      setIterations(enhancedIterations);
+      setIterations(job.iterations);
       
       if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
         setExpandedIterations(prev => [...prev, job.current_iteration]);
@@ -239,6 +202,7 @@ export function JobQueueResearchCard({
       try {
         console.log('Processing completed job results:', job.results);
         
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -268,6 +232,7 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -279,8 +244,6 @@ export function JobQueueResearchCard({
           });
         }
         
-        setStreamingIterations(new Set());
-        
         fetchSavedJobs();
       } catch (e) {
         console.error('Error processing job results:', e);
@@ -290,8 +253,6 @@ export function JobQueueResearchCard({
     if (job.status === 'failed') {
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
       setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-      
-      setStreamingIterations(new Set());
       
       fetchSavedJobs();
     }
@@ -303,7 +264,7 @@ export function JobQueueResearchCard({
     
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-      setProgressPercent(job.status === 'completed' ? 100 : percent);
+      setProgressPercent(percent);
       
       if (job.status === 'completed') {
         setProgressPercent(100);
@@ -314,25 +275,12 @@ export function JobQueueResearchCard({
       setProgress(job.progress_log);
     }
     
-    const newStreamingIterations = job.status === 'processing' 
-      ? detectStreamingIterations(job) 
-      : new Set<number>();
-      
-    setStreamingIterations(newStreamingIterations);
-    
     if (job.status === 'queued' || job.status === 'processing') {
       subscribeToJobUpdates(job.id);
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      const enhancedIterations = job.iterations.map(iter => ({
-        ...iter,
-        isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
-        isReasoningStreaming: newStreamingIterations.has(iter.iteration),
-        isComplete: iter.isComplete || false
-      }));
-      
-      setIterations(enhancedIterations);
+      setIterations(job.iterations);
       
       if (job.iterations.length > 0) {
         setExpandedIterations([job.iterations.length]);
@@ -341,6 +289,7 @@ export function JobQueueResearchCard({
     
     if (job.status === 'completed' && job.results) {
       try {
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -352,7 +301,6 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -369,6 +317,7 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -435,6 +384,7 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
+      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -881,7 +831,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={streamingIterations.has(iteration.iteration)}
+                isStreaming={false}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />

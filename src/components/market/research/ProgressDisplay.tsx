@@ -17,19 +17,11 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   
-  // Log new messages for debugging
   useEffect(() => {
     if (messages.length > 0) {
-      const latestMessage = messages[messages.length - 1];
-      console.log(`[ProgressDisplay] New message (${messages.length}):`, latestMessage);
-      setCurrentMessage(latestMessage);
+      setCurrentMessage(messages[messages.length - 1])
     }
   }, [messages])
-  
-  // Log status changes
-  useEffect(() => {
-    console.log(`[ProgressDisplay] Status update:`, { status, progress, jobId });
-  }, [status, progress, jobId]);
   
   // Use useLayoutEffect to ensure scroll happens before browser paint
   useLayoutEffect(() => {

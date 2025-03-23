@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
@@ -14,12 +15,6 @@ interface IterationCardProps {
     queries: string[];
     results: ResearchResult[];
     analysis: string;
-    reasoning?: string;
-    isAnalysisStreaming?: boolean;
-    isReasoningStreaming?: boolean;
-    isAnalysisComplete?: boolean;
-    isReasoningComplete?: boolean;
-    isComplete?: boolean;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
@@ -38,96 +33,23 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
-  const [streamingTimedOut, setStreamingTimedOut] = useState(false)
-  
-  // Reset timeout flag when streaming status changes
-  useEffect(() => {
-    if (isStreaming) {
-      setStreamingTimedOut(false)
-      setLastUpdateTime(Date.now())
-    }
-  }, [isStreaming])
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
-    // Check if the iteration is marked as complete explicitly
-    const isIterationComplete = iteration.isComplete === true;
-    
-    if ((!isStreaming || isIterationComplete) && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
+    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
       const timer = setTimeout(() => {
-        console.log('Auto-collapsing completed iteration:', iteration.iteration);
         onToggleExpand();
       }, 1500);
       
       return () => clearTimeout(timer);
     }
-  }, [isStreaming, iteration.isComplete, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
-  
-  // Set a timeout detector - if streaming hasn't updated in 30 seconds, consider it complete
-  useEffect(() => {
-    if (isStreaming && isCurrentIteration) {
-      const timeoutChecker = setInterval(() => {
-        const now = Date.now();
-        const elapsedTime = now - lastUpdateTime;
-        
-        // If streaming hasn't updated in 30 seconds, mark it as timed out
-        if (elapsedTime > 30000 && !streamingTimedOut) {
-          console.log('Stream timeout detected for iteration:', iteration.iteration);
-          setStreamingTimedOut(true);
-        }
-      }, 5000); // Check every 5 seconds
-      
-      return () => clearInterval(timeoutChecker);
-    }
-    
-    return undefined;
-  }, [isStreaming, isCurrentIteration, lastUpdateTime, iteration.iteration, streamingTimedOut]);
-  
-  // Update the lastUpdateTime when analysis content changes
-  useEffect(() => {
-    if (isStreaming && isCurrentIteration) {
-      setLastUpdateTime(Date.now());
-    }
-  }, [iteration.analysis, iteration.reasoning, isStreaming, isCurrentIteration]);
-
-  // Determine streaming status based on individual properties, explicit completion flags, and timeout
-  const isAnalysisStreaming = isStreaming && isCurrentIteration && 
-                             (iteration.isAnalysisStreaming !== false) && 
-                             (iteration.isAnalysisComplete !== true) &&
-                             !streamingTimedOut && 
-                             !iteration.isComplete;
-                             
-  const isReasoningStreaming = isStreaming && isCurrentIteration && 
-                              (iteration.isReasoningStreaming !== false) && 
-                              (iteration.isReasoningComplete !== true) &&
-                              !streamingTimedOut && 
-                              !iteration.isComplete;
-
-  // Display streaming status text
-  const getStatusText = () => {
-    if (iteration.isComplete) {
-      return "Complete";
-    }
-    
-    if (streamingTimedOut) {
-      return "Timed Out";
-    }
-    
-    if (isStreaming && isCurrentIteration) {
-      return "Streaming...";
-    }
-    
-    return `${iteration.results.length} sources found`;
-  };
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      isCurrentIteration && isStreaming && !streamingTimedOut && !iteration.isComplete ? "border-primary/40" : "border-border",
-      streamingTimedOut ? "border-yellow-500/40" : "",
-      iteration.isComplete ? "border-green-500/40" : ""
+      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
     )}>
       <div 
         className={cn(
@@ -139,13 +61,12 @@ export function IterationCard({
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isStreaming && isCurrentIteration && !streamingTimedOut && !iteration.isComplete ? "animate-pulse bg-primary" : 
-                      streamingTimedOut ? "bg-yellow-600" :
-                      iteration.isComplete ? "bg-green-600" : ""}>
+            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
             Iteration {iteration.iteration}
+            {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : getStatusText()}
+            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
         </div>
         {isExpanded ? 
@@ -167,12 +88,8 @@ export function IterationCard({
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
-                  reasoning={iteration.reasoning}
-                  isStreaming={isAnalysisStreaming}
-                  isReasoningStreaming={isReasoningStreaming}
+                  isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
-                  isComplete={iteration.isComplete || iteration.isAnalysisComplete === true}
-                  streamingTimedOut={streamingTimedOut}
                 />
               </TabsContent>
               
@@ -207,9 +124,7 @@ export function IterationCard({
                     
                     {iteration.results.length === 0 && (
                       <div className="p-4 text-center text-muted-foreground">
-                        {isStreaming && isCurrentIteration && !streamingTimedOut ? 
-                          "Searching for sources..." : 
-                          "No sources found for this iteration."}
+                        No sources found for this iteration.
                       </div>
                     )}
                   </div>
@@ -228,9 +143,7 @@ export function IterationCard({
                     
                     {iteration.queries.length === 0 && (
                       <div className="p-4 text-center text-muted-foreground">
-                        {isStreaming && isCurrentIteration && !streamingTimedOut ? 
-                          "Generating search queries..." : 
-                          "No queries for this iteration."}
+                        No queries for this iteration.
                       </div>
                     )}
                   </div>
