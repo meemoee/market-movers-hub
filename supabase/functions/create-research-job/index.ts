@@ -608,6 +608,59 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           focusText,
           previousAnalyses
         );
+        
+        // FIX: Add explicit completion flags for the final iteration after streaming is complete
+        console.log(`Final analysis streaming complete, setting explicit completion flags for final iteration`);
+        
+        // Get the current iterations data
+        const { data: finalIterationData } = await supabaseClient
+          .from('research_jobs')
+          .select('iterations')
+          .eq('id', jobId)
+          .single();
+          
+        if (finalIterationData && finalIterationData.iterations) {
+          // Find the final iteration (max iteration number)
+          const updatedIterations = [...finalIterationData.iterations];
+          const finalIterIndex = updatedIterations.findIndex(iter => iter.iteration === maxIterations);
+          
+          if (finalIterIndex !== -1) {
+            // Set explicit completion flags for the final iteration
+            updatedIterations[finalIterIndex].isComplete = true;
+            updatedIterations[finalIterIndex].isAnalysisComplete = true;
+            updatedIterations[finalIterIndex].isReasoningComplete = true;
+            
+            // Update the database with the completion flags
+            await supabaseClient
+              .from('research_jobs')
+              .update({ iterations: updatedIterations })
+              .eq('id', jobId);
+              
+            console.log(`Marked final iteration ${maxIterations} as complete with explicit flags`);
+          } else {
+            // If final iteration doesn't exist in the array yet (rare case), create it
+            console.log(`Final iteration ${maxIterations} not found in iterations array, creating it`);
+            const finalIteration = {
+              iteration: maxIterations,
+              queries: [],
+              results: allResults,
+              analysis: finalAnalysis,
+              isAnalysisComplete: true,
+              isReasoningComplete: true,
+              isComplete: true
+            };
+            
+            updatedIterations.push(finalIteration);
+            
+            // Update the database with the new iteration
+            await supabaseClient
+              .from('research_jobs')
+              .update({ iterations: updatedIterations })
+              .eq('id', jobId);
+              
+            console.log(`Added final iteration ${maxIterations} with explicit completion flags`);
+          }
+        }
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
       }
@@ -805,4 +858,30 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       });
       
       // Extract the actual insights from the OpenRouter response
-      if (structuredInsights
+      if (structuredInsights && structuredInsights.choices && structuredInsights.choices.length > 0) {
+        const structuredContent = structuredInsights.choices[0].message.content;
+        
+        // Update the research job with the structured insights
+        await supabaseClient
+          .from('research_jobs')
+          .update({ structured_insights: structuredContent })
+          .eq('id', jobId);
+      }
+    } catch (insightsError) {
+      console.error(`Error extracting structured insights for job ${jobId}:`, insightsError);
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error extracting structured insights: ${insightsError.message}`)
+      });
+    }
+    
+    // Update job status to completed or error
+    let finalStatus = 'completed';
+    if (error) {
+      finalStatus = 'error';
+    }
+    
+    // Update job status and completion timestamp
+    await supabaseClient
+      .from('research_jobs')
+      .update({
