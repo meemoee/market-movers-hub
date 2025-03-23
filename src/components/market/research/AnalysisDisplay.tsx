@@ -1,121 +1,74 @@
 
-import { useState, useEffect, useRef } from 'react';
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import React from 'react'
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Markdown } from "@/components/Markdown"
 import { cn } from "@/lib/utils"
-import { Check, Eye } from "lucide-react"
 
 interface AnalysisDisplayProps {
-  content: string;
-  reasoning?: string;
-  isStreaming?: boolean;
-  isReasoningStreaming?: boolean;
-  maxHeight?: string;
+  content: string
+  reasoning?: string
+  isStreaming?: boolean
+  isReasoningStreaming?: boolean
+  maxHeight?: string
+  isComplete?: boolean
+  streamingTimedOut?: boolean
 }
 
 export function AnalysisDisplay({ 
   content, 
-  reasoning,
+  reasoning, 
   isStreaming = false,
   isReasoningStreaming = false,
-  maxHeight = '400px'
+  maxHeight = '300px',
+  isComplete = false,
+  streamingTimedOut = false
 }: AnalysisDisplayProps) {
-  const [showReasoning, setShowReasoning] = useState(false);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const reasoningRef = useRef<HTMLDivElement>(null);
+  // If both streaming states are false, but isStreaming is true, set both to true for backwards compatibility
+  const showAnalysisStreaming = isStreaming && !isComplete && !streamingTimedOut;
+  const showReasoningStreaming = isReasoningStreaming && !isComplete && !streamingTimedOut;
   
-  // Always store the latest content passed in props
-  const [renderedContent, setRenderedContent] = useState(content);
-  const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
-  
-  // Debug logging for stream states
-  useEffect(() => {
-    console.log("AnalysisDisplay props updated:", { 
-      contentLength: content?.length || 0,
-      reasoningLength: reasoning?.length || 0,
-      isStreaming,
-      isReasoningStreaming,
-      showReasoning
-    });
-  }, [content, reasoning, isStreaming, isReasoningStreaming, showReasoning]);
-
-  // Always accept and display the incoming content as-is
-  useEffect(() => {
-    if (content) {
-      console.log("Content updated:", { length: content.length, sample: content.slice(-100) });
-      setRenderedContent(content);
+  const statusIndicator = () => {
+    if (isComplete) {
+      return <div className="text-xs text-green-500 mb-2">Analysis complete</div>;
     }
-  }, [content]);
-  
-  // Always accept and display the incoming reasoning as-is
-  useEffect(() => {
-    if (reasoning) {
-      console.log("Reasoning updated:", { length: reasoning.length, sample: reasoning.slice(-100) });
-      setRenderedReasoning(reasoning);
+    
+    if (streamingTimedOut) {
+      return <div className="text-xs text-yellow-500 mb-2">Stream timed out - analysis may be incomplete</div>;
     }
-  }, [reasoning]);
-  
-  // Auto-scroll content when streaming
-  useEffect(() => {
-    if (isStreaming && contentRef.current) {
-      const scrollElement = contentRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
-      }
+    
+    if (showAnalysisStreaming || showReasoningStreaming) {
+      return <div className="text-xs text-blue-500 animate-pulse mb-2">Streaming analysis...</div>;
     }
-  }, [renderedContent, isStreaming]);
-
-  // Auto-scroll reasoning when streaming
-  useEffect(() => {
-    if (isReasoningStreaming && reasoningRef.current && showReasoning) {
-      const scrollElement = reasoningRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
-      }
-    }
-  }, [renderedReasoning, isReasoningStreaming, showReasoning]);
+    
+    return null;
+  };
 
   return (
-    <div className="flex flex-col h-full">
-      {reasoning && (
-        <div className="flex justify-end mb-2">
-          <ToggleGroup type="single" value={showReasoning ? "reasoning" : "analysis"} onValueChange={value => setShowReasoning(value === "reasoning")}>
-            <ToggleGroupItem value="analysis" aria-label="Show analysis" className="text-xs px-2 py-1">
-              <Check className="h-3 w-3 mr-1" />
-              Analysis
-            </ToggleGroupItem>
-            <ToggleGroupItem value="reasoning" aria-label="Show reasoning" className="text-xs px-2 py-1">
-              <Eye className="h-3 w-3 mr-1" />
-              Reasoning
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-      )}
+    <div className="w-full max-w-full h-full flex flex-col">
+      {statusIndicator()}
       
-      <div className={cn("h-full overflow-hidden", showReasoning ? "hidden" : "block")} ref={contentRef}>
-        <ScrollArea className="h-full" style={{ maxHeight }}>
-          <div className="p-2">
-            <Markdown>
-              {renderedContent}
-              {isStreaming && <span className="animate-pulse">▌</span>}
-            </Markdown>
-          </div>
-        </ScrollArea>
-      </div>
-      
-      {(reasoning || isReasoningStreaming) && (
-        <div className={cn("h-full overflow-hidden", showReasoning ? "block" : "hidden")} ref={reasoningRef}>
-          <ScrollArea className="h-full" style={{ maxHeight }}>
-            <div className="p-2 bg-muted/20">
-              <Markdown>
-                {renderedReasoning}
-                {isReasoningStreaming && <span className="animate-pulse">▌</span>}
-              </Markdown>
-            </div>
-          </ScrollArea>
+      <ScrollArea className={cn("rounded-md border p-3", `h-[${maxHeight}]`)}>
+        <div className="prose prose-invert prose-sm max-w-none">
+          <Markdown>
+            {content || "Analysis not available yet."}
+          </Markdown>
+          
+          {reasoning && (
+            <>
+              <div className="border-t border-border my-3 pt-2">
+                <div className="text-xs text-muted-foreground mb-1 font-medium">Analysis Reasoning:</div>
+                <Markdown>
+                  {reasoning}
+                </Markdown>
+              </div>
+            </>
+          )}
+          
+          {showAnalysisStreaming && (
+            <span className="animate-pulse inline-block h-4 w-4 relative -top-1">▌</span>
+          )}
         </div>
-      )}
+      </ScrollArea>
     </div>
-  );
+  )
 }

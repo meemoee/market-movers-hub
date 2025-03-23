@@ -7,6 +7,7 @@ const MAX_RETRIES = 3
 const HEARTBEAT_INTERVAL = 5000 // 5 seconds
 const RECONNECT_DELAY = 2000 // 2 seconds
 const STREAM_TIMEOUT = 60000 // 60 seconds timeout threshold
+const MAX_CHUNK_RETRY = 3 // Maximum retries for chunk processing
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -111,8 +112,11 @@ serve(async (req) => {
       }
     }
 
-    // Flag to track explicit stream completion
+    // Multiple flags to track explicit stream completion
     let explicitCompletionDetected = false
+    let doneSignalSent = false
+    let forcedCompletionNeeded = false
+    let chunkProcessingComplete = false
 
     // Launch a background task to fetch and stream the response
     (async () => {
@@ -172,6 +176,7 @@ serve(async (req) => {
             if (now - lastDataTimestamp > STREAM_TIMEOUT) { 
               console.warn(`Connection appears stalled, no data received for ${STREAM_TIMEOUT/1000} seconds`)
               clearInterval(connectionTimeoutId)
+              forcedCompletionNeeded = true
               throw new Error('Stream connection timeout after 60 seconds of inactivity')
             }
           }, 5000)
@@ -180,6 +185,7 @@ serve(async (req) => {
           chunkCounter = 0
           let hasSentReasoningContent = false
           let hasCompletionSignal = false
+          let lastChunkTime = Date.now()
           
           try {
             while (true) {
@@ -201,6 +207,9 @@ serve(async (req) => {
                     timestamp: Date.now(),
                     index: -1 // Special index for manually added completion marker
                   })
+                  
+                  // Set flag to indicate we've sent the done signal
+                  doneSignalSent = true
                 }
                 
                 break
@@ -208,6 +217,7 @@ serve(async (req) => {
               
               // Update the last data timestamp
               lastDataTimestamp = Date.now()
+              lastChunkTime = Date.now()
               chunkCounter++
               
               try {
@@ -218,6 +228,7 @@ serve(async (req) => {
                     console.log(`*** Detected [DONE] signal in chunk #${chunkCounter}`)
                     hasCompletionSignal = true
                     explicitCompletionDetected = true
+                    doneSignalSent = true
                   }
                   
                   // Check for finish_reason
@@ -256,6 +267,9 @@ serve(async (req) => {
               }
             }
             
+            // Set the flag to indicate we've finished processing chunks
+            chunkProcessingComplete = true
+            
             // Log reasoning status at the end
             console.log(`Stream completed. Reasoning content detected: ${hasSentReasoningContent}`)
             
@@ -285,6 +299,7 @@ serve(async (req) => {
                 console.log('Adding explicit completion signal after error')
                 await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
                 explicitCompletionDetected = true
+                doneSignalSent = true
               } catch (error) {
                 console.error('Error sending completion signal after stream error:', error)
               }
@@ -292,6 +307,12 @@ serve(async (req) => {
             
             throw streamError
           } finally {
+            // If we have a long period of inactivity after the last chunk, force completion
+            if (Date.now() - lastChunkTime > 5000 && !explicitCompletionDetected) {
+              console.log('Force completing stream due to inactivity after last chunk')
+              forcedCompletionNeeded = true
+            }
+            
             console.log('Stream processing complete, releasing reader lock')
             reader.releaseLock()
           }
@@ -321,32 +342,48 @@ serve(async (req) => {
         // Flush any remaining chunks in the queue
         if (streamQueue.length > 0) {
           console.log(`Flushing ${streamQueue.length} remaining chunks before closing`)
-          while (streamQueue.length > 0) {
-            const chunk = streamQueue.shift()
-            if (chunk) {
-              try {
+          
+          // Set a maximum retry count for flushing
+          let flushRetryCount = 0
+          
+          while (streamQueue.length > 0 && flushRetryCount < MAX_CHUNK_RETRY) {
+            try {
+              const chunk = streamQueue.shift()
+              if (chunk) {
                 await writer.write(chunk.value)
-              } catch (error) {
-                console.error(`Error in final queue flush for chunk #${chunk.index}:`, error)
+              }
+            } catch (error) {
+              flushRetryCount++
+              console.error(`Error in final queue flush (retry ${flushRetryCount}):`, error)
+              if (flushRetryCount >= MAX_CHUNK_RETRY) {
+                console.error('Maximum retry attempts reached for queue flushing')
                 break
               }
+              // Short delay before retry
+              await new Promise(resolve => setTimeout(resolve, 100))
             }
           }
         }
         
         // Even if we haven't detected an explicit completion, ensure we send a final completion signal
-        if (!explicitCompletionDetected) {
-          console.log('No explicit completion detected, sending final [DONE] signal')
+        if (!doneSignalSent || forcedCompletionNeeded) {
+          console.log('Sending final forced [DONE] signal')
           await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
         }
         
         // Close the writer to signal the end
-        console.log('Sending final [DONE] signal and closing writer')
-        await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
+        console.log('Closing writer after ensuring completion')
         await writer.close()
         console.log('Writer closed successfully')
       } catch (closeError) {
         console.error('Error closing writer:', closeError)
+        // Try one more time to send a done signal before giving up
+        try {
+          await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
+          await writer.close()
+        } catch (finalError) {
+          console.error('Final attempt to close writer failed:', finalError)
+        }
       } finally {
         cleanup()
         console.log('Resource cleanup complete')

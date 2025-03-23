@@ -181,7 +181,9 @@ export function JobQueueResearchCard({
     const currentIteration = job.current_iteration;
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      if (job.iterations.length >= currentIteration) {
+      const currentIterationObj = job.iterations.find(iter => iter.iteration === currentIteration);
+      
+      if (currentIterationObj && !currentIterationObj.isComplete) {
         streamingSet.add(currentIteration);
         console.log(`Detected streaming iteration: ${currentIteration}`);
       }
@@ -222,7 +224,8 @@ export function JobQueueResearchCard({
       const enhancedIterations = job.iterations.map(iter => ({
         ...iter,
         isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
-        isReasoningStreaming: newStreamingIterations.has(iter.iteration)
+        isReasoningStreaming: newStreamingIterations.has(iter.iteration),
+        isComplete: iter.isComplete || false
       }));
       
       setIterations(enhancedIterations);
@@ -300,7 +303,7 @@ export function JobQueueResearchCard({
     
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-      setProgressPercent(percent);
+      setProgressPercent(job.status === 'completed' ? 100 : percent);
       
       if (job.status === 'completed') {
         setProgressPercent(100);
@@ -325,7 +328,8 @@ export function JobQueueResearchCard({
       const enhancedIterations = job.iterations.map(iter => ({
         ...iter,
         isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
-        isReasoningStreaming: newStreamingIterations.has(iter.iteration)
+        isReasoningStreaming: newStreamingIterations.has(iter.iteration),
+        isComplete: iter.isComplete || false
       }));
       
       setIterations(enhancedIterations);
@@ -348,6 +352,7 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         

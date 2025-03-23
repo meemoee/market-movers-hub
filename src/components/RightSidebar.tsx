@@ -1,6 +1,6 @@
 
 import { Send } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import { Markdown } from './Markdown'
 import { Separator } from './ui/separator'
@@ -11,26 +11,48 @@ export default function RightSidebar() {
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
+  const [isStreamComplete, setIsStreamComplete] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const streamTimeoutRef = useRef<number | undefined>(undefined)
 
   interface Message {
     type: 'user' | 'assistant'
     content?: string
   }
 
+  // Cleanup function for all timers and controllers
+  const cleanupResources = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      abortControllerRef.current = null
+    }
+    
+    if (streamTimeoutRef.current) {
+      clearTimeout(streamTimeoutRef.current)
+      streamTimeoutRef.current = undefined
+    }
+  }
+
+  // Set up cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupResources()
+    }
+  }, [])
+
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
     
+    // Clean up any existing resources
+    cleanupResources()
+    
     setHasStartedChat(true)
     setIsLoading(true)
+    setIsStreamComplete(false)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
     
     try {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
-
       abortControllerRef.current = new AbortController()
 
       console.log('Sending request to market-analysis function...')
@@ -49,6 +71,35 @@ export default function RightSidebar() {
       console.log('Received response from market-analysis:', data)
       
       let accumulatedContent = ''
+      let hasEncounteredDoneSignal = false
+      
+      // Set a stream timeout - if no [DONE] signal is received in 60 seconds, force complete
+      streamTimeoutRef.current = setTimeout(() => {
+        console.log('Stream timeout reached, forcing completion')
+        if (!hasEncounteredDoneSignal && !isStreamComplete) {
+          setIsStreamComplete(true)
+          finishStreamProcessing(accumulatedContent)
+        }
+      }, 60000) // 60 second timeout
+      
+      const finishStreamProcessing = (content: string) => {
+        // Clean up the timeout
+        if (streamTimeoutRef.current) {
+          clearTimeout(streamTimeoutRef.current)
+          streamTimeoutRef.current = undefined
+        }
+        
+        console.log('Stream processing complete, content length:', content.length)
+        
+        setMessages(prev => [...prev, { 
+          type: 'assistant', 
+          content: content 
+        }])
+        
+        setIsLoading(false)
+        setStreamingContent('')
+        abortControllerRef.current = null
+      }
       
       const stream = new ReadableStream({
         start(controller) {
@@ -58,8 +109,16 @@ export default function RightSidebar() {
           function push() {
             reader?.read().then(({done, value}) => {
               if (done) {
-                console.log('Stream complete')
+                console.log('Stream complete (done=true)')
                 controller.close()
+                
+                // If we haven't already marked the stream as complete, do so now
+                if (!hasEncounteredDoneSignal && !isStreamComplete) {
+                  console.log('Marking stream as complete on done signal')
+                  setIsStreamComplete(true)
+                  finishStreamProcessing(accumulatedContent)
+                }
+                
                 return
               }
               
@@ -71,10 +130,25 @@ export default function RightSidebar() {
                 if (line.startsWith('data: ')) {
                   const jsonStr = line.slice(6).trim()
                   
-                  if (jsonStr === '[DONE]') continue
+                  if (jsonStr === '[DONE]') {
+                    console.log('Explicit [DONE] signal received')
+                    hasEncounteredDoneSignal = true
+                    setIsStreamComplete(true)
+                    finishStreamProcessing(accumulatedContent)
+                    continue
+                  }
                   
                   try {
                     const parsed = JSON.parse(jsonStr)
+                    
+                    // Check for finish_reason which indicates completion
+                    if (parsed.choices?.[0]?.finish_reason) {
+                      console.log('Finish reason detected:', parsed.choices[0].finish_reason)
+                      hasEncounteredDoneSignal = true
+                      setIsStreamComplete(true)
+                      finishStreamProcessing(accumulatedContent)
+                      continue
+                    }
                     
                     const content = parsed.choices?.[0]?.delta?.content
                     if (content) {
@@ -88,6 +162,17 @@ export default function RightSidebar() {
               }
               
               push()
+            }).catch(err => {
+              console.error('Stream reading error:', err)
+              
+              // If we haven't marked the stream as complete yet, do it now
+              if (!hasEncounteredDoneSignal && !isStreamComplete) {
+                console.log('Marking stream as complete due to error')
+                setIsStreamComplete(true)
+                finishStreamProcessing(accumulatedContent)
+              }
+              
+              controller.error(err)
             })
           }
           
@@ -96,15 +181,34 @@ export default function RightSidebar() {
       })
 
       const reader = stream.getReader()
-      while (true) {
-        const { done } = await reader.read()
-        if (done) break
+      
+      // Fail-safe: if we haven't processed the stream completely within 65 seconds, force completion
+      const safeguardTimeout = setTimeout(() => {
+        if (!isStreamComplete) {
+          console.log('Safeguard timeout reached, forcing completion')
+          setIsStreamComplete(true)
+          finishStreamProcessing(accumulatedContent)
+          reader.cancel('Timeout exceeded').catch(console.error)
+        }
+      }, 65000)
+      
+      try {
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+      } catch (error) {
+        console.error('Error reading from stream:', error)
+      } finally {
+        clearTimeout(safeguardTimeout)
+        
+        // Final safety check - if we somehow still haven't marked the stream as complete, do it now
+        if (!isStreamComplete) {
+          console.log('Final safety: marking stream as complete')
+          setIsStreamComplete(true)
+          finishStreamProcessing(accumulatedContent)
+        }
       }
-
-      setMessages(prev => [...prev, { 
-        type: 'assistant', 
-        content: accumulatedContent 
-      }])
 
     } catch (error) {
       console.error('Error in chat:', error)
@@ -112,9 +216,9 @@ export default function RightSidebar() {
         type: 'assistant', 
         content: 'Sorry, I encountered an error processing your request.' 
       }])
-    } finally {
       setIsLoading(false)
       setStreamingContent('')
+      setIsStreamComplete(true)
       abortControllerRef.current = null
     }
   }
@@ -159,7 +263,7 @@ export default function RightSidebar() {
                 )}
               </div>
             ))}
-            {streamingContent && (
+            {streamingContent && !isStreamComplete && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
                 <Markdown>
                   {streamingContent}
