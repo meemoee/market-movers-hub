@@ -200,4 +200,3 @@ export function AnalysisDisplay({
       )}
     </div>
   )
-}
