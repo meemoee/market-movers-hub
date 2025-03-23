@@ -59,6 +59,7 @@ interface ResearchIteration {
   queries: string[];
   results: ResearchResult[];
   analysis: string;
+  reasoning?: string;
 }
 
 interface SavedResearch {
@@ -284,7 +285,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
     return stack.length === 0 && !inCode && !inList;
   };
 
-  const cleanStreamContent = (chunk: string): { content: string } => {
+  const cleanStreamContent = (chunk: string): { content: string, reasoning?: string } => {
     try {
       let dataStr = chunk;
       if (dataStr.startsWith('data: ')) {
@@ -299,7 +300,13 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       const parsed = JSON.parse(dataStr);
       const content = parsed.choices?.[0]?.delta?.content || 
                      parsed.choices?.[0]?.message?.content || '';
-      return { content };
+                     
+      // Extract reasoning data if present
+      const reasoning = parsed.choices?.[0]?.delta?.reasoning || 
+                       parsed.choices?.[0]?.message?.reasoning || 
+                       parsed.reasoning || '';
+                       
+      return { content, reasoning };
     } catch (e) {
       console.debug('Chunk parse error (expected during streaming):', e);
       return { content: '' };
@@ -794,6 +801,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
       
       let analysisContent = '';
       let iterationAnalysis = '';
+      let reasoningContent = ''; // Add this variable to collect reasoning data
       
       while (true) {
         const { done, value } = await reader.read();
@@ -811,7 +819,8 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
               if (currentIterIndex >= 0) {
                 updatedIterations[currentIterIndex] = {
                   ...updatedIterations[currentIterIndex],
-                  analysis: iterationAnalysis
+                  analysis: iterationAnalysis,
+                  reasoning: reasoningContent // Add reasoning to iteration data
                 };
               }
               
@@ -833,7 +842,7 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
             if (jsonStr === '[DONE]') continue;
             
             try {
-              const { content } = cleanStreamContent(jsonStr);
+              const { content, reasoning } = cleanStreamContent(jsonStr);
               
               if (content) {
                 analysisContent += content;
@@ -857,6 +866,26 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
                 
                 await new Promise(resolve => setTimeout(resolve, 0));
               }
+              
+              // Handle reasoning data if present
+              if (reasoning) {
+                reasoningContent += reasoning;
+                console.log("Received reasoning chunk:", reasoning.length);
+                
+                setIterations(prev => {
+                  const updatedIterations = [...prev];
+                  const currentIterIndex = updatedIterations.findIndex(i => i.iteration === iteration);
+                  
+                  if (currentIterIndex >= 0) {
+                    updatedIterations[currentIterIndex] = {
+                      ...updatedIterations[currentIterIndex],
+                      reasoning: reasoningContent
+                    };
+                  }
+                  
+                  return updatedIterations;
+                });
+              }
             } catch (e) {
               console.debug('Error parsing SSE data:', e);
             }
@@ -871,14 +900,16 @@ export function WebResearchCard({ description, marketId }: WebResearchCardProps)
         if (currentIterIndex >= 0) {
           updatedIterations[currentIterIndex] = {
             ...updatedIterations[currentIterIndex],
-            analysis: iterationAnalysis
+            analysis: iterationAnalysis,
+            reasoning: reasoningContent // Include reasoning in final iteration update
           };
         } else {
           updatedIterations.push({
             iteration,
             queries: currentQueries,
             results: iterationResults,
-            analysis: iterationAnalysis
+            analysis: iterationAnalysis,
+            reasoning: reasoningContent // Include reasoning in new iteration
           });
         }
         
