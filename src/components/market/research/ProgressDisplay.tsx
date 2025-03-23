@@ -33,8 +33,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
     }
   }, [messages]);
 
-  // Return null if there are no messages to display
-  if (!messages || !messages.length) return null
+  if (!messages.length) return null
   
   const renderStatusIcon = () => {
     if (!status) return null;
@@ -83,7 +82,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
           
           {messages.map((message, index) => (
             <div 
-              key={`${index}-${message?.substring(0, 20) || 'empty'}`}
+              key={`${index}-${message.substring(0, 20)}`}
               className={cn(
                 "flex items-center gap-3 py-1 text-sm",
                 index === messages.length - 1 && !jobId ? "animate-pulse" : ""
@@ -93,7 +92,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
                 <div className="h-2 w-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
               )}
               <span className={index === messages.length - 1 && !jobId ? "text-foreground" : "text-muted-foreground"}>
-                {message || ''}
+                {message}
               </span>
             </div>
           ))}

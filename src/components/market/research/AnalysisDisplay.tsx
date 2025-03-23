@@ -26,20 +26,20 @@ export function AnalysisDisplay({
   const reasoningRef = useRef<HTMLDivElement>(null);
   
   // Always store the latest content passed in props
-  const [renderedContent, setRenderedContent] = useState(content || '');
+  const [renderedContent, setRenderedContent] = useState(content);
   const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
   
   // Always accept and display the incoming content as-is
   useEffect(() => {
-    if (content !== undefined) {
-      setRenderedContent(content || '');
+    if (content) {
+      setRenderedContent(content);
     }
   }, [content]);
   
   // Always accept and display the incoming reasoning as-is
   useEffect(() => {
-    if (reasoning !== undefined) {
-      setRenderedReasoning(reasoning || '');
+    if (reasoning) {
+      setRenderedReasoning(reasoning);
     }
   }, [reasoning]);
   
@@ -84,7 +84,7 @@ export function AnalysisDisplay({
         <ScrollArea className="h-full" style={{ maxHeight }}>
           <div className="p-2">
             <Markdown>
-              {renderedContent || "Analysis in progress..."}
+              {renderedContent}
               {isStreaming && <span className="animate-pulse">▌</span>}
             </Markdown>
           </div>
@@ -96,7 +96,7 @@ export function AnalysisDisplay({
           <ScrollArea className="h-full" style={{ maxHeight }}>
             <div className="p-2 bg-muted/20">
               <Markdown>
-                {renderedReasoning || "Reasoning in progress..."}
+                {renderedReasoning}
                 {isReasoningStreaming && <span className="animate-pulse">▌</span>}
               </Markdown>
             </div>
