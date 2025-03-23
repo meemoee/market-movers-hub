@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -876,11 +875,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       });
     }
     
-    // Update job status to completed or error
+    // Update job status to completed
     let finalStatus = 'completed';
-    if (error) {
-      finalStatus = 'error';
-    }
     
     // Update job status and completion timestamp
     await supabaseClient
