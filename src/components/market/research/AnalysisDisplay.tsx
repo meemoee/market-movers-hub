@@ -29,9 +29,21 @@ export function AnalysisDisplay({
   const [renderedContent, setRenderedContent] = useState(content);
   const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
   
+  // Debug logging for stream states
+  useEffect(() => {
+    console.log("AnalysisDisplay props updated:", { 
+      contentLength: content?.length || 0,
+      reasoningLength: reasoning?.length || 0,
+      isStreaming,
+      isReasoningStreaming,
+      showReasoning
+    });
+  }, [content, reasoning, isStreaming, isReasoningStreaming, showReasoning]);
+
   // Always accept and display the incoming content as-is
   useEffect(() => {
     if (content) {
+      console.log("Content updated:", { length: content.length, sample: content.slice(-100) });
       setRenderedContent(content);
     }
   }, [content]);
@@ -39,6 +51,7 @@ export function AnalysisDisplay({
   // Always accept and display the incoming reasoning as-is
   useEffect(() => {
     if (reasoning) {
+      console.log("Reasoning updated:", { length: reasoning.length, sample: reasoning.slice(-100) });
       setRenderedReasoning(reasoning);
     }
   }, [reasoning]);

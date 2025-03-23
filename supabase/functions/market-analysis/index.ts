@@ -4,7 +4,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const MAX_RETRIES = 3
-const HEARTBEAT_INTERVAL = 5000 // 5 seconds (reduced from 15s for more frequent heartbeats)
+const HEARTBEAT_INTERVAL = 5000 // 5 seconds
 const RECONNECT_DELAY = 2000 // 2 seconds
 const STREAM_TIMEOUT = 60000 // 60 seconds timeout threshold
 
@@ -20,7 +20,11 @@ serve(async (req) => {
 
   try {
     const { message, chatHistory } = await req.json()
-    console.log('Received request:', { message, chatHistory })
+    console.log('Received request:', { 
+      messageLength: message?.length || 0,
+      chatHistoryLength: chatHistory?.length || 0,
+      timestamp: new Date().toISOString()
+    })
 
     // Create a TransformStream to handle the streaming response
     const { readable, writable } = new TransformStream()
@@ -38,7 +42,7 @@ serve(async (req) => {
         try {
           // Send a comment as heartbeat to keep the connection alive
           await writer.write(new TextEncoder().encode(":\n\n"))
-          console.log('Heartbeat sent')
+          console.log('Heartbeat sent at', new Date().toISOString())
         } catch (error) {
           console.error('Error sending heartbeat:', error)
           clearInterval(heartbeatInterval)
@@ -55,8 +59,9 @@ serve(async (req) => {
     }
 
     // Queue for processing large chunks in the background
-    const streamQueue: {value: Uint8Array, timestamp: number}[] = []
+    const streamQueue: {value: Uint8Array, timestamp: number, index: number}[] = []
     let processingQueue = false
+    let chunkCounter = 0
     
     // Process the queue in the background
     const processQueue = async () => {
@@ -65,18 +70,37 @@ serve(async (req) => {
       processingQueue = true
       
       try {
+        console.log(`Starting queue processing with ${streamQueue.length} chunks pending`)
         while (streamQueue.length > 0) {
           const chunk = streamQueue.shift()
           if (chunk) {
             try {
+              // Log chunk details without the actual content (which could be too large)
+              console.log(`Processing chunk #${chunk.index}, queued at ${new Date(chunk.timestamp).toISOString()}, size: ${chunk.value.length} bytes`)
+              
+              // For debugging, log a small sample of the chunk text
+              try {
+                const textDecoder = new TextDecoder()
+                const chunkText = textDecoder.decode(chunk.value)
+                console.log(`Chunk #${chunk.index} sample: ${chunkText.slice(0, 100)}...`)
+                
+                // Check if this chunk has any delta.reasoning content
+                if (chunkText.includes('"delta":{"reasoning"')) {
+                  console.log(`*** FOUND REASONING DELTA in chunk #${chunk.index}: ${chunkText}`)
+                }
+              } catch (sampleError) {
+                console.error(`Error creating sample from chunk #${chunk.index}:`, sampleError)
+              }
+              
               await writer.write(chunk.value)
             } catch (error) {
-              console.error('Error writing chunk from queue:', error)
+              console.error(`Error writing chunk #${chunk.index} from queue:`, error)
               // If we can't write, stop processing
               break
             }
           }
         }
+        console.log(`Queue processing complete, ${streamQueue.length} chunks remaining`)
       } finally {
         processingQueue = false
         
@@ -117,8 +141,8 @@ serve(async (req) => {
                 }
               ],
               stream: true,
-              max_tokens: 4096,  // Increase max tokens to ensure we get complete responses
-              temperature: 0.2   // Lower temperature for more consistent outputs
+              max_tokens: 4096,
+              temperature: 0.2
             })
           })
 
@@ -127,6 +151,8 @@ serve(async (req) => {
             throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
           }
 
+          console.log('OpenRouter API connection established successfully')
+          
           // Start the heartbeat after successful connection
           startHeartbeat()
 
@@ -141,23 +167,36 @@ serve(async (req) => {
           const connectionTimeoutId = setInterval(() => {
             const now = Date.now()
             if (now - lastDataTimestamp > STREAM_TIMEOUT) { 
-              console.warn('Connection appears stalled, no data received for 60 seconds')
+              console.warn(`Connection appears stalled, no data received for ${STREAM_TIMEOUT/1000} seconds`)
               clearInterval(connectionTimeoutId)
               throw new Error('Stream connection timeout after 60 seconds of inactivity')
             }
           }, 5000)
 
           const textDecoder = new TextDecoder()
-          let chunkCounter = 0
+          chunkCounter = 0
+          let hasSentReasoningContent = false
+          let hasCompletionSignal = false
           
           try {
             while (true) {
               const { done, value } = await reader.read()
               
               if (done) {
-                console.log('Stream complete')
+                console.log('Stream complete (reader.read() returned done=true)')
                 succeeded = true
                 clearInterval(connectionTimeoutId)
+                
+                // Force a final [DONE] marker if we haven't seen one
+                if (!hasCompletionSignal) {
+                  console.log('Adding explicit completion signal as none was detected')
+                  streamQueue.push({
+                    value: new TextEncoder().encode("data: [DONE]\n\n"),
+                    timestamp: Date.now(),
+                    index: -1 // Special index for manually added completion marker
+                  })
+                }
+                
                 break
               }
               
@@ -166,10 +205,28 @@ serve(async (req) => {
               chunkCounter++
               
               try {
-                // Add to queue with timestamp
+                // Check if this chunk contains a completion signal
+                try {
+                  const chunkText = textDecoder.decode(value.slice())
+                  if (chunkText.includes('[DONE]')) {
+                    console.log(`*** Detected [DONE] signal in chunk #${chunkCounter}`)
+                    hasCompletionSignal = true
+                  }
+                  
+                  // Check for reasoning content
+                  if (chunkText.includes('"delta":{"reasoning"')) {
+                    console.log(`*** Detected reasoning delta in chunk #${chunkCounter}`)
+                    hasSentReasoningContent = true
+                  }
+                } catch (textError) {
+                  console.error(`Error checking chunk #${chunkCounter} text:`, textError)
+                }
+                
+                // Add to queue with timestamp and index
                 streamQueue.push({
                   value,
-                  timestamp: Date.now()
+                  timestamp: Date.now(),
+                  index: chunkCounter
                 })
                 
                 // Start or continue processing the queue
@@ -185,6 +242,10 @@ serve(async (req) => {
                 console.error(`Error processing chunk ${chunkCounter}:`, queueError)
               }
             }
+            
+            // Log reasoning status at the end
+            console.log(`Stream completed. Reasoning content detected: ${hasSentReasoningContent}`)
+            
           } catch (streamError) {
             console.error('Error reading stream:', streamError)
             clearInterval(connectionTimeoutId)
@@ -198,15 +259,26 @@ serve(async (req) => {
                   try {
                     await writer.write(chunk.value)
                   } catch (error) {
-                    console.error('Error flushing queue after stream error:', error)
+                    console.error(`Error flushing queue after stream error for chunk #${chunk.index}:`, error)
                     break
                   }
                 }
               }
             }
             
+            // Force add a completion signal if we haven't seen one
+            if (!hasCompletionSignal) {
+              try {
+                console.log('Adding explicit completion signal after error')
+                await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
+              } catch (error) {
+                console.error('Error sending completion signal after stream error:', error)
+              }
+            }
+            
             throw streamError
           } finally {
+            console.log('Stream processing complete, releasing reader lock')
             reader.releaseLock()
           }
           
@@ -241,7 +313,7 @@ serve(async (req) => {
               try {
                 await writer.write(chunk.value)
               } catch (error) {
-                console.error('Error in final queue flush:', error)
+                console.error(`Error in final queue flush for chunk #${chunk.index}:`, error)
                 break
               }
             }
@@ -249,16 +321,20 @@ serve(async (req) => {
         }
         
         // Close the writer to signal the end
+        console.log('Sending final [DONE] signal and closing writer')
         await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
         await writer.close()
+        console.log('Writer closed successfully')
       } catch (closeError) {
         console.error('Error closing writer:', closeError)
       } finally {
         cleanup()
+        console.log('Resource cleanup complete')
       }
     })()
 
     // Return the readable stream for immediate response
+    console.log('Returning readable stream to client')
     return new Response(readable, {
       headers: {
         ...corsHeaders,
