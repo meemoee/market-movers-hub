@@ -10,9 +10,16 @@ interface ProgressDisplayProps {
   jobId?: string
   progress?: number
   status?: 'queued' | 'processing' | 'completed' | 'failed' | null
+  reasoningProgress?: number
 }
 
-export function ProgressDisplay({ messages, jobId, progress, status }: ProgressDisplayProps) {
+export function ProgressDisplay({ 
+  messages, 
+  jobId, 
+  progress, 
+  status,
+  reasoningProgress 
+}: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -76,6 +83,18 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
                     status === 'failed' ? "bg-red-100" : ""
                   )} 
                 />
+              )}
+              {reasoningProgress !== undefined && (
+                <div className="mt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Reasoning</span>
+                    <span className="text-muted-foreground">{reasoningProgress}%</span>
+                  </div>
+                  <Progress 
+                    value={reasoningProgress} 
+                    className="h-1.5 bg-amber-100" 
+                  />
+                </div>
               )}
             </div>
           )}

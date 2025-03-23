@@ -7,25 +7,31 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
+  reasoning?: string
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px" 
+  maxHeight = "200px",
+  reasoning
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [showReasoning, setShowReasoning] = useState<boolean>(false)
   
   // Debug logging
   useEffect(() => {
     if (content && content.length > 0) {
       console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
     }
-  }, [content, isStreaming]);
+    if (reasoning && reasoning.length > 0) {
+      console.log(`AnalysisDisplay: Reasoning updated - length: ${reasoning.length}`);
+    }
+  }, [content, reasoning, isStreaming]);
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
@@ -127,6 +133,31 @@ export function AnalysisDisplay({
 
   return (
     <div className="relative">
+      {reasoning && (
+        <div className="mb-2 flex justify-end">
+          <button 
+            onClick={() => setShowReasoning(!showReasoning)}
+            className="text-xs px-2 py-1 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors"
+          >
+            {showReasoning ? "Hide reasoning" : "Show reasoning"}
+          </button>
+        </div>
+      )}
+      
+      {reasoning && showReasoning && (
+        <ScrollArea 
+          className="rounded-md border p-4 bg-muted/30 w-full max-w-full mb-2"
+          style={{ maxHeight: "150px" }}
+        >
+          <div className="overflow-x-hidden w-full max-w-full">
+            <div className="text-sm text-muted-foreground italic mb-1">Model's reasoning process:</div>
+            <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+              {reasoning}
+            </ReactMarkdown>
+          </div>
+        </ScrollArea>
+      )}
+      
       <ScrollArea 
         className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}
