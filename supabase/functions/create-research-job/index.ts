@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -30,6 +31,394 @@ async function sendNotificationEmail(jobId: string, email: string) {
     );
   } catch (error) {
     console.error(`Error sending notification email for job ${jobId}:`, error);
+  }
+}
+
+// Function to generate analysis with reasoning using streaming
+async function generateAnalysisWithStreaming(
+  supabaseClient: any,
+  jobId: string,
+  iteration: number,
+  content: string,
+  query: string,
+  title: string,
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
+) {
+  console.log(`Starting to process streaming response chunks for iteration ${iteration}`);
+  
+  try {
+    // Use deepseek/deepseek-r1 model which provides reasoning tokens
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+        "HTTP-Referer": "https://hunchex.co",
+        "X-Title": "HunchEx"
+      },
+      body: JSON.stringify({
+        model: "deepseek/deepseek-r1", // Use deepseek model which provides reasoning
+        stream: true,
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional, objective analyst who carefully examines information and provides clear insights.
+            ${focusText ? `Focus your research specifically on: ${focusText}` : ""}
+            Always be factual, comprehensive, and balanced in your assessments. Use the available data to provide insights.`
+          },
+          {
+            role: "user", 
+            content: `I need you to analyze the following information related to this question: "${query}"
+
+${previousAnalyses && previousAnalyses.length > 0 ? 
+  `Here are previous analyses that you've performed:\n\n${previousAnalyses.join('\n\n')}\n\n` : ''}
+
+${content}
+
+${marketPrice !== undefined ? `The current market probability is: ${marketPrice}%` : ''}
+
+${relatedMarkets && relatedMarkets.length > 0 ? 
+  `Here are related markets and their probabilities:\n${relatedMarkets.map(m => 
+  `- ${m.question}: ${Math.round(m.probability * 100)}%`).join('\n')}` : ''}
+
+${areasForResearch && areasForResearch.length > 0 ? 
+  `Areas previously identified for further research:\n${areasForResearch.map(area => `- ${area}`).join('\n')}` : ''}
+
+Provide a detailed analysis of this information. Do NOT simply summarize the content. Instead:
+1. Evaluate the credibility and relevance of the sources
+2. Identify key facts and data points
+3. Analyze implications for the question "${query}"
+4. Highlight any conflicting information or uncertainties
+5. Identify areas for further research
+
+Format your response as a well-structured markdown document with appropriate headers and sections.`
+          }
+        ]
+      })
+    });
+    
+    if (openRouterResponse.status !== 200) {
+      console.error(`Error from OpenRouter: ${openRouterResponse.status}`, await openRouterResponse.text());
+      throw new Error(`Non-200 response from OpenRouter: ${openRouterResponse.status}`);
+    }
+    
+    if (!openRouterResponse.body) {
+      throw new Error("Response body is null");
+    }
+    
+    const reader = openRouterResponse.body.getReader();
+    const decoder = new TextDecoder();
+    let analysisText = "";
+    let reasoningText = "";
+    let fullResponse = "";
+    let sequence = 0;
+    let isDone = false;
+    
+    // Delete any existing analysis_stream entries for this job and iteration
+    await supabaseClient
+      .from('analysis_stream')
+      .delete()
+      .eq('job_id', jobId)
+      .eq('iteration', iteration);
+    
+    while (!isDone) {
+      const { value, done } = await reader.read();
+      
+      if (done) {
+        isDone = true;
+        break;
+      }
+      
+      // Decode the received chunk
+      const chunk = decoder.decode(value);
+      fullResponse += chunk;
+      
+      // Process SSE chunks
+      const lines = fullResponse.split('\n');
+      fullResponse = lines.pop() || '';
+      
+      for (const line of lines) {
+        if (!line || line.trim() === '') continue;
+        if (line.trim() === 'data: [DONE]') {
+          isDone = true;
+          break;
+        }
+        
+        if (line.startsWith('data: ')) {
+          try {
+            // Parse the JSON data
+            const jsonData = JSON.parse(line.substring(6));
+            
+            if (jsonData.choices && jsonData.choices.length > 0) {
+              // Extract content from the delta
+              const contentDelta = jsonData.choices[0].delta?.content || '';
+              const reasoningDelta = jsonData.choices[0].delta?.tool_calls?.[0]?.function?.arguments || '';
+              
+              // For normal content (the analysis text)
+              if (contentDelta) {
+                analysisText += contentDelta;
+                
+                // Insert the chunk into the analysis_stream table
+                await supabaseClient
+                  .from('analysis_stream')
+                  .insert({
+                    job_id: jobId,
+                    chunk: contentDelta,
+                    sequence: sequence++,
+                    iteration: iteration
+                  });
+              }
+              
+              // For reasoning content (from tool_calls)
+              if (reasoningDelta) {
+                try {
+                  // Attempt to parse the reasoning JSON if it's a string
+                  const parsedReasoning = typeof reasoningDelta === 'string' 
+                    ? JSON.parse(reasoningDelta) 
+                    : reasoningDelta;
+                  
+                  if (parsedReasoning.reasoning) {
+                    reasoningText += parsedReasoning.reasoning;
+                  }
+                } catch (parseError) {
+                  // If it's not valid JSON, just append it as is
+                  reasoningText += reasoningDelta;
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error parsing chunk: ${error.message}`, line);
+          }
+        }
+      }
+    }
+    
+    console.log(`Analysis streaming complete for job ${jobId}, iteration ${iteration}`);
+    console.log(`Final analysis length: ${analysisText.length} characters`);
+    console.log(`Final reasoning length: ${reasoningText.length} characters`);
+    
+    // Update the iteration in the database with the completed analysis
+    const { data: iterationsData } = await supabaseClient
+      .from('research_jobs')
+      .select('iterations')
+      .eq('id', jobId)
+      .single();
+      
+    if (iterationsData && iterationsData.iterations) {
+      const updatedIterations = [...iterationsData.iterations];
+      
+      // Find the right iteration to update
+      for (let i = 0; i < updatedIterations.length; i++) {
+        if (updatedIterations[i].iteration === iteration) {
+          updatedIterations[i].analysis = analysisText;
+          updatedIterations[i].reasoning = reasoningText;
+          break;
+        }
+      }
+      
+      // Update the job with the new iterations data
+      await supabaseClient
+        .from('research_jobs')
+        .update({
+          iterations: updatedIterations
+        })
+        .eq('id', jobId);
+    }
+    
+    return analysisText;
+    
+  } catch (error) {
+    console.error(`Error generating analysis with streaming for job ${jobId}, iteration ${iteration}:`, error);
+    throw error;
+  }
+}
+
+// Function to generate final analysis with reasoning using streaming
+async function generateFinalAnalysisWithStreaming(
+  supabaseClient: any,
+  jobId: string,
+  content: string,
+  query: string,
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
+) {
+  console.log(`Starting to process streaming final analysis for job ${jobId}`);
+  
+  try {
+    // Use deepseek/deepseek-r1 model which provides reasoning tokens
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+        "HTTP-Referer": "https://hunchex.co",
+        "X-Title": "HunchEx"
+      },
+      body: JSON.stringify({
+        model: "deepseek/deepseek-r1", // Use deepseek model which provides reasoning
+        stream: true,
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional, objective analyst who carefully examines information and provides clear insights.
+            ${focusText ? `Focus your research specifically on: ${focusText}` : ""}
+            Always be factual, comprehensive, and balanced in your assessments. Use the available data to provide insights.`
+          },
+          {
+            role: "user", 
+            content: `I need you to write a comprehensive FINAL analysis of the following web research related to this question: "${query}"
+
+${previousAnalyses && previousAnalyses.length > 0 ? 
+  `Here are previous analyses performed across different iterations:\n\n${previousAnalyses.join('\n\n')}\n\n` : ''}
+
+${content}
+
+${marketPrice !== undefined ? `The current market probability is: ${marketPrice}%` : ''}
+
+${relatedMarkets && relatedMarkets.length > 0 ? 
+  `Here are related markets and their probabilities:\n${relatedMarkets.map(m => 
+  `- ${m.question}: ${Math.round(m.probability * 100)}%`).join('\n')}` : ''}
+
+${areasForResearch && areasForResearch.length > 0 ? 
+  `Areas previously identified for further research:\n${areasForResearch.map(area => `- ${area}`).join('\n')}` : ''}
+
+Provide a detailed FINAL analysis of all the research collected. This is a summary of all the iterations, so be comprehensive:
+1. Evaluate the quality and relevance of the sources
+2. Identify the most important facts and data points
+3. Analyze the overall implications for the question "${query}"
+4. Assess conflicting information and uncertainties
+5. Provide a balanced assessment of the current state of knowledge
+6. Suggest areas for further research
+
+Format your response as a well-structured markdown document with appropriate headers and sections.`
+          }
+        ]
+      })
+    });
+    
+    if (openRouterResponse.status !== 200) {
+      console.error(`Error from OpenRouter: ${openRouterResponse.status}`, await openRouterResponse.text());
+      throw new Error(`Non-200 response from OpenRouter: ${openRouterResponse.status}`);
+    }
+    
+    if (!openRouterResponse.body) {
+      throw new Error("Response body is null");
+    }
+    
+    const reader = openRouterResponse.body.getReader();
+    const decoder = new TextDecoder();
+    let analysisText = "";
+    let reasoningText = "";
+    let fullResponse = "";
+    let sequence = 0;
+    let isDone = false;
+    
+    // Delete any existing analysis_stream entries for this job and final analysis (use iteration = 0)
+    await supabaseClient
+      .from('analysis_stream')
+      .delete()
+      .eq('job_id', jobId)
+      .eq('iteration', 0);
+    
+    while (!isDone) {
+      const { value, done } = await reader.read();
+      
+      if (done) {
+        isDone = true;
+        break;
+      }
+      
+      // Decode the received chunk
+      const chunk = decoder.decode(value);
+      fullResponse += chunk;
+      
+      // Process SSE chunks
+      const lines = fullResponse.split('\n');
+      fullResponse = lines.pop() || '';
+      
+      for (const line of lines) {
+        if (!line || line.trim() === '') continue;
+        if (line.trim() === 'data: [DONE]') {
+          isDone = true;
+          break;
+        }
+        
+        if (line.startsWith('data: ')) {
+          try {
+            // Parse the JSON data
+            const jsonData = JSON.parse(line.substring(6));
+            
+            if (jsonData.choices && jsonData.choices.length > 0) {
+              // Extract content from the delta
+              const contentDelta = jsonData.choices[0].delta?.content || '';
+              const reasoningDelta = jsonData.choices[0].delta?.tool_calls?.[0]?.function?.arguments || '';
+              
+              // For normal content (the analysis text)
+              if (contentDelta) {
+                analysisText += contentDelta;
+                
+                // Insert the chunk into the analysis_stream table
+                await supabaseClient
+                  .from('analysis_stream')
+                  .insert({
+                    job_id: jobId,
+                    chunk: contentDelta,
+                    sequence: sequence++,
+                    iteration: 0  // Use 0 to indicate final analysis
+                  });
+              }
+              
+              // For reasoning content (from tool_calls)
+              if (reasoningDelta) {
+                try {
+                  // Attempt to parse the reasoning JSON if it's a string
+                  const parsedReasoning = typeof reasoningDelta === 'string' 
+                    ? JSON.parse(reasoningDelta) 
+                    : reasoningDelta;
+                  
+                  if (parsedReasoning.reasoning) {
+                    reasoningText += parsedReasoning.reasoning;
+                  }
+                } catch (parseError) {
+                  // If it's not valid JSON, just append it as is
+                  reasoningText += reasoningDelta;
+                }
+              }
+            }
+          } catch (error) {
+            console.error(`Error parsing chunk: ${error.message}`, line);
+          }
+        }
+      }
+    }
+    
+    console.log(`Final analysis streaming complete for job ${jobId}`);
+    console.log(`Final analysis length: ${analysisText.length} characters`);
+    console.log(`Final reasoning length: ${reasoningText.length} characters`);
+    
+    // Update the research job with the final analysis
+    await supabaseClient
+      .from('research_jobs')
+      .update({
+        results: {
+          analysis: analysisText,
+          reasoning: reasoningText
+        }
+      })
+      .eq('id', jobId);
+    
+    return analysisText;
+    
+  } catch (error) {
+    console.error(`Error generating final analysis with streaming for job ${jobId}:`, error);
+    throw error;
   }
 }
 
@@ -803,4 +1192,174 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       } else {
         console.error("Invalid structure in insights response:", structuredInsights);
         structuredInsights = {
-          probability: "Error: Invalid response format
+          probability: "Error: Invalid response format",
+          rawContent: JSON.stringify(structuredInsights)
+        };
+      }
+      
+      // Update the job with the structured insights
+      await supabaseClient
+        .from('research_jobs')
+        .update({
+          results: {
+            ...textAnalysisResults,
+            insights: structuredInsights
+          },
+          status: 'completed',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+        
+    } catch (error) {
+      console.error(`Error generating structured insights for job ${jobId}:`, error);
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error generating structured insights: ${error.message}`)
+      });
+      
+      // Update the job with error status but still include the analysis
+      await supabaseClient
+        .from('research_jobs')
+        .update({
+          results: textAnalysisResults,
+          status: 'completed', // Still mark as completed, just without insights
+          error_message: `Error generating insights: ${error.message}`,
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+    }
+    
+    // Send notification email if requested
+    if (notificationEmail) {
+      await sendNotificationEmail(jobId, notificationEmail);
+      
+      // Mark as notification sent
+      await supabaseClient
+        .from('research_jobs')
+        .update({
+          notification_sent: true
+        })
+        .eq('id', jobId);
+    }
+    
+    // Add final log entry
+    await supabaseClient.rpc('append_research_progress', {
+      job_id: jobId,
+      progress_entry: JSON.stringify(`Research completed for: ${query}`)
+    });
+    
+    console.log(`Research completed for job ${jobId}`);
+    
+  } catch (error) {
+    console.error(`Error in background research for job ${jobId}:`, error);
+    
+    // Update job status to failed
+    try {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      await supabaseClient.rpc('update_research_job_status', {
+        job_id: jobId,
+        new_status: 'failed'
+      });
+      
+      await supabaseClient
+        .from('research_jobs')
+        .update({
+          error_message: error.message || 'Unknown error',
+          completed_at: new Date().toISOString()
+        })
+        .eq('id', jobId);
+      
+      await supabaseClient.rpc('append_research_progress', {
+        job_id: jobId,
+        progress_entry: JSON.stringify(`Error in research: ${error.message}`)
+      });
+    } catch (updateError) {
+      console.error(`Error updating job status for ${jobId}:`, updateError);
+    }
+  }
+}
+
+// Main function handler
+serve(async (req) => {
+  // Handle CORS preflight request
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+  
+  try {
+    const requestData = await req.json();
+    const { query, marketId, maxIterations = 3, focusText, email: notificationEmail } = requestData;
+    
+    if (!query) {
+      return new Response(
+        JSON.stringify({ error: 'Query parameter is required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
+    if (!marketId) {
+      return new Response(
+        JSON.stringify({ error: 'Market ID parameter is required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+    
+    // Create the client 
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+    
+    // Create a new job record
+    const { data: jobData, error } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        query: query,
+        market_id: marketId,
+        max_iterations: maxIterations,
+        status: 'queued',
+        progress_log: [],
+        focus_text: focusText || null,
+        notification_email: notificationEmail || null,
+        started_at: new Date().toISOString()
+      })
+      .select('id')
+      .single();
+    
+    if (error) {
+      console.error('Error creating research job:', error);
+      return new Response(
+        JSON.stringify({ error: 'Failed to create research job' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+      );
+    }
+    
+    const jobId = jobData.id;
+    
+    // Start the research process in the background
+    performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail)
+      .catch(error => {
+        console.error(`Unhandled error in background research for job ${jobId}:`, error);
+      });
+    
+    return new Response(
+      JSON.stringify({ 
+        message: 'Research job created and started in background',
+        jobId: jobId
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+    
+  } catch (error) {
+    console.error('Error:', error);
+    
+    return new Response(
+      JSON.stringify({ error: error.message || 'Internal server error' }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
+    );
+  }
+});
