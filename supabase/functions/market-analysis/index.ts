@@ -111,6 +111,9 @@ serve(async (req) => {
       }
     }
 
+    // Flag to track explicit stream completion
+    let explicitCompletionDetected = false
+
     // Launch a background task to fetch and stream the response
     (async () => {
       let retryCount = 0
@@ -187,6 +190,9 @@ serve(async (req) => {
                 succeeded = true
                 clearInterval(connectionTimeoutId)
                 
+                // Explicit completion signal when stream ends naturally
+                explicitCompletionDetected = true
+                
                 // Force a final [DONE] marker if we haven't seen one
                 if (!hasCompletionSignal) {
                   console.log('Adding explicit completion signal as none was detected')
@@ -211,6 +217,13 @@ serve(async (req) => {
                   if (chunkText.includes('[DONE]')) {
                     console.log(`*** Detected [DONE] signal in chunk #${chunkCounter}`)
                     hasCompletionSignal = true
+                    explicitCompletionDetected = true
+                  }
+                  
+                  // Check for finish_reason
+                  if (chunkText.includes('"finish_reason"')) {
+                    console.log(`*** Detected finish_reason in chunk #${chunkCounter}`)
+                    explicitCompletionDetected = true
                   }
                   
                   // Check for reasoning content
@@ -271,6 +284,7 @@ serve(async (req) => {
               try {
                 console.log('Adding explicit completion signal after error')
                 await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
+                explicitCompletionDetected = true
               } catch (error) {
                 console.error('Error sending completion signal after stream error:', error)
               }
@@ -318,6 +332,12 @@ serve(async (req) => {
               }
             }
           }
+        }
+        
+        // Even if we haven't detected an explicit completion, ensure we send a final completion signal
+        if (!explicitCompletionDetected) {
+          console.log('No explicit completion detected, sending final [DONE] signal')
+          await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
         }
         
         // Close the writer to signal the end
