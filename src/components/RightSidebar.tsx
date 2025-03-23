@@ -13,7 +13,8 @@ export default function RightSidebar() {
   const [streamingContent, setStreamingContent] = useState('')
   const [isStreamComplete, setIsStreamComplete] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const streamTimeoutRef = useRef<number | undefined>(undefined)
+  // Update the type definition to accommodate NodeJS.Timeout instead of number
+  const streamTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined)
 
   interface Message {
     type: 'user' | 'assistant'
