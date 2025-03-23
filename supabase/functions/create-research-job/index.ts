@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -882,7 +883,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// Function to generate analysis with streaming using OpenRouter
+// Function to generate analysis with streaming using OpenRouter with improved reliability
 async function generateAnalysisWithStreaming(
   supabaseClient: any,
   jobId: string,
@@ -981,6 +982,11 @@ Present the analysis in a structured, concise format with clear sections and bul
     let reasoningText = '';
     let chunkSequence = 0;
     
+    // Track stream state
+    let isStreamComplete = false;
+    let lastActivityTimestamp = Date.now();
+    const STREAM_TIMEOUT_MS = 60000; // 60 seconds timeout
+    
     // First, get the current iterations
     const { data: jobData } = await supabaseClient
       .from('research_jobs')
@@ -1067,20 +1073,49 @@ Your analysis should:
     let reasoningBuffer = '';
     let bufferCount = 0;
     
+    // Timeout mechanism
+    const timeoutChecker = setInterval(() => {
+      const timeSinceLastActivity = Date.now() - lastActivityTimestamp;
+      if (timeSinceLastActivity > STREAM_TIMEOUT_MS && !isStreamComplete) {
+        console.warn(`Stream timeout reached after ${timeSinceLastActivity}ms of inactivity`);
+        clearInterval(timeoutChecker);
+        
+        // Force flush any remaining content
+        if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
+          console.log(`Stream timeout: flushing remaining buffer content (${analysisBuffer.length} analysis chars, ${reasoningBuffer.length} reasoning chars)`);
+          updateDatabase().then(() => {
+            isStreamComplete = true;
+            console.log("Stream timeout: marked as complete after final flush");
+          }).catch(err => {
+            console.error("Stream timeout: error during final flush:", err);
+          });
+        } else {
+          isStreamComplete = true;
+          console.log("Stream timeout: marked as complete (no buffer to flush)");
+        }
+      }
+    }, 5000); // Check every 5 seconds
+    
     // Process chunks as they come in
     async function processStream() {
       try {
         while (true) {
           const { done, value } = await reader.read();
           
+          // Update activity timestamp whenever we get data
+          lastActivityTimestamp = Date.now();
+          
           if (done) {
             console.log(`Stream complete for iteration ${iterationNumber}`);
+            isStreamComplete = true;
             
-            // Flush any remaining buffered content
+            // Flush any remaining buffered content regardless of size
             if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
+              console.log(`Stream complete: flushing remaining buffer (${analysisBuffer.length} analysis chars, ${reasoningBuffer.length} reasoning chars)`);
               await updateDatabase();
             }
             
+            clearInterval(timeoutChecker);
             break;
           }
           
@@ -1108,16 +1143,20 @@ Your analysis should:
             if (line.startsWith('data: ')) {
               const data = line.substring(6); // Remove "data: " prefix
               
-              // Skip "[DONE]" message which indicates the end of the stream
-              if (data === '[DONE]') continue;
+              // Check for "[DONE]" message which indicates the end of the stream
+              if (data === '[DONE]') {
+                console.log(`Received [DONE] marker for iteration ${iterationNumber}`);
+                isStreamComplete = true;
+                continue;
+              }
               
               try {
                 // Parse the JSON data
                 const jsonData = JSON.parse(data);
                 
                 if (jsonData.choices && jsonData.choices[0]) {
-                  // Check for delta content
-                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                  // Process delta content more resiliently with optional chaining
+                  if (jsonData.choices[0].delta?.content) {
                     const content = jsonData.choices[0].delta.content;
                     
                     // Append to the full analysis text
@@ -1125,8 +1164,8 @@ Your analysis should:
                     analysisBuffer += content;
                   }
                   
-                  // Check for delta reasoning
-                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
+                  // Process delta reasoning more resiliently
+                  if (jsonData.choices[0].delta?.reasoning) {
                     const reasoning = jsonData.choices[0].delta.reasoning;
                     
                     // Append to the full reasoning text
@@ -1134,17 +1173,23 @@ Your analysis should:
                     reasoningBuffer += reasoning;
                   }
                   
-                  // Or check if we have full message object
+                  // Also handle the full message format as a fallback
                   if (jsonData.choices[0].message) {
-                    if (jsonData.choices[0].message.content) {
+                    if (jsonData.choices[0].message.content && !jsonData.choices[0].delta) {
                       analysisText += jsonData.choices[0].message.content;
                       analysisBuffer += jsonData.choices[0].message.content;
                     }
                     
-                    if (jsonData.choices[0].message.reasoning) {
+                    if (jsonData.choices[0].message.reasoning && !jsonData.choices[0].delta) {
                       reasoningText += jsonData.choices[0].message.reasoning;
                       reasoningBuffer += jsonData.choices[0].message.reasoning;
                     }
+                  }
+                  
+                  // Process finish_reason for stream completion detection
+                  if (jsonData.choices[0].finish_reason) {
+                    console.log(`Received finish_reason: ${jsonData.choices[0].finish_reason} for iteration ${iterationNumber}`);
+                    isStreamComplete = true;
                   }
                   
                   // Increment chunk sequence and buffer count
@@ -1159,6 +1204,10 @@ Your analysis should:
                     reasoningBuffer = '';
                     bufferCount = 0;
                   }
+                } else if (jsonData.error) {
+                  // Handle API errors in the stream
+                  console.error(`API error in stream: ${jsonData.error.message || "Unknown error"}`);
+                  throw new Error(`API error: ${jsonData.error.message || "Unknown error"}`);
                 }
               } catch (parseError) {
                 console.error(`Error parsing JSON in streaming chunk: ${parseError.message}`);
@@ -1173,13 +1222,25 @@ Your analysis should:
         }
       } catch (streamError) {
         console.error(`Error processing stream:`, streamError);
+        // Make sure we flush any collected content even on error
+        if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
+          console.log(`Stream error: attempting to flush buffer before exiting (${analysisBuffer.length} chars)`);
+          try {
+            await updateDatabase();
+          } catch (flushError) {
+            console.error(`Failed to flush buffer after stream error:`, flushError);
+          }
+        }
+        
+        clearInterval(timeoutChecker);
         throw streamError;
       } finally {
         console.log(`Finished processing streaming response for iteration ${iterationNumber}`);
+        clearInterval(timeoutChecker);
       }
     }
     
-    // Function to update the database with current buffer content
+    // Function to update the database with current buffer content - improved reliability
     async function updateDatabase() {
       // Get the current iteration data again to ensure we're not overwriting changes
       const { data: currentData } = await supabaseClient
@@ -1194,12 +1255,7 @@ Your analysis should:
         let currentIterationIndex = updatedIterations.findIndex(iter => iter.iteration === iterationNumber);
         
         if (currentIterationIndex !== -1) {
-          // Get current values or initialize if they don't exist
-          const currentAnalysis = updatedIterations[currentIterationIndex].analysis || '';
-          const currentReasoning = updatedIterations[currentIterationIndex].reasoning || '';
-          
-          // Update with the latest full content instead of just the buffer
-          // This ensures we never lose content due to concurrent updates
+          // Always update with the full content to avoid losing chunks
           updatedIterations[currentIterationIndex].analysis = analysisText;
           updatedIterations[currentIterationIndex].reasoning = reasoningText;
           
@@ -1234,7 +1290,7 @@ Your analysis should:
   }
 }
 
-// Function to generate final analysis with streaming using OpenRouter
+// Function to generate final analysis with streaming using OpenRouter - improved reliability
 async function generateFinalAnalysisWithStreaming(
   supabaseClient: any,
   jobId: string,
@@ -1330,6 +1386,11 @@ Present the analysis in a structured, comprehensive format with clear sections a
     let finalReasoning = '';
     let chunkSequence = 0;
     
+    // Track stream state
+    let isStreamComplete = false;
+    let lastActivityTimestamp = Date.now();
+    const STREAM_TIMEOUT_MS = 60000; // 60 seconds timeout
+    
     // Create temporary results object for updates during streaming
     let temporaryResults = {
       analysis: '',
@@ -1342,6 +1403,29 @@ Present the analysis in a structured, comprehensive format with clear sections a
     let analysisBuffer = '';
     let reasoningBuffer = '';
     let bufferCount = 0;
+    
+    // Timeout mechanism
+    const timeoutChecker = setInterval(() => {
+      const timeSinceLastActivity = Date.now() - lastActivityTimestamp;
+      if (timeSinceLastActivity > STREAM_TIMEOUT_MS && !isStreamComplete) {
+        console.warn(`Final analysis stream timeout reached after ${timeSinceLastActivity}ms of inactivity`);
+        clearInterval(timeoutChecker);
+        
+        // Force flush any remaining content
+        if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
+          console.log(`Final analysis stream timeout: flushing remaining buffer (${analysisBuffer.length} chars)`);
+          updateDatabase().then(() => {
+            isStreamComplete = true;
+            console.log("Final analysis stream timeout: marked as complete after final flush");
+          }).catch(err => {
+            console.error("Final analysis stream timeout: error during final flush:", err);
+          });
+        } else {
+          isStreamComplete = true;
+          console.log("Final analysis stream timeout: marked as complete (no buffer to flush)");
+        }
+      }
+    }, 5000); // Check every 5 seconds
     
     // Start the fetch with stream: true
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -1392,15 +1476,7 @@ Your final analysis should:
       throw new Error('Response body is null');
     }
     
-    // Process the stream
-    const reader = response.body.getReader();
-    const textDecoder = new TextDecoder();
-    let incompleteChunk = '';
-    
-    // Log the start of streaming
-    console.log(`Starting to process streaming response chunks for final analysis`);
-    
-    // Function to update the database with current content
+    // Function to update the database with current content - improved reliability
     async function updateDatabase() {
       try {
         // Update the temporary results
@@ -1413,24 +1489,38 @@ Your final analysis should:
           result_data: JSON.stringify(temporaryResults)
         });
         
-        console.log(`Updated results with streaming chunk ${chunkSequence}`);
+        console.log(`Updated final results with streaming chunk ${chunkSequence} (${analysisBuffer.length} chars)`);
       } catch (updateError) {
-        console.error(`Error updating results with streaming chunk:`, updateError);
+        console.error(`Error updating final results with streaming chunk:`, updateError);
       }
     }
+    
+    // Process the stream
+    const reader = response.body.getReader();
+    const textDecoder = new TextDecoder();
+    let incompleteChunk = '';
+    
+    // Log the start of streaming
+    console.log(`Starting to process streaming response chunks for final analysis`);
     
     // Process chunks as they come in
     while (true) {
       const { done, value } = await reader.read();
       
+      // Update activity timestamp whenever we get data
+      lastActivityTimestamp = Date.now();
+      
       if (done) {
         console.log(`Stream complete for final analysis`);
+        isStreamComplete = true;
         
-        // Flush any remaining buffered content
+        // Flush any remaining buffered content regardless of size
         if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
+          console.log(`Final analysis stream complete: flushing remaining buffer (${analysisBuffer.length} chars)`);
           await updateDatabase();
         }
         
+        clearInterval(timeoutChecker);
         break;
       }
       
@@ -1458,16 +1548,20 @@ Your final analysis should:
         if (line.startsWith('data: ')) {
           const data = line.substring(6); // Remove "data: " prefix
           
-          // Skip "[DONE]" message which indicates the end of the stream
-          if (data === '[DONE]') continue;
+          // Check for "[DONE]" message which indicates the end of the stream
+          if (data === '[DONE]') {
+            console.log(`Received [DONE] marker for final analysis`);
+            isStreamComplete = true;
+            continue; 
+          }
           
           try {
             // Parse the JSON data
             const jsonData = JSON.parse(data);
             
             if (jsonData.choices && jsonData.choices[0]) {
-              // Check for delta content
-              if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+              // Process delta content more resiliently
+              if (jsonData.choices[0].delta?.content) {
                 const content = jsonData.choices[0].delta.content;
                 
                 // Append to the full analysis text
@@ -1475,8 +1569,8 @@ Your final analysis should:
                 analysisBuffer += content;
               }
               
-              // Check for delta reasoning
-              if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
+              // Process delta reasoning more resiliently
+              if (jsonData.choices[0].delta?.reasoning) {
                 const reasoning = jsonData.choices[0].delta.reasoning;
                 
                 // Append to the full reasoning text
@@ -1484,17 +1578,23 @@ Your final analysis should:
                 reasoningBuffer += reasoning;
               }
               
-              // Or check if we have full message object
+              // Process full message as fallback
               if (jsonData.choices[0].message) {
-                if (jsonData.choices[0].message.content) {
+                if (jsonData.choices[0].message.content && !jsonData.choices[0].delta) {
                   finalAnalysis += jsonData.choices[0].message.content;
                   analysisBuffer += jsonData.choices[0].message.content;
                 }
                 
-                if (jsonData.choices[0].message.reasoning) {
+                if (jsonData.choices[0].message.reasoning && !jsonData.choices[0].delta) {
                   finalReasoning += jsonData.choices[0].message.reasoning;
                   reasoningBuffer += jsonData.choices[0].message.reasoning;
                 }
+              }
+              
+              // Process finish_reason for stream completion detection
+              if (jsonData.choices[0].finish_reason) {
+                console.log(`Received finish_reason: ${jsonData.choices[0].finish_reason} for final analysis`);
+                isStreamComplete = true;
               }
               
               // Increment chunk sequence and buffer count
@@ -1504,14 +1604,18 @@ Your final analysis should:
               // Only update the database periodically to reduce load
               if (bufferCount >= updateBufferSize) {
                 await updateDatabase();
-                // Reset buffer
+                // Reset buffer after successful update
                 analysisBuffer = '';
                 reasoningBuffer = '';
                 bufferCount = 0;
               }
+            } else if (jsonData.error) {
+              // Handle API errors in the stream
+              console.error(`API error in final analysis stream: ${jsonData.error.message || "Unknown error"}`);
+              throw new Error(`API error: ${jsonData.error.message || "Unknown error"}`);
             }
           } catch (parseError) {
-            console.error(`Error parsing JSON in streaming chunk: ${parseError.message}`);
+            console.error(`Error parsing JSON in final analysis streaming chunk: ${parseError.message}`);
             console.error(`Problem JSON data: ${data}`);
             // Continue processing other chunks even if one fails
           }
@@ -1523,147 +1627,35 @@ Your final analysis should:
     }
     
     console.log(`Final analysis streaming complete, total chunks: ${chunkSequence}`);
+    clearInterval(timeoutChecker);
     
     // Return the full analysis text
     return finalAnalysis;
   } catch (error) {
     console.error(`Error in streaming final analysis generation:`, error);
+    
+    // Try to gracefully handle errors by flushing any collected content
+    try {
+      if (finalAnalysis) {
+        const tempResults = {
+          analysis: finalAnalysis,
+          reasoning: finalReasoning || '',
+          data: []
+        };
+        
+        await supabaseClient.rpc('update_research_results', {
+          job_id: jobId,
+          result_data: JSON.stringify(tempResults)
+        });
+        
+        console.log(`Saved partial final analysis (${finalAnalysis.length} chars) after error`);
+      }
+    } catch (saveError) {
+      console.error(`Failed to save partial final analysis after error:`, saveError);
+    }
+    
     throw error;
   }
-}
-
-// Function to generate analysis using OpenRouter (Old version, replaced with streaming)
-async function generateAnalysis(
-  content: string, 
-  query: string, 
-  analysisType: string,
-  marketPrice?: number,
-  relatedMarkets?: any[],
-  areasForResearch?: string[],
-  focusText?: string,
-  previousAnalyses?: string[]
-): Promise<string> {
-  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
-  
-  if (!openRouterKey) {
-    throw new Error('OPENROUTER_API_KEY is not set in environment');
-  }
-  
-  console.log(`Generating ${analysisType} using OpenRouter`);
-  
-  // Limit content length to avoid token limits
-  const contentLimit = 20000;
-  const truncatedContent = content.length > contentLimit 
-    ? content.substring(0, contentLimit) + "... [content truncated]" 
-    : content;
-  
-  // Add market context to the prompt
-  let contextInfo = '';
-  
-  if (marketPrice !== undefined) {
-    contextInfo += `\nCurrent market prediction: ${marketPrice}% probability\n`;
-  }
-  
-  if (relatedMarkets && relatedMarkets.length > 0) {
-    contextInfo += '\nRelated markets:\n';
-    relatedMarkets.forEach(market => {
-      if (market.question && market.probability !== undefined) {
-        const probability = Math.round(market.probability * 100);
-        contextInfo += `- ${market.question}: ${probability}% probability\n`;
-      }
-    });
-  }
-  
-  if (areasForResearch && areasForResearch.length > 0) {
-    contextInfo += '\nAreas identified for further research:\n';
-    areasForResearch.forEach(area => {
-      contextInfo += `- ${area}\n`;
-    });
-  }
-  
-  // Add focus text section if provided
-  let focusSection = '';
-  if (focusText && focusText.trim()) {
-    focusSection = `\nFOCUS AREA: "${focusText.trim()}"\n
-Your analysis must specifically address and deeply analyze this focus area. Connect all insights to this focus.`;
-  }
-  
-  // Add previous analyses section if provided
-  let previousAnalysesSection = '';
-  if (previousAnalyses && previousAnalyses.length > 0) {
-    previousAnalysesSection = `\n\nPREVIOUS ANALYSES: 
-${previousAnalyses.map((analysis, idx) => `--- Analysis ${idx+1} ---\n${analysis}\n`).join('\n')}
-
-IMPORTANT: DO NOT REPEAT information from previous analyses. Instead:
-1. Build upon them with NEW insights
-2. Address gaps and uncertainties from earlier analyses
-3. Deepen understanding of already identified points with NEW evidence
-4. Provide CONTRASTING perspectives where relevant`;
-  }
-  
-  const prompt = `As a market research analyst, analyze the following web content to assess relevant information about this query: "${query}"
-
-Content to analyze:
-${truncatedContent}
-${contextInfo}
-${focusSection}
-${previousAnalysesSection}
-
-Please provide:
-
-1. Key Facts and Insights: What are the most important NEW pieces of information relevant to the query?
-2. Evidence Assessment: Evaluate the strength of evidence regarding the query.${focusText ? ` Make EXPLICIT connections to the focus area: "${focusText}"` : ''}
-3. Probability Factors: What factors impact the likelihood of outcomes related to the query?${focusText ? ` Specifically analyze how these factors relate to: "${focusText}"` : ''}
-4. Areas for Further Research: Identify specific gaps in knowledge that would benefit from additional research.
-5. Conclusions: Based solely on this information, what NEW conclusions can we draw?${focusText ? ` Ensure conclusions directly address: "${focusText}"` : ''}
-
-Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
-  
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${openRouterKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
-      "X-Title": "Market Research App",
-    },
-    body: JSON.stringify({
-      model: "google/gemini-flash-1.5",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
-When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze web content to extract valuable insights.
-
-Your analysis should:
-1. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
-2. Avoid repeating information from previous analyses
-3. Build upon existing knowledge with new perspectives
-4. Identify connections between evidence and implications
-5. Be critical of source reliability and evidence quality
-6. Draw balanced conclusions based solely on the evidence provided`
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.3
-    })
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
-  }
-  
-  const data = await response.json();
-  
-  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
-    throw new Error(`Invalid response from OpenRouter API: ${JSON.stringify(data)}`);
-  }
-  
-  return data.choices[0].message.content;
 }
 
 serve(async (req) => {
