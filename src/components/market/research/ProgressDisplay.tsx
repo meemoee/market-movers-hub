@@ -1,4 +1,3 @@
-
 import { cn } from "@/lib/utils"
 import { useEffect, useState, useRef, useLayoutEffect } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -30,7 +29,6 @@ export function ProgressDisplay({
     }
   }, [messages])
   
-  // Use useLayoutEffect to ensure scroll happens before browser paint
   useLayoutEffect(() => {
     if (messagesEndRef.current && scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
@@ -120,3 +118,4 @@ export function ProgressDisplay({
       </ScrollArea>
     </div>
   )
+}

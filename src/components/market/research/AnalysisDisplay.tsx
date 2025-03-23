@@ -1,4 +1,3 @@
-
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -23,7 +22,6 @@ export function AnalysisDisplay({
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   const [showReasoning, setShowReasoning] = useState<boolean>(false)
   
-  // Debug logging
   useEffect(() => {
     if (content && content.length > 0) {
       console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
@@ -33,7 +31,6 @@ export function AnalysisDisplay({
     }
   }, [content, reasoning, isStreaming]);
   
-  // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
@@ -42,7 +39,6 @@ export function AnalysisDisplay({
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
-    // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
@@ -60,14 +56,11 @@ export function AnalysisDisplay({
     prevContentLength.current = currentContentLength
   }, [content, isStreaming, shouldAutoScroll])
   
-  // Handle user scroll to disable auto-scroll
   useEffect(() => {
     if (!scrollRef.current) return
     
     const scrollContainer = scrollRef.current
     const handleScroll = () => {
-      // If user has scrolled up, disable auto-scroll
-      // If they scroll to the bottom, re-enable it
       const isAtBottom = Math.abs(
         (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
         scrollContainer.scrollTop
@@ -83,7 +76,6 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
-  // Check for inactive streaming with longer intervals
   useEffect(() => {
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
@@ -106,7 +98,6 @@ export function AnalysisDisplay({
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime, streamStatus])
   
-  // For continuous smooth scrolling during active streaming
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
@@ -200,3 +191,4 @@ export function AnalysisDisplay({
       )}
     </div>
   )
+}
