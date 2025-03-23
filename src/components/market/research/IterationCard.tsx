@@ -18,6 +18,8 @@ interface IterationCardProps {
     reasoning?: string;
     isAnalysisStreaming?: boolean;
     isReasoningStreaming?: boolean;
+    isAnalysisComplete?: boolean;
+    isReasoningComplete?: boolean;
     isComplete?: boolean;
   };
   isExpanded: boolean;
@@ -50,7 +52,7 @@ export function IterationCard({
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
-    // Check if the iteration is marked as complete
+    // Check if the iteration is marked as complete explicitly
     const isIterationComplete = iteration.isComplete === true;
     
     if ((!isStreaming || isIterationComplete) && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
@@ -91,14 +93,16 @@ export function IterationCard({
     }
   }, [iteration.analysis, iteration.reasoning, isStreaming, isCurrentIteration]);
 
-  // Determine streaming status based on individual properties and timeout
+  // Determine streaming status based on individual properties, explicit completion flags, and timeout
   const isAnalysisStreaming = isStreaming && isCurrentIteration && 
                              (iteration.isAnalysisStreaming !== false) && 
+                             (iteration.isAnalysisComplete !== true) &&
                              !streamingTimedOut && 
                              !iteration.isComplete;
                              
   const isReasoningStreaming = isStreaming && isCurrentIteration && 
                               (iteration.isReasoningStreaming !== false) && 
+                              (iteration.isReasoningComplete !== true) &&
                               !streamingTimedOut && 
                               !iteration.isComplete;
 
@@ -168,7 +172,7 @@ export function IterationCard({
                   isStreaming={isAnalysisStreaming}
                   isReasoningStreaming={isReasoningStreaming}
                   maxHeight="100%"
-                  isComplete={iteration.isComplete}
+                  isComplete={iteration.isComplete || iteration.isAnalysisComplete === true}
                   streamingTimedOut={streamingTimedOut}
                 />
               </TabsContent>
