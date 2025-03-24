@@ -81,7 +81,6 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const [reasoning, setReasoning] = useState<string>('') // Add this new state for reasoning data
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
@@ -92,7 +91,6 @@ export function JobQueueResearchCard({
     setResults([]);
     setError(null);
     setAnalysis('');
-    setReasoning(''); // Reset reasoning data
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
@@ -227,12 +225,6 @@ export function JobQueueResearchCard({
           setAnalysis(parsedResults.analysis);
         }
         
-        // Extract reasoning data from results
-        if (parsedResults.reasoning) {
-          console.log('Found reasoning data:', parsedResults.reasoning);
-          setReasoning(parsedResults.reasoning);
-        }
-        
         if (parsedResults.structuredInsights) {
           console.log('Found structuredInsights:', parsedResults.structuredInsights);
           
@@ -309,8 +301,7 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          console.error('Unexpected results type in loadJobData:', typeof job.results);
-          return;
+          throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
@@ -319,13 +310,6 @@ export function JobQueueResearchCard({
         if (parsedResults.analysis) {
           setAnalysis(parsedResults.analysis);
         }
-        
-        // Extract reasoning data from loaded job results
-        if (parsedResults.reasoning) {
-          console.log('Found reasoning data in loadJobData:', parsedResults.reasoning);
-          setReasoning(parsedResults.reasoning);
-        }
-        
         if (parsedResults.structuredInsights) {
           console.log('Found structuredInsights in loadJobData:', parsedResults.structuredInsights);
           
@@ -882,10 +866,7 @@ export function JobQueueResearchCard({
           {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay 
-                content={analysis}
-                reasoning={reasoning}
-              />
+              <AnalysisDisplay content={analysis} />
             </div>
           )}
         </>

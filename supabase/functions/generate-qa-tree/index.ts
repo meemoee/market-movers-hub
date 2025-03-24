@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -144,7 +145,7 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-r1",
+        model: "perplexity/llama-3.1-sonar-small-128k-online",
         messages: [
           {
             role: "system",
@@ -157,11 +158,7 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
               question
           }
         ],
-        stream: true,
-        reasoning: {
-          max_tokens: 1000,
-          exclude: false
-        }
+        stream: true
       })
     });
     

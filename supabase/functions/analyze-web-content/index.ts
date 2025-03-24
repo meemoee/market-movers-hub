@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -65,6 +66,7 @@ serve(async (req) => {
       ? content.substring(0, contentLimit) + "... [content truncated]" 
       : content;
 
+    // Get current date in a readable format
     const currentDate = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -217,17 +219,13 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
         'X-Title': 'Hunchex Analysis'
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-r1",
+        model: "google/gemini-2.0-flash-lite-001",
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }
         ],
         stream: true,
-        temperature: 0.3,
-        reasoning: {
-          max_tokens: 2000,
-          exclude: false
-        }
+        temperature: 0.3
       }),
     });
 

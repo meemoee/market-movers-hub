@@ -7,31 +7,27 @@ interface AnalysisDisplayProps {
   content: string
   isStreaming?: boolean
   maxHeight?: string | number
-  reasoning?: string
 }
 
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
-  maxHeight = "200px",
-  reasoning
+  maxHeight = "200px" 
 }: AnalysisDisplayProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const [showReasoning, setShowReasoning] = useState<boolean>(false)
   
+  // Debug logging
   useEffect(() => {
     if (content && content.length > 0) {
       console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
     }
-    if (reasoning && reasoning.length > 0) {
-      console.log(`AnalysisDisplay: Reasoning updated - length: ${reasoning.length}`);
-    }
-  }, [content, reasoning, isStreaming]);
+  }, [content, isStreaming]);
   
+  // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
@@ -40,6 +36,7 @@ export function AnalysisDisplay({
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
+    // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
@@ -57,11 +54,14 @@ export function AnalysisDisplay({
     prevContentLength.current = currentContentLength
   }, [content, isStreaming, shouldAutoScroll])
   
+  // Handle user scroll to disable auto-scroll
   useEffect(() => {
     if (!scrollRef.current) return
     
     const scrollContainer = scrollRef.current
     const handleScroll = () => {
+      // If user has scrolled up, disable auto-scroll
+      // If they scroll to the bottom, re-enable it
       const isAtBottom = Math.abs(
         (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
         scrollContainer.scrollTop
@@ -77,6 +77,7 @@ export function AnalysisDisplay({
     return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
+  // Check for inactive streaming with longer intervals
   useEffect(() => {
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
@@ -99,6 +100,7 @@ export function AnalysisDisplay({
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime, streamStatus])
   
+  // For continuous smooth scrolling during active streaming
   useEffect(() => {
     if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
@@ -125,31 +127,6 @@ export function AnalysisDisplay({
 
   return (
     <div className="relative">
-      {reasoning && (
-        <div className="mb-2 flex justify-end">
-          <button 
-            onClick={() => setShowReasoning(!showReasoning)}
-            className="text-xs px-2 py-1 rounded-md bg-primary/10 hover:bg-primary/20 transition-colors"
-          >
-            {showReasoning ? "Hide reasoning" : "Show reasoning"}
-          </button>
-        </div>
-      )}
-      
-      {reasoning && showReasoning && (
-        <ScrollArea 
-          className="rounded-md border p-4 bg-muted/30 w-full max-w-full mb-2"
-          style={{ maxHeight: "150px" }}
-        >
-          <div className="overflow-x-hidden w-full max-w-full">
-            <div className="text-sm text-muted-foreground italic mb-1">Model's reasoning process:</div>
-            <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-              {reasoning}
-            </ReactMarkdown>
-          </div>
-        </ScrollArea>
-      )}
-      
       <ScrollArea 
         className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}

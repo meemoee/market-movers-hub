@@ -1,4 +1,3 @@
-
 interface StreamingState {
   buffer: string;
   sentenceBuffer: string;
