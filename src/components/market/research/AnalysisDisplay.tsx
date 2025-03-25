@@ -9,37 +9,6 @@ interface AnalysisDisplayProps {
   maxHeight?: string | number
 }
 
-// Function to process content and identify reasoning sections
-const processContent = (content: string) => {
-  if (!content) return null;
-  
-  // Split content into segments based on reasoning patterns
-  const segments = content.split(/(\[Reasoning:[^\]]*\])/g);
-  
-  return segments.map((segment, index) => {
-    if (segment.startsWith('[Reasoning:')) {
-      // Extract reasoning text and render in special styling
-      const reasoningText = segment.replace('[Reasoning:', '').replace(']', '');
-      return (
-        <div key={`reasoning-${index}`} className="bg-blue-950/20 border border-blue-800/20 rounded-md p-2 my-2 text-sm">
-          <div className="text-blue-400 font-medium mb-1">Reasoning:</div>
-          <div className="text-blue-100">{reasoningText}</div>
-        </div>
-      );
-    }
-    
-    // Regular content gets standard markdown rendering
-    return segment ? (
-      <ReactMarkdown 
-        key={`content-${index}`}
-        className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full"
-      >
-        {segment}
-      </ReactMarkdown>
-    ) : null;
-  });
-};
-
 export function AnalysisDisplay({ 
   content, 
   isStreaming = false, 
@@ -164,7 +133,9 @@ export function AnalysisDisplay({
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
-          {processContent(content)}
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+            {content}
+          </ReactMarkdown>
         </div>
       </ScrollArea>
       
