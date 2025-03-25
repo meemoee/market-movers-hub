@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -882,7 +883,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// Function to generate analysis with streaming using OpenRouter
+// NEW IMPLEMENTATION: Function to generate analysis with streaming using OpenRouter
 async function generateAnalysisWithStreaming(
   supabaseClient: any,
   jobId: string,
@@ -902,7 +903,7 @@ async function generateAnalysisWithStreaming(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled`);
+  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled and reasoning tokens`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -974,10 +975,11 @@ Present the analysis in a structured, concise format with clear sections and bul
 
   try {
     // Initialize the response stream handling
-    console.log(`Starting streaming response for iteration ${iterationNumber}`);
+    console.log(`Starting streaming response for iteration ${iterationNumber} with reasoning tokens`);
     
-    // Initialize a string to collect the analysis text
+    // Initialize strings to collect the analysis text and reasoning text
     let analysisText = '';
+    let reasoningText = '';
     let chunkSequence = 0;
     
     // First, get the current iterations
@@ -1036,8 +1038,8 @@ Your analysis should:
         stream: true, // Enable streaming response
         temperature: 0.3,
         reasoning: {
-          "max_tokens": 2000,
-          "exclude": false
+          effort: "high", // Allocate a high amount of tokens for reasoning
+          exclude: false  // Include reasoning in the response
         }
       })
     });
@@ -1101,17 +1103,32 @@ Your analysis should:
                 // Parse the JSON data
                 const jsonData = JSON.parse(data);
                 
-                if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta) {
-                  // Handle reasoning tokens
-                  if (jsonData.choices[0].delta.reasoning) {
-                    const reasoning = jsonData.choices[0].delta.reasoning;
-                    analysisText += `\n[Reasoning: ${reasoning}]\n`;
+                if (jsonData.choices && jsonData.choices[0]) {
+                  // Check for delta content
+                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                    const content = jsonData.choices[0].delta.content;
+                    
+                    // Append to the full analysis text
+                    analysisText += content;
                   }
                   
-                  // Handle content tokens
-                  if (jsonData.choices[0].delta.content) {
-                    const content = jsonData.choices[0].delta.content;
-                    analysisText += content;
+                  // Check for delta reasoning
+                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
+                    const reasoning = jsonData.choices[0].delta.reasoning;
+                    
+                    // Append to the full reasoning text
+                    reasoningText += reasoning;
+                  }
+                  
+                  // Or check if we have full message object
+                  if (jsonData.choices[0].message) {
+                    if (jsonData.choices[0].message.content) {
+                      analysisText += jsonData.choices[0].message.content;
+                    }
+                    
+                    if (jsonData.choices[0].message.reasoning) {
+                      reasoningText += jsonData.choices[0].message.reasoning;
+                    }
                   }
                   
                   // Increment chunk sequence
@@ -1131,8 +1148,16 @@ Your analysis should:
                     let currentIterationIndex = updatedIterations.findIndex(iter => iter.iteration === iterationNumber);
                     
                     if (currentIterationIndex !== -1) {
-                      // Update the analysis for this iteration
+                      // Update the analysis and reasoning for this iteration
                       updatedIterations[currentIterationIndex].analysis = analysisText;
+                      
+                      // Add reasoning field if it doesn't exist
+                      if (!updatedIterations[currentIterationIndex].reasoning) {
+                        updatedIterations[currentIterationIndex].reasoning = '';
+                      }
+                      
+                      // Update reasoning text
+                      updatedIterations[currentIterationIndex].reasoning = reasoningText;
                       
                       // Update the database with the new iterations array
                       const { error: updateError } = await supabaseClient
@@ -1267,13 +1292,15 @@ Please provide a comprehensive final analysis including:
 Present the analysis in a structured, comprehensive format with clear sections and bullet points where appropriate.`;
 
   try {
-    // Initialize a string to collect the analysis text
+    // Initialize a string to collect the analysis text and reasoning text
     let finalAnalysis = '';
+    let finalReasoning = '';
     let chunkSequence = 0;
     
     // Create temporary results object for updates during streaming
     let temporaryResults = {
       analysis: '',
+      reasoning: '',
       data: []
     };
     
@@ -1310,8 +1337,8 @@ Your final analysis should:
         stream: true, // Enable streaming response
         temperature: 0.3,
         reasoning: {
-          "max_tokens": 2000,
-          "exclude": false
+          effort: "high", // Allocate a high amount of tokens for reasoning
+          exclude: false  // Include reasoning in the response
         }
       })
     });
@@ -1373,17 +1400,32 @@ Your final analysis should:
             // Parse the JSON data
             const jsonData = JSON.parse(data);
             
-            if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta) {
-              // Handle reasoning tokens
-              if (jsonData.choices[0].delta.reasoning) {
-                const reasoning = jsonData.choices[0].delta.reasoning;
-                finalAnalysis += `\n[Reasoning: ${reasoning}]\n`;
+            if (jsonData.choices && jsonData.choices[0]) {
+              // Check for delta content
+              if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                const content = jsonData.choices[0].delta.content;
+                
+                // Append to the full analysis text
+                finalAnalysis += content;
               }
               
-              // Handle content tokens
-              if (jsonData.choices[0].delta.content) {
-                const content = jsonData.choices[0].delta.content;
-                finalAnalysis += content;
+              // Check for delta reasoning
+              if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
+                const reasoning = jsonData.choices[0].delta.reasoning;
+                
+                // Append to the full reasoning text
+                finalReasoning += reasoning;
+              }
+              
+              // Or check if we have full message object
+              if (jsonData.choices[0].message) {
+                if (jsonData.choices[0].message.content) {
+                  finalAnalysis += jsonData.choices[0].message.content;
+                }
+                
+                if (jsonData.choices[0].message.reasoning) {
+                  finalReasoning += jsonData.choices[0].message.reasoning;
+                }
               }
               
               // Increment chunk sequence
@@ -1391,6 +1433,7 @@ Your final analysis should:
               
               // Update the temporary results
               temporaryResults.analysis = finalAnalysis;
+              temporaryResults.reasoning = finalReasoning;
               
               // Update the results in the database every few chunks to avoid too many updates
               if (chunkSequence % 5 === 0) {
