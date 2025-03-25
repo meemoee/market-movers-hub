@@ -123,47 +123,6 @@ export function AnalysisDisplay({
     }
   }, [isStreaming, shouldAutoScroll])
 
-  // Process content to style reasoning sections differently
-  function processContent(text: string) {
-    if (!text) return null;
-    
-    // Check if the content contains reasoning sections
-    if (text.includes('[Reasoning:')) {
-      // Split content by reasoning sections using regex
-      const segments = text.split(/(\[Reasoning:[^\]]*\])/g);
-      
-      return (
-        <>
-          {segments.map((segment, index) => {
-            if (segment.startsWith('[Reasoning:')) {
-              // Extract reasoning text and style it differently
-              const reasoningText = segment.replace('[Reasoning:', '').replace(']', '').trim();
-              return (
-                <div key={`reason-${index}`} className="bg-blue-950/20 border border-blue-800/20 rounded-md p-2 my-2 text-xs">
-                  <div className="text-blue-400 font-medium mb-1 text-xs">Reasoning:</div>
-                  <div className="text-blue-100">{reasoningText}</div>
-                </div>
-              );
-            }
-            // Render regular content with markdown
-            return (
-              <ReactMarkdown key={`content-${index}`} className="break-words prose-p:my-1 prose-headings:my-2">
-                {segment}
-              </ReactMarkdown>
-            );
-          })}
-        </>
-      );
-    } else {
-      // If no reasoning sections, just render the markdown
-      return (
-        <ReactMarkdown className="break-words prose-p:my-1 prose-headings:my-2">
-          {text}
-        </ReactMarkdown>
-      );
-    }
-  }
-
   if (!content) return null
 
   return (
@@ -174,9 +133,9 @@ export function AnalysisDisplay({
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
-          <div className="text-sm prose prose-invert prose-sm max-w-full">
-            {processContent(content)}
-          </div>
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+            {content}
+          </ReactMarkdown>
         </div>
       </ScrollArea>
       
