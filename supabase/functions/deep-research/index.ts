@@ -1,6 +1,6 @@
-
 import { corsHeaders } from '../_shared/cors.ts';
 import { OpenRouter } from './openRouter.ts';
+import { AnalysisStreamProcessor, createSupabaseClient } from './streamProcessor.ts';
 
 interface ResearchReport {
   title: string;
@@ -17,6 +17,8 @@ interface ResearchStep {
 
 // Default model to use
 const DEFAULT_MODEL = 'google/gemini-2.0-flash-001';
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
+const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 
 Deno.serve(async (req) => {
   // Handle CORS preflight request
@@ -48,6 +50,7 @@ Deno.serve(async (req) => {
 
     const openRouter = new OpenRouter(Deno.env.get("OPENROUTER_API_KEY") || "");
     const model = DEFAULT_MODEL;
+    const supabaseClient = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // Initialize research state
     const researchState = {
@@ -76,7 +79,13 @@ Deno.serve(async (req) => {
       console.log(`Performing iteration ${researchState.iteration}/${iterations}`);
       
       // Perform research
-      const result = await performResearch(currentQuery, researchState, openRouter);
+      const result = await performResearch(
+        currentQuery, 
+        researchState, 
+        openRouter, 
+        marketId, 
+        supabaseClient
+      );
       
       // Store results
       researchState.findings.push(result);
@@ -240,9 +249,15 @@ Return only the query text with no explanations.`;
 }
 
 /**
- * Perform a research iteration
+ * Perform a research iteration with streaming support
  */
-async function performResearch(query: string, researchState: any, openRouter: OpenRouter) {
+async function performResearch(
+  query: string, 
+  researchState: any, 
+  openRouter: OpenRouter, 
+  marketId: string,
+  supabaseClient: any
+) {
   console.log(`[Iteration ${researchState.iteration}/${researchState.totalIterations}] Searching: "${query}"`);
   
   // Create a brief research context from previous findings
@@ -289,14 +304,52 @@ IMPORTANT:
     // The ":online" suffix is for web search, if available on OpenRouter
     const onlineModel = `${researchState.model}:online`;
     
-    const response = await openRouter.complete(onlineModel, [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Search for information on: "${query}"` }
-    ], 1200, 0.3);
+    // Initialize the stream processor
+    // We'll get the jobId from the marketId
+    await supabaseClient.rpc('append_progress_log', { 
+      job_id: marketId, 
+      log_message: `Starting streaming analysis for iteration ${researchState.iteration}` 
+    });
+    
+    const streamProcessor = new AnalysisStreamProcessor(
+      marketId, 
+      researchState.iteration,
+      supabaseClient
+    );
+    
+    // Now use the streaming capability of OpenAI
+    const response = await openRouter.completeWithStream(
+      onlineModel, 
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Search for information on: "${query}"` }
+      ], 
+      async (chunk) => {
+        // Process each chunk and save to stream
+        await streamProcessor.processChunk(chunk);
+      },
+      1200, // Max tokens 
+      0.3   // Temperature
+    );
+    
+    // Make sure we flush any remaining buffered content
+    await streamProcessor.complete();
     
     // Process the content to extract structured data
     const result = processContent(response, query);
     result.iteration = researchState.iteration;
+    
+    // Update the main job record with the completed analysis
+    await supabaseClient.rpc('append_research_iteration', {
+      job_id: marketId,
+      iteration_data: JSON.stringify({
+        iteration: researchState.iteration,
+        queries: [query],
+        analysis: response,  // Now this is the complete text
+        reasoning: '',       // We don't have separate reasoning yet
+        results: []          // Will be filled by web-scrape function
+      })
+    });
     
     return result;
   } catch (error) {
@@ -304,14 +357,47 @@ IMPORTANT:
     // Try again without the :online suffix if it failed
     try {
       console.log("Retrying without web search...");
-      const response = await openRouter.complete(researchState.model, [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `Based on your knowledge, provide information on: "${query}"` }
-      ], 1200, 0.3);
+      
+      // Initialize the stream processor for the retry
+      const streamProcessor = new AnalysisStreamProcessor(
+        marketId, 
+        researchState.iteration,
+        supabaseClient
+      );
+      
+      // Perform the retry with streaming
+      const response = await openRouter.completeWithStream(
+        researchState.model, 
+        [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: `Based on your knowledge, provide information on: "${query}"` }
+        ],
+        async (chunk) => {
+          // Process each chunk
+          await streamProcessor.processChunk(chunk);
+        },
+        1200, 
+        0.3
+      );
+      
+      // Flush the remaining buffer
+      await streamProcessor.complete();
       
       // Process the content to extract structured data
       const result = processContent(response, query);
       result.iteration = researchState.iteration;
+      
+      // Update the main job record with the completed analysis
+      await supabaseClient.rpc('append_research_iteration', {
+        job_id: marketId,
+        iteration_data: JSON.stringify({
+          iteration: researchState.iteration,
+          queries: [query],
+          analysis: response,
+          reasoning: '',
+          results: []
+        })
+      });
       
       return result;
     } catch (retryError) {

@@ -24,6 +24,7 @@ interface IterationCardProps {
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
+  jobId?: string;
 }
 
 export function IterationCard({
@@ -32,7 +33,8 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations
+  maxIterations,
+  jobId
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
@@ -99,6 +101,8 @@ export function IterationCard({
                   isStreaming={isAnalysisStreaming}
                   isReasoningStreaming={isReasoningStreaming}
                   maxHeight="100%"
+                  jobId={jobId}
+                  iterationNumber={iteration.iteration}
                 />
               </TabsContent>
               
