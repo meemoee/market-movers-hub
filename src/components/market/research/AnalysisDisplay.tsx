@@ -127,8 +127,21 @@ export function AnalysisDisplay({
   const processContent = (content: string) => {
     if (!content) return null;
     
+    // Pre-process reasoning sections for proper accumulation
+    let processedContent = content;
+    
+    // Combine multiple reasoning sections with the same structure
+    // This regex finds consecutive reasoning blocks and combines their content
+    const combinedReasoningRegex = /\[Reasoning:([^\]]*)\](\s*)\[Reasoning:([^\]]*)\]/g;
+    while (combinedReasoningRegex.test(processedContent)) {
+      processedContent = processedContent.replace(
+        combinedReasoningRegex, 
+        '[Reasoning:$1$3]'
+      );
+    }
+    
     // Split content by reasoning sections
-    const segments = content.split(/(\[Reasoning:[^\]]*\])/g);
+    const segments = processedContent.split(/(\[Reasoning:[^\]]*\])/g);
     
     return segments.map((segment, index) => {
       if (segment.startsWith('[Reasoning:')) {
