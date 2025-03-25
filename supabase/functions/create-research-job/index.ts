@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -883,7 +882,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// NEW IMPLEMENTATION: Function to generate analysis with streaming using OpenRouter
+// Function to generate analysis with streaming using OpenRouter
 async function generateAnalysisWithStreaming(
   supabaseClient: any,
   jobId: string,
@@ -1014,7 +1013,7 @@ Present the analysis in a structured, concise format with clear sections and bul
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "deepseek/deepseek-r1",
         messages: [
           {
             role: "system",
@@ -1035,7 +1034,11 @@ Your analysis should:
           }
         ],
         stream: true, // Enable streaming response
-        temperature: 0.3
+        temperature: 0.3,
+        reasoning: {
+          "max_tokens": 2000,
+          "exclude": false
+        }
       })
     });
     
@@ -1098,11 +1101,18 @@ Your analysis should:
                 // Parse the JSON data
                 const jsonData = JSON.parse(data);
                 
-                if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                  const content = jsonData.choices[0].delta.content;
+                if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta) {
+                  // Handle reasoning tokens
+                  if (jsonData.choices[0].delta.reasoning) {
+                    const reasoning = jsonData.choices[0].delta.reasoning;
+                    analysisText += `\n[Reasoning: ${reasoning}]\n`;
+                  }
                   
-                  // Append to the full analysis text
-                  analysisText += content;
+                  // Handle content tokens
+                  if (jsonData.choices[0].delta.content) {
+                    const content = jsonData.choices[0].delta.content;
+                    analysisText += content;
+                  }
                   
                   // Increment chunk sequence
                   chunkSequence++;
@@ -1277,7 +1287,7 @@ Present the analysis in a structured, comprehensive format with clear sections a
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-flash-1.5",
+        model: "deepseek/deepseek-r1",
         messages: [
           {
             role: "system",
@@ -1298,7 +1308,11 @@ Your final analysis should:
           }
         ],
         stream: true, // Enable streaming response
-        temperature: 0.3
+        temperature: 0.3,
+        reasoning: {
+          "max_tokens": 2000,
+          "exclude": false
+        }
       })
     });
     
@@ -1359,11 +1373,18 @@ Your final analysis should:
             // Parse the JSON data
             const jsonData = JSON.parse(data);
             
-            if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-              const content = jsonData.choices[0].delta.content;
+            if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta) {
+              // Handle reasoning tokens
+              if (jsonData.choices[0].delta.reasoning) {
+                const reasoning = jsonData.choices[0].delta.reasoning;
+                finalAnalysis += `\n[Reasoning: ${reasoning}]\n`;
+              }
               
-              // Append to the full analysis text
-              finalAnalysis += content;
+              // Handle content tokens
+              if (jsonData.choices[0].delta.content) {
+                const content = jsonData.choices[0].delta.content;
+                finalAnalysis += content;
+              }
               
               // Increment chunk sequence
               chunkSequence++;

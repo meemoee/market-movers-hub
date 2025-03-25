@@ -122,6 +122,36 @@ export function AnalysisDisplay({
       cancelAnimationFrame(rafId);
     }
   }, [isStreaming, shouldAutoScroll])
+  
+  // Process content and handle reasoning sections
+  const processContent = (content: string) => {
+    if (!content) return null;
+    
+    // Split content by reasoning sections
+    const segments = content.split(/(\[Reasoning:[^\]]*\])/g);
+    
+    return segments.map((segment, index) => {
+      if (segment.startsWith('[Reasoning:')) {
+        // Extract and format reasoning text
+        const reasoningText = segment.replace('[Reasoning:', '').replace(']', '').trim();
+        return (
+          <div key={`reason-${index}`} className="bg-blue-950/20 border border-blue-800/20 rounded-md p-2 my-2 text-sm">
+            <div className="text-blue-400 font-medium mb-1">Reasoning:</div>
+            <div className="text-blue-100">{reasoningText}</div>
+          </div>
+        );
+      }
+      
+      // For non-reasoning content, render as markdown
+      return (
+        <div key={`content-${index}`}>
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+            {segment}
+          </ReactMarkdown>
+        </div>
+      );
+    });
+  };
 
   if (!content) return null
 
@@ -133,9 +163,7 @@ export function AnalysisDisplay({
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {content}
-          </ReactMarkdown>
+          {processContent(content)}
         </div>
       </ScrollArea>
       
