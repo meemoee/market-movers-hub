@@ -131,7 +131,7 @@ export function AnalysisDisplay({
     let processedContent = content;
     
     // Combine multiple reasoning sections with the same structure
-    // This regex finds consecutive reasoning blocks and combines their content
+    // This regex finds consecutive reasoning blocks and simply concatenates their content
     const combinedReasoningRegex = /\[Reasoning:([^\]]*)\](\s*)\[Reasoning:([^\]]*)\]/g;
     while (combinedReasoningRegex.test(processedContent)) {
       processedContent = processedContent.replace(
