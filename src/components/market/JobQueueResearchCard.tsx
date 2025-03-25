@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -70,6 +70,7 @@ export function JobQueueResearchCard({
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState('')
   const [jobId, setJobId] = useState<string | null>(null)
+  const [polling, setPolling] = useState(false)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
@@ -81,11 +82,11 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
   const resetState = () => {
     setJobId(null);
+    setPolling(false);
     setProgress([]);
     setProgressPercent(0);
     setResults([]);
@@ -95,24 +96,10 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    
-    if (realtimeChannelRef.current) {
-      console.log('Removing realtime channel on reset');
-      supabase.removeChannel(realtimeChannelRef.current);
-      realtimeChannelRef.current = null;
-    }
   }
 
   useEffect(() => {
     fetchSavedJobs();
-    
-    return () => {
-      if (realtimeChannelRef.current) {
-        console.log('Removing realtime channel on unmount');
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
   }, [marketId]);
 
   const fetchSavedJobs = async () => {
@@ -139,125 +126,6 @@ export function JobQueueResearchCard({
     }
   };
 
-  const subscribeToJobUpdates = (id: string) => {
-    if (realtimeChannelRef.current) {
-      console.log('Removing existing realtime channel before creating new one');
-      supabase.removeChannel(realtimeChannelRef.current);
-      realtimeChannelRef.current = null;
-    }
-    
-    console.log(`Setting up realtime subscription for job id: ${id}`);
-    
-    const channel = supabase
-      .channel(`job-updates-${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'research_jobs',
-          filter: `id=eq.${id}`
-        },
-        (payload) => {
-          console.log('Received realtime update:', payload);
-          handleJobUpdate(payload.new as ResearchJob);
-        }
-      )
-      .subscribe((status) => {
-        console.log(`Realtime subscription status: ${status}`, id);
-      });
-    
-    realtimeChannelRef.current = channel;
-  };
-
-  const handleJobUpdate = (job: ResearchJob) => {
-    console.log('Processing job update:', job);
-    
-    setJobStatus(job.status);
-    
-    if (job.max_iterations && job.current_iteration !== undefined) {
-      const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-      setProgressPercent(job.status === 'completed' ? 100 : percent);
-    }
-    
-    if (job.progress_log && Array.isArray(job.progress_log)) {
-      const currentProgress = progress;
-      const newItems = job.progress_log.slice(currentProgress.length);
-      
-      if (newItems.length > 0) {
-        console.log('Adding new progress items:', newItems);
-        setProgress(prev => [...prev, ...newItems]);
-      }
-    }
-    
-    if (job.iterations && Array.isArray(job.iterations)) {
-      setIterations(job.iterations);
-      
-      if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-        setExpandedIterations(prev => [...prev, job.current_iteration]);
-      }
-    }
-    
-    if (job.status === 'completed' && job.results) {
-      try {
-        console.log('Processing completed job results:', job.results);
-        
-        // Handle both string and object results
-        let parsedResults;
-        if (typeof job.results === 'string') {
-          try {
-            parsedResults = JSON.parse(job.results);
-          } catch (parseError) {
-            console.error('Error parsing job.results string:', parseError);
-            throw new Error('Invalid results format (string parsing failed)');
-          }
-        } else if (typeof job.results === 'object') {
-          parsedResults = job.results;
-        } else {
-          throw new Error(`Unexpected results type: ${typeof job.results}`);
-        }
-        
-        if (parsedResults.data && Array.isArray(parsedResults.data)) {
-          setResults(parsedResults.data);
-        }
-        
-        if (parsedResults.analysis) {
-          setAnalysis(parsedResults.analysis);
-        }
-        
-        if (parsedResults.structuredInsights) {
-          console.log('Found structuredInsights:', parsedResults.structuredInsights);
-          
-          const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
-            calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
-            null;
-          
-          // Fix: Correctly structure the data for InsightsDisplay
-          setStructuredInsights({
-            rawText: typeof parsedResults.structuredInsights === 'string' 
-              ? parsedResults.structuredInsights 
-              : JSON.stringify(parsedResults.structuredInsights),
-            parsedData: {
-              ...parsedResults.structuredInsights,
-              goodBuyOpportunities
-            }
-          });
-        }
-        
-        fetchSavedJobs();
-      } catch (e) {
-        console.error('Error processing job results:', e);
-      }
-    }
-    
-    if (job.status === 'failed') {
-      setError(`Job failed: ${job.error_message || 'Unknown error'}`);
-      setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-      
-      fetchSavedJobs();
-    }
-  };
-
   const loadJobData = (job: ResearchJob) => {
     setJobId(job.id);
     setJobStatus(job.status);
@@ -276,7 +144,7 @@ export function JobQueueResearchCard({
     }
     
     if (job.status === 'queued' || job.status === 'processing') {
-      subscribeToJobUpdates(job.id);
+      setPolling(true);
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
@@ -289,21 +157,7 @@ export function JobQueueResearchCard({
     
     if (job.status === 'completed' && job.results) {
       try {
-        // Handle both string and object results
-        let parsedResults;
-        if (typeof job.results === 'string') {
-          try {
-            parsedResults = JSON.parse(job.results);
-          } catch (parseError) {
-            console.error('Error parsing job.results string in loadJobData:', parseError);
-            throw new Error('Invalid results format (string parsing failed)');
-          }
-        } else if (typeof job.results === 'object') {
-          parsedResults = job.results;
-        } else {
-          throw new Error(`Unexpected results type: ${typeof job.results}`);
-        }
-        
+        const parsedResults = JSON.parse(job.results);
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
         }
@@ -311,25 +165,20 @@ export function JobQueueResearchCard({
           setAnalysis(parsedResults.analysis);
         }
         if (parsedResults.structuredInsights) {
-          console.log('Found structuredInsights in loadJobData:', parsedResults.structuredInsights);
-          
           const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
-            rawText: typeof parsedResults.structuredInsights === 'string' 
-              ? parsedResults.structuredInsights 
-              : JSON.stringify(parsedResults.structuredInsights),
             parsedData: {
               ...parsedResults.structuredInsights,
               goodBuyOpportunities
-            }
+            },
+            rawText: JSON.stringify(parsedResults.structuredInsights)
           });
         }
       } catch (e) {
-        console.error('Error processing loaded job results:', e);
+        console.error('Error parsing job results:', e);
       }
     }
     
@@ -384,22 +233,7 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      // Handle both string and object results
-      let parsedResults;
-      if (typeof job.results === 'string') {
-        try {
-          parsedResults = JSON.parse(job.results);
-        } catch (parseError) {
-          console.error('Error parsing job.results string in extractProbability:', parseError);
-          return null;
-        }
-      } else if (typeof job.results === 'object') {
-        parsedResults = job.results;
-      } else {
-        console.error('Unexpected results type in extractProbability:', typeof job.results);
-        return null;
-      }
-      
+      const parsedResults = JSON.parse(job.results);
       if (parsedResults.structuredInsights && parsedResults.structuredInsights.probability) {
         return parsedResults.structuredInsights.probability;
       }
@@ -409,6 +243,105 @@ export function JobQueueResearchCard({
       return null;
     }
   };
+
+  useEffect(() => {
+    if (!jobId || !polling) return;
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        console.log(`Polling for job status: ${jobId}`);
+        const { data, error } = await supabase
+          .from('research_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .single();
+          
+        if (error) {
+          console.error('Error polling job status:', error);
+          return;
+        }
+        
+        if (!data) {
+          console.log('No job data found');
+          return;
+        }
+        
+        const job = data as ResearchJob;
+        console.log('Job status:', job.status);
+        
+        setJobStatus(job.status);
+        
+        if (job.status === 'completed') {
+          setPolling(false);
+          setProgressPercent(100);
+          setProgress(prev => [...prev, 'Job completed successfully!']);
+          
+          if (job.results) {
+            try {
+              const parsedResults = JSON.parse(job.results);
+              if (parsedResults.data && Array.isArray(parsedResults.data)) {
+                setResults(parsedResults.data);
+              }
+              if (parsedResults.analysis) {
+                setAnalysis(parsedResults.analysis);
+              }
+              if (parsedResults.structuredInsights) {
+                const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
+                  calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
+                  null;
+                
+                setStructuredInsights({
+                  parsedData: {
+                    ...parsedResults.structuredInsights,
+                    goodBuyOpportunities
+                  },
+                  rawText: JSON.stringify(parsedResults.structuredInsights)
+                });
+              }
+            } catch (e) {
+              console.error('Error parsing job results:', e);
+            }
+          }
+          
+          fetchSavedJobs();
+          
+          clearInterval(pollInterval);
+        } else if (job.status === 'failed') {
+          setPolling(false);
+          setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+          setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
+          
+          fetchSavedJobs();
+          
+          clearInterval(pollInterval);
+        } else if (job.status === 'processing') {
+          if (job.max_iterations && job.current_iteration !== undefined) {
+            const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
+            setProgressPercent(percent);
+          }
+          
+          if (job.progress_log && Array.isArray(job.progress_log)) {
+            const newItems = job.progress_log.slice(progress.length);
+            if (newItems.length > 0) {
+              setProgress(prev => [...prev, ...newItems]);
+            }
+          }
+          
+          if (job.iterations && Array.isArray(job.iterations)) {
+            setIterations(job.iterations);
+            
+            if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
+              setExpandedIterations(prev => [...prev, job.current_iteration]);
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error in poll interval:', e);
+      }
+    }, 3000);
+    
+    return () => clearInterval(pollInterval);
+  }, [jobId, polling, progress.length, expandedIterations, bestBid, bestAsk, noBestBid, outcomes]);
 
   const handleResearch = async (initialFocusText = '') => {
     resetState();
@@ -428,8 +361,6 @@ export function JobQueueResearchCard({
         notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
       
-      console.log('Creating research job with payload:', payload);
-      
       const response = await supabase.functions.invoke('create-research-job', {
         body: JSON.stringify(payload)
       });
@@ -444,15 +375,12 @@ export function JobQueueResearchCard({
       }
       
       const jobId = response.data.jobId;
-      console.log(`Research job created with ID: ${jobId}`);
-      
       setJobId(jobId);
+      setPolling(true);
       setJobStatus('queued');
       setProgress(prev => [...prev, `Research job created with ID: ${jobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
       setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
-      
-      subscribeToJobUpdates(jobId);
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
         ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
@@ -516,7 +444,6 @@ export function JobQueueResearchCard({
       }
       
       const job = data as ResearchJob;
-      console.log('Loaded research job:', job);
       
       loadJobData(job);
       
@@ -645,7 +572,7 @@ export function JobQueueResearchCard({
           ) : (
             <Button 
               onClick={() => handleResearch()} 
-              disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
+              disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
               className="flex items-center gap-2"
             >
               {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -725,7 +652,7 @@ export function JobQueueResearchCard({
                 placeholder="Add an optional focus area for your research..."
                 value={focusText}
                 onChange={(e) => setFocusText(e.target.value)}
-                disabled={isLoading}
+                disabled={isLoading || polling}
                 className="flex-1"
               />
             </div>
@@ -738,7 +665,7 @@ export function JobQueueResearchCard({
               <Select
                 value={maxIterations}
                 onValueChange={setMaxIterations}
-                disabled={isLoading}
+                disabled={isLoading || polling}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Number of iterations" />
@@ -783,7 +710,7 @@ export function JobQueueResearchCard({
               
               <Button 
                 onClick={() => handleResearch()} 
-                disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
+                disabled={isLoading || polling || (notifyByEmail && !notificationEmail.trim())}
                 className="w-full"
               >
                 {isLoading ? (
@@ -831,7 +758,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={false}
+                isStreaming={polling && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
@@ -849,7 +776,6 @@ export function JobQueueResearchCard({
             marketData={{
               bestBid,
               bestAsk,
-              noBestAsk,
               outcomes
             }}
           />
