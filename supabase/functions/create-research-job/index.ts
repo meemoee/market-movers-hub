@@ -1150,21 +1150,14 @@ Your analysis should:
                     if (currentIterationIndex !== -1) {
                       // Update the analysis and reasoning for this iteration
                       updatedIterations[currentIterationIndex].analysis = analysisText;
-                      
-                      // Add reasoning field if it doesn't exist
-                      if (!updatedIterations[currentIterationIndex].reasoning) {
-                        updatedIterations[currentIterationIndex].reasoning = '';
-                      }
-                      
-                      // Update reasoning text
                       updatedIterations[currentIterationIndex].reasoning = reasoningText;
-                      
+
                       // Update the database with the new iterations array
                       const { error: updateError } = await supabaseClient
                         .from('research_jobs')
                         .update({ iterations: updatedIterations })
                         .eq('id', jobId);
-                      
+
                       if (updateError) {
                         console.error(`Error updating iterations with streaming chunk:`, updateError);
                       }
@@ -1178,7 +1171,7 @@ Your analysis should:
               }
             }
           }
-          
+
           // Save any incomplete chunk for the next iteration
           incompleteChunk = textToParse.substring(processedUpTo);
         }
