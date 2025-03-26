@@ -5,7 +5,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Markdown } from "@/components/Markdown"
 import { cn } from "@/lib/utils"
 import { Check, Eye } from "lucide-react"
-import { supabase } from "@/integrations/supabase/client"
 
 interface AnalysisDisplayProps {
   content: string;
@@ -13,8 +12,6 @@ interface AnalysisDisplayProps {
   isStreaming?: boolean;
   isReasoningStreaming?: boolean;
   maxHeight?: string;
-  jobId?: string;
-  iterationNumber?: number;
 }
 
 export function AnalysisDisplay({ 
@@ -22,137 +19,49 @@ export function AnalysisDisplay({
   reasoning,
   isStreaming = false,
   isReasoningStreaming = false,
-  maxHeight = '400px',
-  jobId,
-  iterationNumber
+  maxHeight = '400px'
 }: AnalysisDisplayProps) {
   const [showReasoning, setShowReasoning] = useState(false);
-  const [streamContent, setStreamContent] = useState(content);
-  const [streamReasoning, setStreamReasoning] = useState(reasoning || '');
   const contentRef = useRef<HTMLDivElement>(null);
   const reasoningRef = useRef<HTMLDivElement>(null);
-  const realtimeChannelRef = useRef<any>(null);
-  const lastSequenceRef = useRef<number>(-1);
   
-  // Start with the initial content
-  useEffect(() => {
-    if (!isStreaming) {
-      setStreamContent(content);
-    }
-  }, [content, isStreaming]);
+  // Always store the latest content passed in props
+  const [renderedContent, setRenderedContent] = useState(content);
+  const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
   
-  // Start with the initial reasoning
+  // Always accept and display the incoming content as-is
   useEffect(() => {
-    if (!isReasoningStreaming) {
-      setStreamReasoning(reasoning || '');
+    if (content) {
+      setRenderedContent(content);
     }
-  }, [reasoning, isReasoningStreaming]);
-
-  // Subscribe to real-time updates from analysis_stream if jobId and iterationNumber are provided
-  useEffect(() => {
-    if (jobId && iterationNumber !== undefined && isStreaming) {
-      console.log(`Setting up realtime subscription for job ${jobId}, iteration ${iterationNumber}`);
-      
-      // First, fetch existing chunks
-      const fetchExistingChunks = async () => {
-        try {
-          const { data, error } = await supabase
-            .from('analysis_stream')
-            .select('chunk, sequence')
-            .eq('job_id', jobId)
-            .eq('iteration', iterationNumber)
-            .order('sequence', { ascending: true });
-            
-          if (error) {
-            console.error('Error fetching existing chunks:', error);
-            return;
-          }
-          
-          if (data && data.length > 0) {
-            // Accumulate all chunks and update the sequence counter
-            const accumulatedContent = data.reduce((acc, item) => {
-              lastSequenceRef.current = Math.max(lastSequenceRef.current, item.sequence);
-              return acc + item.chunk;
-            }, '');
-            
-            setStreamContent(prev => {
-              // Don't append if it would be duplicate content
-              if (prev.includes(accumulatedContent)) {
-                return prev;
-              }
-              return accumulatedContent;
-            });
-            
-            console.log(`Loaded ${data.length} existing chunks, last sequence: ${lastSequenceRef.current}`);
-          }
-        } catch (e) {
-          console.error('Error in fetchExistingChunks:', e);
-        }
-      };
-      
-      fetchExistingChunks();
-      
-      // Set up realtime subscription for new chunks
-      if (realtimeChannelRef.current) {
-        supabase.removeChannel(realtimeChannelRef.current);
-      }
-      
-      const channel = supabase.channel(`analysis_stream_${jobId}_${iterationNumber}`)
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'analysis_stream',
-          filter: `job_id=eq.${jobId}`,
-        }, (payload) => {
-          // Only process chunks for our specific iteration
-          if (payload.new && payload.new.iteration === iterationNumber) {
-            // Check if this is a new chunk (higher sequence than what we've seen)
-            if (payload.new.sequence > lastSequenceRef.current) {
-              console.log(`Received new chunk with sequence ${payload.new.sequence}`);
-              lastSequenceRef.current = payload.new.sequence;
-              
-              // Append the new chunk to our content
-              setStreamContent(prev => prev + payload.new.chunk);
-            }
-          }
-        })
-        .subscribe();
-      
-      realtimeChannelRef.current = channel;
-      
-      return () => {
-        if (realtimeChannelRef.current) {
-          console.log('Removing realtime subscription');
-          supabase.removeChannel(realtimeChannelRef.current);
-          realtimeChannelRef.current = null;
-        }
-      };
-    }
-  }, [jobId, iterationNumber, isStreaming]);
+  }, [content]);
   
+  // Always accept and display the incoming reasoning as-is
   useEffect(() => {
-    // Auto-scroll to bottom when content is streaming
+    if (reasoning) {
+      setRenderedReasoning(reasoning);
+    }
+  }, [reasoning]);
+  
+  // Auto-scroll content when streaming
+  useEffect(() => {
     if (isStreaming && contentRef.current) {
       const scrollElement = contentRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [streamContent, isStreaming]);
+  }, [renderedContent, isStreaming]);
 
+  // Auto-scroll reasoning when streaming
   useEffect(() => {
-    // Auto-scroll reasoning to bottom when streaming
     if (isReasoningStreaming && reasoningRef.current && showReasoning) {
       const scrollElement = reasoningRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [streamReasoning, isReasoningStreaming, showReasoning]);
-
-  // Determine what content to display based on streaming state
-  const displayContent = isStreaming ? streamContent : content;
-  const displayReasoning = isReasoningStreaming ? streamReasoning : reasoning;
+  }, [renderedReasoning, isReasoningStreaming, showReasoning]);
 
   return (
     <div className="flex flex-col h-full">
@@ -175,19 +84,19 @@ export function AnalysisDisplay({
         <ScrollArea className="h-full" style={{ maxHeight }}>
           <div className="p-2">
             <Markdown>
-              {displayContent}
+              {renderedContent}
               {isStreaming && <span className="animate-pulse">▌</span>}
             </Markdown>
           </div>
         </ScrollArea>
       </div>
       
-      {reasoning && (
+      {(reasoning || isReasoningStreaming) && (
         <div className={cn("h-full overflow-hidden", showReasoning ? "block" : "hidden")} ref={reasoningRef}>
           <ScrollArea className="h-full" style={{ maxHeight }}>
             <div className="p-2 bg-muted/20">
               <Markdown>
-                {displayReasoning}
+                {renderedReasoning}
                 {isReasoningStreaming && <span className="animate-pulse">▌</span>}
               </Markdown>
             </div>

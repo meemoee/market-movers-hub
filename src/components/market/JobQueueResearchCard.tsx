@@ -314,7 +314,7 @@ export function JobQueueResearchCard({
     
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-      setProgressPercent(job.status === 'completed' ? 100 : percent);
+      setProgressPercent(percent);
       
       if (job.status === 'completed') {
         setProgressPercent(100);
@@ -374,7 +374,6 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -906,7 +905,6 @@ export function JobQueueResearchCard({
                 isStreaming={streamingIterations.has(iteration.iteration)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
-                jobId={jobId || undefined}
               />
             ))}
           </div>
