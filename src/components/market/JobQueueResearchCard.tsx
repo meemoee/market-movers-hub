@@ -218,26 +218,12 @@ export function JobQueueResearchCard({
         : new Set<number>();
         
       setStreamingIterations(newStreamingIterations);
-
-      const enhancedIterations = job.iterations.map(iter => {
-        const isCurrent = iter.iteration === job.current_iteration;
-        const isProcessing = job.status === 'processing';
-        
-        // Check if the stream *should* be active based on job status and iteration number
-        const potentiallyStreaming = isProcessing && isCurrent;
-
-        // Check if the stream has *actually* completed (using the assumed backend flag)
-        // NOTE: Assumes backend adds these flags to the iteration object in the DB
-        const analysisCompleted = iter.analysis_stream_completed === true; 
-        const reasoningCompleted = iter.reasoning_stream_completed === true; // Assuming similar flag for reasoning
-
-        return {
-          ...iter,
-          // Stream is active if it's potentially streaming AND not yet completed
-          isAnalysisStreaming: potentiallyStreaming && !analysisCompleted,
-          isReasoningStreaming: potentiallyStreaming && !reasoningCompleted 
-        };
-      });
+      
+      const enhancedIterations = job.iterations.map(iter => ({
+        ...iter,
+        isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
+        isReasoningStreaming: newStreamingIterations.has(iter.iteration)
+      }));
       
       setIterations(enhancedIterations);
       
@@ -336,23 +322,11 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      const enhancedIterations = job.iterations.map(iter => {
-        const isCurrent = iter.iteration === job.current_iteration;
-        // Use job.status from the loaded job data
-        const isProcessing = job.status === 'processing'; 
-        
-        const potentiallyStreaming = isProcessing && isCurrent;
-
-        // NOTE: Assumes backend adds these flags to the iteration object in the DB
-        const analysisCompleted = iter.analysis_stream_completed === true; 
-        const reasoningCompleted = iter.reasoning_stream_completed === true; 
-
-        return {
-          ...iter,
-          isAnalysisStreaming: potentiallyStreaming && !analysisCompleted,
-          isReasoningStreaming: potentiallyStreaming && !reasoningCompleted 
-        };
-      });
+      const enhancedIterations = job.iterations.map(iter => ({
+        ...iter,
+        isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
+        isReasoningStreaming: newStreamingIterations.has(iter.iteration)
+      }));
       
       setIterations(enhancedIterations);
       
@@ -757,10 +731,10 @@ export function JobQueueResearchCard({
                         <span className="font-medium truncate flex-1">
                           {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
                         </span>
-                        <Badge
-                          variant="outline"
+                        <Badge 
+                          variant="outline" 
                           className={`ml-2 ${
-                            job.status === 'completed' ? 'bg-green-50 text-green-700' :
+                            job.status === 'completed' ? 'bg-green-50 text-green-700' : 
                             job.status === 'failed' ? 'bg-red-50 text-red-700' :
                             job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
                             'bg-yellow-50 text-yellow-700'
@@ -898,7 +872,7 @@ export function JobQueueResearchCard({
           <div className="space-y-2">
             {iterations.map((iteration) => (
               <IterationCard
-                // key prop is used by React for list rendering, not passed to the component
+                key={iteration.iteration}
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
