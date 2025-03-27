@@ -1,5 +1,6 @@
 
 import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
+import { OpenRouter } from "../deep-research/openRouter.ts";
 
 interface ResearchIteration {
   iteration: number;
@@ -15,6 +16,7 @@ export class ResearchProcessor {
   private marketId: string;
   private marketQuestion: string;
   private maxIterations: number = 3;
+  private openRouter: OpenRouter;
   
   constructor(
     supabase: SupabaseClient,
@@ -26,6 +28,13 @@ export class ResearchProcessor {
     this.jobId = jobId;
     this.marketId = marketId;
     this.marketQuestion = marketQuestion;
+    
+    // Initialize OpenRouter with API key from environment
+    const openRouterApiKey = Deno.env.get('OPENROUTER_API_KEY');
+    if (!openRouterApiKey) {
+      console.warn("OpenRouter API key not found in environment variables");
+    }
+    this.openRouter = new OpenRouter(openRouterApiKey || '');
   }
   
   /**
@@ -173,19 +182,47 @@ export class ResearchProcessor {
       console.warn(`Could not retrieve market price: ${error.message}`);
     }
     
-    // Simulate analysis generation
+    // Prepare analysis generation with streaming
     console.log(`Generating Iteration ${iteration} analysis for "${this.marketQuestion}" using OpenRouter with streaming enabled and reasoning tokens`);
     console.log(`Starting streaming response for iteration ${iteration} with reasoning tokens`);
-    console.log(`Starting to process streaming response chunks for iteration ${iteration}`);
     
-    // In a real implementation, this would call the analysis generation endpoint
-    // For now, we'll return a placeholder
-    const analysis = `Analysis for iteration ${iteration} of market ${this.marketId} based on queries: ${queries.join(', ')}`;
-    
-    // Simulate completion
-    console.log(`Successfully completed generateAnalysisWithStreaming for iteration ${iteration}`);
-    
-    return analysis;
+    try {
+      // Get previous analyses for context
+      const previousAnalysesText = previousIterations
+        .map(iter => `Iteration ${iter.iteration} Analysis:\n${iter.analysis}`)
+        .join('\n\n');
+      
+      // Prepare the prompt for analysis generation
+      const queriesText = queries.map((q, idx) => `${idx + 1}. ${q}`).join('\n');
+      
+      const prompt = `You are a research analyst tasked with analyzing a prediction market question.
+
+Market Question: "${this.marketQuestion}"
+${marketPrice ? `Current Market Price: ${marketPrice}%` : ''}
+
+${iteration > 1 ? `Previous Research:\n${previousAnalysesText}\n\n` : ''}
+
+Current Research Queries (Iteration ${iteration}):
+${queriesText}
+
+Based on the market question and the research queries, provide a detailed analysis of what information we are seeking and what aspects we should focus on. 
+Your response should be well-structured and insightful, focusing on the key factors that would help predict the outcome of this market question.`;
+
+      // Call OpenRouter API to generate the analysis
+      const analysisResponse = await this.openRouter.complete(
+        "openai/gpt-4-turbo-preview",
+        [{ role: "user", content: prompt }],
+        1500, // Max tokens
+        0.7   // Temperature
+      );
+      
+      console.log(`Successfully completed generateAnalysisWithStreaming for iteration ${iteration}`);
+      
+      return analysisResponse;
+    } catch (error) {
+      console.error(`Error generating analysis: ${error.message}`);
+      return `Error generating analysis for iteration ${iteration}: ${error.message}`;
+    }
   }
   
   /**
