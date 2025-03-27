@@ -870,6 +870,15 @@ export type Database = {
           market_id: string
         }[]
       }
+      update_iteration_field: {
+        Args: {
+          job_id: string
+          iteration_num: number
+          field_key: string
+          field_value: string
+        }
+        Returns: undefined
+      }
       update_research_job_status: {
         Args: {
           job_id: string
