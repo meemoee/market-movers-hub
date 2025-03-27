@@ -1214,12 +1214,36 @@ Your analysis should:
 
     // Process chunks as they come in
     async function processStream() {
+      const streamTimeoutMs = 30000; // 30 seconds timeout for reading a chunk
+      let timeoutId: number | undefined;
+
       try {
         while (true) {
-          const { done, value } = await reader.read();
+          console.log(`[Iter ${iterationNumber}] Waiting to read next chunk...`);
+          // Race reader.read against a timeout
+          const readPromise = reader.read();
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error(`Stream read timeout after ${streamTimeoutMs}ms`)), streamTimeoutMs);
+          });
+
+          let done: boolean | undefined;
+          let value: Uint8Array | undefined;
+
+          try {
+            const result = await Promise.race([readPromise, timeoutPromise]) as { done: boolean, value?: Uint8Array };
+            clearTimeout(timeoutId); // Clear timeout if read succeeds
+            done = result.done;
+            value = result.value;
+            console.log(`[Iter ${iterationNumber}] Read chunk: done=${done}`);
+          } catch (readError) {
+            clearTimeout(timeoutId); // Clear timeout if read fails or times out
+            console.error(`[Iter ${iterationNumber}] Error reading stream or timeout:`, readError);
+            throw readError; // Re-throw to be caught by outer catch
+          }
+
 
           if (done) {
-            console.log(`Stream complete for iteration ${iterationNumber}`);
+            console.log(`[Iter ${iterationNumber}] Stream complete.`);
 
             // Final update for analysis
             try {
@@ -1260,6 +1284,10 @@ Your analysis should:
           }
 
           // Decode the binary chunk to text
+          if (!value) { // Add check for undefined value
+            console.warn(`[Iter ${iterationNumber}] Received undefined value from reader.read(), continuing.`);
+            continue;
+          }
           const chunk = textDecoder.decode(value, { stream: true });
 
           // Combine with any incomplete chunk from previous iteration
@@ -1288,7 +1316,9 @@ Your analysis should:
 
               try {
                 // Parse the JSON data
+                console.log(`[Iter ${iterationNumber}] Parsing JSON chunk: ${data.substring(0, 100)}...`);
                 const jsonData = JSON.parse(data);
+                console.log(`[Iter ${iterationNumber}] Parsed JSON chunk successfully.`);
 
                 if (jsonData.choices && jsonData.choices[0]) {
                   let analysisDelta = '';
@@ -1325,6 +1355,7 @@ Your analysis should:
                   // Update analysis field periodically via RPC
                   if (analysisDelta && (chunkSequence % iterUpdateBufferSize === 0 || now - lastAnalysisUpdateTime > minTimeBetweenIterUpdatesMs)) {
                     try {
+                      console.log(`[Iter ${iterationNumber}] Preparing analysis update RPC call (chunk ${chunkSequence})...`);
                       // Non-blocking RPC call
                       supabaseClient.rpc('update_iteration_field', {
                         job_id: jobId,
@@ -1333,7 +1364,7 @@ Your analysis should:
                         field_value: analysisText // Send the complete accumulated text
                       }).then(({ error: rpcError }: { error: any }) => { // Add explicit type for rpcError
                         if (rpcError) {
-                          console.error(`Error updating analysis via RPC:`, rpcError);
+                          console.error(`[Iter ${iterationNumber}] Error updating analysis via RPC:`, rpcError);
                         } else {
                           // console.log(`Sent analysis update chunk ${chunkSequence}`); // Optional: too verbose?
                         }
@@ -1347,6 +1378,7 @@ Your analysis should:
                   // Update reasoning field periodically via RPC
                   if (reasoningDelta && (chunkSequence % iterUpdateBufferSize === 0 || now - lastReasoningUpdateTime > minTimeBetweenIterUpdatesMs)) {
                      try {
+                      console.log(`[Iter ${iterationNumber}] Preparing reasoning update RPC call (chunk ${chunkSequence})...`);
                       // Non-blocking RPC call
                       supabaseClient.rpc('update_iteration_field', {
                         job_id: jobId,
@@ -1355,7 +1387,7 @@ Your analysis should:
                         field_value: reasoningText // Send the complete accumulated text
                       }).then(({ error: rpcError }: { error: any }) => { // Add explicit type for rpcError
                         if (rpcError) {
-                          console.error(`Error updating reasoning via RPC:`, rpcError);
+                          console.error(`[Iter ${iterationNumber}] Error updating reasoning via RPC:`, rpcError);
                         } else {
                           // console.log(`Sent reasoning update chunk ${chunkSequence}`); // Optional: too verbose?
                         }
@@ -1381,9 +1413,11 @@ Your analysis should:
       } catch (streamError: unknown) { // Type error
         const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
         console.error(`Error processing stream:`, errorMessage);
+        // Ensure the finally block runs to clear the timeout
         throw streamError; // Re-throw original error
       } finally {
         console.log(`Finished processing streaming response for iteration ${iterationNumber}`);
+        clearTimeout(timeoutId); // Ensure timeout is cleared on exit
       }
     }
 
@@ -1391,7 +1425,12 @@ Your analysis should:
     await processStream();
 
     // Return the full analysis text
-    return analysisText;
+    // Ensure a string is always returned or an error is thrown
+    if (typeof analysisText !== 'string') {
+        console.error(`[Iter ${iterationNumber}] Final analysisText is not a string. Type: ${typeof analysisText}`);
+        throw new Error(`Analysis generation failed for iteration ${iterationNumber}, resulting type was not string.`);
+    }
+    return analysisText; // Return analysisText even if empty
   } catch (error: unknown) { // Type the error
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`Error in streaming analysis generation:`, errorMessage);
@@ -1590,103 +1629,147 @@ Your final analysis should:
     }
 
     // Process chunks as they come in
-    while (true) {
-      const { done, value } = await reader.read();
+    async function processFinalStream() { // Renamed to avoid conflict
+      const streamTimeoutMs = 30000; // 30 seconds timeout for reading a chunk
+      let timeoutId: number | undefined;
 
-      if (done) {
-        console.log(`Stream complete for final analysis`);
+      try {
+        while (true) {
+          console.log(`[Final Analysis] Waiting to read next chunk...`);
+          // Race reader.read against a timeout
+          const readPromise = reader.read();
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => reject(new Error(`Stream read timeout after ${streamTimeoutMs}ms`)), streamTimeoutMs);
+          });
 
-        // Final update to ensure everything is saved
-        await updateDatabaseWithRpc();
-        console.log(`Finished final DB update for final analysis stream.`);
-
-        break;
-      }
-
-      // Decode the binary chunk to text
-      const chunk = textDecoder.decode(value, { stream: true });
-
-      // Combine with any incomplete chunk from previous iteration
-      const textToParse = incompleteChunk + chunk;
-
-      // Process the text as SSE (Server-Sent Events)
-      // Each SSE message starts with "data: " and ends with two newlines
-      const lines = textToParse.split('\n');
-
-      let processedUpTo = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-
-        // Skip empty lines
-        if (!line) continue;
-
-        // Update the processedUpTo pointer
-        processedUpTo = textToParse.indexOf(line) + line.length + 1; // +1 for the newline
-
-        // Check if this is a data line
-        if (line.startsWith('data: ')) {
-          const data = line.substring(6); // Remove "data: " prefix
-
-          // Skip "[DONE]" message which indicates the end of the stream
-          if (data === '[DONE]') continue;
+          let done: boolean | undefined;
+          let value: Uint8Array | undefined;
 
           try {
-            // Parse the JSON data
-            const jsonData = JSON.parse(data);
+            const result = await Promise.race([readPromise, timeoutPromise]) as { done: boolean, value?: Uint8Array };
+            clearTimeout(timeoutId); // Clear timeout if read succeeds
+            done = result.done;
+            value = result.value;
+            console.log(`[Final Analysis] Read chunk: done=${done}`);
+          } catch (readError) {
+            clearTimeout(timeoutId); // Clear timeout if read fails or times out
+            console.error(`[Final Analysis] Error reading stream or timeout:`, readError);
+            throw readError; // Re-throw to be caught by outer catch
+          }
 
-            if (jsonData.choices && jsonData.choices[0]) {
-              let analysisDelta = '';
-              let reasoningDelta = '';
-              // Check for delta content
-              if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                analysisDelta = jsonData.choices[0].delta.content;
-                finalAnalysis += analysisDelta;
-              }
+          if (done) {
+            console.log(`[Final Analysis] Stream complete.`);
 
-              // Check for delta reasoning
-              if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
-                reasoningDelta = jsonData.choices[0].delta.reasoning;
-                finalReasoning += reasoningDelta;
-              }
+            // Final update to ensure everything is saved
+            await updateDatabaseWithRpc();
+            console.log(`Finished final DB update for final analysis stream.`);
 
-              // Or check if we have full message object
-              if (jsonData.choices[0].message) {
-                if (jsonData.choices[0].message.content) {
-                  analysisDelta = jsonData.choices[0].message.content; // Assuming full content replaces delta
-                  finalAnalysis += analysisDelta;
-                }
-                if (jsonData.choices[0].message.reasoning) {
-                  reasoningDelta = jsonData.choices[0].message.reasoning; // Assuming full content replaces delta
-                  finalReasoning += reasoningDelta;
-                }
-              }
+            break;
+          }
+
+          // Decode the binary chunk to text
+          if (!value) { // Add check for undefined value
+            console.warn(`[Final Analysis] Received undefined value from reader.read(), continuing.`);
+            continue;
+          }
+          const chunk = textDecoder.decode(value, { stream: true });
+
+          // Combine with any incomplete chunk from previous iteration
+          const textToParse = incompleteChunk + chunk;
+
+          // Process the text as SSE (Server-Sent Events)
+          // Each SSE message starts with "data: " and ends with two newlines
+          const lines = textToParse.split('\n');
+
+          let processedUpTo = 0;
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+
+            // Skip empty lines
+            if (!line) continue;
+
+            // Update the processedUpTo pointer
+            processedUpTo = textToParse.indexOf(line) + line.length + 1; // +1 for the newline
+
+            // Check if this is a data line
+            if (line.startsWith('data: ')) {
+              const data = line.substring(6); // Remove "data: " prefix
+
+              // Skip "[DONE]" message which indicates the end of the stream
+              if (data === '[DONE]') continue;
+
+              try {
+                // Parse the JSON data
+                console.log(`[Final Analysis] Parsing JSON chunk: ${data.substring(0, 100)}...`);
+                const jsonData = JSON.parse(data);
+                console.log(`[Final Analysis] Parsed JSON chunk successfully.`);
+
+                if (jsonData.choices && jsonData.choices[0]) {
+                  let analysisDelta = '';
+                  let reasoningDelta = '';
+                  // Check for delta content
+                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                    analysisDelta = jsonData.choices[0].delta.content;
+                    finalAnalysis += analysisDelta;
+                  }
+
+                  // Check for delta reasoning
+                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
+                    reasoningDelta = jsonData.choices[0].delta.reasoning;
+                    finalReasoning += reasoningDelta;
+                  }
+
+                  // Or check if we have full message object
+                  if (jsonData.choices[0].message) {
+                    if (jsonData.choices[0].message.content) {
+                      analysisDelta = jsonData.choices[0].message.content; // Assuming full content replaces delta
+                      finalAnalysis += analysisDelta;
+                    }
+                    if (jsonData.choices[0].message.reasoning) {
+                      reasoningDelta = jsonData.choices[0].message.reasoning; // Assuming full content replaces delta
+                      finalReasoning += reasoningDelta;
+                    }
+                  }
 
                   // Increment chunk sequence
                   chunkSequence++;
                   const now = Date.now();
 
                   // Update database periodically via RPC
-                  // Check if either analysis or reasoning text has changed since last update
                   const hasAnalysisChanged = temporaryResults.analysis !== finalAnalysis;
                   const hasReasoningChanged = temporaryResults.reasoning !== finalReasoning;
 
                   if ((hasAnalysisChanged || hasReasoningChanged) && (chunkSequence % finalUpdateBufferSize === 0 || now - lastUpdateTime > minTimeBetweenFinalUpdatesMs)) {
-                    await updateDatabaseWithRpc();
+                    console.log(`[Final Analysis] Preparing results update RPC call (chunk ${chunkSequence})...`);
+                    await updateDatabaseWithRpc(); // Await the update here
+                    console.log(`[Final Analysis] Completed results update RPC call (chunk ${chunkSequence}).`);
                     lastUpdateTime = now;
                   }
                 }
               } catch (parseError: unknown) { // Type error
-            const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
-            console.error(`Error parsing JSON in streaming chunk: ${errorMessage}`);
-            console.error(`Problem JSON data: ${data}`);
-            // Continue processing other chunks even if one fails
+                const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
+                console.error(`Error parsing JSON in streaming chunk: ${errorMessage}`);
+                console.error(`Problem JSON data: ${data}`);
+                // Continue processing other chunks even if one fails
+              }
+            }
           }
-        }
-      }
 
-      // Save any incomplete chunk for the next iteration
-      incompleteChunk = textToParse.substring(processedUpTo);
+          // Save any incomplete chunk for the next iteration
+          incompleteChunk = textToParse.substring(processedUpTo);
+        }
+      } catch (streamError: unknown) { // Type error
+        const errorMessage = streamError instanceof Error ? streamError.message : String(streamError);
+        console.error(`[Final Analysis] Error processing stream:`, errorMessage);
+        throw streamError; // Re-throw original error
+      } finally {
+        console.log(`[Final Analysis] Finished processing streaming response.`);
+        clearTimeout(timeoutId); // Ensure timeout is cleared on exit
+      }
     }
+
+    // Start processing the stream
+    await processFinalStream(); // Call the renamed function
 
     console.log(`Final analysis streaming complete, total chunks: ${chunkSequence}`);
     // Return the full analysis and reasoning text
