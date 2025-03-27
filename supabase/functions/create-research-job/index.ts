@@ -1206,59 +1206,11 @@ Your analysis should:
     // Log the start of streaming
     console.log(`Starting to process streaming response chunks for iteration ${iterationNumber}`);
 
-    // Buffer for updates to reduce database writes
-    const updateBufferSize = 10; // Update DB every 10 chunks
-    let analysisBuffer = '';
-    let reasoningBuffer = '';
-    let bufferCount = 0;
-
-    // Function to update the database with current buffer content
-    const updateDatabase = async (): Promise<void> => { // Change to arrow function, add return type
-      // Get the current iteration data again to ensure we're not overwriting changes
-      const { data: currentData, error: fetchErr } = await supabaseClient // Add error handling
-        .from('research_jobs')
-        .select('iterations')
-        .eq('id', jobId)
-        .single();
-
-      if (fetchErr) {
-        console.error(`Error fetching iterations before DB update in stream:`, fetchErr);
-        return; // Don't proceed if fetch failed
-      }
-
-      if (currentData && currentData.iterations) {
-        // Get the current iteration data
-        let updatedIterations: Iteration[] = [...currentData.iterations]; // Use explicit type
-        let currentIterationIndex = updatedIterations.findIndex((iter: Iteration) => iter.iteration === iterationNumber); // Add type
-
-        if (currentIterationIndex !== -1) {
-          // Update with the latest full content instead of just the buffer
-          // This ensures we never lose content due to concurrent updates
-          updatedIterations[currentIterationIndex].analysis = analysisText;
-          updatedIterations[currentIterationIndex].reasoning = reasoningText;
-
-          try {
-            // Update the database with the new iterations array
-            const { error: updateError } = await supabaseClient
-              .from('research_jobs')
-              .update({ iterations: updatedIterations })
-              .eq('id', jobId);
-
-            if (updateError) {
-              console.error(`Error updating iterations with streaming chunk:`, updateError);
-              // If error, we'll retry on next buffer
-            } else {
-              console.log(`Successfully updated iteration ${iterationNumber} with ${analysisBuffer.length} analysis chars and ${reasoningBuffer.length} reasoning chars`);
-            }
-          } catch (dbError: unknown) { // Type error
-            const errorMessage = dbError instanceof Error ? dbError.message : String(dbError);
-            console.error(`Database update error:`, errorMessage);
-          }
-        } else {
-            console.error(`Could not find iteration ${iterationNumber} to update in DB stream`);
-        }
-      }
-    }
+    // Throttling parameters for DB updates
+    const iterUpdateBufferSize = 10; // Update DB every N chunks
+    let lastAnalysisUpdateTime = 0;
+    let lastReasoningUpdateTime = 0;
+    const minTimeBetweenIterUpdatesMs = 500; // Minimum time
 
     // Process chunks as they come in
     async function processStream() {
@@ -1269,12 +1221,41 @@ Your analysis should:
           if (done) {
             console.log(`Stream complete for iteration ${iterationNumber}`);
 
-            // Flush any remaining buffered content
-            if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
-              await updateDatabase();
+            // Final update for analysis
+            try {
+              const { error: rpcError } = await supabaseClient.rpc('update_iteration_field', {
+                job_id: jobId,
+                iteration_num: iterationNumber,
+                field_key: 'analysis',
+                field_value: analysisText
+              });
+              if (rpcError) {
+                console.error(`Error during final analysis update RPC call:`, rpcError);
+              } else {
+                console.log(`Successfully sent final analysis update for iteration ${iterationNumber}`);
+              }
+            } catch (e) {
+              console.error(`Exception during final analysis update RPC call:`, e);
             }
-            console.log(`Finished final DB update for iteration ${iterationNumber} stream.`); // Log after final update
 
+            // Final update for reasoning
+            try {
+              const { error: rpcError } = await supabaseClient.rpc('update_iteration_field', {
+                job_id: jobId,
+                iteration_num: iterationNumber,
+                field_key: 'reasoning',
+                field_value: reasoningText
+              });
+              if (rpcError) {
+                console.error(`Error during final reasoning update RPC call:`, rpcError);
+              } else {
+                console.log(`Successfully sent final reasoning update for iteration ${iterationNumber}`);
+              }
+            } catch (e) {
+              console.error(`Exception during final reasoning update RPC call:`, e);
+            }
+
+            console.log(`Finished final DB updates for iteration ${iterationNumber} stream.`);
             break;
           }
 
@@ -1310,48 +1291,79 @@ Your analysis should:
                 const jsonData = JSON.parse(data);
 
                 if (jsonData.choices && jsonData.choices[0]) {
+                  let analysisDelta = '';
+                  let reasoningDelta = '';
+
                   // Check for delta content
                   if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                    const content = jsonData.choices[0].delta.content;
-
-                    // Append to the full analysis text
-                    analysisText += content;
-                    analysisBuffer += content;
+                    analysisDelta = jsonData.choices[0].delta.content;
+                    analysisText += analysisDelta;
                   }
 
                   // Check for delta reasoning
                   if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
-                    const reasoning = jsonData.choices[0].delta.reasoning;
-
-                    // Append to the full reasoning text
-                    reasoningText += reasoning;
-                    reasoningBuffer += reasoning;
+                    reasoningDelta = jsonData.choices[0].delta.reasoning;
+                    reasoningText += reasoningDelta;
                   }
 
-                  // Or check if we have full message object
+                  // Or check if we have full message object (less common with streaming)
                   if (jsonData.choices[0].message) {
                     if (jsonData.choices[0].message.content) {
-                      analysisText += jsonData.choices[0].message.content;
-                      analysisBuffer += jsonData.choices[0].message.content;
+                      analysisDelta = jsonData.choices[0].message.content; // Assuming full content replaces delta
+                      analysisText += analysisDelta;
                     }
-
                     if (jsonData.choices[0].message.reasoning) {
-                      reasoningText += jsonData.choices[0].message.reasoning;
-                      reasoningBuffer += jsonData.choices[0].message.reasoning;
+                      reasoningDelta = jsonData.choices[0].message.reasoning; // Assuming full content replaces delta
+                      reasoningText += reasoningDelta;
                     }
                   }
 
-                  // Increment chunk sequence and buffer count
+                  // Increment chunk sequence
                   chunkSequence++;
-                  bufferCount++;
+                  const now = Date.now();
 
-                  // Only update the database periodically to reduce load
-                  if (bufferCount >= updateBufferSize) {
-                    await updateDatabase();
-                    // Reset buffer
-                    analysisBuffer = '';
-                    reasoningBuffer = '';
-                    bufferCount = 0;
+                  // Update analysis field periodically via RPC
+                  if (analysisDelta && (chunkSequence % iterUpdateBufferSize === 0 || now - lastAnalysisUpdateTime > minTimeBetweenIterUpdatesMs)) {
+                    try {
+                      // Non-blocking RPC call
+                      supabaseClient.rpc('update_iteration_field', {
+                        job_id: jobId,
+                        iteration_num: iterationNumber,
+                        field_key: 'analysis',
+                        field_value: analysisText // Send the complete accumulated text
+                      }).then(({ error: rpcError }: { error: any }) => { // Add explicit type for rpcError
+                        if (rpcError) {
+                          console.error(`Error updating analysis via RPC:`, rpcError);
+                        } else {
+                          // console.log(`Sent analysis update chunk ${chunkSequence}`); // Optional: too verbose?
+                        }
+                      });
+                      lastAnalysisUpdateTime = now;
+                    } catch (e) {
+                      console.error(`Exception calling analysis update RPC:`, e);
+                    }
+                  }
+
+                  // Update reasoning field periodically via RPC
+                  if (reasoningDelta && (chunkSequence % iterUpdateBufferSize === 0 || now - lastReasoningUpdateTime > minTimeBetweenIterUpdatesMs)) {
+                     try {
+                      // Non-blocking RPC call
+                      supabaseClient.rpc('update_iteration_field', {
+                        job_id: jobId,
+                        iteration_num: iterationNumber,
+                        field_key: 'reasoning',
+                        field_value: reasoningText // Send the complete accumulated text
+                      }).then(({ error: rpcError }: { error: any }) => { // Add explicit type for rpcError
+                        if (rpcError) {
+                          console.error(`Error updating reasoning via RPC:`, rpcError);
+                        } else {
+                          // console.log(`Sent reasoning update chunk ${chunkSequence}`); // Optional: too verbose?
+                        }
+                      });
+                      lastReasoningUpdateTime = now;
+                    } catch (e) {
+                      console.error(`Exception calling reasoning update RPC:`, e);
+                    }
                   }
                 }
               } catch (parseError: unknown) { // Type error
@@ -1490,12 +1502,6 @@ Present the analysis in a structured, comprehensive format with clear sections a
       data: [] // Assuming data is not streamed here, but added later
     };
 
-    // Buffer for updates to reduce database writes
-    const updateBufferSize = 10; // Update DB every 10 chunks
-    let analysisBuffer = '';
-    let reasoningBuffer = '';
-    let bufferCount = 0;
-
     // Start the fetch with stream: true
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -1552,23 +1558,34 @@ Your final analysis should:
 
     // Log the start of streaming
     console.log(`Starting to process streaming response chunks for final analysis`);
-    // Function to update the database with current content
-    const updateDatabase = async (): Promise<void> => { // Change to arrow function, add return type
-      try {
-        // Update the temporary results
-        temporaryResults.analysis = finalAnalysis;
-        temporaryResults.reasoning = finalReasoning; // Include reasoning
 
-        // Update the research_job with intermediate results
-        await supabaseClient.rpc('update_research_results', {
+    // Throttling parameters for DB updates
+    const finalUpdateBufferSize = 10; // Update DB every N chunks
+    let lastUpdateTime = 0;
+    const minTimeBetweenFinalUpdatesMs = 500; // Minimum time between updates
+
+    // Function to update the database with current content using RPC
+    const updateDatabaseWithRpc = async (): Promise<void> => {
+      try {
+        // Update the temporary results object (ensure reasoning is included)
+        temporaryResults.analysis = finalAnalysis;
+        temporaryResults.reasoning = finalReasoning;
+
+        // Update the research_job results field via RPC
+        // Note: update_research_results expects the *entire* results object
+        const { error: rpcError } = await supabaseClient.rpc('update_research_results', {
           job_id: jobId,
-          result_data: JSON.stringify(temporaryResults)
+          result_data: JSON.stringify(temporaryResults) // Send the partial results object
         });
 
-        console.log(`Updated results with streaming chunk ${chunkSequence}`);
+        if (rpcError) {
+          console.error(`Error updating final results with streaming chunk via RPC:`, rpcError);
+        } else {
+          // console.log(`Updated final results with streaming chunk ${chunkSequence}`); // Optional: too verbose?
+        }
       } catch (updateError: unknown) { // Type error
         const errorMessage = updateError instanceof Error ? updateError.message : String(updateError);
-        console.error(`Error updating results with streaming chunk:`, errorMessage);
+        console.error(`Exception updating final results with streaming chunk via RPC:`, errorMessage);
       }
     }
 
@@ -1579,11 +1596,9 @@ Your final analysis should:
       if (done) {
         console.log(`Stream complete for final analysis`);
 
-        // Flush any remaining buffered content
-        if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
-          await updateDatabase();
-        }
-        console.log(`Finished final DB update for final analysis stream.`); // Log after final update
+        // Final update to ensure everything is saved
+        await updateDatabaseWithRpc();
+        console.log(`Finished final DB update for final analysis stream.`);
 
         break;
       }
@@ -1620,51 +1635,47 @@ Your final analysis should:
             const jsonData = JSON.parse(data);
 
             if (jsonData.choices && jsonData.choices[0]) {
+              let analysisDelta = '';
+              let reasoningDelta = '';
               // Check for delta content
               if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                const content = jsonData.choices[0].delta.content;
-
-                // Append to the full analysis text
-                finalAnalysis += content;
-                analysisBuffer += content;
+                analysisDelta = jsonData.choices[0].delta.content;
+                finalAnalysis += analysisDelta;
               }
 
               // Check for delta reasoning
               if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
-                const reasoning = jsonData.choices[0].delta.reasoning;
-
-                // Append to the full reasoning text
-                finalReasoning += reasoning;
-                reasoningBuffer += reasoning;
+                reasoningDelta = jsonData.choices[0].delta.reasoning;
+                finalReasoning += reasoningDelta;
               }
 
               // Or check if we have full message object
               if (jsonData.choices[0].message) {
                 if (jsonData.choices[0].message.content) {
-                  finalAnalysis += jsonData.choices[0].message.content;
-                  analysisBuffer += jsonData.choices[0].message.content;
+                  analysisDelta = jsonData.choices[0].message.content; // Assuming full content replaces delta
+                  finalAnalysis += analysisDelta;
                 }
-
                 if (jsonData.choices[0].message.reasoning) {
-                  finalReasoning += jsonData.choices[0].message.reasoning;
-                  reasoningBuffer += jsonData.choices[0].message.reasoning;
+                  reasoningDelta = jsonData.choices[0].message.reasoning; // Assuming full content replaces delta
+                  finalReasoning += reasoningDelta;
                 }
               }
 
-              // Increment chunk sequence and buffer count
-              chunkSequence++;
-              bufferCount++;
+                  // Increment chunk sequence
+                  chunkSequence++;
+                  const now = Date.now();
 
-              // Only update the database periodically to reduce load
-              if (bufferCount >= updateBufferSize) {
-                await updateDatabase();
-                // Reset buffer
-                analysisBuffer = '';
-                reasoningBuffer = '';
-                bufferCount = 0;
-              }
-            }
-          } catch (parseError: unknown) { // Type error
+                  // Update database periodically via RPC
+                  // Check if either analysis or reasoning text has changed since last update
+                  const hasAnalysisChanged = temporaryResults.analysis !== finalAnalysis;
+                  const hasReasoningChanged = temporaryResults.reasoning !== finalReasoning;
+
+                  if ((hasAnalysisChanged || hasReasoningChanged) && (chunkSequence % finalUpdateBufferSize === 0 || now - lastUpdateTime > minTimeBetweenFinalUpdatesMs)) {
+                    await updateDatabaseWithRpc();
+                    lastUpdateTime = now;
+                  }
+                }
+              } catch (parseError: unknown) { // Type error
             const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
             console.error(`Error parsing JSON in streaming chunk: ${errorMessage}`);
             console.error(`Problem JSON data: ${data}`);
