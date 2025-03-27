@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ESNext", // Keep target as ESNext
+    "module": "ESNext",
+    // Explicitly include necessary libs for modern features
+    "lib": ["ESNext", "DOM", "DOM.Iterable"], 
+    "moduleResolution": "Bundler", // Handles URL imports
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true, // Enable strict type checking
+    "skipLibCheck": true, // Skip checking libraries (like Deno types)
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true, // Supabase CLI handles emitting
+    // Rely on standard Deno/ESNext types from "lib"
+    // "types": ["@supabase/functions-js/src/edge-runtime.d.ts"] 
+  },
+  "include": ["./**/*.ts"], // Include all TS files in this directory
+  "exclude": ["node_modules"] // Exclude node_modules if present
+}
