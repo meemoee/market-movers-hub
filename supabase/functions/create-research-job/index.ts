@@ -1247,6 +1247,7 @@ Your analysis should:
 
             // Final update for analysis
             try {
+              console.log(`[Iter ${iterationNumber}] Attempting final analysis update...`);
               const { error: rpcError } = await supabaseClient.rpc('update_iteration_field', {
                 job_id: jobId,
                 iteration_num: iterationNumber,
@@ -1255,15 +1256,19 @@ Your analysis should:
               });
               if (rpcError) {
                 console.error(`Error during final analysis update RPC call:`, rpcError);
+                // Throw error to ensure job failure is recorded
+                throw new Error(`Failed final analysis update: ${rpcError.message}`);
               } else {
                 console.log(`Successfully sent final analysis update for iteration ${iterationNumber}`);
               }
             } catch (e) {
               console.error(`Exception during final analysis update RPC call:`, e);
+              throw e; // Re-throw to ensure job failure
             }
 
             // Final update for reasoning
             try {
+              console.log(`[Iter ${iterationNumber}] Attempting final reasoning update...`);
               const { error: rpcError } = await supabaseClient.rpc('update_iteration_field', {
                 job_id: jobId,
                 iteration_num: iterationNumber,
@@ -1272,11 +1277,14 @@ Your analysis should:
               });
               if (rpcError) {
                 console.error(`Error during final reasoning update RPC call:`, rpcError);
+                // Throw error to ensure job failure is recorded
+                throw new Error(`Failed final reasoning update: ${rpcError.message}`);
               } else {
                 console.log(`Successfully sent final reasoning update for iteration ${iterationNumber}`);
               }
             } catch (e) {
               console.error(`Exception during final reasoning update RPC call:`, e);
+              throw e; // Re-throw to ensure job failure
             }
 
             console.log(`Finished final DB updates for iteration ${iterationNumber} stream.`);
@@ -1356,7 +1364,7 @@ Your analysis should:
                   if (analysisDelta && (chunkSequence % iterUpdateBufferSize === 0 || now - lastAnalysisUpdateTime > minTimeBetweenIterUpdatesMs)) {
                     try {
                       console.log(`[Iter ${iterationNumber}] Preparing analysis update RPC call (chunk ${chunkSequence})...`);
-                      // Non-blocking RPC call
+                      // Non-blocking RPC call - add catch for unhandled rejections
                       supabaseClient.rpc('update_iteration_field', {
                         job_id: jobId,
                         iteration_num: iterationNumber,
@@ -1365,13 +1373,19 @@ Your analysis should:
                       }).then(({ error: rpcError }: { error: any }) => { // Add explicit type for rpcError
                         if (rpcError) {
                           console.error(`[Iter ${iterationNumber}] Error updating analysis via RPC:`, rpcError);
+                          // Consider throwing or handling this more explicitly if needed
                         } else {
                           // console.log(`Sent analysis update chunk ${chunkSequence}`); // Optional: too verbose?
                         }
+                      }).catch(rpcPromiseError => {
+                         console.error(`[Iter ${iterationNumber}] Unhandled rejection/error in analysis update RPC promise:`, rpcPromiseError);
+                         // Decide if this should fail the job - potentially throw here
                       });
                       lastAnalysisUpdateTime = now;
                     } catch (e) {
                       console.error(`Exception calling analysis update RPC:`, e);
+                      // Throw error to ensure job failure
+                      throw e;
                     }
                   }
 
@@ -1379,7 +1393,7 @@ Your analysis should:
                   if (reasoningDelta && (chunkSequence % iterUpdateBufferSize === 0 || now - lastReasoningUpdateTime > minTimeBetweenIterUpdatesMs)) {
                      try {
                       console.log(`[Iter ${iterationNumber}] Preparing reasoning update RPC call (chunk ${chunkSequence})...`);
-                      // Non-blocking RPC call
+                      // Non-blocking RPC call - add catch for unhandled rejections
                       supabaseClient.rpc('update_iteration_field', {
                         job_id: jobId,
                         iteration_num: iterationNumber,
@@ -1388,13 +1402,19 @@ Your analysis should:
                       }).then(({ error: rpcError }: { error: any }) => { // Add explicit type for rpcError
                         if (rpcError) {
                           console.error(`[Iter ${iterationNumber}] Error updating reasoning via RPC:`, rpcError);
+                           // Consider throwing or handling this more explicitly if needed
                         } else {
                           // console.log(`Sent reasoning update chunk ${chunkSequence}`); // Optional: too verbose?
                         }
+                      }).catch(rpcPromiseError => {
+                         console.error(`[Iter ${iterationNumber}] Unhandled rejection/error in reasoning update RPC promise:`, rpcPromiseError);
+                         // Decide if this should fail the job - potentially throw here
                       });
                       lastReasoningUpdateTime = now;
                     } catch (e) {
                       console.error(`Exception calling reasoning update RPC:`, e);
+                       // Throw error to ensure job failure
+                       throw e;
                     }
                   }
                 }
@@ -1402,7 +1422,8 @@ Your analysis should:
                 const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
                 console.error(`Error parsing JSON in streaming chunk: ${errorMessage}`);
                 console.error(`Problem JSON data: ${data}`);
-                // Continue processing other chunks even if one fails
+                // Throw error to ensure job failure
+                throw new Error(`Failed to parse stream JSON: ${errorMessage}`);
               }
             }
           }
@@ -1619,12 +1640,15 @@ Your final analysis should:
 
         if (rpcError) {
           console.error(`Error updating final results with streaming chunk via RPC:`, rpcError);
+          // Consider throwing error here if periodic updates are critical
         } else {
           // console.log(`Updated final results with streaming chunk ${chunkSequence}`); // Optional: too verbose?
         }
       } catch (updateError: unknown) { // Type error
         const errorMessage = updateError instanceof Error ? updateError.message : String(updateError);
         console.error(`Exception updating final results with streaming chunk via RPC:`, errorMessage);
+        // Consider throwing error here
+        throw updateError;
       }
     }
 
@@ -1661,9 +1685,14 @@ Your final analysis should:
             console.log(`[Final Analysis] Stream complete.`);
 
             // Final update to ensure everything is saved
-            await updateDatabaseWithRpc();
-            console.log(`Finished final DB update for final analysis stream.`);
-
+            try {
+              console.log(`[Final Analysis] Attempting final results update...`);
+              await updateDatabaseWithRpc();
+              console.log(`Finished final DB update for final analysis stream.`);
+            } catch (finalUpdateError) {
+               console.error(`[Final Analysis] Error during final DB update:`, finalUpdateError);
+               throw finalUpdateError; // Ensure failure propagates
+            }
             break;
           }
 
@@ -1741,7 +1770,8 @@ Your final analysis should:
 
                   if ((hasAnalysisChanged || hasReasoningChanged) && (chunkSequence % finalUpdateBufferSize === 0 || now - lastUpdateTime > minTimeBetweenFinalUpdatesMs)) {
                     console.log(`[Final Analysis] Preparing results update RPC call (chunk ${chunkSequence})...`);
-                    await updateDatabaseWithRpc(); // Await the update here
+                    // Await the update here to ensure it completes before potentially finishing
+                    await updateDatabaseWithRpc();
                     console.log(`[Final Analysis] Completed results update RPC call (chunk ${chunkSequence}).`);
                     lastUpdateTime = now;
                   }
@@ -1750,7 +1780,8 @@ Your final analysis should:
                 const errorMessage = parseError instanceof Error ? parseError.message : String(parseError);
                 console.error(`Error parsing JSON in streaming chunk: ${errorMessage}`);
                 console.error(`Problem JSON data: ${data}`);
-                // Continue processing other chunks even if one fails
+                // Throw error to ensure job failure
+                throw new Error(`Failed to parse stream JSON: ${errorMessage}`);
               }
             }
           }
