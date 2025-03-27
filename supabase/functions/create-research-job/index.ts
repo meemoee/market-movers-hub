@@ -327,7 +327,6 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
         });
 
         // After each iteration, analyze the collected data using OpenRouter
-        // let analysisText = ""; // Define analysisText outside the try block - Removed, handled by streaming function
         try { // Wrap analysis call
           const { data: iterData, error: iterFetchError } = await supabaseClient // Correctly fetch data
             .from('research_jobs')
@@ -464,7 +463,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
               }
 
               // Generate analysis for this iteration with market context
-              // analysisText = await generateAnalysisWithStreaming( // Assign to outer scope variable - No longer needed as streaming updates DB directly
+              console.log(`Calling generateAnalysisWithStreaming for iteration ${i}...`); // Log before call
               await generateAnalysisWithStreaming(
                 supabaseClient,
                 jobId,
@@ -478,8 +477,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
                 focusText,
                 iterationResults.filter((iter: Iteration) => iter.iteration < i).map((iter: Iteration) => iter.analysis).filter(Boolean) as string[] // Add types and filter Boolean
               );
-
-              console.log(`Successfully completed generateAnalysisWithStreaming for iteration ${i}`); // Log success
+              console.log(`Successfully completed generateAnalysisWithStreaming for iteration ${i}`); // Log after call
 
               // Analysis has been streamed directly to database
               await supabaseClient.rpc('append_research_progress', {
@@ -694,6 +692,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
 
       if (allContent.length > 0) {
         // Generate final analysis with streaming for real-time updates
+        console.log("Calling generateFinalAnalysisWithStreaming..."); // Log before call
         const analysisResult = await generateFinalAnalysisWithStreaming( // Capture result object
           supabaseClient,
           jobId,
@@ -707,6 +706,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
         );
         finalAnalysis = analysisResult.analysis; // Extract analysis
         finalReasoning = analysisResult.reasoning; // Extract reasoning
+        console.log("Completed generateFinalAnalysisWithStreaming."); // Log after call
       } else {
         finalAnalysis = `No content was collected for analysis regarding "${query}".`;
       }
@@ -881,15 +881,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
         focusText: focusText
       };
 
-      console.log(`Sending extract-research-insights payload with:
-        - ${allResults.length} web results
-        - ${previousAnalyses.length} previous analyses (prominently included in webContent)
-        - ${allQueries.length} queries
-        - ${areasForResearch.length} areas for research
-        - marketPrice: ${marketPrice || 'undefined'}
-        - ${relatedMarkets.length} related markets
-        - focusText: ${focusText || 'undefined'}`);
-
+      console.log(`Sending extract-research-insights payload...`); // Log before call
       // Call the extract-research-insights function to get structured insights (without streaming)
       const extractInsightsResponse = await fetch(
         `${Deno.env.get('SUPABASE_URL')}/functions/v1/extract-research-insights`,
@@ -902,6 +894,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
           body: JSON.stringify(insightsPayload)
         }
       );
+      console.log(`Completed extract-research-insights call.`); // Log after call
 
       if (!extractInsightsResponse.ok) {
         const errorText = await extractInsightsResponse.text();
@@ -978,16 +971,20 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
     };
 
     // Update the job with final results
+    console.log(`Updating job ${jobId} with final results...`); // Log before final update
     await supabaseClient.rpc('update_research_results', {
       job_id: jobId,
       result_data: JSON.stringify(finalResults)
     });
+    console.log(`Updated job ${jobId} results.`); // Log after results update
 
     // Mark job as complete
+    console.log(`Marking job ${jobId} as completed...`); // Log before status update
     await supabaseClient.rpc('update_research_job_status', {
       job_id: jobId,
       new_status: 'completed'
     });
+    console.log(`Marked job ${jobId} as completed.`); // Log after status update
 
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
@@ -1006,6 +1003,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
 
     if (supabaseClient) { // Check if client initialized before using
       try {
+        console.log(`Attempting to mark job ${jobId} as failed due to error: ${errorMessage}`); // Log failure attempt
         // Mark job as failed
         await supabaseClient.rpc('update_research_job_status', {
           job_id: jobId,
@@ -1017,6 +1015,7 @@ const performWebResearch = async (jobId: string, query: string, marketId: string
           job_id: jobId,
           progress_entry: JSON.stringify(`Research failed: ${errorMessage}`)
         });
+        console.log(`Successfully marked job ${jobId} as failed.`); // Log success
 
         // Send notification email for failure if provided
         if (notificationEmail) {
@@ -1150,10 +1149,6 @@ Present the analysis in a structured, concise format with clear sections and bul
       throw new Error(`Iteration ${iterationNumber} not found in job data`);
     }
 
-    // Create a new stream for processing response chunks - Not needed for Deno fetch
-    // const stream = new TransformStream();
-    // const writer = stream.writable.getWriter();
-
     // Start the fetch with stream: true
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
@@ -1278,6 +1273,7 @@ Your analysis should:
             if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
               await updateDatabase();
             }
+            console.log(`Finished final DB update for iteration ${iterationNumber} stream.`); // Log after final update
 
             break;
           }
@@ -1587,6 +1583,7 @@ Your final analysis should:
         if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
           await updateDatabase();
         }
+        console.log(`Finished final DB update for final analysis stream.`); // Log after final update
 
         break;
       }
