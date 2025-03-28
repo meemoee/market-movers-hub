@@ -356,7 +356,7 @@ export function JobQueueResearchCard({
     
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
-      setProgressPercent(job.status === 'completed' ? 100 : percent);
+      setProgressPercent(percent);
       
       if (job.status === 'completed') {
         setProgressPercent(100);
@@ -928,6 +928,7 @@ export function JobQueueResearchCard({
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
           <div className="space-y-2">
+<<<<<<< HEAD
             {iterations.map((iter) => { // Use different variable name like 'iter' to avoid conflict
                 // Define variables needed within the map scope
                 const analysisState = iterationAnalysisState.get(iter.iteration) || { text: iter.analysis || '', status: 'idle' };
@@ -950,6 +951,19 @@ export function JobQueueResearchCard({
                   />
                 );
             })}
+=======
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={iteration.iteration}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(iteration.iteration)}
+                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                isStreaming={streamingIterations.has(iteration.iteration)}
+                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                maxIterations={parseInt(maxIterations, 10)}
+              />
+            ))}
+>>>>>>> 15af2e2916ab4c1bcf7f91379ead3238ca8d4186
           </div>
         </div>
       )}

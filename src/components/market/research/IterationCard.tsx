@@ -1,5 +1,9 @@
 
+<<<<<<< HEAD
 import { useState, useEffect } from 'react' // Removed useRef
+=======
+import { useState, useEffect } from 'react'
+>>>>>>> 15af2e2916ab4c1bcf7f91379ead3238ca8d4186
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, Search } from "lucide-react" // Removed FileText, ExternalLink (not used)
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -8,9 +12,12 @@ import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
+<<<<<<< HEAD
 // Removed supabase import (not used)
 
 export type AnalysisStreamingStatus = 'idle' | 'streaming' | 'done' | 'error'; // Added export
+=======
+>>>>>>> 15af2e2916ab4c1bcf7f91379ead3238ca8d4186
 
 interface IterationCardProps {
   iteration: {
@@ -26,9 +33,12 @@ interface IterationCardProps {
   // isStreaming prop might be repurposed or removed depending on parent logic
   isCurrentIteration: boolean; // Still needed to know if this is the active iteration
   maxIterations: number;
+<<<<<<< HEAD
   jobId?: string; // Keep jobId if needed for other purposes, otherwise remove
   currentAnalysisText: string; // New prop for the streaming/final text
   analysisStreamingStatus: AnalysisStreamingStatus; // New prop for status
+=======
+>>>>>>> 15af2e2916ab4c1bcf7f91379ead3238ca8d4186
 }
 
 export function IterationCard({
@@ -37,6 +47,7 @@ export function IterationCard({
   onToggleExpand,
   // isStreaming, // Prop might be removed or repurposed
   isCurrentIteration,
+<<<<<<< HEAD
   maxIterations,
   // jobId, // Prop might be removed
   currentAnalysisText,
@@ -49,6 +60,13 @@ export function IterationCard({
 
   // Removed WebSocket useEffect hook
 
+=======
+  maxIterations
+}: IterationCardProps) {
+  const [activeTab, setActiveTab] = useState<string>("analysis")
+  const isFinalIteration = iteration.iteration === maxIterations
+  
+>>>>>>> 15af2e2916ab4c1bcf7f91379ead3238ca8d4186
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
     // Use analysisStreamingStatus to determine completion
@@ -110,6 +128,7 @@ export function IterationCard({
 
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
+<<<<<<< HEAD
                 <AnalysisDisplay
                   // Use the prop for content. Provide fallback text.
                   content={currentAnalysisText || (isCurrentlyStreaming ? "Receiving analysis..." : iteration.analysis || "Analysis pending...")}
@@ -117,6 +136,13 @@ export function IterationCard({
                   reasoning={iteration.reasoning}
                   isStreaming={isCurrentlyStreaming}
                   isReasoningStreaming={false} // Reasoning not streamed
+=======
+                <AnalysisDisplay 
+                  content={iteration.analysis || "Analysis in progress..."} 
+                  reasoning={iteration.reasoning}
+                  isStreaming={isAnalysisStreaming}
+                  isReasoningStreaming={isReasoningStreaming}
+>>>>>>> 15af2e2916ab4c1bcf7f91379ead3238ca8d4186
                   maxHeight="100%"
                 />
               </TabsContent>
