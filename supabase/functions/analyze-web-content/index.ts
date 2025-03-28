@@ -230,7 +230,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       heartbeatInterval = setInterval(async () => {
         try {
           // Send a comment as heartbeat to keep the connection alive
-          await writer.write(new TextEncoder().encode(":\n\n"))
+          await writer.write(new TextEncoder().encode("data: {\"heartbeat\":true}\n\n"))
           console.log('Heartbeat sent')
         } catch (error) {
           console.error('Error sending heartbeat:', error)
@@ -244,39 +244,6 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval)
         heartbeatInterval = undefined
-      }
-    }
-
-    // Queue for processing large chunks in the background
-    const streamQueue: { value: Uint8Array, timestamp: number }[] = []
-    let processingQueue = false
-    
-    // Process the queue in the background
-    const processQueue = async () => {
-      if (processingQueue || streamQueue.length === 0) return
-      
-      processingQueue = true
-      
-      try {
-        while (streamQueue.length > 0) {
-          const chunk = streamQueue.shift()
-          if (chunk) {
-            try {
-              await writer.write(chunk.value)
-            } catch (error) {
-              console.error('Error writing chunk from queue:', error)
-              // If we can't write, stop processing
-              break
-            }
-          }
-        }
-      } finally {
-        processingQueue = false
-        
-        // If there are more chunks, process them
-        if (streamQueue.length > 0) {
-          processQueue()
-        }
       }
     }
 
@@ -322,17 +289,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
             throw new Error('Failed to get reader from response')
           }
 
-          // Setup connection timeout detection
-          let lastDataTimestamp = Date.now()
-          let connectionTimeoutId = setInterval(() => {
-            const now = Date.now()
-            if (now - lastDataTimestamp > STREAM_TIMEOUT) {
-              console.warn('Connection appears stalled, no data received for 60 seconds')
-            }
-          }, 5000)
-
           const textDecoder = new TextDecoder()
-          let chunkCounter = 0
           
           try {
             while (true) {
@@ -341,54 +298,32 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
               if (done) {
                 console.log('Stream complete')
                 succeeded = true
-                clearInterval(connectionTimeoutId)
+                
+                // Send completion signal
+                await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
                 break
               }
               
-              // Update the last data timestamp
-              lastDataTimestamp = Date.now()
-              chunkCounter++
+              const chunk = textDecoder.decode(value)
               
-              try {
-                // Add to queue with timestamp
-                streamQueue.push({
-                  value,
-                  timestamp: Date.now()
-                })
-                
-                // Start or continue processing the queue
-                if (!processingQueue) {
-                  processQueue()
+              // Split the chunk by lines
+              const lines = chunk.split('\n')
+              
+              for (const line of lines) {
+                if (line.startsWith('data:') && !line.includes('[DONE]')) {
+                  try {
+                    // Forward the data line intact to maintain SSE format
+                    await writer.write(new TextEncoder().encode(line + '\n\n'))
+                  } catch (error) {
+                    console.error('Error writing line:', error)
+                  }
+                } else if (line.includes('[DONE]')) {
+                  console.log('Stream complete signal received')
                 }
-                
-                // For debugging - log every 50 chunks
-                if (chunkCounter % 50 === 0) {
-                  console.log(`Processed ${chunkCounter} chunks, queue size: ${streamQueue.length}`)
-                }
-              } catch (queueError) {
-                console.error(`Error processing chunk ${chunkCounter}:`, queueError)
               }
             }
           } catch (streamError) {
             console.error('Error reading stream:', streamError)
-            clearInterval(connectionTimeoutId)
-            
-            // Attempt to recover by sending what we have
-            if (streamQueue.length > 0) {
-              console.log(`Attempting to flush ${streamQueue.length} remaining chunks after stream error`)
-              while (streamQueue.length > 0) {
-                const chunk = streamQueue.shift()
-                if (chunk) {
-                  try {
-                    await writer.write(chunk.value)
-                  } catch (error) {
-                    console.error('Error flushing queue after stream error:', error)
-                    break
-                  }
-                }
-              }
-            }
-            
             throw streamError
           } finally {
             reader.releaseLock()
@@ -410,30 +345,13 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
         console.error(`Failed after ${MAX_RETRIES} attempts`)
         await writer.write(
           new TextEncoder().encode(
-            `data: {"choices":[{"delta":{"content":" Sorry, I encountered an error processing your request after multiple attempts."}}]}\n\n`
+            `data: {"error":"Failed to get a response after multiple attempts"}\n\n`
           )
         )
       }
       
       try {
-        // Flush any remaining chunks in the queue
-        if (streamQueue.length > 0) {
-          console.log(`Flushing ${streamQueue.length} remaining chunks before closing`)
-          while (streamQueue.length > 0) {
-            const chunk = streamQueue.shift()
-            if (chunk) {
-              try {
-                await writer.write(chunk.value)
-              } catch (error) {
-                console.error('Error in final queue flush:', error)
-                break
-              }
-            }
-          }
-        }
-        
         // Close the writer to signal the end
-        await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
         await writer.close()
       } catch (closeError) {
         console.error('Error closing writer:', closeError)
@@ -446,6 +364,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
       }
     });

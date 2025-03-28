@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -64,6 +63,7 @@ export function JobQueueResearchCard({
   noBestBid,
   outcomes 
 }: JobQueueResearchCardProps) {
+  
   const [isLoading, setIsLoading] = useState(false)
   const [progress, setProgress] = useState<string[]>([])
   const [progressPercent, setProgressPercent] = useState<number>(0)
@@ -83,11 +83,21 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const [streamingIterations, setStreamingIterations] = useState<Set<number>>(new Set())
-  const [sseConnections, setSseConnections] = useState<EventSource[]>([])
+  const [activeStreamControllers, setActiveStreamControllers] = useState<{[key: number]: AbortController}>({})
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
   const resetState = () => {
+    // Close any active streams
+    Object.values(activeStreamControllers).forEach(controller => {
+      try {
+        controller.abort();
+      } catch (e) {
+        console.error('Error aborting stream:', e);
+      }
+    });
+    setActiveStreamControllers({});
+    
     setJobId(null);
     setProgress([]);
     setProgressPercent(0);
@@ -99,16 +109,6 @@ export function JobQueueResearchCard({
     setJobStatus(null);
     setStructuredInsights(null);
     setStreamingIterations(new Set());
-    
-    // Close any open SSE connections
-    sseConnections.forEach(connection => {
-      try {
-        connection.close();
-      } catch (e) {
-        console.error('Error closing SSE connection:', e);
-      }
-    });
-    setSseConnections([]);
     
     if (realtimeChannelRef.current) {
       console.log('Removing realtime channel on reset');
@@ -122,11 +122,11 @@ export function JobQueueResearchCard({
     
     return () => {
       // Clean up on unmount
-      sseConnections.forEach(connection => {
+      Object.values(activeStreamControllers).forEach(controller => {
         try {
-          connection.close();
+          controller.abort();
         } catch (e) {
-          console.error('Error closing SSE connection on unmount:', e);
+          console.error('Error aborting stream on unmount:', e);
         }
       });
       
@@ -168,13 +168,23 @@ export function JobQueueResearchCard({
       return;
     }
     
-    console.log(`Setting up SSE for iteration ${currentIteration} with ${content.length} chars of content`);
+    console.log(`Setting up direct streaming for iteration ${currentIteration} with ${content.length} chars of content`);
     
-    // Create and store a reference to the SSE connection
-    const eventSource = new EventSource(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`,
-      { withCredentials: false }
-    );
+    // Abort any existing stream for this iteration
+    if (activeStreamControllers[currentIteration]) {
+      try {
+        activeStreamControllers[currentIteration].abort();
+      } catch (e) {
+        console.error(`Error aborting existing stream for iteration ${currentIteration}:`, e);
+      }
+    }
+    
+    // Create a new abort controller for this stream
+    const abortController = new AbortController();
+    setActiveStreamControllers(prev => ({
+      ...prev,
+      [currentIteration]: abortController
+    }));
     
     // Update our iterations to include a streaming one
     setIterations(prev => {
@@ -223,144 +233,136 @@ export function JobQueueResearchCard({
       setJobStatus('processing');
     }
     
-    // Handle SSE events
-    let accumulatedAnalysis = '';
+    // Send the analysis request
+    const requestBody = {
+      content,
+      query: description,
+      question: description,
+      marketId,
+      focusText: focusArea,
+      previousAnalyses: iterations
+        .filter(i => i.iteration < currentIteration && i.analysis)
+        .map(i => i.analysis)
+        .join('\n\n')
+    };
     
-    // Set up event handling for the SSE connection
-    eventSource.onopen = () => {
-      console.log(`Analysis stream for iteration ${currentIteration} connected`);
+    let accumulatedContent = '';
+    
+    try {
+      const eventSource = new EventSource(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`,
+        { withCredentials: true }
+      );
       
-      // Send the analysis request
-      const requestBody = {
-        content,
-        query: description,
-        question: description,
-        marketId,
-        focusText: focusArea,
-        previousAnalyses: iterations
-          .filter(i => i.iteration < currentIteration && i.analysis)
-          .map(i => i.analysis)
-          .join('\n\n')
+      // Set up event handling
+      eventSource.onopen = () => {
+        console.log(`Analysis stream for iteration ${currentIteration} connected`);
+        
+        // Make a POST request to the same endpoint
+        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+          signal: abortController.signal
+        }).catch(error => {
+          console.error(`Error making POST request for iteration ${currentIteration}:`, error);
+          eventSource.close();
+        });
       };
       
-      // Immediately close and send a POST request
-      eventSource.close();
-      
-      // Create a standard fetch POST request
-      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody)
-      })
-      .then(response => {
-        if (!response.body) {
-          throw new Error('No response body available');
-        }
-        
-        // Set up a reader for the response
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        
-        let buffer = '';
-        function readStream() {
-          reader.read().then(({ done, value }) => {
-            if (done) {
-              console.log(`Stream for iteration ${currentIteration} complete`);
-              
-              // Remove this iteration from streaming set
-              setStreamingIterations(prev => {
-                const newSet = new Set(prev);
-                newSet.delete(currentIteration);
-                return newSet;
-              });
-              
-              // Update the job status to completed if all iterations are done
-              if (streamingIterations.size === 0) {
-                setJobStatus('completed');
-              }
-              
-              return;
-            }
-            
-            // Decode the received chunk
-            const chunk = decoder.decode(value, { stream: true });
-            buffer += chunk;
-            
-            // Split the buffer by lines
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
-            
-            lines.forEach(line => {
-              if (line.startsWith('data:') && !line.includes('[DONE]')) {
-                try {
-                  const jsonData = line.substring(5).trim();
-                  if (jsonData) {
-                    try {
-                      const parsedData = JSON.parse(jsonData);
-                      if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
-                        const content = parsedData.choices[0].delta.content || '';
-                        if (content) {
-                          accumulatedAnalysis += content;
-                          
-                          // Update the analysis for this iteration
-                          setIterations(prev => {
-                            const updatedIterations = [...prev];
-                            const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
-                            
-                            if (iterIndex >= 0) {
-                              updatedIterations[iterIndex] = {
-                                ...updatedIterations[iterIndex],
-                                analysis: accumulatedAnalysis
-                              };
-                            }
-                            
-                            return updatedIterations;
-                          });
-                        }
-                      }
-                    } catch (e) {
-                      // Ignore parsing errors for heartbeats or invalid data
-                      if (jsonData !== '') {
-                        console.warn('Error parsing SSE data:', e, jsonData);
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.error('Error processing SSE line:', e);
-                }
-              } else if (line.includes('[DONE]')) {
-                console.log(`Stream complete signal received for iteration ${currentIteration}`);
-              }
-            });
-            
-            // Continue reading
-            readStream();
-          }).catch(err => {
-            console.error(`Error reading stream for iteration ${currentIteration}:`, err);
-            // Mark this iteration as no longer streaming
-            setStreamingIterations(prev => {
-              const newSet = new Set(prev);
-              newSet.delete(currentIteration);
-              return newSet;
-            });
+      eventSource.onmessage = (event) => {
+        if (event.data.includes('[DONE]')) {
+          console.log(`Stream complete for iteration ${currentIteration}`);
+          eventSource.close();
+          
+          // Remove this iteration from streaming set
+          setStreamingIterations(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(currentIteration);
+            return newSet;
           });
+          
+          // Remove abort controller
+          setActiveStreamControllers(prev => {
+            const updated = { ...prev };
+            delete updated[currentIteration];
+            return updated;
+          });
+          
+          return;
         }
         
-        readStream();
-      })
-      .catch(error => {
-        console.error(`Error in fetch for iteration ${currentIteration}:`, error);
+        try {
+          // Process data from SSE
+          if (event.data && event.data.trim() !== '') {
+            try {
+              // Check if it's a heartbeat
+              if (event.data.includes('"heartbeat"')) {
+                console.log('Received heartbeat');
+                return;
+              }
+              
+              const parsedData = JSON.parse(event.data);
+              if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
+                const content = parsedData.choices[0].delta.content || '';
+                if (content) {
+                  accumulatedContent += content;
+                  
+                  // Update the analysis for this iteration
+                  setIterations(prev => {
+                    const updatedIterations = [...prev];
+                    const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
+                    
+                    if (iterIndex >= 0) {
+                      updatedIterations[iterIndex] = {
+                        ...updatedIterations[iterIndex],
+                        analysis: accumulatedContent
+                      };
+                    }
+                    
+                    return updatedIterations;
+                  });
+                }
+              }
+            } catch (parseError) {
+              // If not valid JSON, it might be a comment or other SSE metadata
+              console.log('Non-JSON SSE data:', event.data);
+            }
+          }
+        } catch (e) {
+          console.error('Error processing event data:', e);
+        }
+      };
+      
+      eventSource.onerror = (error) => {
+        console.error(`Error in SSE connection for iteration ${currentIteration}:`, error);
+        
         // Mark this iteration as no longer streaming
         setStreamingIterations(prev => {
           const newSet = new Set(prev);
           newSet.delete(currentIteration);
           return newSet;
         });
+        
+        // Remove abort controller
+        setActiveStreamControllers(prev => {
+          const updated = { ...prev };
+          delete updated[currentIteration];
+          return updated;
+        });
+        
+        eventSource.close();
+      };
+      
+      // Setup cleanup on abort
+      abortController.signal.addEventListener('abort', () => {
+        console.log(`Stream aborted for iteration ${currentIteration}`);
+        eventSource.close();
       });
-    };
-    
-    eventSource.onerror = (error) => {
-      console.error(`Error in SSE connection for iteration ${currentIteration}:`, error);
+      
+    } catch (error) {
+      console.error(`Error setting up SSE for iteration ${currentIteration}:`, error);
+      
       // Mark this iteration as no longer streaming
       setStreamingIterations(prev => {
         const newSet = new Set(prev);
@@ -368,11 +370,13 @@ export function JobQueueResearchCard({
         return newSet;
       });
       
-      eventSource.close();
-    };
-    
-    // Save the SSE connection for cleanup
-    setSseConnections(prev => [...prev, eventSource]);
+      // Remove abort controller
+      setActiveStreamControllers(prev => {
+        const updated = { ...prev };
+        delete updated[currentIteration];
+        return updated;
+      });
+    }
   };
 
   const subscribeToJobUpdates = (id: string) => {
@@ -844,11 +848,7 @@ export function JobQueueResearchCard({
 
   const handleStreamEnd = () => {
     console.log('Stream ended, updating UI');
-    // Update the database with the latest iteration data
-    if (jobId) {
-      // This is handled by the backend, which will update the database
-      // This function is just a placeholder for additional UI updates if needed
-    }
+    // This function is just a placeholder for additional UI updates if needed
   };
 
   const handleResearchArea = (area: string) => {
@@ -968,225 +968,4 @@ export function JobQueueResearchCard({
             </Button>
           )}
           
-          {savedJobs.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  disabled={isLoadingJobs || isLoading || isLoadingSaved}
-                  className="flex items-center gap-2"
-                >
-                  {isLoadingJobs ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
-                  ) : (
-                    <History className="h-4 w-4 mr-2" />
-                  )}
-                  History ({savedJobs.length})
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-[300px] max-h-[400px] overflow-y-auto">
-                {savedJobs.map((job) => {
-                  const probability = extractProbability(job);
-                  
-                  return (
-                    <DropdownMenuItem
-                      key={job.id}
-                      onClick={() => loadSavedResearch(job.id)}
-                      disabled={isLoadingSaved}
-                      className="flex flex-col items-start py-2"
-                    >
-                      <div className="flex items-center w-full">
-                        {getStatusIcon(job.status)}
-                        <span className="font-medium truncate flex-1">
-                          {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
-                        </span>
-                        <Badge 
-                          variant="outline" 
-                          className={`ml-2 ${
-                            job.status === 'completed' ? 'bg-green-50 text-green-700' : 
-                            job.status === 'failed' ? 'bg-red-50 text-red-700' :
-                            job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
-                            'bg-yellow-50 text-yellow-700'
-                          }`}
-                        >
-                          {job.status}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center justify-between w-full mt-1">
-                        <span className="text-xs text-muted-foreground">
-                          {formatDate(job.created_at)}
-                        </span>
-                        {probability && (
-                          <Badge variant="secondary" className="text-xs">
-                            P: {probability}
-                          </Badge>
-                        )}
-                      </div>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-      </div>
-
-      {!jobId && (
-        <>
-          <div className="flex flex-col space-y-4 w-full">
-            <div className="flex items-center gap-2 w-full">
-              <Input
-                placeholder="Add an optional focus area for your research..."
-                value={focusText}
-                onChange={(e) => setFocusText(e.target.value)}
-                disabled={isLoading}
-                className="flex-1"
-              />
-            </div>
-            
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Settings className="h-4 w-4 text-muted-foreground" />
-                <Label>Iterations</Label>
-              </div>
-              <Select
-                value={maxIterations}
-                onValueChange={setMaxIterations}
-                disabled={isLoading}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Number of iterations" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 iteration</SelectItem>
-                  <SelectItem value="2">2 iterations</SelectItem>
-                  <SelectItem value="3">3 iterations (default)</SelectItem>
-                  <SelectItem value="4">4 iterations</SelectItem>
-                  <SelectItem value="5">5 iterations</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                More iterations provide deeper research but take longer to complete.
-              </p>
-            </div>
-          
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="notify-email" 
-                  checked={notifyByEmail} 
-                  onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
-                />
-                <Label htmlFor="notify-email" className="cursor-pointer">
-                  Notify me by email when research is complete
-                </Label>
-              </div>
-              
-              {notifyByEmail && (
-                <div className="flex items-center gap-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="email"
-                    placeholder="Enter your email address"
-                    value={notificationEmail}
-                    onChange={(e) => setNotificationEmail(e.target.value)}
-                    className="flex-1"
-                  />
-                </div>
-              )}
-              
-              <Button 
-                onClick={() => handleResearch()} 
-                disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
-                className="w-full"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Starting...
-                  </>
-                ) : (
-                  "Start Background Research"
-                )}
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {focusText && jobId && (
-        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
-          <span className="font-medium">Research focus:</span> {focusText}
-        </div>
-      )}
-
-      {error && (
-        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
-          {error}
-        </div>
-      )}
-
-      {jobId && (
-        <ProgressDisplay 
-          messages={progress} 
-          jobId={jobId || undefined} 
-          progress={progressPercent}
-          status={jobStatus}
-        />
-      )}
-      
-      {iterations.length > 0 && (
-        <div className="border-t pt-4 w-full max-w-full space-y-2">
-          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
-          <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={streamingIterations.has(iteration.iteration)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={parseInt(maxIterations, 10)}
-                onStreamEnd={handleStreamEnd}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-      
-      {structuredInsights && structuredInsights.parsedData && (
-        <div className="border-t pt-4 w-full max-w-full">
-          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
-          <InsightsDisplay 
-            streamingState={structuredInsights} 
-            onResearchArea={handleResearchArea}
-            marketData={{
-              bestBid,
-              bestAsk,
-              noBestAsk,
-              outcomes
-            }}
-          />
-        </div>
-      )}
-      
-      {results.length > 0 && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
-          </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
-            </div>
-          )}
-        </>
-      )}
-    </Card>
-  );
-}
+          {savedJobs.length >
