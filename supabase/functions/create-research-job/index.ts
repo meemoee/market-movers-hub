@@ -154,7 +154,7 @@ async function processIteration(jobId: string, iteration: number, query: string,
     console.log(`Generated search queries:`, searchQueries)
 
     // Perform web search
-    const webResults = await performWebSearch(query, focusText) // Now passing focusText correctly
+    const webResults = await performWebSearch(query, focusText)
     console.log(`Found ${webResults.length} web results`)
 
     // Extract relevant content from web results
@@ -290,21 +290,67 @@ async function finalizeJob(jobId: string) {
 
 async function performWebSearch(query: string, focusText?: string) {
   const webResearchUrl = "https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/web-research"
-  const response = await fetch(webResearchUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
-    },
-    body: JSON.stringify({ query, focusText })
-  })
+  
+  try {
+    // Create a collector for the results
+    const results = [];
 
-  if (!response.ok) {
-    throw new Error(`Web research function failed: ${response.status}`)
+    // Make the request
+    const response = await fetch(webResearchUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get("SUPABASE_ANON_KEY")}`
+      },
+      body: JSON.stringify({ query, focusText })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Web research function failed: ${response.status}`);
+    }
+
+    // For SSE responses, we need to read the stream
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error("Failed to get reader from response");
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    // Process the stream
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      
+      // Process complete SSE messages
+      const lines = buffer.split("\n\n");
+      buffer = lines.pop() || ""; // Keep the incomplete chunk for next iteration
+      
+      for (const line of lines) {
+        if (line.startsWith("data: ")) {
+          try {
+            const jsonStr = line.substring(6); // Remove "data: " prefix
+            const data = JSON.parse(jsonStr);
+            
+            if (data.type === 'results' && Array.isArray(data.data)) {
+              // Add results to our collector
+              results.push(...data.data);
+            }
+          } catch (e) {
+            console.error("Error parsing SSE message:", e);
+          }
+        }
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error("Error in web research:", error);
+    throw error;
   }
-
-  const results = await response.json()
-  return results
 }
 
 async function generateAnalysis(prompt: string) {
