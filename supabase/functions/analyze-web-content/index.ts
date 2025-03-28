@@ -248,7 +248,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
     }
 
     // Queue for processing large chunks in the background
-    const streamQueue: {value: Uint8Array, timestamp: number}[] = []
+    const streamQueue: { value: Uint8Array, timestamp: number }[] = []
     let processingQueue = false
     
     // Process the queue in the background
@@ -324,12 +324,10 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
 
           // Setup connection timeout detection
           let lastDataTimestamp = Date.now()
-          const connectionTimeoutId = setInterval(() => {
+          let connectionTimeoutId = setInterval(() => {
             const now = Date.now()
-            if (now - lastDataTimestamp > STREAM_TIMEOUT) { 
+            if (now - lastDataTimestamp > STREAM_TIMEOUT) {
               console.warn('Connection appears stalled, no data received for 60 seconds')
-              clearInterval(connectionTimeoutId)
-              throw new Error('Stream connection timeout after 60 seconds of inactivity')
             }
           }, 5000)
 

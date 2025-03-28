@@ -12,6 +12,7 @@ interface AnalysisDisplayProps {
   isStreaming?: boolean;
   isReasoningStreaming?: boolean;
   maxHeight?: string;
+  onStreamEnd?: () => void;
 }
 
 export function AnalysisDisplay({ 
@@ -19,7 +20,8 @@ export function AnalysisDisplay({
   reasoning,
   isStreaming = false,
   isReasoningStreaming = false,
-  maxHeight = '400px'
+  maxHeight = '400px',
+  onStreamEnd
 }: AnalysisDisplayProps) {
   const [showReasoning, setShowReasoning] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -42,6 +44,13 @@ export function AnalysisDisplay({
       setRenderedReasoning(reasoning);
     }
   }, [reasoning]);
+
+  // Call onStreamEnd when streaming stops
+  useEffect(() => {
+    if (!isStreaming && onStreamEnd) {
+      onStreamEnd();
+    }
+  }, [isStreaming, onStreamEnd]);
   
   // Auto-scroll content when streaming
   useEffect(() => {

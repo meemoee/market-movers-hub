@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,7 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const [streamingIterations, setStreamingIterations] = useState<Set<number>>(new Set())
+  const [sseConnections, setSseConnections] = useState<EventSource[]>([])
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
@@ -98,6 +100,16 @@ export function JobQueueResearchCard({
     setStructuredInsights(null);
     setStreamingIterations(new Set());
     
+    // Close any open SSE connections
+    sseConnections.forEach(connection => {
+      try {
+        connection.close();
+      } catch (e) {
+        console.error('Error closing SSE connection:', e);
+      }
+    });
+    setSseConnections([]);
+    
     if (realtimeChannelRef.current) {
       console.log('Removing realtime channel on reset');
       supabase.removeChannel(realtimeChannelRef.current);
@@ -109,6 +121,15 @@ export function JobQueueResearchCard({
     fetchSavedJobs();
     
     return () => {
+      // Clean up on unmount
+      sseConnections.forEach(connection => {
+        try {
+          connection.close();
+        } catch (e) {
+          console.error('Error closing SSE connection on unmount:', e);
+        }
+      });
+      
       if (realtimeChannelRef.current) {
         console.log('Removing realtime channel on unmount');
         supabase.removeChannel(realtimeChannelRef.current);
@@ -139,6 +160,219 @@ export function JobQueueResearchCard({
     } finally {
       setIsLoadingJobs(false);
     }
+  };
+
+  const setupAnalysisStream = (currentIteration: number, content: string, focusArea?: string) => {
+    if (!content) {
+      console.warn('No content to analyze');
+      return;
+    }
+    
+    console.log(`Setting up SSE for iteration ${currentIteration} with ${content.length} chars of content`);
+    
+    // Create and store a reference to the SSE connection
+    const eventSource = new EventSource(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`,
+      { withCredentials: false }
+    );
+    
+    // Update our iterations to include a streaming one
+    setIterations(prev => {
+      // Find if this iteration already exists
+      const existingIndex = prev.findIndex(i => i.iteration === currentIteration);
+      
+      if (existingIndex >= 0) {
+        // Update existing iteration
+        const updatedIterations = [...prev];
+        updatedIterations[existingIndex] = {
+          ...updatedIterations[existingIndex],
+          analysis: updatedIterations[existingIndex].analysis || '',
+          reasoning: updatedIterations[existingIndex].reasoning || '',
+          isAnalysisStreaming: true,
+          isReasoningStreaming: true
+        };
+        return updatedIterations;
+      } else {
+        // Create new iteration
+        return [...prev, {
+          iteration: currentIteration,
+          queries: [],
+          results: [],
+          analysis: '',
+          reasoning: '',
+          isAnalysisStreaming: true,
+          isReasoningStreaming: true
+        }];
+      }
+    });
+    
+    // Mark this iteration as streaming
+    setStreamingIterations(prev => {
+      const newSet = new Set(prev);
+      newSet.add(currentIteration);
+      return newSet;
+    });
+    
+    // Auto-expand the streaming iteration
+    if (!expandedIterations.includes(currentIteration)) {
+      setExpandedIterations(prev => [...prev, currentIteration]);
+    }
+    
+    // Set job status to processing if not already set
+    if (jobStatus !== 'processing') {
+      setJobStatus('processing');
+    }
+    
+    // Handle SSE events
+    let accumulatedAnalysis = '';
+    
+    // Set up event handling for the SSE connection
+    eventSource.onopen = () => {
+      console.log(`Analysis stream for iteration ${currentIteration} connected`);
+      
+      // Send the analysis request
+      const requestBody = {
+        content,
+        query: description,
+        question: description,
+        marketId,
+        focusText: focusArea,
+        previousAnalyses: iterations
+          .filter(i => i.iteration < currentIteration && i.analysis)
+          .map(i => i.analysis)
+          .join('\n\n')
+      };
+      
+      // Immediately close and send a POST request
+      eventSource.close();
+      
+      // Create a standard fetch POST request
+      fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      })
+      .then(response => {
+        if (!response.body) {
+          throw new Error('No response body available');
+        }
+        
+        // Set up a reader for the response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        
+        let buffer = '';
+        function readStream() {
+          reader.read().then(({ done, value }) => {
+            if (done) {
+              console.log(`Stream for iteration ${currentIteration} complete`);
+              
+              // Remove this iteration from streaming set
+              setStreamingIterations(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(currentIteration);
+                return newSet;
+              });
+              
+              // Update the job status to completed if all iterations are done
+              if (streamingIterations.size === 0) {
+                setJobStatus('completed');
+              }
+              
+              return;
+            }
+            
+            // Decode the received chunk
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            
+            // Split the buffer by lines
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+            
+            lines.forEach(line => {
+              if (line.startsWith('data:') && !line.includes('[DONE]')) {
+                try {
+                  const jsonData = line.substring(5).trim();
+                  if (jsonData) {
+                    try {
+                      const parsedData = JSON.parse(jsonData);
+                      if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
+                        const content = parsedData.choices[0].delta.content || '';
+                        if (content) {
+                          accumulatedAnalysis += content;
+                          
+                          // Update the analysis for this iteration
+                          setIterations(prev => {
+                            const updatedIterations = [...prev];
+                            const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
+                            
+                            if (iterIndex >= 0) {
+                              updatedIterations[iterIndex] = {
+                                ...updatedIterations[iterIndex],
+                                analysis: accumulatedAnalysis
+                              };
+                            }
+                            
+                            return updatedIterations;
+                          });
+                        }
+                      }
+                    } catch (e) {
+                      // Ignore parsing errors for heartbeats or invalid data
+                      if (jsonData !== '') {
+                        console.warn('Error parsing SSE data:', e, jsonData);
+                      }
+                    }
+                  }
+                } catch (e) {
+                  console.error('Error processing SSE line:', e);
+                }
+              } else if (line.includes('[DONE]')) {
+                console.log(`Stream complete signal received for iteration ${currentIteration}`);
+              }
+            });
+            
+            // Continue reading
+            readStream();
+          }).catch(err => {
+            console.error(`Error reading stream for iteration ${currentIteration}:`, err);
+            // Mark this iteration as no longer streaming
+            setStreamingIterations(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(currentIteration);
+              return newSet;
+            });
+          });
+        }
+        
+        readStream();
+      })
+      .catch(error => {
+        console.error(`Error in fetch for iteration ${currentIteration}:`, error);
+        // Mark this iteration as no longer streaming
+        setStreamingIterations(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(currentIteration);
+          return newSet;
+        });
+      });
+    };
+    
+    eventSource.onerror = (error) => {
+      console.error(`Error in SSE connection for iteration ${currentIteration}:`, error);
+      // Mark this iteration as no longer streaming
+      setStreamingIterations(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(currentIteration);
+        return newSet;
+      });
+      
+      eventSource.close();
+    };
+    
+    // Save the SSE connection for cleanup
+    setSseConnections(prev => [...prev, eventSource]);
   };
 
   const subscribeToJobUpdates = (id: string) => {
@@ -211,6 +445,32 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
+      // Handle the case where we have web scrape results but no analysis yet
+      // We'll initiate the analysis stream for the current iteration
+      if (job.status === 'processing' && 
+          job.current_iteration > 0 && 
+          job.iterations[job.current_iteration - 1] && 
+          job.iterations[job.current_iteration - 1].results && 
+          job.iterations[job.current_iteration - 1].results.length > 0 &&
+          (!job.iterations[job.current_iteration - 1].analysis || 
+           job.iterations[job.current_iteration - 1].analysis.trim() === '')) {
+        
+        const currentIter = job.current_iteration;
+        const iterData = job.iterations[currentIter - 1];
+        
+        console.log(`Starting analysis stream for iteration ${currentIter} which has results but no analysis`);
+        
+        // Prepare content from the results
+        const content = iterData.results
+          .map((r: ResearchResult) => `Source: ${r.url}\n${r.content}\n\n`)
+          .join('\n');
+        
+        // Start the analysis stream
+        if (content && content.trim() !== '') {
+          setupAnalysisStream(currentIter, content, job.focus_text);
+        }
+      }
+      
       console.log('Received iterations with reasoning data:', job.iterations);
       
       const newStreamingIterations = job.status === 'processing' 
@@ -470,7 +730,8 @@ export function JobQueueResearchCard({
         query: description,
         maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
-        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
+        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined,
+        directStreaming: true // Signal that we want to use direct streaming
       };
       
       console.log('Creating research job with payload:', payload);
@@ -578,6 +839,15 @@ export function JobQueueResearchCard({
       });
     } finally {
       setIsLoadingSaved(false);
+    }
+  };
+
+  const handleStreamEnd = () => {
+    console.log('Stream ended, updating UI');
+    // Update the database with the latest iteration data
+    if (jobId) {
+      // This is handled by the backend, which will update the database
+      // This function is just a placeholder for additional UI updates if needed
     }
   };
 
@@ -775,7 +1045,7 @@ export function JobQueueResearchCard({
               />
             </div>
             
-            <div className="flex flex-col space-y-2">
+            <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Settings className="h-4 w-4 text-muted-foreground" />
                 <Label>Iterations</Label>
@@ -879,6 +1149,7 @@ export function JobQueueResearchCard({
                 isStreaming={streamingIterations.has(iteration.iteration)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
+                onStreamEnd={handleStreamEnd}
               />
             ))}
           </div>
