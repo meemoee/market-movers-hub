@@ -12,7 +12,6 @@ interface AnalysisDisplayProps {
   isStreaming?: boolean;
   isReasoningStreaming?: boolean;
   maxHeight?: string;
-  onStreamEnd?: () => void;
 }
 
 export function AnalysisDisplay({ 
@@ -20,78 +19,49 @@ export function AnalysisDisplay({
   reasoning,
   isStreaming = false,
   isReasoningStreaming = false,
-  maxHeight = '400px',
-  onStreamEnd
+  maxHeight = '400px'
 }: AnalysisDisplayProps) {
   const [showReasoning, setShowReasoning] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
   const reasoningRef = useRef<HTMLDivElement>(null);
   
-  // Store the incoming content with clear separation
-  const [renderedContent, setRenderedContent] = useState(content || '');
+  // Always store the latest content passed in props
+  const [renderedContent, setRenderedContent] = useState(content);
   const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
   
-  // Track the last streaming state to detect when streaming ends
-  const lastAnalysisStreamingState = useRef(isStreaming);
-  const lastReasoningStreamingState = useRef(isReasoningStreaming);
-  
-  // When content updates, only update the analysis content - ensure immediate update
+  // Always accept and display the incoming content as-is
   useEffect(() => {
-    if (content !== undefined && content !== null) {
+    if (content) {
       setRenderedContent(content);
     }
   }, [content]);
   
-  // When reasoning updates, only update the reasoning content - ensure immediate update
+  // Always accept and display the incoming reasoning as-is
   useEffect(() => {
-    if (reasoning !== undefined && reasoning !== null) {
+    if (reasoning) {
       setRenderedReasoning(reasoning);
     }
   }, [reasoning]);
-
-  // Call onStreamEnd when streaming process stops
-  useEffect(() => {
-    const analysisStreamingJustEnded = lastAnalysisStreamingState.current && !isStreaming;
-    const reasoningStreamingJustEnded = lastReasoningStreamingState.current && !isReasoningStreaming;
-    
-    if (analysisStreamingJustEnded) {
-      console.log("Analysis streaming ended");
-      if (onStreamEnd && !isReasoningStreaming) {
-        onStreamEnd();
-      }
-    }
-    
-    if (reasoningStreamingJustEnded) {
-      console.log("Reasoning streaming ended");
-      if (onStreamEnd && !isStreaming) {
-        onStreamEnd();
-      }
-    }
-    
-    // Update refs to current state for next comparison
-    lastAnalysisStreamingState.current = isStreaming;
-    lastReasoningStreamingState.current = isReasoningStreaming;
-  }, [isStreaming, isReasoningStreaming, onStreamEnd]);
   
-  // Auto-scroll content when streaming - ensure immediate scroll on content update
+  // Auto-scroll content when streaming
   useEffect(() => {
-    if ((isStreaming || content) && contentRef.current) {
+    if (isStreaming && contentRef.current) {
       const scrollElement = contentRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [renderedContent, isStreaming, content]);
+  }, [renderedContent, isStreaming]);
 
-  // Auto-scroll reasoning when streaming - ensure immediate scroll on reasoning update
+  // Auto-scroll reasoning when streaming
   useEffect(() => {
-    if ((isReasoningStreaming || reasoning) && reasoningRef.current && showReasoning) {
+    if (isReasoningStreaming && reasoningRef.current && showReasoning) {
       const scrollElement = reasoningRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [renderedReasoning, isReasoningStreaming, reasoning, showReasoning]);
+  }, [renderedReasoning, isReasoningStreaming, showReasoning]);
 
   return (
     <div className="flex flex-col h-full">
@@ -114,7 +84,7 @@ export function AnalysisDisplay({
         <ScrollArea className="h-full" style={{ maxHeight }}>
           <div className="p-2">
             <Markdown>
-              {renderedContent || ''}
+              {renderedContent}
               {isStreaming && <span className="animate-pulse">▌</span>}
             </Markdown>
           </div>
@@ -126,7 +96,7 @@ export function AnalysisDisplay({
           <ScrollArea className="h-full" style={{ maxHeight }}>
             <div className="p-2 bg-muted/20">
               <Markdown>
-                {renderedReasoning || ''}
+                {renderedReasoning}
                 {isReasoningStreaming && <span className="animate-pulse">▌</span>}
               </Markdown>
             </div>

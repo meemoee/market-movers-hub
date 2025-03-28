@@ -30,8 +30,6 @@ const HEARTBEAT_INTERVAL = 5000 // 5 seconds
 const RECONNECT_DELAY = 2000 // 2 seconds
 const STREAM_TIMEOUT = 60000 // 60 seconds timeout threshold
 const MAX_RETRIES = 3
-const SECTION_TIMEOUT = 2 * 60 * 1000 // 2 minutes maximum time for a section
-const DATABASE_CHUNK_SIZE = 30 // Save to database every 30 tokens (for background saving)
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -174,12 +172,6 @@ ${focusText ? `9. Focus Area Priority
    - Information not directly related to the focus area should be excluded
    - Clearly explain how each point connects to the specified focus` : ''}
 
-BE SURE TO STRUCTURE YOUR RESPONSE IN TWO PARTS:
-PART 1: Main analysis answering questions about the evidence and probability
-PART 2: Your reasoning process and detailed evaluation
-
-Begin the second part with the exact text "SECOND PART: REASONING AND DETAILED EVALUATION".
-
 Be factual, precise, and evidence-based in your analysis. Prioritize recent information and exact statistics.`;
 
     let prompt = `Here is the web content I've collected during research:
@@ -221,12 +213,6 @@ IMPORTANT REQUIREMENTS:
 - Flag any data points older than 2023 as potentially outdated
 - Specifically address WHEN this market will be resolved and when conclusive data will be available
 
-Provide your response in two parts:
-1. FIRST PART: Main analysis answering questions 1-8 above
-2. SECOND PART: Your reasoning process and detailed evaluation of the evidence quality
-
-REMEMBER: Start the second part with "SECOND PART: REASONING AND DETAILED EVALUATION".
-
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
     // Create a TransformStream to handle the streaming response
@@ -244,7 +230,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       heartbeatInterval = setInterval(async () => {
         try {
           // Send a comment as heartbeat to keep the connection alive
-          await writer.write(new TextEncoder().encode("data: {\"heartbeat\":true}\n\n"))
+          await writer.write(new TextEncoder().encode(":\n\n"))
           console.log('Heartbeat sent')
         } catch (error) {
           console.error('Error sending heartbeat:', error)
@@ -261,31 +247,47 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       }
     }
 
-    // Helper function to send section markers
-    const sendSectionMarker = async (type: 'analysis_start' | 'analysis_end' | 'reasoning_start' | 'reasoning_end') => {
+    // Queue for processing large chunks in the background
+    const streamQueue: {value: Uint8Array, timestamp: number}[] = []
+    let processingQueue = false
+    
+    // Process the queue in the background
+    const processQueue = async () => {
+      if (processingQueue || streamQueue.length === 0) return
+      
+      processingQueue = true
+      
       try {
-        await writer.write(
-          new TextEncoder().encode(`data: {"section":"${type}"}\n\n`)
-        );
-        console.log(`Sent ${type} marker`);
-      } catch (error) {
-        console.error(`Error sending ${type} marker:`, error);
+        while (streamQueue.length > 0) {
+          const chunk = streamQueue.shift()
+          if (chunk) {
+            try {
+              await writer.write(chunk.value)
+            } catch (error) {
+              console.error('Error writing chunk from queue:', error)
+              // If we can't write, stop processing
+              break
+            }
+          }
+        }
+      } finally {
+        processingQueue = false
+        
+        // If there are more chunks, process them
+        if (streamQueue.length > 0) {
+          processQueue()
+        }
       }
-    };
+    }
 
     // Launch a background task to fetch and stream the response
-    // This will continue to run even after response is sent
-    // @ts-ignore - TypeScript may not recognize EdgeRuntime
-    EdgeRuntime.waitUntil((async () => {
+    (async () => {
       let retryCount = 0
       let succeeded = false
       
       while (retryCount < MAX_RETRIES && !succeeded) {
         try {
           console.log(`Making request to OpenRouter API (attempt ${retryCount + 1})...`)
-          
-          // Send analysis_start marker
-          await sendSectionMarker('analysis_start');
           
           const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -320,65 +322,19 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
             throw new Error('Failed to get reader from response')
           }
 
+          // Setup connection timeout detection
+          let lastDataTimestamp = Date.now()
+          const connectionTimeoutId = setInterval(() => {
+            const now = Date.now()
+            if (now - lastDataTimestamp > STREAM_TIMEOUT) { 
+              console.warn('Connection appears stalled, no data received for 60 seconds')
+              clearInterval(connectionTimeoutId)
+              throw new Error('Stream connection timeout after 60 seconds of inactivity')
+            }
+          }, 5000)
+
           const textDecoder = new TextDecoder()
-          let isInAnalysisPart = true;
-          let responseText = '';
-          let sectionTimeout: NodeJS.Timeout | null = null;
-          
-          // For background database saving
-          let analysisAccumulator = '';
-          let reasoningAccumulator = '';
-          let analysisTokenCount = 0;
-          let reasoningTokenCount = 0;
-          
-          // Set an overall timeout for the current section
-          const startSectionTimeout = () => {
-            if (sectionTimeout) {
-              clearTimeout(sectionTimeout);
-            }
-            
-            sectionTimeout = setTimeout(() => {
-              console.log(`Section timeout reached (${isInAnalysisPart ? 'analysis' : 'reasoning'})`);
-              
-              // Force section completion if timeout is reached
-              if (isInAnalysisPart) {
-                sendSectionMarker('analysis_end')
-                  .then(() => sendSectionMarker('reasoning_start'))
-                  .then(() => {
-                    isInAnalysisPart = false;
-                    startSectionTimeout(); // Reset timeout for reasoning section
-                  })
-                  .catch(error => console.error('Error handling section timeout:', error));
-              } else {
-                sendSectionMarker('reasoning_end')
-                  .then(() => {
-                    // Send completion signal
-                    writer.write(new TextEncoder().encode("data: [DONE]\n\n"));
-                  })
-                  .catch(error => console.error('Error handling section timeout:', error));
-              }
-            }, SECTION_TIMEOUT);
-          };
-          
-          // Background function to save content to the database
-          const saveToDatabase = async (section: 'analysis' | 'reasoning', content: string) => {
-            try {
-              if (!marketId) return;
-              
-              console.log(`Background save of ${section} content to database: ${content.length} characters`);
-              
-              // Here we would make the database call to save the content
-              // This is a placeholder - we'd need to implement the actual database call
-              
-              // Just log it for now
-              console.log(`Successfully saved ${section} content to database`);
-            } catch (error) {
-              console.error(`Error saving ${section} content to database:`, error);
-            }
-          };
-          
-          // Start the timeout for the first section
-          startSectionTimeout();
+          let chunkCounter = 0
           
           try {
             while (true) {
@@ -387,137 +343,57 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
               if (done) {
                 console.log('Stream complete')
                 succeeded = true
-                
-                // Send completion signals for any open sections
-                if (isInAnalysisPart) {
-                  await sendSectionMarker('analysis_end');
-                  await sendSectionMarker('reasoning_start');
-                  await sendSectionMarker('reasoning_end');
-                } else if (!isInAnalysisPart) {
-                  await sendSectionMarker('reasoning_end');
-                }
-                
-                // Final database save for any remaining content
-                if (analysisAccumulator.length > 0 && marketId) {
-                  saveToDatabase('analysis', analysisAccumulator);
-                }
-                
-                if (reasoningAccumulator.length > 0 && marketId) {
-                  saveToDatabase('reasoning', reasoningAccumulator);
-                }
-                
-                // Send completion signal
-                await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
-                
-                // Clear section timeout
-                if (sectionTimeout) {
-                  clearTimeout(sectionTimeout);
-                }
-                
+                clearInterval(connectionTimeoutId)
                 break
               }
               
-              const chunk = textDecoder.decode(value)
-              responseText += chunk;
+              // Update the last data timestamp
+              lastDataTimestamp = Date.now()
+              chunkCounter++
               
-              // Reset the section timeout since we received data
-              if (sectionTimeout) {
-                clearTimeout(sectionTimeout);
-              }
-              startSectionTimeout();
-              
-              // Split the chunk by lines
-              const lines = chunk.split('\n')
-              
-              for (const line of lines) {
-                if (line.startsWith('data:') && !line.includes('[DONE]')) {
-                  try {
-                    // Detect the explicit section transition marker
-                    if (isInAnalysisPart && responseText.includes("SECOND PART: REASONING AND DETAILED EVALUATION")) {
-                      console.log('Detected explicit transition to reasoning section');
-                      isInAnalysisPart = false;
-                      await sendSectionMarker('analysis_end');
-                      await sendSectionMarker('reasoning_start');
-                      
-                      // Save any remaining analysis content
-                      if (analysisAccumulator.length > 0 && marketId) {
-                        // Use waitUntil to avoid blocking the stream
-                        // @ts-ignore - TypeScript may not recognize EdgeRuntime
-                        EdgeRuntime.waitUntil(saveToDatabase('analysis', analysisAccumulator));
-                        analysisAccumulator = '';
-                      }
-                      
-                      // Reset timeout for the reasoning section
-                      if (sectionTimeout) {
-                        clearTimeout(sectionTimeout);
-                      }
-                      startSectionTimeout();
-                    }
-                    
-                    // Forward the data line intact to maintain SSE format for direct streaming
-                    await writer.write(new TextEncoder().encode(line + '\n\n'));
-                    
-                    // Extract content for background database saving
-                    if (line.length > 6) { // "data: " is 6 chars
-                      try {
-                        const jsonStr = line.slice(6).trim();
-                        if (jsonStr && jsonStr !== '[DONE]') {
-                          const parsed = JSON.parse(jsonStr);
-                          const content = parsed.choices?.[0]?.delta?.content;
-                          
-                          if (content) {
-                            // Accumulate content based on current section
-                            if (isInAnalysisPart) {
-                              analysisAccumulator += content;
-                              analysisTokenCount += 1;
-                              
-                              // Save to database in background when enough tokens accumulated
-                              if (analysisTokenCount >= DATABASE_CHUNK_SIZE && marketId) {
-                                const contentToSave = analysisAccumulator;
-                                // @ts-ignore - TypeScript may not recognize EdgeRuntime
-                                EdgeRuntime.waitUntil(saveToDatabase('analysis', contentToSave));
-                                analysisAccumulator = '';
-                                analysisTokenCount = 0;
-                              }
-                            } else {
-                              // In reasoning section
-                              reasoningAccumulator += content;
-                              reasoningTokenCount += 1;
-                              
-                              // Save to database in background when enough tokens accumulated
-                              if (reasoningTokenCount >= DATABASE_CHUNK_SIZE && marketId) {
-                                const contentToSave = reasoningAccumulator;
-                                // @ts-ignore - TypeScript may not recognize EdgeRuntime
-                                EdgeRuntime.waitUntil(saveToDatabase('reasoning', contentToSave));
-                                reasoningAccumulator = '';
-                                reasoningTokenCount = 0;
-                              }
-                            }
-                          }
-                        }
-                      } catch (parseError) {
-                        console.error('Error processing content for database:', parseError);
-                        // Continue streaming even if database processing fails
-                      }
-                    }
-                  } catch (error) {
-                    console.error('Error writing line:', error)
-                  }
-                } else if (line.includes('[DONE]')) {
-                  console.log('Stream complete signal received')
+              try {
+                // Add to queue with timestamp
+                streamQueue.push({
+                  value,
+                  timestamp: Date.now()
+                })
+                
+                // Start or continue processing the queue
+                if (!processingQueue) {
+                  processQueue()
                 }
+                
+                // For debugging - log every 50 chunks
+                if (chunkCounter % 50 === 0) {
+                  console.log(`Processed ${chunkCounter} chunks, queue size: ${streamQueue.length}`)
+                }
+              } catch (queueError) {
+                console.error(`Error processing chunk ${chunkCounter}:`, queueError)
               }
             }
           } catch (streamError) {
             console.error('Error reading stream:', streamError)
+            clearInterval(connectionTimeoutId)
+            
+            // Attempt to recover by sending what we have
+            if (streamQueue.length > 0) {
+              console.log(`Attempting to flush ${streamQueue.length} remaining chunks after stream error`)
+              while (streamQueue.length > 0) {
+                const chunk = streamQueue.shift()
+                if (chunk) {
+                  try {
+                    await writer.write(chunk.value)
+                  } catch (error) {
+                    console.error('Error flushing queue after stream error:', error)
+                    break
+                  }
+                }
+              }
+            }
+            
             throw streamError
           } finally {
             reader.releaseLock()
-            
-            // Clear section timeout
-            if (sectionTimeout) {
-              clearTimeout(sectionTimeout);
-            }
           }
           
           break // Exit the retry loop if successful
@@ -536,26 +412,42 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
         console.error(`Failed after ${MAX_RETRIES} attempts`)
         await writer.write(
           new TextEncoder().encode(
-            `data: {"error":"Failed to get a response after multiple attempts"}\n\n`
+            `data: {"choices":[{"delta":{"content":" Sorry, I encountered an error processing your request after multiple attempts."}}]}\n\n`
           )
         )
       }
       
       try {
+        // Flush any remaining chunks in the queue
+        if (streamQueue.length > 0) {
+          console.log(`Flushing ${streamQueue.length} remaining chunks before closing`)
+          while (streamQueue.length > 0) {
+            const chunk = streamQueue.shift()
+            if (chunk) {
+              try {
+                await writer.write(chunk.value)
+              } catch (error) {
+                console.error('Error in final queue flush:', error)
+                break
+              }
+            }
+          }
+        }
+        
         // Close the writer to signal the end
+        await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
         await writer.close()
       } catch (closeError) {
         console.error('Error closing writer:', closeError)
       } finally {
         cleanup()
       }
-    })());
+    })();
 
     return new Response(readable, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
       }
     });

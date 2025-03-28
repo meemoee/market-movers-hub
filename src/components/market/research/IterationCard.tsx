@@ -24,7 +24,6 @@ interface IterationCardProps {
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
-  onStreamEnd?: () => void;
 }
 
 export function IterationCard({
@@ -33,8 +32,7 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations,
-  onStreamEnd
+  maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
@@ -51,19 +49,14 @@ export function IterationCard({
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
-  // Determine streaming state with reliable indicators
-  const isAnalysisStreaming = isStreaming && isCurrentIteration && iteration.isAnalysisStreaming === true;
-  const isReasoningStreaming = isStreaming && isCurrentIteration && iteration.isReasoningStreaming === true;
-  const isAnyStreaming = isAnalysisStreaming || isReasoningStreaming;
-
-  // Make sure these values are never undefined for AnalysisDisplay
-  const analysis = iteration.analysis || '';
-  const reasoning = iteration.reasoning || '';
+  // Determine streaming status based on individual properties
+  const isAnalysisStreaming = isStreaming && isCurrentIteration && (iteration.isAnalysisStreaming !== false);
+  const isReasoningStreaming = isStreaming && isCurrentIteration && (iteration.isReasoningStreaming !== false);
 
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      isCurrentIteration && isAnyStreaming ? "border-primary/40" : "border-border"
+      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
     )}>
       <div 
         className={cn(
@@ -75,9 +68,9 @@ export function IterationCard({
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
-            className={isAnyStreaming ? "animate-pulse bg-primary" : ""}>
+            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
             Iteration {iteration.iteration}
-            {isAnyStreaming && " (Streaming...)"}
+            {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
@@ -101,12 +94,11 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={analysis} 
-                  reasoning={reasoning}
+                  content={iteration.analysis || "Analysis in progress..."} 
+                  reasoning={iteration.reasoning}
                   isStreaming={isAnalysisStreaming}
                   isReasoningStreaming={isReasoningStreaming}
                   maxHeight="100%"
-                  onStreamEnd={onStreamEnd}
                 />
               </TabsContent>
               
