@@ -1,9 +1,8 @@
 
 export interface SSEMessage {
-  type: 'message' | 'results' | 'error' | 'status' | 'iteration' | 'result' | 'jobUpdate' | 'completed';
+  type: 'message' | 'results' | 'error';
   message?: string;
   jobId?: string;
-  content?: any;
   data?: Array<{
     url: string;
     title?: string;
