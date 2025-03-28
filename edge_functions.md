@@ -1,3 +1,4 @@
+
 # Edge Functions and Components
 
 This document describes the functionality of each edge function and the components that rely on it.
@@ -17,7 +18,7 @@ This document describes the functionality of each edge function and the componen
 
 ## create-research-job
 
-*   **Functionality:** Creates a new research job and starts the background process.
+*   **Functionality:** Creates a new research job and starts the background process with improved error handling and real-time updates.
 *   **Components:**
     *   `src/components/market/JobQueueResearchCard.tsx`
 
@@ -47,7 +48,7 @@ This document describes the functionality of each edge function and the componen
 
 ## extract-research-insights
 
-*   **Functionality:** Extracts structured insights from the research.
+*   **Functionality:** Extracts structured insights from the research with enhanced error handling and more detailed output formatting.
 *   **Components:**
     *   `src/components/market/WebResearchCard.tsx`
 
@@ -59,7 +60,7 @@ This document describes the functionality of each edge function and the componen
 
 ## generate-queries
 
-*   **Functionality:** Generates search queries for a given topic.
+*   **Functionality:** Generates optimized search queries for a given topic with improved context handling and focus on statistical data.
 *   **Components:**
     *   `src/components/market/WebResearchCard.tsx`
 
@@ -107,15 +108,22 @@ This document describes the functionality of each edge function and the componen
 *   **Components:**
     *   `src/components/market/JobQueueResearchCard.tsx` (indirectly, called by `create-research-job`)
 
+## stream-analysis
+
+*   **Functionality:** Provides direct WebSocket streaming of analysis content from AI models with minimal latency.
+*   **Components:**
+    *   `src/components/market/research/IterationCard.tsx`
+    *   `src/components/market/JobQueueResearchCard.tsx`
+
 ## web-research
 
-*   **Functionality:** Performs web research for a given query.
+*   **Functionality:** Performs web research for a given query with improved parallel processing and data collection.
 *   **Components:**
     *   `src/components/market/WebResearchCard.tsx`
 
 ## web-scrape
 
-*   **Functionality:** Scrapes web content for a given URL.
+*   **Functionality:** Scrapes web content for multiple search queries with optimized request handling and better error management.
 *   **Components:**
     *   `src/components/market/WebResearchCard.tsx`
     *   `src/components/market/JobQueueResearchCard.tsx`

@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -8,6 +8,7 @@ import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
+import { supabase } from "@/integrations/supabase/client"
 
 interface IterationCardProps {
   iteration: {
@@ -24,6 +25,7 @@ interface IterationCardProps {
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
+  jobId?: string;
 }
 
 export function IterationCard({
@@ -32,10 +34,102 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations
+  maxIterations,
+  jobId
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
+  const [streamingAnalysis, setStreamingAnalysis] = useState<string>(iteration.analysis || "")
+  const [streamingReasoning, setStreamingReasoning] = useState<string>(iteration.reasoning || "")
+  const webSocketRef = useRef<WebSocket | null>(null)
   const isFinalIteration = iteration.iteration === maxIterations
+  
+  // Connect to WebSocket for streaming updates when needed
+  useEffect(() => {
+    // Only connect if this iteration is currently streaming and the card is expanded
+    if (isStreaming && isCurrentIteration && isExpanded && jobId) {
+      // Close any existing connection
+      if (webSocketRef.current) {
+        webSocketRef.current.close()
+      }
+      
+      // Initialize with current values
+      setStreamingAnalysis(iteration.analysis || "")
+      setStreamingReasoning(iteration.reasoning || "")
+      
+      // Create WebSocket connection
+      const wsUrl = `wss://lfmkoismabbhujycnqpn.supabase.co/functions/v1/stream-analysis`
+      const ws = new WebSocket(wsUrl)
+      webSocketRef.current = ws
+      
+      ws.onopen = () => {
+        console.log(`WebSocket connection established for iteration ${iteration.iteration}`)
+        
+        // Start streaming analysis
+        ws.send(JSON.stringify({
+          type: 'start',
+          jobId,
+          iteration: iteration.iteration,
+          contentType: 'analysis',
+          requestBody: {
+            model: "google/gemini-flash-1.5",
+            messages: [
+              {
+                role: "system",
+                content: "You are analyzing research content to provide insights."
+              },
+              {
+                role: "user",
+                content: `Analyze the following research for iteration ${iteration.iteration}`
+              }
+            ],
+            stream: true
+          }
+        }))
+      }
+      
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          
+          if (message.type === 'chunk') {
+            // Update the appropriate streaming content
+            if (message.contentType === 'analysis') {
+              setStreamingAnalysis(prev => prev + message.content)
+            } else if (message.contentType === 'reasoning') {
+              setStreamingReasoning(prev => prev + message.content)
+            }
+          } else if (message.type === 'error') {
+            console.error(`WebSocket error: ${message.message}`)
+          } else if (message.type === 'done') {
+            console.log(`Streaming complete for iteration ${iteration.iteration}`)
+          }
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error)
+        }
+      }
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error)
+      }
+      
+      ws.onclose = () => {
+        console.log(`WebSocket connection closed for iteration ${iteration.iteration}`)
+      }
+      
+      // Cleanup on unmount
+      return () => {
+        if (webSocketRef.current && webSocketRef.current.readyState < 2) {
+          webSocketRef.current.close()
+        }
+      }
+    }
+    
+    // Clean up WebSocket if this iteration is no longer streaming
+    if (!isStreaming && webSocketRef.current) {
+      webSocketRef.current.close()
+      webSocketRef.current = null
+    }
+  }, [isStreaming, isCurrentIteration, isExpanded, iteration.iteration, jobId])
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -94,8 +188,8 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
-                  reasoning={iteration.reasoning}
+                  content={isAnalysisStreaming ? streamingAnalysis : iteration.analysis || "Analysis in progress..."} 
+                  reasoning={isReasoningStreaming ? streamingReasoning : iteration.reasoning}
                   isStreaming={isAnalysisStreaming}
                   isReasoningStreaming={isReasoningStreaming}
                   maxHeight="100%"
