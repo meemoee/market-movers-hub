@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
@@ -340,10 +339,38 @@ serve(async (req) => {
         const scraper = new WebScraper(BING_API_KEY, writer)
         await scraper.run(query, focusText)
         await writer.close()
-      } catch (error) {
-        console.error("Error in web research:", error)
-        await writer.write(encoder.encode(`data: ${JSON.stringify({ error: error.message })}\n\n`))
-        await writer.close()
+      } catch (error: unknown) { // Inner catch block fix
+        console.error("Error in web research:", error); // Log the raw error first
+        let errorMessage = 'An unknown error occurred during web research.';
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        } else if (typeof error === 'string') {
+          errorMessage = error;
+        } else {
+          // Attempt to stringify if it's an object, otherwise use a generic message
+          try {
+            errorMessage = JSON.stringify(error);
+          } catch (stringifyError) {
+             console.error("Could not stringify inner error object:", stringifyError);
+          }
+        }
+
+        try {
+          // Ensure writer is still usable (though checking readiness isn't straightforward)
+          const errorPayload = `data: ${JSON.stringify({ error: errorMessage })}\n\n`;
+          const encodedPayload = encoder.encode(errorPayload);
+          await writer.write(encodedPayload);
+        } catch (writeError: unknown) {
+          // Log error during the error reporting itself
+          console.error("Failed to write error to stream:", writeError);
+        } finally {
+          // Always try to close the writer
+          try {
+            await writer.close();
+          } catch (closeError) {
+            console.error("Failed to close writer after inner error:", closeError);
+          }
+        }
       }
     })()
 
@@ -355,10 +382,23 @@ serve(async (req) => {
         'Connection': 'keep-alive',
       },
     })
-  } catch (error) {
-    console.error("Error in web-research function:", error)
+  } catch (error: unknown) { // Outer catch block fix
+    console.error("Error in web-research function (outer catch):", error); // Log raw error
+    let errorMessage = 'An internal server error occurred.';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+    } else if (typeof error === 'string') {
+      errorMessage = error;
+    } else {
+      try {
+        errorMessage = JSON.stringify(error);
+      } catch (stringifyError) {
+        console.error("Could not stringify outer error object:", stringifyError);
+      }
+    }
+    // Return a standard JSON error response
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
