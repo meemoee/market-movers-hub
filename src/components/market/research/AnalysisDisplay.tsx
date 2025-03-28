@@ -31,6 +31,10 @@ export function AnalysisDisplay({
   const [renderedContent, setRenderedContent] = useState(content);
   const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
   
+  // Track the last streaming state to detect when streaming ends
+  const lastAnalysisStreamingState = useRef(isStreaming);
+  const lastReasoningStreamingState = useRef(isReasoningStreaming);
+  
   // Always accept and display the incoming content as-is
   useEffect(() => {
     if (content) {
@@ -45,12 +49,28 @@ export function AnalysisDisplay({
     }
   }, [reasoning]);
 
-  // Call onStreamEnd when streaming stops
+  // Call onStreamEnd when either streaming process stops
   useEffect(() => {
-    if (!isStreaming && onStreamEnd) {
-      onStreamEnd();
+    // Check if analysis streaming just ended
+    if (lastAnalysisStreamingState.current && !isStreaming) {
+      console.log("Analysis streaming ended");
+      if (onStreamEnd && !isReasoningStreaming) {
+        onStreamEnd();
+      }
     }
-  }, [isStreaming, onStreamEnd]);
+    
+    // Check if reasoning streaming just ended
+    if (lastReasoningStreamingState.current && !isReasoningStreaming) {
+      console.log("Reasoning streaming ended");
+      if (onStreamEnd && !isStreaming) {
+        onStreamEnd();
+      }
+    }
+    
+    // Update refs to current state for next comparison
+    lastAnalysisStreamingState.current = isStreaming;
+    lastReasoningStreamingState.current = isReasoningStreaming;
+  }, [isStreaming, isReasoningStreaming, onStreamEnd]);
   
   // Auto-scroll content when streaming
   useEffect(() => {

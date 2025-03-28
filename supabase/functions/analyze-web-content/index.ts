@@ -31,6 +31,7 @@ const HEARTBEAT_INTERVAL = 5000 // 5 seconds
 const RECONNECT_DELAY = 2000 // 2 seconds
 const STREAM_TIMEOUT = 60000 // 60 seconds timeout threshold
 const MAX_RETRIES = 3
+const SECTION_TIMEOUT = 2 * 60 * 1000 // 2 minutes maximum time for a section
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -173,6 +174,12 @@ ${focusText ? `9. Focus Area Priority
    - Information not directly related to the focus area should be excluded
    - Clearly explain how each point connects to the specified focus` : ''}
 
+BE SURE TO STRUCTURE YOUR RESPONSE IN TWO PARTS:
+PART 1: Main analysis answering questions about the evidence and probability
+PART 2: Your reasoning process and detailed evaluation
+
+Begin the second part with the exact text "SECOND PART: REASONING AND DETAILED EVALUATION".
+
 Be factual, precise, and evidence-based in your analysis. Prioritize recent information and exact statistics.`;
 
     let prompt = `Here is the web content I've collected during research:
@@ -217,6 +224,8 @@ IMPORTANT REQUIREMENTS:
 Provide your response in two parts:
 1. FIRST PART: Main analysis answering questions 1-8 above
 2. SECOND PART: Your reasoning process and detailed evaluation of the evidence quality
+
+REMEMBER: Start the second part with "SECOND PART: REASONING AND DETAILED EVALUATION".
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
@@ -312,6 +321,39 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
           const textDecoder = new TextDecoder()
           let isInAnalysisPart = true;
           let responseText = '';
+          let sectionTimeout: NodeJS.Timeout | null = null;
+          
+          // Set an overall timeout for the current section
+          const startSectionTimeout = () => {
+            if (sectionTimeout) {
+              clearTimeout(sectionTimeout);
+            }
+            
+            sectionTimeout = setTimeout(() => {
+              console.log(`Section timeout reached (${isInAnalysisPart ? 'analysis' : 'reasoning'})`);
+              
+              // Force section completion if timeout is reached
+              if (isInAnalysisPart) {
+                sendSectionMarker('analysis_end')
+                  .then(() => sendSectionMarker('reasoning_start'))
+                  .then(() => {
+                    isInAnalysisPart = false;
+                    startSectionTimeout(); // Reset timeout for reasoning section
+                  })
+                  .catch(error => console.error('Error handling section timeout:', error));
+              } else {
+                sendSectionMarker('reasoning_end')
+                  .then(() => {
+                    // Send completion signal
+                    writer.write(new TextEncoder().encode("data: [DONE]\n\n"));
+                  })
+                  .catch(error => console.error('Error handling section timeout:', error));
+              }
+            }, SECTION_TIMEOUT);
+          };
+          
+          // Start the timeout for the first section
+          startSectionTimeout();
           
           try {
             while (true) {
@@ -324,17 +366,31 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
                 // Send completion signals for any open sections
                 if (isInAnalysisPart) {
                   await sendSectionMarker('analysis_end');
-                } else {
+                  await sendSectionMarker('reasoning_start');
+                  await sendSectionMarker('reasoning_end');
+                } else if (!isInAnalysisPart) {
                   await sendSectionMarker('reasoning_end');
                 }
                 
                 // Send completion signal
                 await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
+                
+                // Clear section timeout
+                if (sectionTimeout) {
+                  clearTimeout(sectionTimeout);
+                }
+                
                 break
               }
               
               const chunk = textDecoder.decode(value)
               responseText += chunk;
+              
+              // Reset the section timeout since we received data
+              if (sectionTimeout) {
+                clearTimeout(sectionTimeout);
+              }
+              startSectionTimeout();
               
               // Split the chunk by lines
               const lines = chunk.split('\n')
@@ -342,13 +398,18 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
               for (const line of lines) {
                 if (line.startsWith('data:') && !line.includes('[DONE]')) {
                   try {
-                    // Check for section transitions based on content patterns
-                    // This is a heuristic approach - adjust the pattern as needed based on how your AI model formats responses
-                    if (isInAnalysisPart && responseText.includes("SECOND PART")) {
-                      console.log('Detected transition to reasoning section');
+                    // Detect the explicit section transition marker
+                    if (isInAnalysisPart && responseText.includes("SECOND PART: REASONING AND DETAILED EVALUATION")) {
+                      console.log('Detected explicit transition to reasoning section');
                       isInAnalysisPart = false;
                       await sendSectionMarker('analysis_end');
                       await sendSectionMarker('reasoning_start');
+                      
+                      // Reset timeout for the reasoning section
+                      if (sectionTimeout) {
+                        clearTimeout(sectionTimeout);
+                      }
+                      startSectionTimeout();
                     }
                     
                     // Forward the data line intact to maintain SSE format
@@ -366,6 +427,11 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
             throw streamError
           } finally {
             reader.releaseLock()
+            
+            // Clear section timeout
+            if (sectionTimeout) {
+              clearTimeout(sectionTimeout);
+            }
           }
           
           break // Exit the retry loop if successful
