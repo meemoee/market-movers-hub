@@ -35,14 +35,14 @@ export function AnalysisDisplay({
   const lastAnalysisStreamingState = useRef(isStreaming);
   const lastReasoningStreamingState = useRef(isReasoningStreaming);
   
-  // When content updates, only update the analysis content
+  // When content updates, only update the analysis content - ensure immediate update
   useEffect(() => {
     if (content !== undefined && content !== null) {
       setRenderedContent(content);
     }
   }, [content]);
   
-  // When reasoning updates, only update the reasoning content
+  // When reasoning updates, only update the reasoning content - ensure immediate update
   useEffect(() => {
     if (reasoning !== undefined && reasoning !== null) {
       setRenderedReasoning(reasoning);
@@ -73,25 +73,25 @@ export function AnalysisDisplay({
     lastReasoningStreamingState.current = isReasoningStreaming;
   }, [isStreaming, isReasoningStreaming, onStreamEnd]);
   
-  // Auto-scroll content when streaming
+  // Auto-scroll content when streaming - ensure immediate scroll on content update
   useEffect(() => {
-    if (isStreaming && contentRef.current) {
+    if ((isStreaming || content) && contentRef.current) {
       const scrollElement = contentRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [renderedContent, isStreaming]);
+  }, [renderedContent, isStreaming, content]);
 
-  // Auto-scroll reasoning when streaming
+  // Auto-scroll reasoning when streaming - ensure immediate scroll on reasoning update
   useEffect(() => {
-    if (isReasoningStreaming && reasoningRef.current && showReasoning) {
+    if ((isReasoningStreaming || reasoning) && reasoningRef.current && showReasoning) {
       const scrollElement = reasoningRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
     }
-  }, [renderedReasoning, isReasoningStreaming, showReasoning]);
+  }, [renderedReasoning, isReasoningStreaming, reasoning, showReasoning]);
 
   return (
     <div className="flex flex-col h-full">

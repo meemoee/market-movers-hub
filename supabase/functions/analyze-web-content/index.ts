@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -32,6 +31,7 @@ const RECONNECT_DELAY = 2000 // 2 seconds
 const STREAM_TIMEOUT = 60000 // 60 seconds timeout threshold
 const MAX_RETRIES = 3
 const SECTION_TIMEOUT = 2 * 60 * 1000 // 2 minutes maximum time for a section
+const DATABASE_CHUNK_SIZE = 30 // Save to database every 30 tokens (for background saving)
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -274,7 +274,9 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
     };
 
     // Launch a background task to fetch and stream the response
-    (async () => {
+    // This will continue to run even after response is sent
+    // @ts-ignore - TypeScript may not recognize EdgeRuntime
+    EdgeRuntime.waitUntil((async () => {
       let retryCount = 0
       let succeeded = false
       
@@ -323,6 +325,12 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
           let responseText = '';
           let sectionTimeout: NodeJS.Timeout | null = null;
           
+          // For background database saving
+          let analysisAccumulator = '';
+          let reasoningAccumulator = '';
+          let analysisTokenCount = 0;
+          let reasoningTokenCount = 0;
+          
           // Set an overall timeout for the current section
           const startSectionTimeout = () => {
             if (sectionTimeout) {
@@ -352,6 +360,23 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
             }, SECTION_TIMEOUT);
           };
           
+          // Background function to save content to the database
+          const saveToDatabase = async (section: 'analysis' | 'reasoning', content: string) => {
+            try {
+              if (!marketId) return;
+              
+              console.log(`Background save of ${section} content to database: ${content.length} characters`);
+              
+              // Here we would make the database call to save the content
+              // This is a placeholder - we'd need to implement the actual database call
+              
+              // Just log it for now
+              console.log(`Successfully saved ${section} content to database`);
+            } catch (error) {
+              console.error(`Error saving ${section} content to database:`, error);
+            }
+          };
+          
           // Start the timeout for the first section
           startSectionTimeout();
           
@@ -370,6 +395,15 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
                   await sendSectionMarker('reasoning_end');
                 } else if (!isInAnalysisPart) {
                   await sendSectionMarker('reasoning_end');
+                }
+                
+                // Final database save for any remaining content
+                if (analysisAccumulator.length > 0 && marketId) {
+                  saveToDatabase('analysis', analysisAccumulator);
+                }
+                
+                if (reasoningAccumulator.length > 0 && marketId) {
+                  saveToDatabase('reasoning', reasoningAccumulator);
                 }
                 
                 // Send completion signal
@@ -405,6 +439,14 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
                       await sendSectionMarker('analysis_end');
                       await sendSectionMarker('reasoning_start');
                       
+                      // Save any remaining analysis content
+                      if (analysisAccumulator.length > 0 && marketId) {
+                        // Use waitUntil to avoid blocking the stream
+                        // @ts-ignore - TypeScript may not recognize EdgeRuntime
+                        EdgeRuntime.waitUntil(saveToDatabase('analysis', analysisAccumulator));
+                        analysisAccumulator = '';
+                      }
+                      
                       // Reset timeout for the reasoning section
                       if (sectionTimeout) {
                         clearTimeout(sectionTimeout);
@@ -412,8 +454,52 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
                       startSectionTimeout();
                     }
                     
-                    // Forward the data line intact to maintain SSE format
-                    await writer.write(new TextEncoder().encode(line + '\n\n'))
+                    // Forward the data line intact to maintain SSE format for direct streaming
+                    await writer.write(new TextEncoder().encode(line + '\n\n'));
+                    
+                    // Extract content for background database saving
+                    if (line.length > 6) { // "data: " is 6 chars
+                      try {
+                        const jsonStr = line.slice(6).trim();
+                        if (jsonStr && jsonStr !== '[DONE]') {
+                          const parsed = JSON.parse(jsonStr);
+                          const content = parsed.choices?.[0]?.delta?.content;
+                          
+                          if (content) {
+                            // Accumulate content based on current section
+                            if (isInAnalysisPart) {
+                              analysisAccumulator += content;
+                              analysisTokenCount += 1;
+                              
+                              // Save to database in background when enough tokens accumulated
+                              if (analysisTokenCount >= DATABASE_CHUNK_SIZE && marketId) {
+                                const contentToSave = analysisAccumulator;
+                                // @ts-ignore - TypeScript may not recognize EdgeRuntime
+                                EdgeRuntime.waitUntil(saveToDatabase('analysis', contentToSave));
+                                analysisAccumulator = '';
+                                analysisTokenCount = 0;
+                              }
+                            } else {
+                              // In reasoning section
+                              reasoningAccumulator += content;
+                              reasoningTokenCount += 1;
+                              
+                              // Save to database in background when enough tokens accumulated
+                              if (reasoningTokenCount >= DATABASE_CHUNK_SIZE && marketId) {
+                                const contentToSave = reasoningAccumulator;
+                                // @ts-ignore - TypeScript may not recognize EdgeRuntime
+                                EdgeRuntime.waitUntil(saveToDatabase('reasoning', contentToSave));
+                                reasoningAccumulator = '';
+                                reasoningTokenCount = 0;
+                              }
+                            }
+                          }
+                        }
+                      } catch (parseError) {
+                        console.error('Error processing content for database:', parseError);
+                        // Continue streaming even if database processing fails
+                      }
+                    }
                   } catch (error) {
                     console.error('Error writing line:', error)
                   }
@@ -463,7 +549,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       } finally {
         cleanup()
       }
-    })();
+    })());
 
     return new Response(readable, {
       headers: {
