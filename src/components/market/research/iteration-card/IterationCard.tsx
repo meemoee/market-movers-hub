@@ -133,4 +133,3 @@ export function IterationCard({
 
 // Add the missing useEffect import
 import { useEffect } from 'react';
-

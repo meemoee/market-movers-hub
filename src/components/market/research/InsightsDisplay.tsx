@@ -94,6 +94,7 @@ export function InsightsDisplay({
   
   if (reasoning) {
     if (typeof reasoning === 'string') {
+      // Handle string reasoning format
     } else {
       if (reasoning.evidenceFor) {
         evidenceFor.push(...reasoning.evidenceFor);

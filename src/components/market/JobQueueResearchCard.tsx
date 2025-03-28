@@ -113,7 +113,7 @@ export function JobQueueResearchCard({
         const typedJob: ResearchJob = {
           ...existingJob,
           status: existingJob.status as 'queued' | 'processing' | 'completed' | 'failed',
-          progress_log: Array.isArray(existingJob.progress_log) ? existingJob.progress_log : [],
+          progress_log: Array.isArray(existingJob.progress_log) ? existingJob.progress_log.map(item => String(item)) : [],
           iterations: Array.isArray(existingJob.iterations) ? existingJob.iterations : [],
           results: existingJob.results || []
         };
@@ -122,8 +122,16 @@ export function JobQueueResearchCard({
         setQuery(existingJob.query);
         setIsProcessing(existingJob.status === 'processing' || existingJob.status === 'queued');
         setIterations(Array.isArray(existingJob.iterations) ? existingJob.iterations : []);
-        setResults(Array.isArray(existingJob.results) ? existingJob.results : []);
-        setProgressLog(Array.isArray(existingJob.progress_log) ? existingJob.progress_log : []);
+        
+        // Type casting for results and progress_log
+        if (Array.isArray(existingJob.results)) {
+          setResults(existingJob.results as ResearchResult[]);
+        }
+        
+        if (Array.isArray(existingJob.progress_log)) {
+          setProgressLog(existingJob.progress_log.map(item => String(item)));
+        }
+        
         setErrorMessage(existingJob.error_message || null);
         setMaxIterations(existingJob.max_iterations);
         setFocusText(existingJob.focus_text || '');
@@ -312,11 +320,11 @@ export function JobQueueResearchCard({
         const message: SSEMessage = JSON.parse(event.data);
 
         if (message.type === 'status') {
-          setProgressLog(prevLog => [...prevLog, message.content || '']);
+          setProgressLog(prevLog => [...prevLog, message.content?.toString() || '']);
         } else if (message.type === 'iteration') {
           setIterations(prevIterations => [...prevIterations, message.content || {}]);
         } else if (message.type === 'result') {
-          setResults(prevResults => [...prevResults, message.content || {}]);
+          setResults(prevResults => [...prevResults, message.content as ResearchResult]);
         } else if (message.type === 'jobUpdate') {
           setResearchJob(prevJob => {
             if (!prevJob) return prevJob;
@@ -330,11 +338,11 @@ export function JobQueueResearchCard({
             return updatedJob;
           });
         } else if (message.type === 'error') {
-          setErrorMessage(message.content || 'Unknown error');
+          setErrorMessage(message.content?.toString() || 'Unknown error');
           setIsProcessing(false);
           toast({
             title: "Research Error",
-            description: `An error occurred during research: ${message.content || 'Unknown error'}`,
+            description: `An error occurred during research: ${message.content?.toString() || 'Unknown error'}`,
             variant: "destructive",
           });
           sseClient.current?.close();
@@ -402,6 +410,36 @@ export function JobQueueResearchCard({
 
   const toggleHistory = () => {
     setIsHistoryOpen(!isHistoryOpen);
+  };
+
+  // Prepare streamingState for InsightsDisplay component
+  const getStreamingState = () => {
+    let probability = "";
+    let areasForResearch: string[] = [];
+    
+    // Logic to extract probability and areas from iterations
+    if (iterations.length > 0) {
+      const lastIteration = iterations[iterations.length - 1];
+      
+      // Create a compatible streamingState object
+      return {
+        rawText: lastIteration.analysis || "",
+        parsedData: {
+          probability: "50%", // Default value
+          areasForResearch: lastIteration.queries || [],
+          reasoning: lastIteration.reasoning || ""
+        }
+      };
+    }
+    
+    return {
+      rawText: "",
+      parsedData: {
+        probability: "Unknown",
+        areasForResearch: [],
+        reasoning: ""
+      }
+    };
   };
 
   return (
@@ -567,8 +605,7 @@ export function JobQueueResearchCard({
               </Select>
               {iterations.length > 0 && (
                 <InsightsDisplay
-                  probability={selectedInsightType === 'probability' ? '50%' : undefined}
-                  areasForResearch={selectedInsightType === 'areas' ? ['Area 1', 'Area 2'] : undefined}
+                  streamingState={getStreamingState()}
                 />
               )}
             </div>
