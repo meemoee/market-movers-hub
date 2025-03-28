@@ -18,12 +18,14 @@ interface IterationCardProps {
     reasoning?: string;
     isAnalysisStreaming?: boolean;
     isReasoningStreaming?: boolean;
+    streamStatus?: 'waiting' | 'streaming' | 'complete';
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
+  onStartStream?: (iterationNumber: number) => void;
 }
 
 export function IterationCard({
@@ -32,7 +34,8 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations
+  maxIterations,
+  onStartStream
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
@@ -52,6 +55,14 @@ export function IterationCard({
   // Determine streaming status based on individual properties
   const isAnalysisStreaming = isStreaming && isCurrentIteration && (iteration.isAnalysisStreaming !== false);
   const isReasoningStreaming = isStreaming && isCurrentIteration && (iteration.isReasoningStreaming !== false);
+
+  // Trigger direct streaming if needed and available
+  useEffect(() => {
+    if (isCurrentIteration && isStreaming && onStartStream && 
+        iteration.streamStatus === 'waiting' && iteration.results && iteration.results.length > 0) {
+      onStartStream(iteration.iteration);
+    }
+  }, [isCurrentIteration, isStreaming, iteration, onStartStream]);
 
   return (
     <div className={cn(

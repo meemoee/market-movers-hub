@@ -48,7 +48,12 @@ export function AnalysisDisplay({
     if (isStreaming && contentRef.current) {
       const scrollElement = contentRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
+        const shouldAutoScroll = 
+          scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < 50;
+        
+        if (shouldAutoScroll) {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+        }
       }
     }
   }, [renderedContent, isStreaming]);
@@ -58,7 +63,12 @@ export function AnalysisDisplay({
     if (isReasoningStreaming && reasoningRef.current && showReasoning) {
       const scrollElement = reasoningRef.current.querySelector('[data-radix-scroll-area-viewport]');
       if (scrollElement) {
-        scrollElement.scrollTop = scrollElement.scrollHeight;
+        const shouldAutoScroll = 
+          scrollElement.scrollHeight - scrollElement.scrollTop - scrollElement.clientHeight < 50;
+        
+        if (shouldAutoScroll) {
+          scrollElement.scrollTop = scrollElement.scrollHeight;
+        }
       }
     }
   }, [renderedReasoning, isReasoningStreaming, showReasoning]);
