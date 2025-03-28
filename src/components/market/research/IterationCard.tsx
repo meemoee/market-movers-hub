@@ -1,80 +1,64 @@
 
-import { useState, useEffect } from 'react' // Removed useRef
+import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, Search } from "lucide-react" // Removed FileText, ExternalLink (not used)
+import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
-// Removed supabase import (not used)
-
-export type AnalysisStreamingStatus = 'idle' | 'streaming' | 'done' | 'error'; // Added export
 
 interface IterationCardProps {
   iteration: {
     iteration: number;
     queries: string[];
     results: ResearchResult[];
-    analysis: string; // Keep this for potentially pre-loaded analysis
-    reasoning?: string; // Keep this for potentially pre-loaded reasoning
-    // Removed isAnalysisStreaming, isReasoningStreaming flags
+    analysis: string;
+    reasoning?: string;
+    isAnalysisStreaming?: boolean;
+    isReasoningStreaming?: boolean;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
-  // isStreaming prop might be repurposed or removed depending on parent logic
-  isCurrentIteration: boolean; // Still needed to know if this is the active iteration
+  isStreaming: boolean;
+  isCurrentIteration: boolean;
   maxIterations: number;
-  jobId?: string; // Keep jobId if needed for other purposes, otherwise remove
-  currentAnalysisText: string; // New prop for the streaming/final text
-  analysisStreamingStatus: AnalysisStreamingStatus; // New prop for status
 }
 
 export function IterationCard({
   iteration,
   isExpanded,
   onToggleExpand,
-  // isStreaming, // Prop might be removed or repurposed
+  isStreaming,
   isCurrentIteration,
-  maxIterations,
-  // jobId, // Prop might be removed
-  currentAnalysisText,
-  analysisStreamingStatus
+  maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
-  // Removed streamingAnalysis and streamingReasoning local state
-  // Removed webSocketRef
   const isFinalIteration = iteration.iteration === maxIterations
-
-  // Removed WebSocket useEffect hook
-
+  
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
-    // Use analysisStreamingStatus to determine completion
-    if (analysisStreamingStatus === 'done' && isCurrentIteration && isExpanded && !isFinalIteration) {
+    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
       const timer = setTimeout(() => {
         onToggleExpand();
       }, 1500);
-
+      
       return () => clearTimeout(timer);
     }
-    // Depend on analysisStreamingStatus instead of isStreaming and iteration.analysis
-  }, [analysisStreamingStatus, isCurrentIteration, isExpanded, isFinalIteration, onToggleExpand]);
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
-  // Determine streaming status based on the new prop
-  const isCurrentlyStreaming = analysisStreamingStatus === 'streaming';
-  // Reasoning streaming is not handled in this simplified approach
-  const isReasoningStreaming = false;
+  // Determine streaming status based on individual properties
+  const isAnalysisStreaming = isStreaming && isCurrentIteration && (iteration.isAnalysisStreaming !== false);
+  const isReasoningStreaming = isStreaming && isCurrentIteration && (iteration.isReasoningStreaming !== false);
 
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      // Update border/styling based on analysisStreamingStatus if desired
-      isCurrentIteration && isCurrentlyStreaming ? "border-primary/40" : "border-border"
+      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
     )}>
-      <div
+      <div 
         className={cn(
           "iteration-card-header flex items-center justify-between p-3 w-full",
           isExpanded ? "bg-accent/10" : "",
@@ -83,22 +67,21 @@ export function IterationCard({
         onClick={onToggleExpand}
       >
         <div className="flex items-center gap-2 overflow-hidden">
-          <Badge variant={isFinalIteration ? "default" : "outline"}
-                 className={isCurrentlyStreaming ? "animate-pulse bg-primary" : ""}>
+          <Badge variant={isFinalIteration ? "default" : "outline"} 
+            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
             Iteration {iteration.iteration}
-            {isCurrentlyStreaming && " (Streaming...)"}
-            {analysisStreamingStatus === 'error' && " (Error)"}
+            {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis Prep" : `${iteration.results.length} sources found`}
+            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
         </div>
-        {isExpanded ?
-          <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> :
+        {isExpanded ? 
+          <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" /> : 
           <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
         }
       </div>
-
+      
       {isExpanded && (
         <div className="p-3 w-full max-w-full">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
@@ -107,28 +90,26 @@ export function IterationCard({
               <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
               <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
             </TabsList>
-
+            
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                <AnalysisDisplay
-                  // Use the prop for content. Provide fallback text.
-                  content={currentAnalysisText || (isCurrentlyStreaming ? "Receiving analysis..." : iteration.analysis || "Analysis pending...")}
-                  // Reasoning is not streamed in this simplified approach
+                <AnalysisDisplay 
+                  content={iteration.analysis || "Analysis in progress..."} 
                   reasoning={iteration.reasoning}
-                  isStreaming={isCurrentlyStreaming}
-                  isReasoningStreaming={false} // Reasoning not streamed
+                  isStreaming={isAnalysisStreaming}
+                  isReasoningStreaming={isReasoningStreaming}
                   maxHeight="100%"
                 />
               </TabsContent>
-
+              
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
                   <div className="space-y-2 w-full">
                     {iteration.results.map((result, idx) => (
                       <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
                         <div className="flex items-center gap-2">
-                          <img
-                            src={getFaviconUrl(result.url)}
+                          <img 
+                            src={getFaviconUrl(result.url)} 
                             alt=""
                             className="w-4 h-4 flex-shrink-0"
                             onError={(e) => {
@@ -137,9 +118,9 @@ export function IterationCard({
                               )}`;
                             }}
                           />
-                          <a
-                            href={result.url}
-                            target="_blank"
+                          <a 
+                            href={result.url} 
+                            target="_blank" 
                             rel="noopener noreferrer"
                             className="text-xs text-blue-500 hover:underline truncate w-full"
                             title={result.url}
@@ -149,7 +130,7 @@ export function IterationCard({
                         </div>
                       </div>
                     ))}
-
+                    
                     {iteration.results.length === 0 && (
                       <div className="p-4 text-center text-muted-foreground">
                         No sources found for this iteration.
@@ -158,7 +139,7 @@ export function IterationCard({
                   </div>
                 </ScrollArea>
               </TabsContent>
-
+              
               <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full">
                   <div className="space-y-2 w-full">
