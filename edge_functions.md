@@ -108,6 +108,13 @@ This document describes the functionality of each edge function and the componen
 *   **Components:**
     *   `src/components/market/JobQueueResearchCard.tsx` (indirectly, called by `create-research-job`)
 
+## stream-analysis
+
+*   **Functionality:** Provides direct WebSocket streaming of analysis content from AI models with minimal latency.
+*   **Components:**
+    *   `src/components/market/research/IterationCard.tsx`
+    *   `src/components/market/JobQueueResearchCard.tsx`
+
 ## web-research
 
 *   **Functionality:** Performs web research for a given query with improved parallel processing and data collection.
