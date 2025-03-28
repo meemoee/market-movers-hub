@@ -12,6 +12,7 @@ interface AnalysisDisplayProps {
   isStreaming?: boolean;
   isReasoningStreaming?: boolean;
   maxHeight?: string;
+  onStreamEnd?: () => void; // Added callback for when streaming ends
 }
 
 export function AnalysisDisplay({ 
@@ -19,7 +20,8 @@ export function AnalysisDisplay({
   reasoning,
   isStreaming = false,
   isReasoningStreaming = false,
-  maxHeight = '400px'
+  maxHeight = '400px',
+  onStreamEnd
 }: AnalysisDisplayProps) {
   const [showReasoning, setShowReasoning] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -72,6 +74,24 @@ export function AnalysisDisplay({
       }
     }
   }, [renderedReasoning, isReasoningStreaming, showReasoning]);
+
+  // Call onStreamEnd when streaming stops
+  useEffect(() => {
+    let streamEndTimeout: ReturnType<typeof setTimeout>;
+    
+    if (!isStreaming && !isReasoningStreaming && onStreamEnd) {
+      // Small delay to ensure stream is truly finished
+      streamEndTimeout = setTimeout(() => {
+        onStreamEnd();
+      }, 500);
+    }
+    
+    return () => {
+      if (streamEndTimeout) {
+        clearTimeout(streamEndTimeout);
+      }
+    };
+  }, [isStreaming, isReasoningStreaming, onStreamEnd]);
 
   return (
     <div className="flex flex-col h-full">

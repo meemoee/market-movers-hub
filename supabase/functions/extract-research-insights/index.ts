@@ -1,6 +1,6 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.47.15";
 
 interface RelatedMarket {
   market_id: string;
@@ -21,6 +21,7 @@ interface InsightsRequest {
   focusText?: string;
   marketPrice?: number;
   relatedMarkets?: RelatedMarket[];
+  jobId?: string; // Added jobId to the request
 }
 
 interface InsightsResponse {
@@ -36,6 +37,10 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+const supabaseUrl = "https://lfmkoismabbhujycnqpn.supabase.co";
+const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
 /**
  * Main entry point for the extract-research-insights function
@@ -58,7 +63,8 @@ serve(async (req) => {
       areasForResearch,
       focusText,
       marketPrice,
-      relatedMarkets
+      relatedMarkets,
+      jobId  // Extract jobId from the request
     } = requestData;
     
     logRequestDetails(requestData);
@@ -103,6 +109,106 @@ serve(async (req) => {
     
     // Extract the insights data from the response
     const insightsData = results.insights;
+    
+    // If jobId is provided, update the job status and results
+    if (jobId) {
+      try {
+        console.log(`Updating job ${jobId} with insights and completing...`);
+        
+        // Wrap in a background task to avoid this function timing out
+        const updateJobPromise = async () => {
+          try {
+            // Fetch the current job data to get the existing structure
+            const { data: jobData, error: jobFetchError } = await supabaseClient
+              .from('research_jobs')
+              .select('*')
+              .eq('id', jobId)
+              .single();
+
+            if (jobFetchError || !jobData) {
+              console.error(`Error fetching job data for ${jobId}:`, jobFetchError);
+              throw new Error(`Failed to fetch job data: ${jobFetchError?.message || 'Job not found'}`);
+            }
+
+            // Combine existing results with new insights
+            let updatedResults = jobData.results || {};
+            
+            // Update the results with insights data
+            updatedResults = {
+              ...updatedResults,
+              analysis: analysis,
+              structuredInsights: insightsData,
+              extractedProbability: insightsData.probability,
+              completedAt: new Date().toISOString()
+            };
+
+            // Update the job results
+            const { error: resultsUpdateError } = await supabaseClient
+              .from('research_jobs')
+              .update({ 
+                results: updatedResults,
+                completed_at: new Date().toISOString(),
+                status: 'completed'
+              })
+              .eq('id', jobId);
+
+            if (resultsUpdateError) {
+              console.error(`Error updating job results for ${jobId}:`, resultsUpdateError);
+              throw new Error(`Failed to update job results: ${resultsUpdateError.message}`);
+            }
+
+            console.log(`Successfully completed job ${jobId}`);
+            
+            // Call notification function if email is set
+            if (jobData.notification_email) {
+              try {
+                await fetch(`https://lfmkoismabbhujycnqpn.supabase.co/functions/v1/send-research-notification`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${supabaseKey}`
+                  },
+                  body: JSON.stringify({ jobId })
+                });
+                console.log(`Notification request sent for job ${jobId}`);
+              } catch (notificationError) {
+                console.error(`Error sending notification for job ${jobId}:`, notificationError);
+                // Don't fail the whole process if just notification fails
+              }
+            }
+          } catch (updateError) {
+            console.error(`Error in background job update for ${jobId}:`, updateError);
+            
+            // Try to set job to failed state if there was an error
+            try {
+              await supabaseClient
+                .from('research_jobs')
+                .update({ 
+                  status: 'failed',
+                  error_message: `Error during insights processing: ${updateError.message}`
+                })
+                .eq('id', jobId);
+            } catch (failureUpdateError) {
+              console.error(`Failed to update job status to failed for ${jobId}:`, failureUpdateError);
+            }
+          }
+        };
+
+        // Start the background task
+        // @ts-ignore - TypeScript may not recognize EdgeRuntime in Deno
+        if (typeof EdgeRuntime !== 'undefined') {
+          // @ts-ignore
+          EdgeRuntime.waitUntil(updateJobPromise());
+          console.log(`Started background update for job ${jobId}`);
+        } else {
+          // If EdgeRuntime is not available, just await the promise (for testing)
+          await updateJobPromise();
+        }
+      } catch (jobUpdateError) {
+        console.error(`Error initiating job update for ${jobId}:`, jobUpdateError);
+        // Don't fail the entire function if job update fails
+      }
+    }
     
     return new Response(JSON.stringify({
       ...results,
