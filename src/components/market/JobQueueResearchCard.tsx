@@ -149,9 +149,7 @@ export function JobQueueResearchCard({
     }
   };
 
-  // New function to handle direct streaming from the proxy edge function
   const startDirectStreaming = async (iterationNumber: number) => {
-    // Only one stream at a time
     if (directStreamingIteration !== null) {
       console.log(`Already streaming iteration ${directStreamingIteration}, ignoring request for ${iterationNumber}`);
       return;
@@ -166,10 +164,8 @@ export function JobQueueResearchCard({
       console.log(`Starting direct streaming for iteration ${iterationNumber}`);
       setDirectStreamingIteration(iterationNumber);
       
-      // Create an abort controller to cancel the stream if needed
       abortControllerRef.current = new AbortController();
       
-      // Update the iteration object to indicate streaming is starting
       const updatedIterations = iterations.map(iter => {
         if (iter.iteration === iterationNumber) {
           return {
@@ -183,7 +179,6 @@ export function JobQueueResearchCard({
       });
       setIterations(updatedIterations);
       
-      // Start the streaming request
       const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stream-analysis-proxy`, {
         method: 'POST',
         headers: {
@@ -201,17 +196,14 @@ export function JobQueueResearchCard({
         throw new Error(`Stream request failed with status ${response.status}`);
       }
       
-      // Process the stream
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error('Response body is not readable');
       }
       
-      // Keep track of accumulated content for this streaming session
       let streamedAnalysis = '';
       let streamedReasoning = '';
       
-      // Process chunks as they arrive
       while (true) {
         const { done, value } = await reader.read();
         
@@ -220,7 +212,6 @@ export function JobQueueResearchCard({
           break;
         }
         
-        // Decode the chunk
         const chunk = new TextDecoder().decode(value);
         const lines = chunk.split('\n\n');
         
@@ -229,11 +220,9 @@ export function JobQueueResearchCard({
             try {
               const jsonData = JSON.parse(line.substring(6));
               
-              // Handle different types of messages
               if (jsonData.type === 'analysis' && jsonData.content) {
                 streamedAnalysis += jsonData.content;
                 
-                // Update the iterations state with the latest content
                 setIterations(current => 
                   current.map(iter => {
                     if (iter.iteration === iterationNumber) {
@@ -250,7 +239,6 @@ export function JobQueueResearchCard({
               else if (jsonData.type === 'reasoning' && jsonData.content) {
                 streamedReasoning += jsonData.content;
                 
-                // Update the iterations state with the latest reasoning
                 setIterations(current => 
                   current.map(iter => {
                     if (iter.iteration === iterationNumber) {
@@ -266,7 +254,6 @@ export function JobQueueResearchCard({
               }
               else if (jsonData.type === 'complete') {
                 console.log('Received completion signal from stream');
-                // Set the iteration as complete
                 setIterations(current => 
                   current.map(iter => {
                     if (iter.iteration === iterationNumber) {
@@ -293,7 +280,6 @@ export function JobQueueResearchCard({
         }
       }
       
-      // Final update to mark streaming as complete
       setIterations(current => 
         current.map(iter => {
           if (iter.iteration === iterationNumber) {
@@ -393,30 +379,24 @@ export function JobQueueResearchCard({
     if (job.iterations && Array.isArray(job.iterations)) {
       console.log('Received iterations update:', job.iterations);
       
-      // Detect which iterations are ready for streaming
       const streamingSet = new Set<number>();
       const waitingForStreamSet = new Set<number>();
       
       if (job.status === 'processing' && job.current_iteration > 0) {
-        // The current iteration is the one that should be ready for streaming
-        // Check if it has results but not yet analysis
         const currentIter = job.iterations.find(iter => iter.iteration === job.current_iteration);
         if (currentIter && currentIter.results && currentIter.results.length > 0 && !currentIter.analysis) {
           waitingForStreamSet.add(job.current_iteration);
         }
       }
       
-      // Enhance iterations with streaming status
       const enhancedIterations = job.iterations.map(iter => {
         const isCurrentlyStreaming = directStreamingIteration === iter.iteration;
         const isWaitingForStream = waitingForStreamSet.has(iter.iteration);
         
         return {
           ...iter,
-          // Only mark as streaming if we're directly streaming this iteration
           isAnalysisStreaming: isCurrentlyStreaming,
           isReasoningStreaming: isCurrentlyStreaming,
-          // Add stream status property
           streamStatus: isCurrentlyStreaming ? 'streaming' : 
                         isWaitingForStream ? 'waiting' : 
                         'complete'
@@ -546,6 +526,7 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
