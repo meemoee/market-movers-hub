@@ -7,8 +7,8 @@ import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
-import { SSEMessage } from "supabase/functions/web-scrape/types"
-import { IterationCard } from "./research/IterationCard"
+// Removed SSEMessage import (not used directly here)
+import { IterationCard, AnalysisStreamingStatus } from "./research/IterationCard" // Import new type
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
@@ -25,6 +25,12 @@ interface JobQueueResearchCardProps {
   noBestAsk?: number; 
   noBestBid?: number;
   outcomes?: string[];
+}
+
+// Define the state structure for analysis streaming per iteration
+interface IterationAnalysisState {
+  text: string;
+  status: AnalysisStreamingStatus;
 }
 
 interface ResearchResult {
@@ -81,7 +87,8 @@ export function JobQueueResearchCard({
   const [notifyByEmail, setNotifyByEmail] = useState(false)
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
-  const [streamingIterations, setStreamingIterations] = useState<Set<number>>(new Set())
+  // Removed streamingIterations state
+  const [iterationAnalysisState, setIterationAnalysisState] = useState<Map<number, IterationAnalysisState>>(new Map()); // New state for streaming
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
@@ -96,7 +103,7 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    setStreamingIterations(new Set());
+    setIterationAnalysisState(new Map()); // Reset new state
     
     if (realtimeChannelRef.current) {
       console.log('Removing realtime channel on reset');
@@ -165,6 +172,62 @@ export function JobQueueResearchCard({
           handleJobUpdate(payload.new as ResearchJob);
         }
       )
+      // --- Add listeners for broadcast events ---
+      .on('broadcast', { event: 'analysis_chunk' }, (message) => {
+        const payload = message.payload; // Extract payload
+        console.log('Received analysis_chunk broadcast:', payload);
+        if (payload && typeof payload.iteration === 'number' && typeof payload.content === 'string') {
+          setIterationAnalysisState(prevMap => {
+            const newState = new Map(prevMap);
+            const current = newState.get(payload.iteration) || { text: '', status: 'idle' };
+            newState.set(payload.iteration, {
+              text: current.text + payload.content,
+              status: 'streaming'
+            });
+            return newState;
+          });
+        } else {
+          console.warn('Received invalid analysis_chunk payload:', payload);
+        }
+      })
+      .on('broadcast', { event: 'analysis_done' }, (message) => {
+         const payload = message.payload; // Extract payload
+         console.log('Received analysis_done broadcast:', payload);
+         if (payload && typeof payload.iteration === 'number') {
+           setIterationAnalysisState(prevMap => {
+             const newState = new Map(prevMap);
+             const current = newState.get(payload.iteration) || { text: '', status: 'streaming' }; // Assume it was streaming
+             newState.set(payload.iteration, {
+               ...current,
+               status: 'done'
+             });
+             return newState;
+           });
+         } else {
+           console.warn('Received invalid analysis_done payload:', payload);
+         }
+      })
+      .on('broadcast', { event: 'analysis_error' }, (message) => {
+        const payload = message.payload; // Extract payload
+        console.error('Received analysis_error broadcast:', payload);
+        if (payload && typeof payload.iteration === 'number') {
+          setIterationAnalysisState(prevMap => {
+            const newState = new Map(prevMap);
+            const current = newState.get(payload.iteration) || { text: '', status: 'streaming' };
+            newState.set(payload.iteration, {
+              ...current,
+              status: 'error'
+            });
+            return newState;
+          });
+          // Optionally show a toast or update the main error state
+          const errorMessage = typeof payload.message === 'string' ? payload.message : 'Unknown analysis error';
+          setError(prev => `${prev ? prev + '; ' : ''}Analysis error in iteration ${payload.iteration}: ${errorMessage}`);
+        } else {
+           console.warn('Received invalid analysis_error payload:', payload);
+        }
+      })
+      // --- End broadcast listeners ---
       .subscribe((status) => {
         console.log(`Realtime subscription status: ${status}`, id);
       });
@@ -172,25 +235,9 @@ export function JobQueueResearchCard({
     realtimeChannelRef.current = channel;
   };
 
-  const detectStreamingIterations = (job: ResearchJob) => {
-    if (job.status !== 'processing' || job.current_iteration <= 0) {
-      return new Set<number>();
-    }
-    
-    const streamingSet = new Set<number>();
-    const currentIteration = job.current_iteration;
-    
-    if (job.iterations && Array.isArray(job.iterations)) {
-      if (job.iterations.length >= currentIteration) {
-        streamingSet.add(currentIteration);
-        console.log(`Detected streaming iteration: ${currentIteration}`);
-      }
-    }
-    
-    return streamingSet;
-  };
+  // Removed detectStreamingIterations function
 
-  const handleJobUpdate = (job: ResearchJob) => {
+  const handleJobUpdate = (job: ResearchJob) => { // Handles postgres_changes
     console.log('Processing job update:', job);
     
     setJobStatus(job.status);
@@ -211,27 +258,16 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      console.log('Received iterations with reasoning data:', job.iterations);
-      
-      const newStreamingIterations = job.status === 'processing' 
-        ? detectStreamingIterations(job) 
-        : new Set<number>();
-        
-      setStreamingIterations(newStreamingIterations);
-      
-      const enhancedIterations = job.iterations.map(iter => ({
-        ...iter,
-        isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
-        isReasoningStreaming: newStreamingIterations.has(iter.iteration)
-      }));
-      
-      setIterations(enhancedIterations);
-      
+      console.log('Received iterations data:', job.iterations);
+      // Update iterations state - no need for enhancement here anymore
+      setIterations(job.iterations);
+
+      // Auto-expand the latest iteration if it's new
       if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
         setExpandedIterations(prev => [...prev, job.current_iteration]);
       }
     }
-    
+
     if (job.status === 'completed' && job.results) {
       try {
         console.log('Processing completed job results:', job.results);
@@ -275,9 +311,19 @@ export function JobQueueResearchCard({
             }
           });
         }
-        
-        setStreamingIterations(new Set());
-        
+
+        // Ensure all iteration statuses are marked as done if job is complete
+        setIterationAnalysisState(prevMap => {
+           const newState = new Map(prevMap);
+           job.iterations.forEach(iter => {
+             const current = newState.get(iter.iteration) || { text: iter.analysis || '', status: 'idle' };
+             if (current.status !== 'error') { // Don't overwrite errors
+               newState.set(iter.iteration, { ...current, status: 'done' });
+             }
+           });
+           return newState;
+         });
+
         fetchSavedJobs();
       } catch (e) {
         console.error('Error processing job results:', e);
@@ -287,9 +333,19 @@ export function JobQueueResearchCard({
     if (job.status === 'failed') {
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
       setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
-      
-      setStreamingIterations(new Set());
-      
+
+      // Mark potentially streaming iterations as error or done
+      setIterationAnalysisState(prevMap => {
+        const newState = new Map(prevMap);
+        job.iterations.forEach(iter => {
+          const current = newState.get(iter.iteration);
+          if (current && current.status === 'streaming') {
+            newState.set(iter.iteration, { ...current, status: 'error' }); // Or 'done' if preferred on job fail
+          }
+        });
+        return newState;
+      });
+
       fetchSavedJobs();
     }
   };
@@ -310,28 +366,30 @@ export function JobQueueResearchCard({
     if (job.progress_log && Array.isArray(job.progress_log)) {
       setProgress(job.progress_log);
     }
-    
-    const newStreamingIterations = job.status === 'processing' 
-      ? detectStreamingIterations(job) 
-      : new Set<number>();
-      
-    setStreamingIterations(newStreamingIterations);
-    
-    if (job.status === 'queued' || job.status === 'processing') {
-      subscribeToJobUpdates(job.id);
-    }
-    
+
+    // Initialize iterationAnalysisState based on loaded job data
+    const initialAnalysisState = new Map<number, IterationAnalysisState>();
     if (job.iterations && Array.isArray(job.iterations)) {
-      const enhancedIterations = job.iterations.map(iter => ({
-        ...iter,
-        isAnalysisStreaming: newStreamingIterations.has(iter.iteration),
-        isReasoningStreaming: newStreamingIterations.has(iter.iteration)
-      }));
-      
-      setIterations(enhancedIterations);
-      
+       job.iterations.forEach(iter => {
+         // If job is completed/failed, status is done/error, otherwise idle
+         const status: AnalysisStreamingStatus = (job.status === 'completed' || job.status === 'failed') ? 'done' : 'idle';
+         initialAnalysisState.set(iter.iteration, { text: iter.analysis || '', status });
+       });
+    }
+    setIterationAnalysisState(initialAnalysisState);
+
+    if (job.status === 'queued' || job.status === 'processing') {
+      subscribeToJobUpdates(job.id); // This will now also listen for broadcasts
+    }
+
+    if (job.iterations && Array.isArray(job.iterations)) {
+      // Set iterations directly
+      setIterations(job.iterations);
+
       if (job.iterations.length > 0) {
-        setExpandedIterations([job.iterations.length]);
+        // Expand the last known iteration
+        const lastIterationNum = Math.max(...job.iterations.map(i => i.iteration));
+        setExpandedIterations([lastIterationNum]);
       }
     }
     
@@ -605,28 +663,28 @@ export function JobQueueResearchCard({
         return (
           <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 text-yellow-700 border-yellow-200">
             <Clock className="h-3 w-3" />
-            <span>Queued</span>
+            <span>{'Queued'}</span>
           </Badge>
         );
       case 'processing':
         return (
           <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Processing</span>
+            <span>{'Processing'}</span>
           </Badge>
         );
       case 'completed':
         return (
           <Badge variant="outline" className="flex items-center gap-1 bg-green-50 text-green-700 border-green-200">
             <CheckCircle className="h-3 w-3" />
-            <span>Completed</span>
+            <span>{'Completed'}</span>
           </Badge>
         );
       case 'failed':
         return (
           <Badge variant="outline" className="flex items-center gap-1 bg-red-50 text-red-700 border-red-200">
             <AlertCircle className="h-3 w-3" />
-            <span>Failed</span>
+            <span>{'Failed'}</span>
           </Badge>
         );
       default:
@@ -749,7 +807,7 @@ export function JobQueueResearchCard({
                         </span>
                         {probability && (
                           <Badge variant="secondary" className="text-xs">
-                            P: {probability}
+                            {'P: '}{probability}
                           </Badge>
                         )}
                       </div>
@@ -870,18 +928,28 @@ export function JobQueueResearchCard({
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
           <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={streamingIterations.has(iteration.iteration)}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={parseInt(maxIterations, 10)}
-                jobId={jobId}
-              />
-            ))}
+            {iterations.map((iter) => { // Use different variable name like 'iter' to avoid conflict
+                // Define variables needed within the map scope
+                const analysisState = iterationAnalysisState.get(iter.iteration) || { text: iter.analysis || '', status: 'idle' };
+                const currentProcessingIterationNum = (jobStatus === 'processing' && iterations.length > 0)
+                  ? Math.max(...iterations.map(i => i.iteration))
+                  : -1; // Or some value indicating no iteration is currently processing
+
+                return (
+                  <IterationCard
+                    key={iter.iteration} // Use iter here
+                    iteration={iter} // Use iter here
+                    isExpanded={expandedIterations.includes(iter.iteration)} // Use iter here
+                    onToggleExpand={() => toggleIterationExpand(iter.iteration)} // Use iter here
+                    // Determine if this specific iteration is the one currently processing
+                    isCurrentIteration={iter.iteration === currentProcessingIterationNum}
+                    maxIterations={parseInt(maxIterations, 10)}
+                    jobId={jobId}
+                    currentAnalysisText={analysisState.text} // Pass state text
+                    analysisStreamingStatus={analysisState.status} // Pass state status
+                  />
+                );
+            })}
           </div>
         </div>
       )}

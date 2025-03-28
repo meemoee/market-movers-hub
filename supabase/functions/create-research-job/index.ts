@@ -163,50 +163,119 @@ async function processIteration(jobId: string, iteration: number, query: string,
 
     // Generate analysis prompt
     const analysisPrompt = generateAnalysisPrompt(query, relevantContent, iteration, maxIterations);
-    
-    // Instead of making a direct call to OpenRouter, we'll update the database to indicate
-    // that we're starting the analysis and the client will connect via WebSocket
     await supabaseAdmin
       .from('research_jobs')
       .update({
-        status: 'processing',
-        current_iteration: iteration,
-        progress_log: arrayAppend('progress_log', `Starting analysis for iteration ${iteration}...`),
-        iterations: arrayAppend('iterations', {
-          iteration,
-          queries: searchQueries,
-          results: relevantContent,
-          analysis: "",
-          reasoning: "",
-          isAnalysisStreaming: true,
-          isReasoningStreaming: true
-        })
+        progress_log: arrayAppend('progress_log', `Starting analysis for iteration ${iteration}...`)
       })
       .eq('id', jobId);
 
-    // Generate analysis using OpenRouter
-    // const analysis = await generateAnalysis(analysisPrompt)
-    // console.log(`Generated analysis:`, analysis)
+    // --- Start Streaming Analysis via Realtime Broadcast ---
+    let accumulatedAnalysis = "";
+    const channel = supabaseAdmin.channel(`job-updates-${jobId}`);
+    const textDecoder = new TextDecoder();
 
-    // Generate reasoning (optional)
-    // const reasoning = await generateReasoning(analysis, relevantContent)
-    // console.log(`Generated reasoning:`, reasoning)
+    try {
+      const response = await fetch(OPENROUTER_URL, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:5173', // Adjust if needed
+          'X-Title': 'Market Research App', // Adjust if needed
+        },
+        body: JSON.stringify({
+          model: "google/gemini-flash-1.5", // Or your preferred model
+          messages: [
+            { role: "system", content: "You are analyzing research content to provide insights." },
+            { role: "user", content: analysisPrompt }
+          ],
+          stream: true // Enable streaming
+        })
+      });
 
-    // Update job status with iteration results
-    // await supabaseAdmin
-    //   .from('research_jobs')
-    //   .update({
-    //     progress_log: arrayAppend('progress_log', `Iteration ${iteration} complete.`),
-    //     iterations: arrayAppend('iterations', {
-    //       iteration,
-    //       queries: searchQueries,
-    //       results: relevantContent,
-    //       analysis: analysis,
-    //       reasoning: reasoning
-    //     })
-    //   })
-    //   .eq('id', jobId)
+      if (!response.ok || !response.body) {
+        const errorText = await response.text();
+        throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+      }
 
+      const reader = response.body.getReader();
+
+      // Process the stream
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = textDecoder.decode(value);
+        const lines = chunk.split('\n').filter(line => line.trim());
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6).trim();
+            if (jsonStr === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(jsonStr);
+              const content = parsed.choices?.[0]?.delta?.content;
+
+              if (content) {
+                accumulatedAnalysis += content;
+                // Broadcast the chunk
+                await channel.send({
+                  type: 'broadcast',
+                  event: 'analysis_chunk',
+                  payload: { iteration, content }
+                });
+              }
+            } catch (e) {
+              console.error(`[${jobId}] Error parsing SSE line:`, e, 'Raw line:', line);
+            }
+          }
+        }
+      }
+      // Send done message
+      await channel.send({
+        type: 'broadcast',
+        event: 'analysis_done',
+        payload: { iteration }
+      });
+      console.log(`[${jobId}] Iteration ${iteration} analysis stream complete.`);
+
+    } catch (streamError) {
+      console.error(`[${jobId}] Error during analysis streaming for iteration ${iteration}:`, streamError);
+      await channel.send({ // Notify frontend of error
+        type: 'broadcast',
+        event: 'analysis_error',
+        payload: { iteration, message: streamError.message }
+      });
+      // Re-throw to mark iteration/job as failed
+      throw streamError;
+    } finally {
+       // Unsubscribe from channel? Maybe not needed if client handles it.
+       // supabaseAdmin.removeChannel(channel); // Consider implications
+    }
+    // --- End Streaming Analysis ---
+
+    // Update job status with iteration results (including full analysis)
+    await supabaseAdmin
+      .from('research_jobs')
+      .update({
+        progress_log: arrayAppend('progress_log', `Iteration ${iteration} analysis complete.`),
+        // Note: This replaces the entire iterations array. We need to fetch, modify, and update.
+        // This is complex and potentially racy. A better approach might be needed,
+        // like a stored procedure or updating only the specific element if JSONB operators allow.
+        // For simplicity now, we'll just log completion. The final analysis will be in the 'results' field later.
+        // TODO: Revisit how to store individual iteration analysis robustly.
+      })
+      .eq('id', jobId);
+
+    // For now, let's just add the accumulated analysis to the log for debugging
+     await supabaseAdmin
+      .from('research_jobs')
+      .update({
+         progress_log: arrayAppend('progress_log', `[Debug] Iteration ${iteration} Full Analysis: ${accumulatedAnalysis.substring(0, 100)}...`)
+      })
+      .eq('id', jobId);
   } catch (error) {
     console.error(`Error processing iteration ${iteration} for job ${jobId}:`, error)
     await supabaseAdmin
