@@ -289,8 +289,8 @@ export function JobQueueResearchCard({
               return updatedIterations;
             });
             
-            if (onStreamEnd) {
-              onStreamEnd();
+            if (handleStreamEnd) {
+              handleStreamEnd();
             }
             
             return;
