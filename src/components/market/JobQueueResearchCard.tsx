@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -969,3 +970,187 @@ export function JobQueueResearchCard({
           )}
           
           {savedJobs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                  <History className="h-4 w-4" />
+                  <span>History</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72 max-h-96 overflow-auto">
+                {isLoadingJobs ? (
+                  <div className="flex items-center justify-center p-4">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <span>Loading...</span>
+                  </div>
+                ) : (
+                  savedJobs.map(job => (
+                    <DropdownMenuItem 
+                      key={job.id}
+                      className="cursor-pointer py-3 px-4 hover:bg-accent"
+                      onClick={() => loadSavedResearch(job.id)}
+                    >
+                      <div className="flex flex-col w-full">
+                        <div className="flex items-center justify-between w-full">
+                          <div className="flex items-center">
+                            {getStatusIcon(job.status)}
+                            <span className="font-medium">
+                              {job.focus_text ? 
+                                (job.focus_text.length > 30 ? 
+                                  job.focus_text.substring(0, 30) + '...' : 
+                                  job.focus_text) : 
+                                'General research'}
+                            </span>
+                          </div>
+                          <span className="text-xs text-muted-foreground">
+                            {formatDate(job.created_at)}
+                          </span>
+                        </div>
+                        
+                        {job.status === 'completed' && (
+                          <div className="mt-1 text-xs text-muted-foreground flex items-center">
+                            <span>Probability: </span>
+                            <span className="ml-1 font-medium">
+                              {extractProbability(job) || 'Not available'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  ))
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+
+          {!jobId && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                  <Settings className="h-4 w-4" />
+                  <span>Options</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <div className="p-4 space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="iterations">Max iterations</Label>
+                    <Select value={maxIterations} onValueChange={setMaxIterations}>
+                      <SelectTrigger id="iterations">
+                        <SelectValue placeholder="Select iterations" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">1 iteration</SelectItem>
+                        <SelectItem value="2">2 iterations</SelectItem>
+                        <SelectItem value="3">3 iterations</SelectItem>
+                        <SelectItem value="4">4 iterations</SelectItem>
+                        <SelectItem value="5">5 iterations</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="notify-email" 
+                        checked={notifyByEmail}
+                        onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
+                      />
+                      <Label htmlFor="notify-email" className="cursor-pointer">
+                        <div className="flex items-center gap-1">
+                          <Mail className="h-4 w-4" />
+                          <span>Notify by email</span>
+                        </div>
+                      </Label>
+                    </div>
+                    
+                    {notifyByEmail && (
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="Email address"
+                        value={notificationEmail}
+                        onChange={(e) => setNotificationEmail(e.target.value)}
+                      />
+                    )}
+                  </div>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
+      
+      {!jobId && !isLoading && (
+        <div>
+          <div className="space-y-2">
+            <Label htmlFor="focus-text">Focus area (optional)</Label>
+            <Input
+              id="focus-text"
+              placeholder="Focus research on a specific aspect..."
+              value={focusText}
+              onChange={(e) => setFocusText(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Add specific instructions to guide the research agent.
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {(isLoading || progress.length > 0 || jobStatus) && (
+        <ProgressDisplay 
+          messages={progress}
+          jobId={jobId || undefined}
+          progress={progressPercent}
+          status={jobStatus}
+        />
+      )}
+      
+      {error && (
+        <div className="p-4 border border-red-200 bg-red-50 text-red-700 rounded-md">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-red-500" />
+            <div className="font-semibold">Error</div>
+          </div>
+          <div className="mt-1">{error}</div>
+        </div>
+      )}
+      
+      {results.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Research Results</h3>
+          <SitePreviewList results={results} />
+        </div>
+      )}
+      
+      {iterations.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Research Iterations</h3>
+          <div className="space-y-2">
+            {iterations.map((iteration, index) => (
+              <IterationCard 
+                key={`iteration-${iteration.iteration}`}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(iteration.iteration)}
+                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                onStreamEnd={handleStreamEnd}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {analysis && (
+        <AnalysisDisplay analysis={analysis} />
+      )}
+      
+      {structuredInsights && structuredInsights.parsedData && (
+        <InsightsDisplay 
+          data={structuredInsights.parsedData}
+          rawJson={structuredInsights.rawText}
+        />
+      )}
+    </Card>
+  );
+}
