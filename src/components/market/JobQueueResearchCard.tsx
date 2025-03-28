@@ -389,12 +389,25 @@ export function JobQueueResearchCard({
         }
       }
       
+      const currentIterations = iterations;
+      
+      const currentIterationsMap = new Map(
+        currentIterations.map(iter => [iter.iteration, iter])
+      );
+      
       const enhancedIterations = job.iterations.map(iter => {
         const isCurrentlyStreaming = directStreamingIteration === iter.iteration;
         const isWaitingForStream = waitingForStreamSet.has(iter.iteration);
+        const currentIteration = currentIterationsMap.get(iter.iteration);
         
         return {
           ...iter,
+          analysis: isCurrentlyStreaming && currentIteration?.analysis 
+            ? currentIteration.analysis 
+            : iter.analysis,
+          reasoning: isCurrentlyStreaming && currentIteration?.reasoning 
+            ? currentIteration.reasoning 
+            : iter.reasoning,
           isAnalysisStreaming: isCurrentlyStreaming,
           isReasoningStreaming: isCurrentlyStreaming,
           streamStatus: isCurrentlyStreaming ? 'streaming' : 
