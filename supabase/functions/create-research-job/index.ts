@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -99,7 +100,7 @@ serve(async (req) => {
 })
 
 async function processResearchJob(jobId: string, marketId: string, query: string, maxIterations: number, focusText?: string) {
-  console.log(`Starting background processing for research job ${jobId}`)
+  console.log(`[Background][${jobId}] Processing ${maxIterations} iterations in background`)
 
   try {
     // Update job status to processing
@@ -115,7 +116,7 @@ async function processResearchJob(jobId: string, marketId: string, query: string
     // Process each iteration
     for (let i = 1; i <= maxIterations; i++) {
       console.log(`Starting iteration ${i} for job ${jobId}`)
-      await processIteration(jobId, i, query, [], maxIterations)
+      await processIteration(jobId, i, query, [], maxIterations, focusText)
     }
 
     // Finalize job
@@ -135,7 +136,7 @@ async function processResearchJob(jobId: string, marketId: string, query: string
   }
 }
 
-async function processIteration(jobId: string, iteration: number, query: string, sources: any[], maxIterations: number) {
+async function processIteration(jobId: string, iteration: number, query: string, sources: any[], maxIterations: number, focusText?: string) {
   console.log(`Starting iteration ${iteration} for job ${jobId}`)
 
   try {
@@ -153,7 +154,7 @@ async function processIteration(jobId: string, iteration: number, query: string,
     console.log(`Generated search queries:`, searchQueries)
 
     // Perform web search
-    const webResults = await performWebSearch(query, focusText) // Replace with actual web search logic
+    const webResults = await performWebSearch(query, focusText) // Now passing focusText correctly
     console.log(`Found ${webResults.length} web results`)
 
     // Extract relevant content from web results
