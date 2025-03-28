@@ -51,9 +51,9 @@ export function IterationCard({
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
-  // Determine streaming status based on individual properties
-  const isAnalysisStreaming = isStreaming && isCurrentIteration && (iteration.isAnalysisStreaming !== false);
-  const isReasoningStreaming = isStreaming && isCurrentIteration && (iteration.isReasoningStreaming !== false);
+  // Set a clear streaming state based on the props
+  const isAnalysisStreaming = isStreaming && isCurrentIteration && iteration.isAnalysisStreaming === true;
+  const isReasoningStreaming = isStreaming && isCurrentIteration && iteration.isReasoningStreaming === true;
 
   return (
     <div className={cn(

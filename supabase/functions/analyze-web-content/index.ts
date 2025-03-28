@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -213,6 +214,10 @@ IMPORTANT REQUIREMENTS:
 - Flag any data points older than 2023 as potentially outdated
 - Specifically address WHEN this market will be resolved and when conclusive data will be available
 
+Provide your response in two parts:
+1. FIRST PART: Main analysis answering questions 1-8 above
+2. SECOND PART: Your reasoning process and detailed evaluation of the evidence quality
+
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 
     // Create a TransformStream to handle the streaming response
@@ -247,6 +252,18 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       }
     }
 
+    // Helper function to send section markers
+    const sendSectionMarker = async (type: 'analysis_start' | 'analysis_end' | 'reasoning_start' | 'reasoning_end') => {
+      try {
+        await writer.write(
+          new TextEncoder().encode(`data: {"section":"${type}"}\n\n`)
+        );
+        console.log(`Sent ${type} marker`);
+      } catch (error) {
+        console.error(`Error sending ${type} marker:`, error);
+      }
+    };
+
     // Launch a background task to fetch and stream the response
     (async () => {
       let retryCount = 0
@@ -255,6 +272,9 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
       while (retryCount < MAX_RETRIES && !succeeded) {
         try {
           console.log(`Making request to OpenRouter API (attempt ${retryCount + 1})...`)
+          
+          // Send analysis_start marker
+          await sendSectionMarker('analysis_start');
           
           const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
@@ -290,6 +310,8 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
           }
 
           const textDecoder = new TextDecoder()
+          let isInAnalysisPart = true;
+          let responseText = '';
           
           try {
             while (true) {
@@ -299,12 +321,20 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
                 console.log('Stream complete')
                 succeeded = true
                 
+                // Send completion signals for any open sections
+                if (isInAnalysisPart) {
+                  await sendSectionMarker('analysis_end');
+                } else {
+                  await sendSectionMarker('reasoning_end');
+                }
+                
                 // Send completion signal
                 await writer.write(new TextEncoder().encode("data: [DONE]\n\n"))
                 break
               }
               
               const chunk = textDecoder.decode(value)
+              responseText += chunk;
               
               // Split the chunk by lines
               const lines = chunk.split('\n')
@@ -312,6 +342,15 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
               for (const line of lines) {
                 if (line.startsWith('data:') && !line.includes('[DONE]')) {
                   try {
+                    // Check for section transitions based on content patterns
+                    // This is a heuristic approach - adjust the pattern as needed based on how your AI model formats responses
+                    if (isInAnalysisPart && responseText.includes("SECOND PART")) {
+                      console.log('Detected transition to reasoning section');
+                      isInAnalysisPart = false;
+                      await sendSectionMarker('analysis_end');
+                      await sendSectionMarker('reasoning_start');
+                    }
+                    
                     // Forward the data line intact to maintain SSE format
                     await writer.write(new TextEncoder().encode(line + '\n\n'))
                   } catch (error) {

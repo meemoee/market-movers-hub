@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,7 +7,6 @@ import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
-import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
@@ -89,7 +87,6 @@ export function JobQueueResearchCard({
   const { toast } = useToast()
 
   const resetState = () => {
-    // Close any active streams
     Object.values(activeStreamControllers).forEach(controller => {
       try {
         controller.abort();
@@ -122,7 +119,6 @@ export function JobQueueResearchCard({
     fetchSavedJobs();
     
     return () => {
-      // Clean up on unmount
       Object.values(activeStreamControllers).forEach(controller => {
         try {
           controller.abort();
@@ -171,7 +167,6 @@ export function JobQueueResearchCard({
     
     console.log(`Setting up direct streaming for iteration ${currentIteration} with ${content.length} chars of content`);
     
-    // Abort any existing stream for this iteration
     if (activeStreamControllers[currentIteration]) {
       try {
         activeStreamControllers[currentIteration].abort();
@@ -180,20 +175,16 @@ export function JobQueueResearchCard({
       }
     }
     
-    // Create a new abort controller for this stream
     const abortController = new AbortController();
     setActiveStreamControllers(prev => ({
       ...prev,
       [currentIteration]: abortController
     }));
     
-    // Update our iterations to include a streaming one
     setIterations(prev => {
-      // Find if this iteration already exists
       const existingIndex = prev.findIndex(i => i.iteration === currentIteration);
       
       if (existingIndex >= 0) {
-        // Update existing iteration
         const updatedIterations = [...prev];
         updatedIterations[existingIndex] = {
           ...updatedIterations[existingIndex],
@@ -204,7 +195,6 @@ export function JobQueueResearchCard({
         };
         return updatedIterations;
       } else {
-        // Create new iteration
         return [...prev, {
           iteration: currentIteration,
           queries: [],
@@ -217,24 +207,20 @@ export function JobQueueResearchCard({
       }
     });
     
-    // Mark this iteration as streaming
     setStreamingIterations(prev => {
       const newSet = new Set(prev);
       newSet.add(currentIteration);
       return newSet;
     });
     
-    // Auto-expand the streaming iteration
     if (!expandedIterations.includes(currentIteration)) {
       setExpandedIterations(prev => [...prev, currentIteration]);
     }
     
-    // Set job status to processing if not already set
     if (jobStatus !== 'processing') {
       setJobStatus('processing');
     }
     
-    // Send the analysis request
     const requestBody = {
       content,
       query: description,
@@ -247,69 +233,99 @@ export function JobQueueResearchCard({
         .join('\n\n')
     };
     
-    let accumulatedContent = '';
+    let analysisContent = '';
+    let reasoningContent = '';
+    let currentSection = 'analysis';
     
-    try {
-      const eventSource = new EventSource(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`,
-        { withCredentials: true }
-      );
+    console.log(`Making POST request to analyze-web-content for iteration ${currentIteration}`);
+    
+    fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
+      signal: abortController.signal
+    })
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       
-      // Set up event handling
-      eventSource.onopen = () => {
-        console.log(`Analysis stream for iteration ${currentIteration} connected`);
-        
-        // Make a POST request to the same endpoint
-        fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-web-content`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
-          signal: abortController.signal
-        }).catch(error => {
-          console.error(`Error making POST request for iteration ${currentIteration}:`, error);
-          eventSource.close();
-        });
-      };
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
       
-      eventSource.onmessage = (event) => {
-        if (event.data.includes('[DONE]')) {
-          console.log(`Stream complete for iteration ${currentIteration}`);
-          eventSource.close();
-          
-          // Remove this iteration from streaming set
-          setStreamingIterations(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(currentIteration);
-            return newSet;
-          });
-          
-          // Remove abort controller
-          setActiveStreamControllers(prev => {
-            const updated = { ...prev };
-            delete updated[currentIteration];
-            return updated;
-          });
-          
-          return;
-        }
-        
-        try {
-          // Process data from SSE
-          if (event.data && event.data.trim() !== '') {
-            try {
-              // Check if it's a heartbeat
-              if (event.data.includes('"heartbeat"')) {
-                console.log('Received heartbeat');
-                return;
+      const reader = response.body.getReader();
+      const textDecoder = new TextDecoder();
+      
+      function processStream() {
+        return reader.read().then(({ done, value }) => {
+          if (done) {
+            console.log(`Stream complete for iteration ${currentIteration}`);
+            
+            setStreamingIterations(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(currentIteration);
+              return newSet;
+            });
+            
+            setActiveStreamControllers(prev => {
+              const updated = { ...prev };
+              delete updated[currentIteration];
+              return updated;
+            });
+            
+            setIterations(prev => {
+              const updatedIterations = [...prev];
+              const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
+              
+              if (iterIndex >= 0) {
+                updatedIterations[iterIndex] = {
+                  ...updatedIterations[iterIndex],
+                  isAnalysisStreaming: false,
+                  isReasoningStreaming: false
+                };
               }
               
-              const parsedData = JSON.parse(event.data);
-              if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
-                const content = parsedData.choices[0].delta.content || '';
-                if (content) {
-                  accumulatedContent += content;
+              return updatedIterations;
+            });
+            
+            if (onStreamEnd) {
+              onStreamEnd();
+            }
+            
+            return;
+          }
+          
+          const chunk = textDecoder.decode(value);
+          console.log(`Received chunk of size ${chunk.length} for iteration ${currentIteration}`);
+          
+          const lines = chunk.split('\n\n');
+          
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              const jsonStr = line.slice(6).trim();
+              
+              if (jsonStr === '[DONE]') {
+                console.log('Received [DONE] marker');
+                continue;
+              }
+              
+              try {
+                if (jsonStr === '{"section":"analysis_start"}') {
+                  console.log('Starting analysis section');
+                  currentSection = 'analysis';
+                  continue;
+                }
+                
+                if (jsonStr === '{"section":"reasoning_start"}') {
+                  console.log('Starting reasoning section');
+                  currentSection = 'reasoning';
+                  continue;
+                }
+                
+                if (jsonStr === '{"section":"analysis_end"}') {
+                  console.log('Ending analysis section');
                   
-                  // Update the analysis for this iteration
                   setIterations(prev => {
                     const updatedIterations = [...prev];
                     const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
@@ -317,67 +333,129 @@ export function JobQueueResearchCard({
                     if (iterIndex >= 0) {
                       updatedIterations[iterIndex] = {
                         ...updatedIterations[iterIndex],
-                        analysis: accumulatedContent
+                        isAnalysisStreaming: false
                       };
                     }
                     
                     return updatedIterations;
                   });
+                  
+                  continue;
                 }
+                
+                if (jsonStr === '{"section":"reasoning_end"}') {
+                  console.log('Ending reasoning section');
+                  
+                  setIterations(prev => {
+                    const updatedIterations = [...prev];
+                    const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
+                    
+                    if (iterIndex >= 0) {
+                      updatedIterations[iterIndex] = {
+                        ...updatedIterations[iterIndex],
+                        isReasoningStreaming: false
+                      };
+                    }
+                    
+                    return updatedIterations;
+                  });
+                  
+                  continue;
+                }
+                
+                if (jsonStr.includes('"heartbeat"')) {
+                  console.log('Received heartbeat');
+                  continue;
+                }
+                
+                const parsed = JSON.parse(jsonStr);
+                if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta) {
+                  const content = parsed.choices[0].delta.content || '';
+                  
+                  if (content) {
+                    if (currentSection === 'analysis') {
+                      analysisContent += content;
+                      
+                      setIterations(prev => {
+                        const updatedIterations = [...prev];
+                        const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
+                        
+                        if (iterIndex >= 0) {
+                          updatedIterations[iterIndex] = {
+                            ...updatedIterations[iterIndex],
+                            analysis: analysisContent,
+                            isAnalysisStreaming: true
+                          };
+                        }
+                        
+                        return updatedIterations;
+                      });
+                    } else if (currentSection === 'reasoning') {
+                      reasoningContent += content;
+                      
+                      setIterations(prev => {
+                        const updatedIterations = [...prev];
+                        const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
+                        
+                        if (iterIndex >= 0) {
+                          updatedIterations[iterIndex] = {
+                            ...updatedIterations[iterIndex],
+                            reasoning: reasoningContent,
+                            isReasoningStreaming: true
+                          };
+                        }
+                        
+                        return updatedIterations;
+                      });
+                    }
+                  }
+                }
+              } catch (e) {
+                console.error('Error processing SSE data:', e, 'Raw data:', jsonStr);
               }
-            } catch (parseError) {
-              // If not valid JSON, it might be a comment or other SSE metadata
-              console.log('Non-JSON SSE data:', event.data);
             }
           }
-        } catch (e) {
-          console.error('Error processing event data:', e);
-        }
-      };
-      
-      eventSource.onerror = (error) => {
-        console.error(`Error in SSE connection for iteration ${currentIteration}:`, error);
-        
-        // Mark this iteration as no longer streaming
-        setStreamingIterations(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(currentIteration);
-          return newSet;
+          
+          return processStream();
         });
-        
-        // Remove abort controller
-        setActiveStreamControllers(prev => {
-          const updated = { ...prev };
-          delete updated[currentIteration];
-          return updated;
-        });
-        
-        eventSource.close();
-      };
+      }
       
-      // Setup cleanup on abort
-      abortController.signal.addEventListener('abort', () => {
+      return processStream();
+    })
+    .catch(error => {
+      if (error.name === 'AbortError') {
         console.log(`Stream aborted for iteration ${currentIteration}`);
-        eventSource.close();
-      });
+      } else {
+        console.error(`Error in stream for iteration ${currentIteration}:`, error);
+      }
       
-    } catch (error) {
-      console.error(`Error setting up SSE for iteration ${currentIteration}:`, error);
-      
-      // Mark this iteration as no longer streaming
       setStreamingIterations(prev => {
         const newSet = new Set(prev);
         newSet.delete(currentIteration);
         return newSet;
       });
       
-      // Remove abort controller
+      setIterations(prev => {
+        const updatedIterations = [...prev];
+        const iterIndex = updatedIterations.findIndex(i => i.iteration === currentIteration);
+        
+        if (iterIndex >= 0) {
+          updatedIterations[iterIndex] = {
+            ...updatedIterations[iterIndex],
+            isAnalysisStreaming: false,
+            isReasoningStreaming: false
+          };
+        }
+        
+        return updatedIterations;
+      });
+      
       setActiveStreamControllers(prev => {
         const updated = { ...prev };
         delete updated[currentIteration];
         return updated;
       });
-    }
+    });
   };
 
   const subscribeToJobUpdates = (id: string) => {
@@ -450,8 +528,6 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      // Handle the case where we have web scrape results but no analysis yet
-      // We'll initiate the analysis stream for the current iteration
       if (job.status === 'processing' && 
           job.current_iteration > 0 && 
           job.iterations[job.current_iteration - 1] && 
@@ -465,12 +541,10 @@ export function JobQueueResearchCard({
         
         console.log(`Starting analysis stream for iteration ${currentIter} which has results but no analysis`);
         
-        // Prepare content from the results
         const content = iterData.results
           .map((r: ResearchResult) => `Source: ${r.url}\n${r.content}\n\n`)
           .join('\n');
         
-        // Start the analysis stream
         if (content && content.trim() !== '') {
           setupAnalysisStream(currentIter, content, job.focus_text);
         }
@@ -613,6 +687,7 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -736,7 +811,7 @@ export function JobQueueResearchCard({
         maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
         notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined,
-        directStreaming: true // Signal that we want to use direct streaming
+        directStreaming: true
       };
       
       console.log('Creating research job with payload:', payload);
@@ -849,7 +924,6 @@ export function JobQueueResearchCard({
 
   const handleStreamEnd = () => {
     console.log('Stream ended, updating UI');
-    // This function is just a placeholder for additional UI updates if needed
   };
 
   const handleResearchArea = (area: string) => {
