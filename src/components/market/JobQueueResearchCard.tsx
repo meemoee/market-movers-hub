@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -27,7 +28,7 @@ interface JobQueueResearchCardProps {
   outcomes?: string[];
 }
 
-interface ResearchResult {
+export interface ResearchResult {
   url: string;
   content: string;
   title?: string;
@@ -72,7 +73,7 @@ export function JobQueueResearchCard({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [maxIterations, setMaxIterations] = useState<number>(3);
   const [focusText, setFocusText] = useState<string>('');
-	const [notificationEmail, setNotificationEmail] = useState<string>('');
+  const [notificationEmail, setNotificationEmail] = useState<string>('');
   const [isEmailNotificationEnabled, setIsEmailNotificationEnabled] = useState(false);
   const [isInsightsExpanded, setIsInsightsExpanded] = useState(false);
   const [selectedInsightType, setSelectedInsightType] = useState<'analysis' | 'probability' | 'areas'>('analysis');
@@ -82,17 +83,22 @@ export function JobQueueResearchCard({
   const { toast } = useToast();
   const sseClient = useRef<EventSource | null>(null);
 
-  const userId = supabase.auth.user()?.id;
+  // Get user ID from supabase auth
+  const userId = supabase.auth.getSession().then(({ data }) => data.session?.user.id);
 
   const fetchExistingJob = async () => {
     if (!marketId) return;
 
     try {
+      const session = await supabase.auth.getSession();
+      const currentUserId = session.data.session?.user.id;
+      if (!currentUserId) return;
+
       const { data: existingJob, error } = await supabase
         .from('research_jobs')
         .select('*')
         .eq('market_id', marketId)
-        .eq('user_id', userId)
+        .eq('user_id', currentUserId)
         .order('created_at', { ascending: false })
         .limit(1)
         .single();
@@ -103,16 +109,25 @@ export function JobQueueResearchCard({
       }
 
       if (existingJob) {
-        setResearchJob(existingJob);
+        // Ensure the data conforms to our ResearchJob type
+        const typedJob: ResearchJob = {
+          ...existingJob,
+          status: existingJob.status as 'queued' | 'processing' | 'completed' | 'failed',
+          progress_log: Array.isArray(existingJob.progress_log) ? existingJob.progress_log : [],
+          iterations: Array.isArray(existingJob.iterations) ? existingJob.iterations : [],
+          results: existingJob.results || []
+        };
+        
+        setResearchJob(typedJob);
         setQuery(existingJob.query);
         setIsProcessing(existingJob.status === 'processing' || existingJob.status === 'queued');
-        setIterations(existingJob.iterations || []);
-        setResults(existingJob.results || []);
-        setProgressLog(existingJob.progress_log || []);
+        setIterations(Array.isArray(existingJob.iterations) ? existingJob.iterations : []);
+        setResults(Array.isArray(existingJob.results) ? existingJob.results : []);
+        setProgressLog(Array.isArray(existingJob.progress_log) ? existingJob.progress_log : []);
         setErrorMessage(existingJob.error_message || null);
         setMaxIterations(existingJob.max_iterations);
         setFocusText(existingJob.focus_text || '');
-				setNotificationEmail(existingJob.notification_email || '');
+        setNotificationEmail(existingJob.notification_email || '');
         setIsEmailNotificationEnabled(!!existingJob.notification_email);
       }
     } catch (error) {
@@ -122,7 +137,7 @@ export function JobQueueResearchCard({
 
   useEffect(() => {
     fetchExistingJob();
-  }, [marketId, userId]);
+  }, [marketId]);
 
   useEffect(() => {
     if (researchJob?.id && isProcessing) {
@@ -154,11 +169,11 @@ export function JobQueueResearchCard({
         .functions
         .invoke('web-scrape', {
           body: {
-            query: query,
+            queries: [query],
             marketId: marketId,
             maxIterations: maxIterations,
             focusText: focusText,
-						notificationEmail: isEmailNotificationEnabled ? notificationEmail : null
+            notificationEmail: isEmailNotificationEnabled ? notificationEmail : null
           }
         });
 
@@ -182,7 +197,10 @@ export function JobQueueResearchCard({
           description: `Research job started successfully.`,
         });
 
-        const newJob = {
+        const session = await supabase.auth.getSession();
+        const currentUserId = session.data.session?.user.id;
+
+        const newJob: ResearchJob = {
           id: jobId,
           market_id: marketId,
           query: query,
@@ -195,9 +213,9 @@ export function JobQueueResearchCard({
           error_message: null,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          user_id: userId,
+          user_id: currentUserId || undefined,
           focus_text: focusText,
-					notification_email: isEmailNotificationEnabled ? notificationEmail : null,
+          notification_email: isEmailNotificationEnabled ? notificationEmail : undefined,
           notification_sent: false
         };
 
@@ -294,22 +312,29 @@ export function JobQueueResearchCard({
         const message: SSEMessage = JSON.parse(event.data);
 
         if (message.type === 'status') {
-          setProgressLog(prevLog => [...prevLog, message.content]);
+          setProgressLog(prevLog => [...prevLog, message.content || '']);
         } else if (message.type === 'iteration') {
-          setIterations(prevIterations => [...prevIterations, message.content]);
+          setIterations(prevIterations => [...prevIterations, message.content || {}]);
         } else if (message.type === 'result') {
-          setResults(prevResults => [...prevResults, message.content]);
+          setResults(prevResults => [...prevResults, message.content || {}]);
         } else if (message.type === 'jobUpdate') {
           setResearchJob(prevJob => {
             if (!prevJob) return prevJob;
-            return { ...prevJob, ...message.content };
+            
+            const updatedJob = { 
+              ...prevJob, 
+              ...message.content,
+              // Ensure status is a valid enum value
+              status: (message.content?.status as 'queued' | 'processing' | 'completed' | 'failed') || prevJob.status
+            };
+            return updatedJob;
           });
         } else if (message.type === 'error') {
-          setErrorMessage(message.content);
+          setErrorMessage(message.content || 'Unknown error');
           setIsProcessing(false);
           toast({
             title: "Research Error",
-            description: `An error occurred during research: ${message.content}`,
+            description: `An error occurred during research: ${message.content || 'Unknown error'}`,
             variant: "destructive",
           });
           sseClient.current?.close();
@@ -433,7 +458,7 @@ export function JobQueueResearchCard({
                 {isSettingsOpen ? 'Hide Settings' : 'Show Settings'}
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setIsInsightsExpanded(!isInsightsExpanded)}>
-                <InsightsDisplay className="h-4 w-4 mr-2" />
+                <span className="h-4 w-4 mr-2">📊</span>
                 {isInsightsExpanded ? 'Hide Insights' : 'Show Insights'}
               </Button>
             </div>
@@ -464,54 +489,54 @@ export function JobQueueResearchCard({
                     disabled={isProcessing}
                   />
                 </div>
-								<div>
-									<Label htmlFor="notificationEmail">
-										<div className="flex items-center space-x-2">
-											<span>Notification Email</span>
-											<DropdownMenu>
-												<DropdownMenuTrigger asChild>
-													<Button variant="ghost" size="icon">
-														<Mail className="h-4 w-4" />
-													</Button>
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align="end">
-													<DropdownMenuItem>
-														<a href="https://mail.google.com/" target="_blank" rel="noopener noreferrer">
-															Open Gmail
-														</a>
-													</DropdownMenuItem>
-													<DropdownMenuItem>
-														<a href="https://outlook.live.com/" target="_blank" rel="noopener noreferrer">
-															Open Outlook
-														</a>
-													</DropdownMenuItem>
-													<DropdownMenuItem>
-														<a href="https://mail.yahoo.com/" target="_blank" rel="noopener noreferrer">
-															Open Yahoo Mail
-														</a>
-													</DropdownMenuItem>
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</div>
-									</Label>
-									<Input
-										type="email"
-										id="notificationEmail"
-										placeholder="Enter your email"
-										value={notificationEmail}
-										onChange={(e) => setNotificationEmail(e.target.value)}
-										disabled={isProcessing || !isEmailNotificationEnabled}
-									/>
-								</div>
-								<div className="flex items-center space-x-2">
-									<Checkbox
-										id="emailNotification"
-										checked={isEmailNotificationEnabled}
-										onCheckedChange={(checked) => setIsEmailNotificationEnabled(!!checked)}
-										disabled={isProcessing}
-									/>
-									<Label htmlFor="emailNotification">Enable Email Notification</Label>
-								</div>
+                <div>
+                  <Label htmlFor="notificationEmail">
+                    <div className="flex items-center space-x-2">
+                      <span>Notification Email</span>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <Mail className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem>
+                            <a href="https://mail.google.com/" target="_blank" rel="noopener noreferrer">
+                              Open Gmail
+                            </a>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <a href="https://outlook.live.com/" target="_blank" rel="noopener noreferrer">
+                              Open Outlook
+                            </a>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <a href="https://mail.yahoo.com/" target="_blank" rel="noopener noreferrer">
+                              Open Yahoo Mail
+                            </a>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </Label>
+                  <Input
+                    type="email"
+                    id="notificationEmail"
+                    placeholder="Enter your email"
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    disabled={isProcessing || !isEmailNotificationEnabled}
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="emailNotification"
+                    checked={isEmailNotificationEnabled}
+                    onCheckedChange={(checked) => setIsEmailNotificationEnabled(!!checked)}
+                    disabled={isProcessing}
+                  />
+                  <Label htmlFor="emailNotification">Enable Email Notification</Label>
+                </div>
               </div>
             </div>
           )}
@@ -530,7 +555,7 @@ export function JobQueueResearchCard({
           {isInsightsExpanded && (
             <div className="border rounded-md p-4">
               <h4 className="text-sm font-semibold mb-2">Insights</h4>
-              <Select value={selectedInsightType} onValueChange={handleInsightTypeChange}>
+              <Select value={selectedInsightType} onValueChange={(value) => handleInsightTypeChange(value as 'analysis' | 'probability' | 'areas')}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select Insight Type" />
                 </SelectTrigger>
@@ -542,8 +567,8 @@ export function JobQueueResearchCard({
               </Select>
               {iterations.length > 0 && (
                 <InsightsDisplay
-                  iterations={iterations}
-                  insightType={selectedInsightType}
+                  probability={selectedInsightType === 'probability' ? '50%' : undefined}
+                  areasForResearch={selectedInsightType === 'areas' ? ['Area 1', 'Area 2'] : undefined}
                 />
               )}
             </div>
@@ -554,9 +579,9 @@ export function JobQueueResearchCard({
               <IterationCard
                 key={index}
                 iteration={iteration}
-                iterationNumber={index + 1}
                 isCurrentIteration={isProcessing && index === iterations.length - 1}
                 isFinalIteration={index === maxIterations - 1}
+                maxIterations={maxIterations}
               />
             ))}
           </div>
