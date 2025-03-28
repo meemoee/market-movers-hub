@@ -27,40 +27,41 @@ export function AnalysisDisplay({
   const contentRef = useRef<HTMLDivElement>(null);
   const reasoningRef = useRef<HTMLDivElement>(null);
   
-  // Always store the latest content passed in props
-  const [renderedContent, setRenderedContent] = useState(content);
+  // Store the incoming content with clear separation
+  const [renderedContent, setRenderedContent] = useState(content || '');
   const [renderedReasoning, setRenderedReasoning] = useState(reasoning || '');
   
   // Track the last streaming state to detect when streaming ends
   const lastAnalysisStreamingState = useRef(isStreaming);
   const lastReasoningStreamingState = useRef(isReasoningStreaming);
   
-  // Always accept and display the incoming content as-is
+  // When content updates, only update the analysis content
   useEffect(() => {
-    if (content) {
+    if (content !== undefined && content !== null) {
       setRenderedContent(content);
     }
   }, [content]);
   
-  // Always accept and display the incoming reasoning as-is
+  // When reasoning updates, only update the reasoning content
   useEffect(() => {
-    if (reasoning) {
+    if (reasoning !== undefined && reasoning !== null) {
       setRenderedReasoning(reasoning);
     }
   }, [reasoning]);
 
-  // Call onStreamEnd when either streaming process stops
+  // Call onStreamEnd when streaming process stops
   useEffect(() => {
-    // Check if analysis streaming just ended
-    if (lastAnalysisStreamingState.current && !isStreaming) {
+    const analysisStreamingJustEnded = lastAnalysisStreamingState.current && !isStreaming;
+    const reasoningStreamingJustEnded = lastReasoningStreamingState.current && !isReasoningStreaming;
+    
+    if (analysisStreamingJustEnded) {
       console.log("Analysis streaming ended");
       if (onStreamEnd && !isReasoningStreaming) {
         onStreamEnd();
       }
     }
     
-    // Check if reasoning streaming just ended
-    if (lastReasoningStreamingState.current && !isReasoningStreaming) {
+    if (reasoningStreamingJustEnded) {
       console.log("Reasoning streaming ended");
       if (onStreamEnd && !isStreaming) {
         onStreamEnd();
@@ -113,7 +114,7 @@ export function AnalysisDisplay({
         <ScrollArea className="h-full" style={{ maxHeight }}>
           <div className="p-2">
             <Markdown>
-              {renderedContent}
+              {renderedContent || ''}
               {isStreaming && <span className="animate-pulse">▌</span>}
             </Markdown>
           </div>
@@ -125,7 +126,7 @@ export function AnalysisDisplay({
           <ScrollArea className="h-full" style={{ maxHeight }}>
             <div className="p-2 bg-muted/20">
               <Markdown>
-                {renderedReasoning}
+                {renderedReasoning || ''}
                 {isReasoningStreaming && <span className="animate-pulse">▌</span>}
               </Markdown>
             </div>

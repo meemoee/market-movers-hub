@@ -38,8 +38,6 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  const [analysisStreamTimeout, setAnalysisStreamTimeout] = useState<NodeJS.Timeout | null>(null)
-  const [reasoningStreamTimeout, setReasoningStreamTimeout] = useState<NodeJS.Timeout | null>(null)
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -53,56 +51,14 @@ export function IterationCard({
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
-  // Clear timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (analysisStreamTimeout) clearTimeout(analysisStreamTimeout);
-      if (reasoningStreamTimeout) clearTimeout(reasoningStreamTimeout);
-    };
-  }, [analysisStreamTimeout, reasoningStreamTimeout]);
-
-  // Set a failsafe timeout for streaming status to prevent UI getting stuck
-  useEffect(() => {
-    if (iteration.isAnalysisStreaming) {
-      // Clear any existing timeout
-      if (analysisStreamTimeout) clearTimeout(analysisStreamTimeout);
-      
-      // Set a new timeout (5 minutes max for analysis streaming)
-      const timeout = setTimeout(() => {
-        console.log(`Analysis stream timeout reached for iteration ${iteration.iteration}`);
-        iteration.isAnalysisStreaming = false;
-      }, 5 * 60 * 1000);
-      
-      setAnalysisStreamTimeout(timeout);
-    } else if (analysisStreamTimeout) {
-      clearTimeout(analysisStreamTimeout);
-      setAnalysisStreamTimeout(null);
-    }
-  }, [iteration.isAnalysisStreaming, iteration.iteration]);
-
-  // Same failsafe for reasoning streaming
-  useEffect(() => {
-    if (iteration.isReasoningStreaming) {
-      // Clear any existing timeout
-      if (reasoningStreamTimeout) clearTimeout(reasoningStreamTimeout);
-      
-      // Set a new timeout (5 minutes max for reasoning streaming)
-      const timeout = setTimeout(() => {
-        console.log(`Reasoning stream timeout reached for iteration ${iteration.iteration}`);
-        iteration.isReasoningStreaming = false;
-      }, 5 * 60 * 1000);
-      
-      setReasoningStreamTimeout(timeout);
-    } else if (reasoningStreamTimeout) {
-      clearTimeout(reasoningStreamTimeout);
-      setReasoningStreamTimeout(null);
-    }
-  }, [iteration.isReasoningStreaming, iteration.iteration]);
-
-  // Determine streaming state with more reliable indicators
+  // Determine streaming state with reliable indicators
   const isAnalysisStreaming = isStreaming && isCurrentIteration && iteration.isAnalysisStreaming === true;
   const isReasoningStreaming = isStreaming && isCurrentIteration && iteration.isReasoningStreaming === true;
   const isAnyStreaming = isAnalysisStreaming || isReasoningStreaming;
+
+  // Make sure these values are never undefined for AnalysisDisplay
+  const analysis = iteration.analysis || '';
+  const reasoning = iteration.reasoning || '';
 
   return (
     <div className={cn(
@@ -145,8 +101,8 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
-                  reasoning={iteration.reasoning}
+                  content={analysis} 
+                  reasoning={reasoning}
                   isStreaming={isAnalysisStreaming}
                   isReasoningStreaming={isReasoningStreaming}
                   maxHeight="100%"
