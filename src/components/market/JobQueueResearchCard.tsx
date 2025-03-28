@@ -12,7 +12,7 @@ import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
-import { InsightsDisplay } from "./research/InsightsDisplay"
+import { InsightsDisplay } from "./insights/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
@@ -1101,9 +1101,9 @@ export function JobQueueResearchCard({
       {(isLoading || progress.length > 0 || jobStatus) && (
         <ProgressDisplay 
           messages={progress}
-          jobId={jobId || undefined}
           progress={progressPercent}
           status={jobStatus}
+          jobId={jobId || undefined}
         />
       )}
       
@@ -1134,6 +1134,9 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                isStreaming={streamingIterations.has(iteration.iteration)}
+                isCurrentIteration={jobStatus === 'processing' && iteration.iteration === iterations.length}
+                maxIterations={parseInt(maxIterations)}
                 onStreamEnd={handleStreamEnd}
               />
             ))}
@@ -1142,13 +1145,17 @@ export function JobQueueResearchCard({
       )}
       
       {analysis && (
-        <AnalysisDisplay analysis={analysis} />
+        <AnalysisDisplay 
+          content={analysis} 
+        />
       )}
       
       {structuredInsights && structuredInsights.parsedData && (
         <InsightsDisplay 
-          data={structuredInsights.parsedData}
-          rawJson={structuredInsights.rawText}
+          streamingState={{
+            rawText: structuredInsights.rawText,
+            parsedData: structuredInsights.parsedData
+          }}
         />
       )}
     </Card>
