@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -968,4 +969,167 @@ export function JobQueueResearchCard({
             </Button>
           )}
           
-          {savedJobs.length >
+          {savedJobs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <History className="h-4 w-4 mr-1" />
+                  History
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-72 max-h-96 overflow-y-auto">
+                {savedJobs.map((job) => (
+                  <DropdownMenuItem
+                    key={job.id}
+                    onClick={() => loadSavedResearch(job.id)}
+                    disabled={isLoadingSaved}
+                    className="cursor-pointer py-3 px-4 hover:bg-gray-50 dark:hover:bg-gray-800"
+                  >
+                    <div className="flex items-start w-full">
+                      <div className="flex-shrink-0 mt-1">
+                        {getStatusIcon(job.status)}
+                      </div>
+                      <div className="flex-grow">
+                        <div className="flex justify-between w-full">
+                          <span className="font-medium truncate max-w-[180px]">
+                            {job.focus_text ? job.focus_text : "General Research"}
+                          </span>
+                          <span className="text-xs text-muted-foreground ml-2">
+                            {formatDate(job.created_at)}
+                          </span>
+                        </div>
+                        <div className="flex items-center mt-1">
+                          <span className="text-xs text-muted-foreground truncate max-w-[160px]">
+                            {job.status === 'completed' ? 
+                              extractProbability(job) ? 
+                                `Probability: ${extractProbability(job)}` : 
+                                `${job.iterations?.length || 0} iterations` : 
+                              job.status === 'processing' ? 
+                                `Iteration ${job.current_iteration}/${job.max_iterations}` : 
+                                job.status}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </div>
+      
+      {!jobId && (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
+              <div className="space-y-2">
+                <Label htmlFor="focus-area">Research Focus (Optional)</Label>
+                <Input
+                  id="focus-area"
+                  placeholder="Optional specific area to research"
+                  value={focusText}
+                  onChange={(e) => setFocusText(e.target.value)}
+                  disabled={isLoading}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="space-y-2">
+                <Label htmlFor="max-iterations">Max Iterations</Label>
+                <Select
+                  value={maxIterations}
+                  onValueChange={setMaxIterations}
+                  disabled={isLoading}
+                >
+                  <SelectTrigger id="max-iterations">
+                    <SelectValue placeholder="Max iterations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 Iteration</SelectItem>
+                    <SelectItem value="2">2 Iterations</SelectItem>
+                    <SelectItem value="3">3 Iterations</SelectItem>
+                    <SelectItem value="4">4 Iterations</SelectItem>
+                    <SelectItem value="5">5 Iterations</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-start space-x-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="notify-email" 
+                checked={notifyByEmail}
+                onCheckedChange={(checked) => setNotifyByEmail(checked as boolean)}
+                disabled={isLoading}
+              />
+              <Label htmlFor="notify-email" className="cursor-pointer">
+                Email me when complete
+              </Label>
+            </div>
+            
+            {notifyByEmail && (
+              <div className="flex-grow">
+                <Input
+                  placeholder="Your email"
+                  type="email"
+                  value={notificationEmail}
+                  onChange={(e) => setNotificationEmail(e.target.value)}
+                  disabled={isLoading}
+                  className="flex-grow"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {isLoading || jobStatus === 'queued' || jobStatus === 'processing' ? (
+        <ProgressDisplay 
+          progressLog={progress} 
+          progressPercent={progressPercent}
+          status={jobStatus || 'processing'} 
+        />
+      ) : null}
+      
+      {iterations.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium">Research Iterations</h3>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setExpandedIterations(
+                expandedIterations.length === iterations.length ? 
+                [] : iterations.map(i => i.iteration)
+              )}
+            >
+              {expandedIterations.length === iterations.length ? "Collapse All" : "Expand All"}
+            </Button>
+          </div>
+          
+          {iterations.map((iteration) => (
+            <IterationCard
+              key={`iteration-${iteration.iteration}`}
+              iteration={iteration}
+              isExpanded={expandedIterations.includes(iteration.iteration)}
+              onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+              onStreamEnd={handleStreamEnd}
+              isAnalysisStreaming={streamingIterations.has(iteration.iteration)}
+              isReasoningStreaming={false}
+            />
+          ))}
+        </div>
+      )}
+      
+      {structuredInsights && (
+        <InsightsDisplay 
+          insights={structuredInsights.parsedData} 
+          rawInsights={structuredInsights.rawText}
+        />
+      )}
+    </Card>
+  );
+}
