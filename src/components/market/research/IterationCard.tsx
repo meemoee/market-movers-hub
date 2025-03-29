@@ -9,7 +9,6 @@ import { IterationAnalysisTab } from "./IterationAnalysisTab"
 import { IterationSourcesTab } from "./IterationSourcesTab"
 import { IterationQueriesTab } from "./IterationQueriesTab"
 import { useAutoCollapse } from "./useAutoCollapse"
-import { useStreamTrigger } from "./useStreamTrigger"
 
 interface IterationCardProps {
   iteration: {
@@ -20,14 +19,12 @@ interface IterationCardProps {
     reasoning?: string;
     isAnalysisStreaming?: boolean;
     isReasoningStreaming?: boolean;
-    streamStatus?: 'waiting' | 'streaming' | 'complete';
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
   isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
-  onStartStream?: (iterationNumber: number) => void;
 }
 
 export function IterationCard({
@@ -36,8 +33,7 @@ export function IterationCard({
   onToggleExpand,
   isStreaming,
   isCurrentIteration,
-  maxIterations,
-  onStartStream
+  maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
@@ -50,14 +46,6 @@ export function IterationCard({
     isFinalIteration,
     analysis: iteration.analysis,
     onToggleExpand
-  });
-
-  // Use the custom hook for stream trigger functionality
-  useStreamTrigger({
-    isCurrentIteration,
-    isStreaming,
-    iteration,
-    onStartStream
   });
 
   // Optimize streaming status to avoid memory buildup

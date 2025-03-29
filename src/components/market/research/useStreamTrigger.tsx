@@ -5,24 +5,20 @@ interface StreamTriggerOptions {
   isCurrentIteration: boolean;
   isStreaming: boolean;
   iteration: {
-    streamStatus?: 'waiting' | 'streaming' | 'complete';
     results: any[];
     iteration: number;
   };
-  onStartStream?: (iterationNumber: number) => void;
 }
 
 export function useStreamTrigger({
   isCurrentIteration,
   isStreaming,
-  iteration,
-  onStartStream
+  iteration
 }: StreamTriggerOptions) {
-  // Trigger direct streaming if needed and available
+  // Removed direct streaming trigger functionality
+  // This hook is kept for backward compatibility but no longer triggers direct streams
+  
   useEffect(() => {
-    if (isCurrentIteration && isStreaming && onStartStream && 
-        iteration.streamStatus === 'waiting' && iteration.results && iteration.results.length > 0) {
-      onStartStream(iteration.iteration);
-    }
-  }, [isCurrentIteration, isStreaming, iteration, onStartStream]);
+    // No-op - streaming now happens solely through the background job and Realtime
+  }, [isCurrentIteration, isStreaming, iteration]);
 }

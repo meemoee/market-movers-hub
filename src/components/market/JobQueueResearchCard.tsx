@@ -82,8 +82,6 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const [streamingIterations, setStreamingIterations] = useState<Set<number>>(new Set())
-  const [directStreamingIteration, setDirectStreamingIteration] = useState<number | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
@@ -111,12 +109,6 @@ export function JobQueueResearchCard({
     fetchSavedJobs();
     
     return () => {
-      // Abort any active streams
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-      
       if (realtimeChannelRef.current) {
         console.log('Removing realtime channel on unmount');
         supabase.removeChannel(realtimeChannelRef.current);
@@ -146,164 +138,6 @@ export function JobQueueResearchCard({
       console.error('Error in fetchSavedJobs:', e);
     } finally {
       setIsLoadingJobs(false);
-    }
-  };
-
-  const startDirectStreaming = async (iterationNumber: number) => {
-    if (directStreamingIteration !== null) {
-      console.log(`Already streaming iteration ${directStreamingIteration}, ignoring request for ${iterationNumber}`);
-      return;
-    }
-    
-    if (!jobId) {
-      console.error('Cannot start direct streaming without a job ID');
-      return;
-    }
-    
-    try {
-      console.log(`Starting direct streaming for iteration ${iterationNumber}`);
-      setDirectStreamingIteration(iterationNumber);
-      
-      abortControllerRef.current = new AbortController();
-      
-      const updatedIterations = iterations.map(iter => {
-        if (iter.iteration === iterationNumber) {
-          return {
-            ...iter,
-            streamStatus: 'streaming',
-            isAnalysisStreaming: true,
-            isReasoningStreaming: true
-          };
-        }
-        return iter;
-      });
-      setIterations(updatedIterations);
-      
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stream-analysis-proxy`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
-        },
-        body: JSON.stringify({
-          jobId,
-          iteration: iterationNumber
-        }),
-        signal: abortControllerRef.current.signal
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Stream request failed with status ${response.status}`);
-      }
-      
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Response body is not readable');
-      }
-      
-      let streamedAnalysis = '';
-      let streamedReasoning = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        
-        if (done) {
-          console.log('Stream completed naturally');
-          break;
-        }
-        
-        const chunk = new TextDecoder().decode(value);
-        const lines = chunk.split('\n\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const jsonData = JSON.parse(line.substring(6));
-              
-              if (jsonData.type === 'analysis' && jsonData.content) {
-                streamedAnalysis += jsonData.content;
-                
-                setIterations(current => 
-                  current.map(iter => {
-                    if (iter.iteration === iterationNumber) {
-                      return {
-                        ...iter,
-                        analysis: (iter.analysis || '') + jsonData.content,
-                        isAnalysisStreaming: true
-                      };
-                    }
-                    return iter;
-                  })
-                );
-              } 
-              else if (jsonData.type === 'reasoning' && jsonData.content) {
-                streamedReasoning += jsonData.content;
-                
-                setIterations(current => 
-                  current.map(iter => {
-                    if (iter.iteration === iterationNumber) {
-                      return {
-                        ...iter,
-                        reasoning: (iter.reasoning || '') + jsonData.content,
-                        isReasoningStreaming: true
-                      };
-                    }
-                    return iter;
-                  })
-                );
-              }
-              else if (jsonData.type === 'complete') {
-                console.log('Received completion signal from stream');
-                setIterations(current => 
-                  current.map(iter => {
-                    if (iter.iteration === iterationNumber) {
-                      return {
-                        ...iter,
-                        isAnalysisStreaming: false,
-                        isReasoningStreaming: false,
-                        streamStatus: 'complete'
-                      };
-                    }
-                    return iter;
-                  })
-                );
-              }
-              else if (jsonData.error) {
-                console.error('Stream error:', jsonData.error);
-                setError(`Streaming error: ${jsonData.error}`);
-                break;
-              }
-            } catch (e) {
-              console.error('Error parsing stream data:', e, 'Raw data:', line);
-            }
-          }
-        }
-      }
-      
-      setIterations(current => 
-        current.map(iter => {
-          if (iter.iteration === iterationNumber) {
-            return {
-              ...iter,
-              isAnalysisStreaming: false,
-              isReasoningStreaming: false,
-              streamStatus: 'complete'
-            };
-          }
-          return iter;
-        })
-      );
-      
-    } catch (error) {
-      if (error.name === 'AbortError') {
-        console.log('Stream was aborted');
-      } else {
-        console.error('Error in direct streaming:', error);
-        setError(`Error during streaming: ${error.message}`);
-      }
-    } finally {
-      setDirectStreamingIteration(null);
-      abortControllerRef.current = null;
     }
   };
 
@@ -384,8 +218,8 @@ export function JobQueueResearchCard({
       
       if (job.status === 'processing' && job.current_iteration > 0) {
         const currentIter = job.iterations.find(iter => iter.iteration === job.current_iteration);
-        if (currentIter && currentIter.results && currentIter.results.length > 0 && !currentIter.analysis) {
-          waitingForStreamSet.add(job.current_iteration);
+        if (currentIter && currentIter.results && currentIter.results.length > 0) {
+          streamingSet.add(job.current_iteration);
         }
       }
       
@@ -396,23 +230,13 @@ export function JobQueueResearchCard({
       );
       
       const enhancedIterations = job.iterations.map(iter => {
-        const isCurrentlyStreaming = directStreamingIteration === iter.iteration;
-        const isWaitingForStream = waitingForStreamSet.has(iter.iteration);
+        const isCurrentlyStreaming = streamingSet.has(iter.iteration);
         const currentIteration = currentIterationsMap.get(iter.iteration);
         
         return {
           ...iter,
-          analysis: isCurrentlyStreaming && currentIteration?.analysis 
-            ? currentIteration.analysis 
-            : iter.analysis,
-          reasoning: isCurrentlyStreaming && currentIteration?.reasoning 
-            ? currentIteration.reasoning 
-            : iter.reasoning,
           isAnalysisStreaming: isCurrentlyStreaming,
-          isReasoningStreaming: isCurrentlyStreaming,
-          streamStatus: isCurrentlyStreaming ? 'streaming' : 
-                        isWaitingForStream ? 'waiting' : 
-                        'complete'
+          isReasoningStreaming: isCurrentlyStreaming
         };
       });
       
@@ -1068,11 +892,9 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={iteration.streamStatus === 'streaming' || 
-                             streamingIterations.has(iteration.iteration)}
+                isStreaming={streamingIterations.has(iteration.iteration)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
-                onStartStream={startDirectStreaming}
               />
             ))}
           </div>
