@@ -228,6 +228,9 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
     structuredInsights: null
   };
   
+  // FIXED: Create an in-memory array to store all iteration data
+  let allIterationsData: any[] = [];
+  
   try {
     // Generate search queries based on the initial question
     const searchQueries = await generateSearchQueries(jobId, query, focusText);
@@ -240,7 +243,7 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
     });
     
     // Create the first iteration
-    const iterationData = {
+    const initialIterationData = {
       iteration: 1,
       queries: searchQueries,
       results: [],
@@ -248,9 +251,13 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
       reasoning: ''
     };
     
+    // FIXED: Add the initial iteration to our in-memory array
+    allIterationsData.push(initialIterationData);
+    
+    // Write the initial iteration to the database for UI visibility
     await supabase.rpc('append_research_iteration', {
       job_id: jobId,
-      iteration_data: JSON.stringify([iterationData])
+      iteration_data: JSON.stringify([initialIterationData])
     });
     
     // Update current iteration
@@ -268,15 +275,19 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
         progress_entry: `Starting research iteration ${i} of ${maxIterations}`
       });
       
-      // Get the current state of the job
-      const { data: currentJob } = await supabase
-        .from('research_jobs')
-        .select('iterations')
-        .eq('id', jobId)
-        .single();
+      // FIXED: Get the current iteration data from our in-memory array
+      const currentIteration = allIterationsData.find(iter => iter.iteration === i);
       
-      // Get the current iteration data
-      const currentIteration = currentJob.iterations.find((iter: any) => iter.iteration === i);
+      // FIXED: Add error handling if iteration not found
+      if (!currentIteration) {
+        console.error(`No iteration data found for iteration ${i}`);
+        await supabase.rpc('append_research_progress', {
+          job_id: jobId,
+          progress_entry: `Error: No data found for iteration ${i}`
+        });
+        continue;
+      }
+      
       const queries = currentIteration.queries || [];
       
       if (queries.length === 0) {
@@ -310,7 +321,10 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
         });
       }
       
-      // Update the iteration with results
+      // FIXED: Update the results in our in-memory data
+      currentIteration.results = scrapedResults || [];
+      
+      // Update the iteration with results in the database
       await supabase.rpc('update_iteration_field', {
         job_id: jobId,
         iteration_num: i,
@@ -324,8 +338,14 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
         progress_entry: `Analyzing research data from iteration ${i}...`
       });
       
-      // Generate analysis with streaming
-      await generateAnalysisWithStreaming(jobId, i, query, scrapedResults, focusText);
+      // FIXED: Generate analysis with streaming and capture the output
+      const analysisData = await generateAnalysisWithStreaming(jobId, i, query, scrapedResults, focusText);
+      
+      // FIXED: Update the analysis and reasoning in our in-memory data
+      if (analysisData) {
+        currentIteration.analysis = analysisData.analysis || '';
+        currentIteration.reasoning = analysisData.reasoning || '';
+      }
       
       // If not the last iteration, generate new queries for the next iteration
       if (i < maxIterations) {
@@ -334,15 +354,8 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
           progress_entry: `Planning next research iteration...`
         });
         
-        // Get updated iteration with the analysis
-        const { data: updatedJob } = await supabase
-          .from('research_jobs')
-          .select('iterations')
-          .eq('id', jobId)
-          .single();
-        
-        const updatedIteration = updatedJob.iterations.find((iter: any) => iter.iteration === i);
-        const analysis = updatedIteration.analysis || '';
+        // FIXED: Use the analysis from our in-memory array
+        const analysis = currentIteration.analysis || '';
         
         // Generate follow-up queries based on the analysis
         const nextQueries = await generateFollowupQueries(jobId, query, analysis, focusText);
@@ -356,6 +369,10 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
           reasoning: ''
         };
         
+        // FIXED: Add the next iteration to our in-memory array
+        allIterationsData.push(nextIterationData);
+        
+        // Write the next iteration to the database for UI visibility
         await supabase.rpc('append_research_iteration', {
           job_id: jobId,
           iteration_data: JSON.stringify([nextIterationData])
@@ -375,14 +392,8 @@ async function performResearch(jobId: string, query: string, maxIterations: numb
       progress_entry: `Completing final research analysis...`
     });
     
-    // Get all iterations data for final analysis
-    const { data: finalJob } = await supabase
-      .from('research_jobs')
-      .select('iterations')
-      .eq('id', jobId)
-      .single();
-    
-    const allIterations = finalJob.iterations || [];
+    // FIXED: Use our in-memory array for final analysis
+    const allIterations = allIterationsData;
     
     // Extract data from all iterations
     const allResults: any[] = [];
@@ -500,6 +511,12 @@ async function performWebScraping(jobId: string, queries: string[], iterationNum
   }
 }
 
+// FIXED: Modified to return analysis data
+interface AnalysisStreamResult {
+  analysis: string;
+  reasoning: string;
+}
+
 // Generate analysis from scraped results with streaming
 async function generateAnalysisWithStreaming(
   jobId: string, 
@@ -507,7 +524,7 @@ async function generateAnalysisWithStreaming(
   query: string, 
   results: any[], 
   focusText?: string
-): Promise<void> {
+): Promise<AnalysisStreamResult> {
   try {
     await supabase.rpc('append_research_progress', {
       job_id: jobId,
@@ -516,13 +533,16 @@ async function generateAnalysisWithStreaming(
     
     // If no results, create a simple analysis noting the lack of data
     if (!results || results.length === 0) {
+      const noDataAnalysis = 'No data was found for the search queries in this iteration.';
+      
       await supabase.rpc('update_iteration_field', {
         job_id: jobId,
         iteration_num: iterationNumber,
         field_key: 'analysis',
-        field_value: 'No data was found for the search queries in this iteration.'
+        field_value: noDataAnalysis
       });
-      return;
+      
+      return { analysis: noDataAnalysis, reasoning: '' };
     }
     
     // Prepare the content for analysis
@@ -549,8 +569,8 @@ async function generateAnalysisWithStreaming(
       throw new Error(`Failed to generate analysis: ${errorText}`);
     }
     
-    // Process the streaming response
-    await processStream(response, jobId, iterationNumber);
+    // FIXED: Process the streaming response and return the result
+    return await processStream(response, jobId, iterationNumber);
     
   } catch (error) {
     console.error('Error generating analysis:', error);
@@ -562,14 +582,16 @@ async function generateAnalysisWithStreaming(
   }
 }
 
-// Process streaming response and update the database
-async function processStream(response: Response, jobId: string, iterationNumber: number): Promise<void> {
+// FIXED: Modified to return complete analysis and reasoning strings
+async function processStream(response: Response, jobId: string, iterationNumber: number): Promise<AnalysisStreamResult> {
   const reader = response.body?.getReader();
   if (!reader) {
     throw new Error('Response body is not readable');
   }
   
   let done = false;
+  let analysisComplete = '';
+  let reasoningComplete = '';
   let analysisBuffer = '';
   let reasoningBuffer = '';
   let updateCounter = 0;
@@ -596,9 +618,11 @@ async function processStream(response: Response, jobId: string, iterationNumber:
             
             if (jsonData.type === 'analysis' && jsonData.content) {
               analysisBuffer += jsonData.content;
+              analysisComplete += jsonData.content;
               updateCounter++;
             } else if (jsonData.type === 'reasoning' && jsonData.content) {
               reasoningBuffer += jsonData.content;
+              reasoningComplete += jsonData.content;
               updateCounter++;
             }
             
@@ -622,6 +646,11 @@ async function processStream(response: Response, jobId: string, iterationNumber:
     if (analysisBuffer.length > 0 || reasoningBuffer.length > 0) {
       await updateDatabase(jobId, iterationNumber, analysisBuffer, reasoningBuffer);
     }
+    
+    return {
+      analysis: analysisComplete,
+      reasoning: reasoningComplete
+    };
     
   } catch (error) {
     console.error('Error processing stream:', error);
