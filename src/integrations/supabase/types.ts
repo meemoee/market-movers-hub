@@ -707,15 +707,6 @@ export type Database = {
         }
         Returns: string
       }
-      append_iteration_field_text: {
-        Args: {
-          job_id: string
-          iteration_num: number
-          field_key: string
-          append_text: string
-        }
-        Returns: undefined
-      }
       append_progress_log: {
         Args: {
           job_id: string
