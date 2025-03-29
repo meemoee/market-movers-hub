@@ -60,9 +60,15 @@ export function IterationCard({
     onStartStream
   });
 
-  // Determine streaming status based on individual properties
+  // Optimize streaming status to avoid memory buildup
   const isAnalysisStreaming = isStreaming && isCurrentIteration && (iteration.isAnalysisStreaming !== false);
   const isReasoningStreaming = isStreaming && isCurrentIteration && (iteration.isReasoningStreaming !== false);
+  
+  // Safely handle potentially undefined values with fallbacks
+  const analysisContent = iteration.analysis || '';
+  const reasoningContent = iteration.reasoning || '';
+  const resultCount = iteration.results && Array.isArray(iteration.results) ? iteration.results.length : 0;
+  const queryCount = iteration.queries && Array.isArray(iteration.queries) ? iteration.queries.length : 0;
 
   return (
     <div className={cn(
@@ -84,7 +90,7 @@ export function IterationCard({
             {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
+            {isFinalIteration ? "Final Analysis" : `${resultCount} sources found`}
           </span>
         </div>
         {isExpanded ? 
@@ -98,26 +104,26 @@ export function IterationCard({
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
             <TabsList className="w-full grid grid-cols-3 mb-3">
               <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
-              <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
-              <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
+              <TabsTrigger value="sources" className="text-xs">Sources ({resultCount})</TabsTrigger>
+              <TabsTrigger value="queries" className="text-xs">Queries ({queryCount})</TabsTrigger>
             </TabsList>
             
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <IterationAnalysisTab 
-                  analysis={iteration.analysis} 
-                  reasoning={iteration.reasoning}
+                  analysis={analysisContent} 
+                  reasoning={reasoningContent}
                   isAnalysisStreaming={isAnalysisStreaming}
                   isReasoningStreaming={isReasoningStreaming}
                 />
               </TabsContent>
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
-                <IterationSourcesTab results={iteration.results} />
+                <IterationSourcesTab results={iteration.results || []} />
               </TabsContent>
               
               <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
-                <IterationQueriesTab queries={iteration.queries} />
+                <IterationQueriesTab queries={iteration.queries || []} />
               </TabsContent>
             </div>
           </Tabs>
