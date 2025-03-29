@@ -20,9 +20,10 @@ interface WebResearchData {
 }
 
 interface ResearchJobInput {
-  market_id: string;
+  marketId: string; // This is the key that needs to match what's being sent
   focus_text?: string;
   notification_email?: string;
+  maxIterations?: number;
 }
 
 interface ResearchIteration {
@@ -72,13 +73,18 @@ serve(async (req) => {
   }
 
   try {
-    const { market_id, focus_text, notification_email } = await req.json() as ResearchJobInput;
+    const requestBody = await req.json();
+    // Log the incoming request body to diagnose the issue
+    console.log('Request body:', requestBody);
     
-    if (!market_id) {
-      throw new Error('Missing required parameter: market_id');
+    // Extract parameters with proper validation
+    const { marketId, focus_text, notification_email, maxIterations = 2 } = requestBody as ResearchJobInput;
+    
+    if (!marketId) {
+      throw new Error('Missing required parameter: marketId');
     }
 
-    console.log(`Starting research job for market ID: ${market_id}`);
+    console.log(`Starting research job for market ID: ${marketId}`);
     
     // Create research job in database
     const jobId = crypto.randomUUID();
@@ -92,7 +98,7 @@ serve(async (req) => {
     const { data: marketData, error: marketError } = await supabaseClient
       .from('markets')
       .select('id, question, description')
-      .eq('id', market_id)
+      .eq('id', marketId)
       .single();
 
     if (marketError || !marketData) {
@@ -103,7 +109,7 @@ serve(async (req) => {
     const { data: priceData, error: priceError } = await supabaseClient
       .from('market_prices')
       .select('yes_price')
-      .eq('market_id', market_id)
+      .eq('market_id', marketId)
       .order('timestamp', { ascending: false })
       .limit(1)
       .single();
@@ -124,7 +130,7 @@ serve(async (req) => {
 
     // Get related markets
     const { data: relatedMarkets, error: relatedMarketsError } = await supabaseClient
-      .rpc('get_related_markets', { market_id: market_id, limit_num: 5 });
+      .rpc('get_related_markets', { market_id: marketId, limit_num: 5 });
 
     if (!relatedMarketsError && relatedMarkets) {
       completeMarketData.related_markets = relatedMarkets;
@@ -135,12 +141,13 @@ serve(async (req) => {
       .from('research_jobs')
       .insert({
         id: jobId,
-        market_id: market_id,
-        status: 'pending',
+        market_id: marketId,
+        status: 'queued',
         query: marketData.question,
         focus_text: focus_text,
         notification_email: notification_email,
-        market_data: completeMarketData
+        market_data: completeMarketData,
+        max_iterations: maxIterations
       });
 
     if (insertError) {
