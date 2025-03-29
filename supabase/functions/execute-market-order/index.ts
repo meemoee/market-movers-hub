@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -48,7 +49,9 @@ class OrderbookManager {
 
     this.connectionPromise = new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        this.ws?.close();
+        if (this.ws) {
+          this.ws.close();
+        }
         this.connectionPromise = null;
         reject(new Error('WebSocket connection timeout'));
       }, CONNECTION_TIMEOUT);
@@ -62,20 +65,7 @@ class OrderbookManager {
           
           // Resubscribe to all active markets
           if (this.subscriptions.size > 0) {
-            const subscription = {
-              type: "Market",
-              assets_ids: Array.from(this.subscriptions)
-            };
-            this.ws?.send(JSON.stringify(subscription));
-            
-            // Request snapshots for all markets
-            for (const assetId of this.subscriptions) {
-              const snapshotRequest = {
-                type: "GetMarketSnapshot",
-                asset_id: assetId
-              };
-              this.ws?.send(JSON.stringify(snapshotRequest));
-            }
+            this.resubscribeToMarkets();
           }
           
           resolve();
@@ -105,7 +95,37 @@ class OrderbookManager {
     return this.connectionPromise;
   }
 
-  private handleMessage(event: MessageEvent) {
+  private resubscribeToMarkets(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN || this.subscriptions.size === 0) {
+      return;
+    }
+    
+    // Send subscription message for all markets
+    const subscription = {
+      type: "Market",
+      assets_ids: Array.from(this.subscriptions)
+    };
+    this.ws.send(JSON.stringify(subscription));
+    
+    // Request snapshots for all markets
+    for (const assetId of this.subscriptions) {
+      this.requestSnapshot(assetId);
+    }
+  }
+  
+  private requestSnapshot(assetId: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    
+    const snapshotRequest = {
+      type: "GetMarketSnapshot",
+      asset_id: assetId
+    };
+    this.ws.send(JSON.stringify(snapshotRequest));
+  }
+
+  private handleMessage(event: MessageEvent): void {
     if (event.data === "PONG") return;
 
     try {
@@ -191,12 +211,7 @@ class OrderbookManager {
         assets_ids: [assetId]
       };
       this.ws.send(JSON.stringify(subscription));
-
-      const snapshotRequest = {
-        type: "GetMarketSnapshot",
-        asset_id: assetId
-      };
-      this.ws.send(JSON.stringify(snapshotRequest));
+      this.requestSnapshot(assetId);
     }
   }
 
