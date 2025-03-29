@@ -238,7 +238,7 @@ Remember to format your response as a valid JSON object with probability, areasF
               'X-Title': 'Hunchex Analysis'
             },
             body: JSON.stringify({
-              model: "google/gemini-2.0-flash-lite-001",
+              model: "google/gemini-2.5-pro-exp-03-25",
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
