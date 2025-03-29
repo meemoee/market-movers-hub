@@ -16,40 +16,74 @@ serve(async (req) => {
 
   try {
     const { message, chatHistory } = await req.json()
-    console.log('Received request:', { message, chatHistory })
+    
+    if (!OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY not set')
+    }
 
-    console.log('Making request to OpenRouter API...')
-    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    console.log('Processing market analysis request:', { 
+      messageLength: message.length,
+      chatHistoryLength: chatHistory?.length || 0 
+    })
+
+    // Construct the system prompt
+    const systemPrompt = `You are a helpful assistant with expertise in prediction markets and data analysis.
+
+CHARACTERISTICS:
+- Provide analysis of market probabilities based on the available evidence
+- Discuss factors that might influence market outcomes
+- When appropriate, suggest related markets that might be of interest
+- Explain your reasoning clearly and logically
+- Acknowledge uncertainty when present
+- Use statistics and data when relevant
+- Do not speculate unnecessarily
+- Focus on factual analysis rather than opinions
+
+RESPONSE FORMAT:
+- Use clear, concise language
+- Structure responses with appropriate headings and bullet points when helpful
+- Include quantitative reasoning where applicable
+- Clearly separate different ideas or topics
+
+When discussing prediction markets specifically:
+- Explain how market mechanisms work when relevant
+- Discuss how to interpret market prices as probabilities
+- Reference historical precedents when helpful
+- Acknowledge potential market inefficiencies or biases
+
+YOUR ROLE:
+You help users understand prediction markets and form their own thoughtful market predictions. You don't make explicit buy/sell recommendations, but you help users think through the factors that might affect market outcomes.`
+
+    // User message
+    const userMessage = chatHistory ? 
+      `${chatHistory}\n\nUser: ${message}` : 
+      message
+
+    // Call the OpenRouter API
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
-        'HTTP-Referer': 'http://localhost:5173',
-        'X-Title': 'Market Analysis App',
+        'HTTP-Referer': 'https://hunchex.app'
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-exp-03-25",
+        model: "deepseek/deepseek-chat-v3-0324",
         messages: [
-          {
-            role: "system",
-            content: "You are a helpful assistant. Be concise and clear in your responses."
-          },
-          {
-            role: "user",
-            content: `Chat History:\n${chatHistory || 'No previous chat history'}\n\nCurrent Query: ${message}`
-          }
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage }
         ],
+        temperature: 0.7,
         stream: true
       })
     })
 
-    if (!openRouterResponse.ok) {
-      console.error('OpenRouter API error:', openRouterResponse.status, await openRouterResponse.text())
-      throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
+    if (!response.ok) {
+      throw new Error(`Error from OpenRouter API: ${response.status}`)
     }
 
-    // Return the stream directly without transformation
-    return new Response(openRouterResponse.body, {
+    // Return streaming response
+    return new Response(response.body, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
@@ -57,18 +91,11 @@ serve(async (req) => {
         'Connection': 'keep-alive'
       }
     })
-
   } catch (error) {
-    console.error('Error in market-analysis function:', error)
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500,
-        headers: {
-          ...corsHeaders,
-          'Content-Type': 'application/json'
-        }
-      }
-    )
+    console.error('Error in market-analysis:', error)
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    })
   }
 })

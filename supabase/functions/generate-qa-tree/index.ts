@@ -48,7 +48,7 @@ serve(async (req) => {
             'X-Title': 'Market Analysis App',
           },
           body: JSON.stringify({
-            model: "google/gemini-flash-1.5",
+            model: "deepseek/deepseek-chat-v3-0324",
             messages: [
               {
                 role: "system",
@@ -145,7 +145,7 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "perplexity/llama-3.1-sonar-small-128k-online",
+        model: "deepseek/deepseek-chat-v3-0324",
         messages: [
           {
             role: "system",

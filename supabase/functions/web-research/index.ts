@@ -66,7 +66,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         'X-Title': 'Market Research App',
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-exp-03-25",
+        model: "deepseek/deepseek-chat-v3-0324",
         messages: [
           {
             role: "system",
