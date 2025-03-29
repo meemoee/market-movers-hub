@@ -120,3 +120,8 @@ This document describes the functionality of each edge function and the componen
 *   **Components:**
     *   `src/components/market/WebResearchCard.tsx`
     *   `src/components/market/JobQueueResearchCard.tsx`
+    *   `src/components/market/research/IterationAnalysisTab.tsx`
+    *   `src/components/market/research/IterationQueriesTab.tsx`
+    *   `src/components/market/research/IterationSourcesTab.tsx`
+    *   `src/components/market/research/useStreamTrigger.tsx`
+
