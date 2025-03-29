@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -65,7 +64,7 @@ Format your response as JSON with these fields:
         'HTTP-Referer': 'https://hunchex.app'
       },
       body: JSON.stringify({
-        model: 'deepseek/deepseek-chat-v3-0324',
+        model: 'google/gemini-2.0-flash-lite-001',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }

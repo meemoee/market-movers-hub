@@ -1,127 +1,254 @@
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import "https://deno.land/x/xhr@0.1.0/mod.ts"
+import { corsHeaders } from "../_shared/cors.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.0";
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+interface GenerateQueriesRequest {
+  query: string;
+  marketId: string;
+  marketQuestion?: string;  // Added optional market question field
+  marketDescription?: string;  // Added optional market description field
+  iteration?: number;
+  previousQueries?: string[];
+  focusText?: string;
+  previousAnalyses?: string[];
 }
 
-serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+Deno.serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { marketQuestion, marketDescription, iteration } = await req.json()
-
-    if (!marketQuestion) {
-      throw new Error('Market question is required')
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "OPENROUTER_API_KEY is not set in environment" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
-    console.log(`Generating queries for market: "${marketQuestion}" (iteration ${iteration || 1})`)
-    console.log(`Market description: "${marketDescription}"`)
+    // Parse request body
+    const requestData: GenerateQueriesRequest = await req.json();
+    const { 
+      query, 
+      marketId, 
+      marketQuestion,
+      marketDescription,
+      iteration = 1, 
+      previousQueries = [], 
+      focusText, 
+      previousAnalyses = [] 
+    } = requestData;
 
-    const openRouterKey = Deno.env.get('OPENROUTER_API_KEY')
-    if (!openRouterKey) {
-      throw new Error('Missing OpenRouter API key')
+    if (!query) {
+      return new Response(
+        JSON.stringify({ error: "Query parameter is required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
-    const systemMessage = `You are an expert at generating effective web search queries to research prediction markets.
-Your goal is to generate queries that will find the most recent, relevant, and data-rich content.`
+    // Use market question and description if available, otherwise fallback to query
+    const topicTitle = marketQuestion || query;
+    const topicDescription = marketDescription || query;
+    
+    console.log(`Generating queries for market: "${topicTitle}" (iteration ${iteration})`);
+    console.log(`Market description: "${topicDescription}"`);
+    if (focusText) {
+      console.log(`With focus area: "${focusText}"`);
+    }
 
-    const userMessage = `I need to research this prediction market question: "${marketQuestion}"
-${marketDescription ? `Additional context: ${marketDescription}` : ''}
+    // Generate prompt based on iteration
+    let prompt = `Generate 5 search queries that someone would type into a search engine to gather information about this topic:
 
-Generate 5 search queries that would be effective for iteration ${iteration || 1} of research.
+Topic: ${topicTitle}
+Description: ${topicDescription}
 
-CRITICAL REQUIREMENTS:
-- Format as search queries, not questions (avoid words like "what", "how", "why", etc.)
-- Prioritize finding RECENT information and statistics (include years like 2024-2025)
-- Target specific data points, percentages, and metrics
-- Each query should focus on a different aspect of the topic
-- Include key entities and technical terms
-- Make queries differently focused to get diverse results
-- Include relevant time frames or date ranges where appropriate
+CRITICAL CONTEXT FOR QUERY GENERATION:
+The topic title represents the key market question: "${topicTitle}"
+The description provides additional context: "${topicDescription}"
 
-Output ONLY a JSON array of 5 query strings. No other text.`
+Your search queries must:
+1. Combine elements from BOTH the title and description to create comprehensive, targeted queries
+2. Format as search queries, not sentences with questions or punctuation
+3. Include specific entities, names, and key technical terms from both title and description
+4. Each query should address a distinct aspect of the market question
+5. Avoid filler words like "what is" or "how to" unless absolutely necessary
+6. Include enough context for relevant search results
+7. PRIORITIZE RECENT DATA: Include terms like "latest", "recent", "2025", or "update" where appropriate
+8. TARGET STATISTICAL DATA: Focus on finding specific numbers, statistics, percentages, or quantitative data
+9. Include timeframes, dates, or specific periods when relevant to get the most current information
+10. RESOLUTION TIMING: Include queries that search for when this question will be resolved and when relevant data will become available
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
+Focus on different aspects that would be relevant for market research.`;
+
+    // Add focus text if provided
+    if (focusText && focusText.trim()) {
+      prompt += `\n\nFOCUS AREA:
+"${focusText.trim()}"
+
+Ensure that most of your queries address this focus area while providing sufficient context. When focusing on this area, prioritize finding recent data points and specific statistics.`;
+    }
+
+    // Adjust prompt based on iteration and include previous analyses
+    if (iteration > 1) {
+      prompt += `\n\nThis is iteration ${iteration}. Your goal is to identify SPECIFIC knowledge gaps from previous research and create targeted queries to fill those gaps.`;
+      
+      // Include previous analyses if available
+      if (previousAnalyses.length > 0) {
+        prompt += `\n\nBased on previous research, these were our findings:\n`;
+        previousAnalyses.forEach((analysis, index) => {
+          // Only use the first 300 characters of each analysis to keep prompt size manageable
+          const truncatedAnalysis = analysis.length > 300 
+            ? analysis.substring(0, 300) + "..." 
+            : analysis;
+          prompt += `\nAnalysis ${index + 1}: ${truncatedAnalysis}\n`;
+        });
+        
+        prompt += `\nQUERY GENERATION INSTRUCTIONS:
+1. Identify 5 SPECIFIC unanswered questions or knowledge gaps in the previous analyses
+2. Create a targeted search query for EACH specific gap
+3. Each query should be precise, focusing on one specific aspect or data point
+4. Prioritize collecting factual information over opinions
+5. Target recent or time-sensitive information where relevant
+6. Specifically search for NUMERIC DATA and STATISTICS that were missing in previous analyses
+7. Include date ranges or time periods to ensure you get the most current information
+8. Look for trend data, historical comparisons, and up-to-date metrics
+9. RESOLUTION TIMING: Generate at least one query specifically about resolution timing, deadlines, or when conclusive data will be available`;
+      } else {
+        prompt += `\n\nKNOWLEDGE GAP REQUIREMENTS:
+1. Analyze previous queries and target NEW topics not yet covered
+2. Focus on missing information crucial for comprehensive understanding
+3. Explore specialized sub-topics or alternative perspectives
+4. Maintain search query format (not sentences)
+5. Prioritize queries that will find the LATEST DATA and SPECIFIC STATISTICS
+6. Include date ranges or time periods to ensure you get the most current information
+7. RESOLUTION TIMING: Include at least one query about when this market question will be resolved and when resolution data will become available`;
+      }
+    }
+
+    // Add previous queries to avoid repetition
+    if (previousQueries.length > 0) {
+      prompt += `\n\nAVOID generating queries similar to these:
+${previousQueries.join('\n')}`;
+    }
+
+    prompt += `\n\nFor example, if the topic is "Will SpaceX successfully land humans on Mars by 2030?" and the description mentions "Elon Musk's Mars colonization plans face technical and funding challenges", good queries would be:
+- SpaceX Mars mission timeline 2030 technical challenges latest updates
+- Elon Musk Mars colonization funding statistics 2025 current status
+- SpaceX Starship human landing technology readiness metrics percentage
+- Mars mission delays SpaceX historical timeline analysis 2020-2025 data
+- NASA SpaceX Mars collaboration funding numbers 2030 goal recent changes
+- SpaceX Mars mission resolution criteria official announcement date
+
+Respond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
+
+    // Call OpenRouter API
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
       headers: {
-        'Authorization': `Bearer ${openRouterKey}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://hunchex.app'
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
+        "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: 'deepseek/deepseek-chat-v3-0324',
+        model: "google/gemini-flash-1.5",
         messages: [
-          { role: 'system', content: systemMessage },
-          { role: 'user', content: userMessage }
+          {
+            role: "system",
+            content: "You are a market research specialist that identifies specific knowledge gaps and generates effective search queries to fill those gaps. You create targeted queries that focus on obtaining precise information about specific aspects, data points, or examples needed. You have a strong preference for recent data and specific statistics."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
         ],
-        temperature: 0.7,
         response_format: { type: "json_object" }
       })
-    })
+    });
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`)
+    if (!openRouterResponse.ok) {
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} ${await openRouterResponse.text()}`);
     }
 
-    const data = await response.json()
-    let content = data.choices[0].message.content
+    const result = await openRouterResponse.json();
+    const content = result.choices[0].message.content.trim();
     
-    // Try to parse as JSON directly
-    let queries = []
+    let queries = [];
     try {
-      const parsed = JSON.parse(content)
-      if (Array.isArray(parsed)) {
-        queries = parsed
-      } else if (parsed.queries && Array.isArray(parsed.queries)) {
-        queries = parsed.queries
-      }
-    } catch (err) {
-      // If direct parsing fails, try to extract JSON from the text
-      console.error('Error parsing response:', err)
-      const jsonMatch = content.match(/\[[\s\S]*\]/)
-      if (jsonMatch) {
-        try {
-          queries = JSON.parse(jsonMatch[0])
-        } catch (innerErr) {
-          console.error('Error parsing extracted JSON:', innerErr)
+      const queriesData = JSON.parse(content);
+      queries = queriesData.queries || [];
+      
+      // Process queries to ensure they're in search engine format
+      queries = queries.map((q: string) => {
+        // Remove question marks and unnecessary punctuation
+        let processedQuery = q.replace(/\?|\.|!|"/g, '');
+        
+        // Remove filler question starts if present
+        processedQuery = processedQuery.replace(/^(what is|how to|why does|when did|where can|how do|is there|are there|can i|should i|would a)/i, '');
+        
+        // Ensure first letter is capitalized if query doesn't start with a proper noun
+        if (processedQuery.length > 0 && processedQuery[0].toLowerCase() === processedQuery[0]) {
+          const firstChar = processedQuery.charAt(0).toUpperCase();
+          processedQuery = firstChar + processedQuery.slice(1);
         }
-      }
-    }
-
-    // Ensure we have queries, even if parsing failed
-    if (!queries.length) {
-      console.log('Using fallback queries due to parsing error')
+        
+        return processedQuery.trim();
+      });
+    } catch (error) {
+      console.error("Error parsing OpenRouter response:", error, content);
+      
+      // Generate fallback queries in search format style with recency and stats focus
+      const topicForFallback = topicTitle || query;
       queries = [
-        `${marketQuestion} latest data statistics 2024-2025`,
-        `${marketQuestion} expert prediction analysis`,
-        `${marketQuestion} historical trends comparison`,
-        `${marketQuestion} probability factors percentage`,
-        `${marketQuestion} current status updates`
-      ]
+        `${topicForFallback} latest statistics 2025`,
+        `${topicForFallback} recent data trends numbers`,
+        `${topicForFallback} current metrics percentages`,
+        `${topicForFallback} up-to-date analysis figures`,
+        `${topicForFallback} resolution timeline when determined`
+      ];
+      
+      // If focus text exists, add it to a couple of queries
+      if (focusText && focusText.trim()) {
+        const focusKeywords = focusText.trim().split(' ').slice(0, 3).join(' ');
+        queries[1] = `${topicForFallback} ${focusKeywords} latest statistics data`;
+        queries[3] = `${focusKeywords} impact on ${topicForFallback} recent numbers`;
+      }
     }
 
-    console.log(`Generated ${queries.length} queries:`, queries)
+    console.log(`Generated ${queries.length} queries:`, queries);
 
     return new Response(
-      JSON.stringify(queries),
-      { 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      JSON.stringify({ queries }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
-    )
+    );
   } catch (error) {
-    console.error('Error in generate-queries:', error)
+    console.error("Error generating queries:", error);
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
+      JSON.stringify({ 
+        error: `Query generation error: ${error.message}`,
+        queries: [
+          `${query} latest developments 2025`,
+          `${query} current statistics data`,
+          `${query} recent trends metrics`,
+          `${query} updated figures percentages`,
+          `${query} resolution timeline determination date`
+        ]
+      }),
+      {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       }
-    )
+    );
   }
-})
+});
