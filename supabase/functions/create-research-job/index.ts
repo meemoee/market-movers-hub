@@ -1014,7 +1014,7 @@ Present the analysis in a structured, concise format with clear sections and bul
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-exp-03-25",
+        model: "deepseek/deepseek-chat-v3-0324:free",
         messages: [
           {
             role: "system",
@@ -1277,7 +1277,7 @@ Present the analysis in a structured, comprehensive format with clear sections a
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-exp-03-25",
+        model: "deepseek/deepseek-chat-v3-0324:free",
         messages: [
           {
             role: "system",
@@ -1504,7 +1504,7 @@ Present the analysis in a structured, concise format with clear sections and bul
       "X-Title": "Market Research App",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-pro-exp-03-25",
+      model: "deepseek/deepseek-chat-v3-0324:free",
       messages: [
         {
           role: "system",
