@@ -903,7 +903,7 @@ async function generateAnalysisWithStreaming(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled and reasoning tokens`);
+  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -975,11 +975,10 @@ Present the analysis in a structured, concise format with clear sections and bul
 
   try {
     // Initialize the response stream handling
-    console.log(`Starting streaming response for iteration ${iterationNumber} with reasoning tokens`);
+    console.log(`Starting streaming response for iteration ${iterationNumber}`);
     
-    // Initialize strings to collect the analysis text and reasoning text
+    // Initialize a string to collect the analysis text
     let analysisText = '';
-    let reasoningText = '';
     let chunkSequence = 0;
     
     // First, get the current iterations
@@ -1015,7 +1014,7 @@ Present the analysis in a structured, concise format with clear sections and bul
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-r1",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",
@@ -1036,11 +1035,7 @@ Your analysis should:
           }
         ],
         stream: true, // Enable streaming response
-        temperature: 0.3,
-        reasoning: {
-          effort: "high", // Allocate a high amount of tokens for reasoning
-          exclude: false  // Include reasoning in the response
-        }
+        temperature: 0.3
       })
     });
     
@@ -1103,33 +1098,11 @@ Your analysis should:
                 // Parse the JSON data
                 const jsonData = JSON.parse(data);
                 
-                if (jsonData.choices && jsonData.choices[0]) {
-                  // Check for delta content
-                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                    const content = jsonData.choices[0].delta.content;
-                    
-                    // Append to the full analysis text
-                    analysisText += content;
-                  }
+                if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                  const content = jsonData.choices[0].delta.content;
                   
-                  // Check for delta reasoning
-                  if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
-                    const reasoning = jsonData.choices[0].delta.reasoning;
-                    
-                    // Append to the full reasoning text
-                    reasoningText += reasoning;
-                  }
-                  
-                  // Or check if we have full message object
-                  if (jsonData.choices[0].message) {
-                    if (jsonData.choices[0].message.content) {
-                      analysisText += jsonData.choices[0].message.content;
-                    }
-                    
-                    if (jsonData.choices[0].message.reasoning) {
-                      reasoningText += jsonData.choices[0].message.reasoning;
-                    }
-                  }
+                  // Append to the full analysis text
+                  analysisText += content;
                   
                   // Increment chunk sequence
                   chunkSequence++;
@@ -1148,16 +1121,8 @@ Your analysis should:
                     let currentIterationIndex = updatedIterations.findIndex(iter => iter.iteration === iterationNumber);
                     
                     if (currentIterationIndex !== -1) {
-                      // Update the analysis and reasoning for this iteration
+                      // Update the analysis for this iteration
                       updatedIterations[currentIterationIndex].analysis = analysisText;
-                      
-                      // Add reasoning field if it doesn't exist
-                      if (!updatedIterations[currentIterationIndex].reasoning) {
-                        updatedIterations[currentIterationIndex].reasoning = '';
-                      }
-                      
-                      // Update reasoning text
-                      updatedIterations[currentIterationIndex].reasoning = reasoningText;
                       
                       // Update the database with the new iterations array
                       const { error: updateError } = await supabaseClient
@@ -1292,15 +1257,13 @@ Please provide a comprehensive final analysis including:
 Present the analysis in a structured, comprehensive format with clear sections and bullet points where appropriate.`;
 
   try {
-    // Initialize a string to collect the analysis text and reasoning text
+    // Initialize a string to collect the analysis text
     let finalAnalysis = '';
-    let finalReasoning = '';
     let chunkSequence = 0;
     
     // Create temporary results object for updates during streaming
     let temporaryResults = {
       analysis: '',
-      reasoning: '',
       data: []
     };
     
@@ -1314,7 +1277,7 @@ Present the analysis in a structured, comprehensive format with clear sections a
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "deepseek/deepseek-r1",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",
@@ -1335,11 +1298,7 @@ Your final analysis should:
           }
         ],
         stream: true, // Enable streaming response
-        temperature: 0.3,
-        reasoning: {
-          effort: "high", // Allocate a high amount of tokens for reasoning
-          exclude: false  // Include reasoning in the response
-        }
+        temperature: 0.3
       })
     });
     
@@ -1400,40 +1359,17 @@ Your final analysis should:
             // Parse the JSON data
             const jsonData = JSON.parse(data);
             
-            if (jsonData.choices && jsonData.choices[0]) {
-              // Check for delta content
-              if (jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                const content = jsonData.choices[0].delta.content;
-                
-                // Append to the full analysis text
-                finalAnalysis += content;
-              }
+            if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+              const content = jsonData.choices[0].delta.content;
               
-              // Check for delta reasoning
-              if (jsonData.choices[0].delta && jsonData.choices[0].delta.reasoning) {
-                const reasoning = jsonData.choices[0].delta.reasoning;
-                
-                // Append to the full reasoning text
-                finalReasoning += reasoning;
-              }
-              
-              // Or check if we have full message object
-              if (jsonData.choices[0].message) {
-                if (jsonData.choices[0].message.content) {
-                  finalAnalysis += jsonData.choices[0].message.content;
-                }
-                
-                if (jsonData.choices[0].message.reasoning) {
-                  finalReasoning += jsonData.choices[0].message.reasoning;
-                }
-              }
+              // Append to the full analysis text
+              finalAnalysis += content;
               
               // Increment chunk sequence
               chunkSequence++;
               
               // Update the temporary results
               temporaryResults.analysis = finalAnalysis;
-              temporaryResults.reasoning = finalReasoning;
               
               // Update the results in the database every few chunks to avoid too many updates
               if (chunkSequence % 5 === 0) {

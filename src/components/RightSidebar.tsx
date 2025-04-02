@@ -1,8 +1,7 @@
-
 import { Send } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
-import { Markdown } from './Markdown'
+import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
 
 export default function RightSidebar() {
@@ -11,171 +10,20 @@ export default function RightSidebar() {
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
-  const [isReconnecting, setIsReconnecting] = useState(false)
-  const [streamError, setStreamError] = useState<string | null>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
-  const chatSessionIdRef = useRef<string>(`chat-session-${Date.now()}`)
-  const retryTimeoutRef = useRef<number | null>(null)
 
   interface Message {
     type: 'user' | 'assistant'
     content?: string
-    id?: string // Add unique ID for each message
   }
 
-  useEffect(() => {
-    try {
-      const savedMessages = localStorage.getItem('chatMessages')
-      const savedStreamingContent = localStorage.getItem('streamingContent')
-      const hasStarted = localStorage.getItem('hasStartedChat')
-      
-      if (savedMessages) {
-        setMessages(JSON.parse(savedMessages))
-      }
-      
-      if (savedStreamingContent) {
-        setStreamingContent(savedStreamingContent)
-        setIsReconnecting(true)
-      }
-      
-      if (hasStarted === 'true') {
-        setHasStartedChat(true)
-      }
-    } catch (error) {
-      console.error('Error loading saved chat state:', error)
-    }
-  }, [])
-
-  useEffect(() => {
-    try {
-      if (messages.length > 0) {
-        localStorage.setItem('chatMessages', JSON.stringify(messages))
-        localStorage.setItem('hasStartedChat', String(hasStartedChat))
-      }
-    } catch (error) {
-      console.error('Error saving chat messages:', error)
-    }
-  }, [messages, hasStartedChat])
-
-  useEffect(() => {
-    try {
-      if (streamingContent) {
-        localStorage.setItem('streamingContent', streamingContent)
-      } else {
-        localStorage.removeItem('streamingContent')
-      }
-    } catch (error) {
-      console.error('Error saving streaming content:', error)
-    }
-  }, [streamingContent])
-
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if (streamingContent && isLoading) {
-        localStorage.setItem('streamingContent', streamingContent)
-      }
-    }
-
-    window.addEventListener('beforeunload', handleBeforeUnload)
+  const handleChatMessage = async (userMessage: string) => {
+    if (!userMessage.trim() || isLoading) return
     
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort()
-      }
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current)
-      }
-    }
-  }, [streamingContent, isLoading])
-
-  // Network status monitoring
-  useEffect(() => {
-    const handleOnline = () => {
-      console.log('Network is back online')
-      if (isLoading && streamingContent) {
-        setIsReconnecting(true)
-      }
-    }
-    
-    const handleOffline = () => {
-      console.log('Network is offline')
-      setStreamError('Network connection lost. Waiting to reconnect...')
-    }
-    
-    window.addEventListener('online', handleOnline)
-    window.addEventListener('offline', handleOffline)
-    
-    return () => {
-      window.removeEventListener('online', handleOnline)
-      window.removeEventListener('offline', handleOffline)
-    }
-  }, [isLoading, streamingContent])
-
-  useEffect(() => {
-    if (isReconnecting && streamingContent) {
-      const completeMessage = async () => {
-        try {
-          setIsLoading(true)
-          setMessages(prev => [...prev, { 
-            type: 'assistant' as const, 
-            content: streamingContent,
-            id: `msg-${Date.now()}`
-          }])
-          setStreamingContent('')
-          setIsReconnecting(false)
-          setStreamError(null)
-        } catch (error) {
-          console.error('Error handling reconnection:', error)
-        } finally {
-          setIsLoading(false)
-        }
-      }
-      
-      completeMessage()
-    }
-  }, [isReconnecting, streamingContent])
-
-  const retryStreamConnection = (userMessage: string) => {
-    // Clear any existing retry timeout
-    if (retryTimeoutRef.current) {
-      clearTimeout(retryTimeoutRef.current)
-    }
-    
-    console.log('Retrying stream connection...')
-    setStreamError('Reconnecting...')
-    
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort()
-    }
-    
-    // Retry after a short delay
-    retryTimeoutRef.current = window.setTimeout(() => {
-      handleChatMessage(userMessage, true)
-    }, 2000)
-  }
-
-  const handleChatMessage = async (userMessage: string, isRetry = false) => {
-    if ((!userMessage.trim() && !isRetry) || isLoading) return
-    
-    if (!isRetry) {
-      setHasStartedChat(true)
-      
-      const newMessages = [...messages, { 
-        type: 'user' as const, 
-        content: userMessage,
-        id: `msg-${Date.now()}`
-      }]
-      
-      setMessages(newMessages)
-      setChatMessage('')
-    }
-    
-    setStreamError(null)
+    setHasStartedChat(true)
     setIsLoading(true)
-    
-    let lastMessageTime = Date.now()
-    let accumulatedContent = isRetry ? streamingContent : ''
+    setMessages(prev => [...prev, { type: 'user', content: userMessage }])
+    setChatMessage('')
     
     try {
       if (abortControllerRef.current) {
@@ -188,8 +36,7 @@ export default function RightSidebar() {
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
-          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n'),
-          sessionId: chatSessionIdRef.current
+          chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
       })
 
@@ -200,18 +47,7 @@ export default function RightSidebar() {
 
       console.log('Received response from market-analysis:', data)
       
-      // Setup a heartbeat check to detect stalled streams
-      const heartbeatInterval = setInterval(() => {
-        const currentTime = Date.now()
-        const timeSinceLastMessage = currentTime - lastMessageTime
-        
-        // If no message received for 15 seconds, attempt to retry
-        if (timeSinceLastMessage > 15000 && isLoading) {
-          console.warn('Stream appears stalled, reconnecting...')
-          clearInterval(heartbeatInterval)
-          retryStreamConnection(userMessage)
-        }
-      }, 5000)
+      let accumulatedContent = ''
       
       const stream = new ReadableStream({
         start(controller) {
@@ -222,13 +58,9 @@ export default function RightSidebar() {
             reader?.read().then(({done, value}) => {
               if (done) {
                 console.log('Stream complete')
-                clearInterval(heartbeatInterval)
                 controller.close()
                 return
               }
-              
-              // Update the last message time on each chunk
-              lastMessageTime = Date.now()
               
               const chunk = textDecoder.decode(value)
               
@@ -255,17 +87,6 @@ export default function RightSidebar() {
               }
               
               push()
-            }).catch(error => {
-              clearInterval(heartbeatInterval)
-              console.error('Error reading stream:', error)
-              
-              // Only retry if we're still loading and the error isn't an abort
-              if (isLoading && error.name !== 'AbortError') {
-                setStreamError('Stream interrupted. Reconnecting...')
-                retryStreamConnection(userMessage)
-              }
-              
-              controller.error(error)
             })
           }
           
@@ -279,50 +100,22 @@ export default function RightSidebar() {
         if (done) break
       }
 
-      // Clear the heartbeat check
-      clearInterval(heartbeatInterval)
-
       setMessages(prev => [...prev, { 
-        type: 'assistant' as const, 
-        content: accumulatedContent,
-        id: `msg-${Date.now()}`
+        type: 'assistant', 
+        content: accumulatedContent 
       }])
 
     } catch (error) {
       console.error('Error in chat:', error)
-      
-      // If we already have accumulated content but hit an error, save the partial response
-      if (accumulatedContent.length > 0) {
-        console.log('Saving partial response of length:', accumulatedContent.length)
-        setMessages(prev => [...prev, { 
-          type: 'assistant' as const, 
-          content: accumulatedContent,
-          id: `msg-${Date.now()}`
-        }])
-      } else {
-        setMessages(prev => [...prev, { 
-          type: 'assistant' as const, 
-          content: 'Sorry, I encountered an error processing your request.',
-          id: `msg-${Date.now()}`
-        }])
-      }
+      setMessages(prev => [...prev, { 
+        type: 'assistant', 
+        content: 'Sorry, I encountered an error processing your request.' 
+      }])
     } finally {
       setIsLoading(false)
       setStreamingContent('')
       abortControllerRef.current = null
-      localStorage.removeItem('streamingContent')
     }
-  }
-
-  const clearChat = () => {
-    setMessages([])
-    setStreamingContent('')
-    setHasStartedChat(false)
-    setStreamError(null)
-    localStorage.removeItem('chatMessages')
-    localStorage.removeItem('streamingContent')
-    localStorage.removeItem('hasStartedChat')
-    chatSessionIdRef.current = `chat-session-${Date.now()}`
   }
 
   const defaultContent = [
@@ -354,39 +147,22 @@ export default function RightSidebar() {
           </>
         ) : (
           <div className="space-y-4 mb-20">
-            {messages.length > 0 && (
-              <div className="flex justify-end mb-2">
-                <button 
-                  onClick={clearChat}
-                  className="text-xs text-gray-400 hover:text-white transition-colors"
-                >
-                  Clear Chat
-                </button>
-              </div>
-            )}
-            
-            {messages.map((message) => (
-              <div key={message.id} className="bg-[#2c2e33] p-3 rounded-lg">
+            {messages.map((message, index) => (
+              <div key={index} className="bg-[#2c2e33] p-3 rounded-lg">
                 {message.type === 'user' ? (
                   <p className="text-white text-sm">{message.content}</p>
                 ) : (
-                  <Markdown>
+                  <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
                     {message.content || ''}
-                  </Markdown>
+                  </ReactMarkdown>
                 )}
               </div>
             ))}
             {streamingContent && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
-                <Markdown>
+                <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
                   {streamingContent}
-                  <span className="animate-pulse">▌</span>
-                </Markdown>
-              </div>
-            )}
-            {streamError && (
-              <div className="bg-red-900/20 border border-red-900 p-2 rounded text-xs text-red-300">
-                {streamError}
+                </ReactMarkdown>
               </div>
             )}
             {isLoading && !streamingContent && (
