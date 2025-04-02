@@ -1,7 +1,7 @@
+
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.23.0';
-import { OpenAI } from "https://esm.sh/openai@4.20.1";
 import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.49/deno-dom-wasm.ts';
 
 interface ResearchJob {
@@ -24,9 +24,6 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const openAIKey = Deno.env.get('OPENAI_API_KEY') ?? '';
 
-const openAI = new OpenAI({
-  apiKey: openAIKey
-});
 const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
 serve(async (req) => {
