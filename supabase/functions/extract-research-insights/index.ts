@@ -11,7 +11,7 @@ interface RelatedMarket {
 
 interface InsightsRequest {
   webContent: string;
-  analysis?: string; // Make analysis optional
+  analysis: string;
   marketId?: string; 
   marketQuestion?: string;
   previousAnalyses?: string[];
@@ -50,7 +50,7 @@ serve(async (req) => {
     
     console.log(`Extract insights request for market ID ${marketId || 'unknown'}:`, {
       webContentLength: webContent?.length || 0,
-      analysisLength: analysis?.length || 0, // This might be undefined now
+      analysisLength: analysis?.length || 0,
       marketQuestion: marketQuestion?.substring(0, 100) || 'Not provided',
       previousAnalysesCount: previousAnalyses?.length || 0,
       iterationsCount: iterations?.length || 0,
@@ -79,10 +79,9 @@ serve(async (req) => {
       ? webContent.substring(0, contentLimit) + "... [content truncated]" 
       : webContent;
     
-    // Only use analysis if it exists
-    const truncatedAnalysis = analysis && analysis.length > 10000 
+    const truncatedAnalysis = analysis.length > 10000 
       ? analysis.substring(0, 10000) + "... [analysis truncated]" 
-      : analysis || ''; // Set to empty string if undefined
+      : analysis;
 
     const previousAnalysesContext = previousAnalyses && previousAnalyses.length > 0
       ? `Previous iteration analyses:
@@ -168,25 +167,17 @@ IMPORTANT:
 - Each evidence point should be a complete, well-reasoned argument, not just a simple statement.
 - Evaluate the temporal relevance of all evidence - clearly indicate when information may be outdated relative to today (${currentDate}).${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
 
-    // Modify the prompt to handle case where analysis is not provided
-    let prompt = `Here is the web content I've collected during research:
+    const prompt = `Here is the web content I've collected during research:
 ---
 ${truncatedContent}
 ---
 
-`;
-
-    // Only include analysis section if analysis is provided
-    if (analysis) {
-      prompt += `And here is my analysis of this content:
+And here is my analysis of this content:
 ---
 ${truncatedAnalysis}
 ---
 
-`;
-    }
-
-    prompt += `${previousAnalysesContext}
+${previousAnalysesContext}
 
 TODAY'S DATE: ${currentDate}
 

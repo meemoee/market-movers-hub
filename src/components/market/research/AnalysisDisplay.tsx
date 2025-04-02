@@ -4,13 +4,13 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
 interface AnalysisDisplayProps {
-  content?: string  // Make content optional
+  content: string
   isStreaming?: boolean
   maxHeight?: string | number
 }
 
 export function AnalysisDisplay({ 
-  content = '', // Provide default empty string
+  content, 
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
