@@ -707,6 +707,22 @@ export type Database = {
         }
         Returns: string
       }
+      append_iteration_field_text: {
+        Args: {
+          job_id: string
+          iteration_num: number
+          field_key: string
+          append_text: string
+        }
+        Returns: undefined
+      }
+      append_progress_log: {
+        Args: {
+          job_id: string
+          log_message: string
+        }
+        Returns: undefined
+      }
       append_research_iteration: {
         Args: {
           job_id: string
@@ -862,6 +878,15 @@ export type Database = {
         Returns: {
           market_id: string
         }[]
+      }
+      update_iteration_field: {
+        Args: {
+          job_id: string
+          iteration_num: number
+          field_key: string
+          field_value: string
+        }
+        Returns: undefined
       }
       update_research_job_status: {
         Args: {
