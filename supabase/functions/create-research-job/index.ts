@@ -1,8 +1,7 @@
-
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.23.0';
-import { OpenAI } from "https://deno.land/x/openai@v4.4.0/mod.ts";
+import { OpenAI } from "https://esm.sh/openai@4.20.1";
 import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.49/deno-dom-wasm.ts';
 
 interface ResearchJob {
@@ -25,7 +24,9 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const supabaseKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const openAIKey = Deno.env.get('OPENAI_API_KEY') ?? '';
 
-const openAI = new OpenAI(openAIKey);
+const openAI = new OpenAI({
+  apiKey: openAIKey
+});
 const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
 serve(async (req) => {
@@ -74,7 +75,6 @@ async function performWebResearch(job: ResearchJob) {
   let allAreasForResearch: string[] = [];
 
   try {
-    // Initialize job status
     await supabaseClient
       .from('research_jobs')
       .update({ status: 'running' })
@@ -82,17 +82,14 @@ async function performWebResearch(job: ResearchJob) {
 
     console.log(`Starting research for market "${marketQuestion}" (ID: ${marketId}), focus: "${focusArea}"`);
 
-    // Perform the web research iterations
     for (let i = 0; i < job.max_iterations; i++) {
       console.log(`Iteration ${i + 1}: Querying the web with "${currentQuery}"`);
 
-      // Update job status with current iteration
       await supabaseClient
         .from('research_jobs')
         .update({ current_iteration: i + 1 })
         .eq('id', jobId);
 
-      // Call the web-research function
       const webResearchResponse = await fetch(Deno.env.get('WEB_RESEARCH_URL') ?? '', {
         method: 'POST',
         headers: {
@@ -113,7 +110,6 @@ async function performWebResearch(job: ResearchJob) {
 
       console.log(`Web research completed. Found ${webResearchData.results.length} results.`);
 
-      // Call the analysis function
       const analysisResponse = await fetch(Deno.env.get('ANALYZE_WEBPAGE_URL') ?? '', {
         method: 'POST',
         headers: {
@@ -138,7 +134,6 @@ async function performWebResearch(job: ResearchJob) {
 
       console.log(`Analysis completed. Analysis length: ${analysis.length}`);
 
-      // Call the next query function
       const nextQueryResponse = await fetch(Deno.env.get('GENERATE_NEXT_QUERY_URL') ?? '', {
         method: 'POST',
         headers: {
@@ -176,7 +171,6 @@ async function performWebResearch(job: ResearchJob) {
       allAreasForResearch.push(...areasForResearch);
     }
 
-    // Create insights payload without the analysis field
     const insightsPayload = {
       webContent: iterationResults.map(r => r.content || '').join('\n\n'),
       marketId: job.market_id,
@@ -190,7 +184,6 @@ async function performWebResearch(job: ResearchJob) {
       relatedMarkets: job.related_markets
     };
 
-    // Extract insights from the collected data
     console.log('Extracting structured insights from research data...');
     
     const extractInsightsResponse = await fetch(Deno.env.get('EXTRACT_RESEARCH_INSIGHTS_URL') ?? '', {
@@ -210,7 +203,6 @@ async function performWebResearch(job: ResearchJob) {
 
     const structuredInsights = await extractInsightsResponse.json();
 
-    // Update final results without the analysis field
     const finalResults = {
       structuredInsights: structuredInsights,
       data: {
@@ -219,7 +211,6 @@ async function performWebResearch(job: ResearchJob) {
       }
     };
 
-    // Update job status with final results
     await supabaseClient
       .from('research_jobs')
       .update({ 
@@ -234,7 +225,6 @@ async function performWebResearch(job: ResearchJob) {
   } catch (error) {
     console.error(`Error during research job ${jobId}:`, error);
 
-    // Update job status to failed
     await supabaseClient
       .from('research_jobs')
       .update({ status: 'failed', error_message: error.message })
