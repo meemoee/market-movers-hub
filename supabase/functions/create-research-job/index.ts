@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -448,149 +447,14 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       }
     }
     
-    // Generate final analysis with OpenRouter
+    // SIMPLIFIED APPROACH: Skip generating final analysis - just use empty string
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify(`Generating final analysis of ${allResults.length} total results...`)
+      progress_entry: JSON.stringify(`Skipping final analysis generation to improve performance...`)
     });
     
+    // Just set an empty final analysis instead of generating one
     let finalAnalysis = "";
-    try {
-      // Combine all content from the results
-      const allContent = allResults
-        .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
-        .join('\n\n');
-      
-      // Get market price for final analysis
-      let marketPrice = undefined;
-      try {
-        const { data: priceData } = await supabaseClient
-          .from('market_prices')
-          .select('last_traded_price')
-          .eq('market_id', marketId)
-          .order('timestamp', { ascending: false })
-          .limit(1);
-          
-        if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
-          marketPrice = Math.round(priceData[0].last_traded_price * 100);
-          console.log(`Found market price for final analysis ${marketId}: ${marketPrice}%`);
-        }
-      } catch (priceError) {
-        console.error(`Error fetching market price for final analysis ${marketId}:`, priceError);
-      }
-      
-      // Try to get related markets for final analysis
-      const relatedMarkets = [];
-      try {
-        const { data: relatedData } = await supabaseClient
-          .from('related_markets')
-          .select('related_market_id, relationship_strength')
-          .eq('market_id', marketId)
-          .order('relationship_strength', { ascending: false })
-          .limit(5);
-          
-        if (relatedData && relatedData.length > 0) {
-          for (const relation of relatedData) {
-            try {
-              // Get market details
-              const { data: marketData } = await supabaseClient
-                .from('markets')
-                .select('question')
-                .eq('id', relation.related_market_id)
-                .single();
-                
-              // Get market price
-              const { data: priceData } = await supabaseClient
-                .from('market_prices')
-                .select('last_traded_price')
-                .eq('market_id', relation.related_market_id)
-                .order('timestamp', { ascending: false })
-                .limit(1);
-                
-              if (marketData && priceData && priceData.length > 0) {
-                relatedMarkets.push({
-                  market_id: relation.related_market_id,
-                  question: marketData.question,
-                  probability: priceData[0].last_traded_price
-                });
-              }
-            } catch (relatedError) {
-              console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
-            }
-          }
-        }
-      } catch (relatedError) {
-        console.error(`Error fetching related markets for final analysis ${marketId}:`, relatedError);
-      }
-      
-      // Get all areas for research that may have been identified in previous iterations
-      const areasForResearch = [];
-      try {
-        for (const iteration of allIterations) {
-          if (iteration.analysis) {
-            // Look for a section with "areas for further research" or similar
-            const analysisText = iteration.analysis.toLowerCase();
-            if (analysisText.includes("areas for further research") || 
-                analysisText.includes("further research needed") ||
-                analysisText.includes("additional research")) {
-              // Extract areas if possible
-              const lines = iteration.analysis.split('\n');
-              let inAreaSection = false;
-              
-              for (const line of lines) {
-                if (!inAreaSection) {
-                  if (line.toLowerCase().includes("areas for") || 
-                      line.toLowerCase().includes("further research") ||
-                      line.toLowerCase().includes("additional research")) {
-                    inAreaSection = true;
-                  }
-                } else if (line.trim().length === 0 || line.startsWith('#')) {
-                  inAreaSection = false;
-                } else if (line.startsWith('-') || line.startsWith('*') || 
-                           (line.match(/^\d+\.\s/) !== null)) {
-                  const area = line.replace(/^[-*\d.]\s+/, '').trim();
-                  if (area && !areasForResearch.includes(area)) {
-                    areasForResearch.push(area);
-                  }
-                }
-              }
-            }
-          }
-        }
-      } catch (areasError) {
-        console.error(`Error extracting areas for research:`, areasError);
-      }
-      
-      // Collect all previous analyses
-      const previousAnalyses = allIterations
-        .filter(iter => iter.analysis)
-        .map(iter => iter.analysis);
-      
-      if (allContent.length > 0) {
-        // Generate final analysis with streaming for real-time updates
-        finalAnalysis = await generateFinalAnalysisWithStreaming(
-          supabaseClient,
-          jobId,
-          allContent, 
-          query, 
-          marketPrice,
-          relatedMarkets,
-          areasForResearch,
-          focusText,
-          previousAnalyses
-        );
-      } else {
-        finalAnalysis = `No content was collected for analysis regarding "${query}".`;
-      }
-    } catch (analysisError) {
-      console.error(`Error generating final analysis for job ${jobId}:`, analysisError);
-      finalAnalysis = `Error generating analysis: ${analysisError.message}`;
-      
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Error generating final analysis: ${analysisError.message}`)
-      });
-    }
     
     // Create final results object with the text analysis
     const textAnalysisResults = {
@@ -729,7 +593,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       // Prepare payload with all the same information as non-background research
       const insightsPayload = {
         webContent: webContentWithAnalyses,
-        analysis: finalAnalysis,
+        analysis: finalAnalysis, // Pass empty string but keep the field
         marketId: marketId,
         marketQuestion: query,
         previousAnalyses: previousAnalyses,
@@ -823,7 +687,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       };
     }
     
-    // Combine text analysis and structured insights
+    // Combine text analysis and structured insights - keep the original structure
     const finalResults = {
       ...textAnalysisResults,
       structuredInsights: structuredInsights
