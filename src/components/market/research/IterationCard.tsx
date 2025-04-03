@@ -34,8 +34,10 @@ export function IterationCard({
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
   
+  // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
     if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
+      // Add a small delay to let the user see the completed results before collapsing
       const timer = setTimeout(() => {
         onToggleExpand();
       }, 1500);
@@ -84,17 +86,11 @@ export function IterationCard({
             
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                {iteration.analysis && iteration.analysis.trim() !== "" ? (
-                  <AnalysisDisplay 
-                    content={iteration.analysis} 
-                    isStreaming={isStreaming && isCurrentIteration}
-                    maxHeight="100%"
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-muted-foreground">
-                    {isStreaming && isCurrentIteration ? "Analysis in progress..." : "No analysis available for this iteration"}
-                  </div>
-                )}
+                <AnalysisDisplay 
+                  content={iteration.analysis || "Analysis in progress..."} 
+                  isStreaming={isStreaming && isCurrentIteration}
+                  maxHeight="100%"
+                />
               </TabsContent>
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
