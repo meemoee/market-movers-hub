@@ -33,6 +33,7 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
+  const hasAnalysis = iteration.analysis && iteration.analysis.trim().length > 0
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
@@ -45,6 +46,13 @@ export function IterationCard({
       return () => clearTimeout(timer);
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+
+  // If no analysis and we're on analysis tab, switch to sources tab
+  useEffect(() => {
+    if (activeTab === "analysis" && !hasAnalysis) {
+      setActiveTab("sources");
+    }
+  }, [activeTab, hasAnalysis]);
 
   return (
     <div className={cn(
@@ -66,7 +74,7 @@ export function IterationCard({
             {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
+            {isFinalIteration && hasAnalysis ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
         </div>
         {isExpanded ? 
@@ -79,19 +87,21 @@ export function IterationCard({
         <div className="p-3 w-full max-w-full">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
             <TabsList className="w-full grid grid-cols-3 mb-3">
-              <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
+              {hasAnalysis && <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>}
               <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
               <TabsTrigger value="queries" className="text-xs">Queries ({iteration.queries.length})</TabsTrigger>
             </TabsList>
             
             <div className="tab-content-container h-[200px] w-full">
-              <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
-                  isStreaming={isStreaming && isCurrentIteration}
-                  maxHeight="100%"
-                />
-              </TabsContent>
+              {hasAnalysis && (
+                <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
+                  <AnalysisDisplay 
+                    content={iteration.analysis} 
+                    isStreaming={isStreaming && isCurrentIteration}
+                    maxHeight="100%"
+                  />
+                </TabsContent>
+              )}
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
                 <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">

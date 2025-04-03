@@ -301,7 +301,8 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          throw new Error(`Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
+          return;
         }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
@@ -863,7 +864,7 @@ export function JobQueueResearchCard({
             <SitePreviewList results={results} />
           </div>
           
-          {analysis && (
+          {analysis && analysis.trim().length > 0 && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
               <AnalysisDisplay content={analysis} />
