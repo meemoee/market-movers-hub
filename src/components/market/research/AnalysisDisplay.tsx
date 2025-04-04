@@ -45,9 +45,14 @@ export function AnalysisDisplay({
     // Auto-scroll if content is growing and user hasn't scrolled up
     if (currentContentLength > prevContentLength.current && shouldAutoScroll) {
       requestAnimationFrame(() => {
-        // Scroll the viewport, not the container
-        viewport.scrollTop = viewport.scrollHeight
-        console.log(`AnalysisDisplay: Scrolled viewport to bottom - height: ${viewport.scrollHeight}`);
+        // Use setTimeout to push scroll to the end of the event loop tick
+        setTimeout(() => {
+          if (viewport && shouldAutoScroll) { // Re-check viewport and shouldAutoScroll in case state changed
+            console.log(`AnalysisDisplay: Attempting scroll - Viewport scrollHeight: ${viewport.scrollHeight}, clientHeight: ${viewport.clientHeight}, scrollTop: ${viewport.scrollTop}`);
+            viewport.scrollTop = viewport.scrollHeight;
+            console.log(`AnalysisDisplay: Scrolled viewport to bottom (after timeout) - new scrollTop: ${viewport.scrollTop}, scrollHeight: ${viewport.scrollHeight}`);
+          }
+        }, 0); 
       })
     }
     
@@ -75,13 +80,24 @@ export function AnalysisDisplay({
 
     const handleScroll = () => {
       // Calculate based on the viewport's properties
-      const isAtBottom = Math.abs(
-        (viewport.scrollHeight - viewport.clientHeight) - 
-        viewport.scrollTop
-      ) < 30 // Small threshold for "close enough" to bottom
+      const scrollThreshold = 30; // Pixels from bottom to consider "at bottom"
+      const scrollPosition = viewport.scrollTop;
+      const totalHeight = viewport.scrollHeight;
+      const visibleHeight = viewport.clientHeight;
+      
+      // Check if scrollable at all
+      if (totalHeight <= visibleHeight) {
+        if (!shouldAutoScroll) {
+          console.log(`AnalysisDisplay: Viewport not scrollable (height <= clientHeight), enabling auto-scroll.`);
+          setShouldAutoScroll(true); // Re-enable if not scrollable
+        }
+        return; 
+      }
+
+      const isAtBottom = Math.abs((totalHeight - visibleHeight) - scrollPosition) < scrollThreshold;
       
       if (shouldAutoScroll !== isAtBottom) {
-        console.log(`AnalysisDisplay: Auto-scroll changed to ${isAtBottom} based on viewport scroll`);
+        console.log(`AnalysisDisplay: Scroll event - scrollHeight: ${totalHeight}, clientHeight: ${visibleHeight}, scrollTop: ${scrollPosition.toFixed(1)}. Auto-scroll changed to ${isAtBottom}`);
         setShouldAutoScroll(isAtBottom);
       }
     }
