@@ -36,18 +36,21 @@ export function AnalysisDisplay({
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
-    // Only auto-scroll if content is growing or streaming
-    if (currentContentLength > prevContentLength.current || isStreaming) {
+    // Only auto-scroll if content is growing AND not streaming (continuous scroll handles streaming)
+    if (currentContentLength > prevContentLength.current && !isStreaming) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
-          console.log(`AnalysisDisplay: Scrolled to bottom - height: ${scrollContainer.scrollHeight}`);
+          console.log(`AnalysisDisplay: Scrolled to bottom (non-streaming) - height: ${scrollContainer.scrollHeight}`);
         }
-        setLastUpdateTime(Date.now())
       })
-      
-      if (isStreaming) {
-        setStreamStatus('streaming')
+    }
+    
+    // Update stream status based on isStreaming prop
+    if (isStreaming) {
+      // Update last update time whenever content changes during streaming
+      if (currentContentLength > prevContentLength.current) {
+        setLastUpdateTime(Date.now())
       }
     }
     
