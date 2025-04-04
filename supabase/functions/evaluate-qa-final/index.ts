@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -20,13 +19,6 @@ serve(async (req) => {
     
     console.log(`Evaluating QA for market question: ${questionToUse?.substring(0, 50)}...`);
     console.log(`QA context length: ${qaContext?.length || 0}, has research context: ${!!researchContext}, is continuation: ${!!isContinuation}, has history context: ${!!historyContext}`);
-
-    // Send an initial event to indicate that extraction has started
-    const initialEvent = new TextEncoder().encode(`data: {"isExtracting": true}\n\n`);
-    const responseStream = new TransformStream();
-    const writer = responseStream.writable.getWriter();
-    writer.write(initialEvent);
-    writer.releaseLock();
 
     const openRouterKey = Deno.env.get('OPENROUTER_API_KEY')
     if (!openRouterKey) {
@@ -108,15 +100,11 @@ Format your response as JSON with these fields:
               if (collectingData) {
                 try {
                   const parsed = JSON.parse(jsonData);
-                  // Add isExtracting: false to indicate extraction is complete
-                  parsed.isExtracting = false;
                   controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsed)}\n\n`));
                 } catch (err) {
                   console.error("Error parsing final collected JSON:", err);
-                  controller.enqueue(new TextEncoder().encode(`data: {"error": "Failed to parse JSON", "isExtracting": false}\n\n`));
+                  controller.enqueue(new TextEncoder().encode(`data: {"error": "Failed to parse JSON"}\n\n`));
                 }
-              } else {
-                controller.enqueue(new TextEncoder().encode(`data: {"isExtracting": false}\n\n`));
               }
               continue;
             }
@@ -135,15 +123,13 @@ Format your response as JSON with these fields:
                   jsonData += content;
                 } else {
                   // If we're not collecting JSON yet, emit the content directly
-                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({content, isExtracting: true})}\n\n`));
+                  controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({content})}\n\n`));
                 }
                 
                 // Check if we have complete JSON
                 if (collectingData && jsonData.trim().endsWith('}')) {
                   try {
                     const parsedJson = JSON.parse(jsonData);
-                    // Add isExtracting: false when we have complete JSON
-                    parsedJson.isExtracting = false;
                     console.log("Collected complete JSON:", JSON.stringify(parsedJson).substring(0, 100) + "...");
                     controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(parsedJson)}\n\n`));
                     collectingData = false;
@@ -216,36 +202,7 @@ Format your response as JSON with these fields:
       }
     });
 
-    // Combine our initial responseStream with the transformed API response
-    const combinedStream = new ReadableStream({
-      start(controller) {
-        // First pipe the response through our transform
-        const reader = response.body?.pipeThrough(transformStream).getReader();
-        
-        if (!reader) {
-          controller.close();
-          return;
-        }
-
-        function pump() {
-          reader.read().then(({ done, value }) => {
-            if (done) {
-              controller.close();
-              return;
-            }
-            controller.enqueue(value);
-            pump();
-          }).catch(err => {
-            console.error("Error reading from stream:", err);
-            controller.error(err);
-          });
-        }
-        
-        pump();
-      }
-    });
-
-    return new Response(combinedStream, {
+    return new Response(response.body?.pipeThrough(transformStream), {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
@@ -259,8 +216,7 @@ Format your response as JSON with these fields:
       error: error.message,
       probability: "50%",
       areasForResearch: ["Error analysis", "Technical issues"],
-      analysis: "An error occurred during analysis. Please try again.",
-      isExtracting: false
+      analysis: "An error occurred during analysis. Please try again."
     };
     
     return new Response(

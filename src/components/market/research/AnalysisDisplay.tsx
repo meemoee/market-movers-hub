@@ -27,35 +27,24 @@ export function AnalysisDisplay({
     }
   }, [content, isStreaming]);
   
-  // More aggressive scrolling during streaming
+  // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
     
     const scrollContainer = scrollRef.current
-    const viewportElement = scrollContainer.querySelector('[data-radix-scroll-area-viewport]')
     const currentContentLength = content?.length || 0
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
     // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
-      if (viewportElement) {
-        // Direct viewport access for more reliable scrolling
-        requestAnimationFrame(() => {
-          viewportElement.scrollTop = viewportElement.scrollHeight
-          console.log(`AnalysisDisplay: Scrolled viewport to bottom - height: ${viewportElement.scrollHeight}`);
-          setLastUpdateTime(Date.now())
-        })
-      } else {
-        // Fallback to the container if viewport not found
-        requestAnimationFrame(() => {
-          if (scrollContainer) {
-            scrollContainer.scrollTop = scrollContainer.scrollHeight
-            console.log(`AnalysisDisplay: Scrolled container to bottom - height: ${scrollContainer.scrollHeight}`);
-          }
-          setLastUpdateTime(Date.now())
-        })
-      }
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+          console.log(`AnalysisDisplay: Scrolled to bottom - height: ${scrollContainer.scrollHeight}`);
+        }
+        setLastUpdateTime(Date.now())
+      })
       
       if (isStreaming) {
         setStreamStatus('streaming')
@@ -70,15 +59,12 @@ export function AnalysisDisplay({
     if (!scrollRef.current) return
     
     const scrollContainer = scrollRef.current
-    const viewportElement = scrollContainer.querySelector('[data-radix-scroll-area-viewport]')
-    
-    const handleScroll = (e: Event) => {
-      const target = e.target as HTMLElement
+    const handleScroll = () => {
       // If user has scrolled up, disable auto-scroll
       // If they scroll to the bottom, re-enable it
       const isAtBottom = Math.abs(
-        (target.scrollHeight - target.clientHeight) - 
-        target.scrollTop
+        (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
+        scrollContainer.scrollTop
       ) < 30 // Small threshold for "close enough" to bottom
       
       if (shouldAutoScroll !== isAtBottom) {
@@ -87,13 +73,8 @@ export function AnalysisDisplay({
       }
     }
     
-    if (viewportElement) {
-      viewportElement.addEventListener('scroll', handleScroll)
-      return () => viewportElement.removeEventListener('scroll', handleScroll)
-    } else {
-      scrollContainer.addEventListener('scroll', handleScroll)
-      return () => scrollContainer.removeEventListener('scroll', handleScroll)
-    }
+    scrollContainer.addEventListener('scroll', handleScroll)
+    return () => scrollContainer.removeEventListener('scroll', handleScroll)
   }, [])
   
   // Check for inactive streaming with longer intervals
@@ -128,17 +109,10 @@ export function AnalysisDisplay({
     let rafId: number
     
     const scrollToBottom = () => {
-      if (!scrollRef.current || !shouldAutoScroll) return
-      
-      const viewportElement = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]')
-      
-      if (viewportElement) {
-        viewportElement.scrollTop = viewportElement.scrollHeight
-      } else if (scrollRef.current) {
+      if (scrollRef.current && shouldAutoScroll) {
         scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        rafId = requestAnimationFrame(scrollToBottom)
       }
-      
-      rafId = requestAnimationFrame(scrollToBottom)
     }
     
     rafId = requestAnimationFrame(scrollToBottom)
@@ -185,12 +159,7 @@ export function AnalysisDisplay({
           onClick={() => {
             setShouldAutoScroll(true);
             if (scrollRef.current) {
-              const viewportElement = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]')
-              if (viewportElement) {
-                viewportElement.scrollTop = viewportElement.scrollHeight
-              } else {
-                scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-              }
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
             }
           }}
           className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
