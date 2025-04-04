@@ -27,7 +27,7 @@ export function AnalysisDisplay({
     }
   }, [content, isStreaming]);
   
-  // Optimize scrolling with less frequent updates
+  // Force scroll to bottom on content updates with multiple attempts
   useLayoutEffect(() => {
     const scrollContainer = scrollRef.current
     if (!scrollContainer || !shouldAutoScroll) return
@@ -44,16 +44,17 @@ export function AnalysisDisplay({
     
     // Auto-scroll if content is growing and user hasn't scrolled up
     if (currentContentLength > prevContentLength.current && shouldAutoScroll) {
-      requestAnimationFrame(() => {
-        // Use setTimeout to push scroll to the end of the event loop tick
+      // Make multiple scroll attempts with increasing delays
+      const scrollTimes = [0, 10, 50, 100, 300, 500];
+      
+      scrollTimes.forEach(delay => {
         setTimeout(() => {
-          if (viewport && shouldAutoScroll) { // Re-check viewport and shouldAutoScroll in case state changed
-            console.log(`AnalysisDisplay: Attempting scroll - Viewport scrollHeight: ${viewport.scrollHeight}, clientHeight: ${viewport.clientHeight}, scrollTop: ${viewport.scrollTop}`);
+          if (viewport && shouldAutoScroll) {
             viewport.scrollTop = viewport.scrollHeight;
-            console.log(`AnalysisDisplay: Scrolled viewport to bottom (after timeout) - new scrollTop: ${viewport.scrollTop}, scrollHeight: ${viewport.scrollHeight}`);
+            console.log(`AnalysisDisplay: Scrolled to bottom with delay ${delay}ms - scrollTop: ${viewport.scrollTop}, scrollHeight: ${viewport.scrollHeight}`);
           }
-        }, 0); 
-      })
+        }, delay);
+      });
     }
     
     // Update stream status based on isStreaming prop
@@ -66,6 +67,33 @@ export function AnalysisDisplay({
     
     prevContentLength.current = currentContentLength
   }, [content, isStreaming, shouldAutoScroll])
+  
+  // Set up ResizeObserver to detect content changes and scroll accordingly
+  useEffect(() => {
+    const scrollContainer = scrollRef.current
+    if (!scrollContainer) return
+
+    const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]')
+    if (!viewport) return;
+    
+    // Create a resize observer to detect content changes
+    const resizeObserver = new ResizeObserver(() => {
+      if (shouldAutoScroll) {
+        viewport.scrollTop = viewport.scrollHeight;
+        console.log(`AnalysisDisplay: Scrolled due to resize - new scrollTop: ${viewport.scrollTop}`);
+      }
+    });
+    
+    // Observe the content area for size changes
+    const content = viewport.firstElementChild;
+    if (content) {
+      resizeObserver.observe(content);
+    }
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [shouldAutoScroll]);
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
