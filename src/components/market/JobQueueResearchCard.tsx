@@ -11,7 +11,7 @@ import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
-import { InsightsDisplay } from "./research/InsightsDisplay"
+import { InsightsDisplay } from "./market/insights/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
@@ -301,7 +301,8 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          throw new Error(`Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
+          return;
         }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
@@ -866,7 +867,10 @@ export function JobQueueResearchCard({
           {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
+              <AnalysisDisplay 
+                content={analysis} 
+                isStreaming={jobStatus === 'processing'} 
+              />
             </div>
           )}
         </>
