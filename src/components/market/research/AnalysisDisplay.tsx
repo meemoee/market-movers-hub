@@ -36,8 +36,8 @@ export function AnalysisDisplay({
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
-    // Only auto-scroll if content is growing AND not streaming (continuous scroll handles streaming)
-    if (currentContentLength > prevContentLength.current && !isStreaming) {
+    // Auto-scroll if content is growing and user hasn't scrolled up
+    if (currentContentLength > prevContentLength.current && shouldAutoScroll) {
       requestAnimationFrame(() => {
         if (scrollContainer) {
           scrollContainer.scrollTop = scrollContainer.scrollHeight
@@ -102,29 +102,6 @@ export function AnalysisDisplay({
     
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime, streamStatus])
-  
-  // For continuous smooth scrolling during active streaming
-  useEffect(() => {
-    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
-    
-    console.log(`AnalysisDisplay: Setting up continuous scroll for streaming`);
-    
-    let rafId: number
-    
-    const scrollToBottom = () => {
-      if (scrollRef.current && shouldAutoScroll) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-        rafId = requestAnimationFrame(scrollToBottom)
-      }
-    }
-    
-    rafId = requestAnimationFrame(scrollToBottom)
-    
-    return () => {
-      console.log(`AnalysisDisplay: Cleaning up continuous scroll`);
-      cancelAnimationFrame(rafId);
-    }
-  }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
 
