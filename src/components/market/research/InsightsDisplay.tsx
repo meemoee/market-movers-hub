@@ -1,8 +1,7 @@
-
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle } from "lucide-react"
+import { InfoIcon, LightbulbIcon, Target, TrendingUpIcon, ArrowRightCircle, ArrowLeftIcon, GitBranch, CheckCircle, XCircle, LoaderCircle } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
 interface ReasoningData {
@@ -23,6 +22,7 @@ interface StreamingState {
       difference: string;
     }> | null;
   } | null;
+  isExtracting?: boolean;
 }
 
 interface MarketData {
@@ -60,6 +60,7 @@ export function InsightsDisplay({
   if (!streamingState.parsedData) return null;
 
   const { probability, areasForResearch, reasoning, goodBuyOpportunities } = streamingState.parsedData;
+  const isExtracting = streamingState.isExtracting;
   
   const hasErrorInProbability = 
     !probability || 
@@ -150,10 +151,23 @@ export function InsightsDisplay({
             <h3 className="text-base font-semibold">
               {isResolved ? 'Market Status' : 'Probability Estimate'}
             </h3>
+            
+            {isExtracting && (
+              <div className="ml-auto flex items-center gap-2 text-muted-foreground text-sm">
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+                <span>Extracting probability...</span>
+              </div>
+            )}
           </div>
           <div className="mt-3 flex items-center gap-3">
             <div className="text-3xl font-bold bg-gradient-to-br from-primary to-primary/70 bg-clip-text text-transparent">
-              {probability}
+              {isExtracting ? (
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-8 w-24 bg-accent/20" />
+                </div>
+              ) : (
+                probability
+              )}
             </div>
             <div className="text-sm text-muted-foreground">
               {isResolved 
@@ -165,7 +179,6 @@ export function InsightsDisplay({
           {goodBuyOpportunities && goodBuyOpportunities.length > 0 && (
             <div className="mt-4 space-y-3">
               {goodBuyOpportunities.map((opportunity, index) => {
-                // Calculate the potential multiplier
                 const potentialMultiplier = opportunity.predictedProbability / opportunity.marketPrice;
                 const formattedMultiplier = potentialMultiplier.toFixed(1);
                 
