@@ -1,3 +1,4 @@
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -647,7 +648,12 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         try {
           // If it's a string (JSON string), parse it
           if (typeof structuredInsights.choices[0].message.content === 'string') {
-            structuredInsights = JSON.parse(structuredInsights.choices[0].message.content);
+            try {
+              structuredInsights = JSON.parse(structuredInsights.choices[0].message.content);
+            } catch (parseError) {
+              console.error('Error parsing job.results string:', parseError);
+              throw new Error('Invalid results format (string parsing failed)');
+            }
           } else {
             // If it's already an object, use it directly
             structuredInsights = structuredInsights.choices[0].message.content;
@@ -745,7 +751,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
   }
 }
 
-// NEW IMPLEMENTATION: Function to generate analysis with streaming using OpenRouter
+// Function to generate analysis with streaming using OpenRouter
 async function generateAnalysisWithStreaming(
   supabaseClient: any,
   jobId: string,
@@ -881,4 +887,191 @@ Present the analysis in a structured, concise format with clear sections and bul
           {
             role: "system",
             content: `You are an expert market research analyst who specializes in providing insightful, non-repetitive analysis. 
-When presented with a research query${focus
+When presented with a research query and focus area, you will analyze information and provide structured, evidence-based insights.`
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        stream: true,
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status} ${response.statusText}`);
+    }
+    
+    if (!response.body) {
+      throw new Error('OpenRouter API returned an empty response body');
+    }
+    
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    
+    // Process the stream
+    let completeResponse = '';
+    
+    while (true) {
+      const { done, value } = await reader.read();
+      
+      if (done) {
+        break;
+      }
+      
+      const chunk = decoder.decode(value, { stream: true });
+      
+      // Process each line (chunk might have multiple data lines)
+      const lines = chunk.split('\n');
+      
+      for (const line of lines) {
+        if (line.trim().startsWith('data: ')) {
+          const content = line.slice(6).trim();
+          
+          if (content === '[DONE]') {
+            continue;
+          }
+          
+          try {
+            const parsed = JSON.parse(content);
+            
+            if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+              // Extract content from delta
+              const contentDelta = parsed.choices[0].delta.content;
+              completeResponse += contentDelta;
+              analysisText += contentDelta;
+              
+              // Insert into analysis_stream table for debug/logging
+              await supabaseClient.from('analysis_stream').insert({
+                job_id: jobId,
+                sequence: chunkSequence++,
+                chunk: contentDelta,
+                iteration: iterationNumber
+              });
+              
+              // Update the iteration analysis in the research_jobs table
+              const updatedIterationData = [...iterations];
+              updatedIterationData[iterationIndex].analysis = analysisText;
+              
+              await supabaseClient
+                .from('research_jobs')
+                .update({ iterations: updatedIterationData })
+                .eq('id', jobId);
+            }
+          } catch (e) {
+            console.error('Error parsing streaming response chunk:', e);
+          }
+        }
+      }
+    }
+    
+    console.log(`Completed streaming for iteration ${iterationNumber}, total response length: ${completeResponse.length}`);
+    
+    return analysisText;
+  } catch (error) {
+    console.error(`Error in generateAnalysisWithStreaming:`, error);
+    throw error;
+  }
+}
+
+// Main handler for HTTP requests
+serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, {
+      headers: corsHeaders,
+    })
+  }
+  
+  try {
+    // Extract request payload
+    const payload = await req.json()
+    
+    // Required parameters check
+    if (!payload.marketId || !payload.query) {
+      return new Response(
+        JSON.stringify({ error: 'Missing required parameters: marketId and query are required' }),
+        {
+          status: 400,
+          headers: {
+            'Content-Type': 'application/json',
+            ...corsHeaders
+          }
+        }
+      )
+    }
+    
+    const marketId = payload.marketId
+    const query = payload.query
+    const maxIterations = payload.maxIterations || 3
+    const focusText = payload.focusText
+    const notificationEmail = payload.notificationEmail
+    
+    console.log(`Creating research job for market ${marketId}`)
+    
+    // Create Supabase client
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
+    
+    // Create job record
+    const { data: job, error: jobError } = await supabaseClient
+      .from('research_jobs')
+      .insert({
+        market_id: marketId,
+        query: query,
+        status: 'queued',
+        max_iterations: maxIterations,
+        current_iteration: 0,
+        focus_text: focusText,
+        notification_email: notificationEmail
+      })
+      .select('id')
+      .single()
+    
+    if (jobError) {
+      throw new Error(`Error creating job: ${jobError.message}`)
+    }
+    
+    const jobId = job.id
+    console.log(`Created job with ID: ${jobId}`)
+    
+    // Start research in background
+    try {
+      // @ts-ignore: EdgeRuntime is available in Deno Deploy
+      EdgeRuntime.waitUntil(performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail))
+    } catch (e) {
+      // If waitUntil is not available, run directly (will possibly timeout)
+      console.warn('EdgeRuntime.waitUntil not available, running in foreground (may timeout)')
+      performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail)
+    }
+    
+    // Return the job ID to the client
+    return new Response(
+      JSON.stringify({ jobId }),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
+      }
+    )
+  } catch (error) {
+    console.error('Error in create-research-job:', error)
+    
+    return new Response(
+      JSON.stringify({ error: error.message }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          ...corsHeaders
+        }
+      }
+    )
+  }
+})
