@@ -62,11 +62,11 @@ export function IterationCard({
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
             className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
-            Iteration {iteration.iteration}
+            {isFinalIteration ? "Final Iteration" : `Iteration ${iteration.iteration}`}
             {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
+            {isFinalIteration ? "Final Research" : `${iteration.results.length} sources found`}
           </span>
         </div>
         {isExpanded ? 

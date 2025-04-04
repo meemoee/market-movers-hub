@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input"
 import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
-import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
@@ -68,7 +67,6 @@ export function JobQueueResearchCard({
   const [progressPercent, setProgressPercent] = useState<number>(0)
   const [results, setResults] = useState<ResearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [analysis, setAnalysis] = useState('')
   const [jobId, setJobId] = useState<string | null>(null)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
@@ -90,7 +88,6 @@ export function JobQueueResearchCard({
     setProgressPercent(0);
     setResults([]);
     setError(null);
-    setAnalysis('');
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
@@ -214,15 +211,12 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          throw new Error(`Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in handleJobUpdate:', typeof job.results);
+          return;
         }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
-        }
-        
-        if (parsedResults.analysis) {
-          setAnalysis(parsedResults.analysis);
         }
         
         if (parsedResults.structuredInsights) {
@@ -307,9 +301,6 @@ export function JobQueueResearchCard({
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
-        }
-        if (parsedResults.analysis) {
-          setAnalysis(parsedResults.analysis);
         }
         if (parsedResults.structuredInsights) {
           console.log('Found structuredInsights in loadJobData:', parsedResults.structuredInsights);
@@ -858,23 +849,10 @@ export function JobQueueResearchCard({
       )}
       
       {results.length > 0 && (
-        <>
-          <div className="border-t pt-4 w-full max-w-full">
-            <h3 className="text-lg font-medium mb-2">Search Results</h3>
-            <SitePreviewList results={results} />
-          </div>
-          
-          {analysis && (
-            <div className="border-t pt-4 w-full max-w-full">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay 
-                content={analysis} 
-                isStreaming={jobStatus === 'processing'} 
-                maxHeight="300px" 
-              />
-            </div>
-          )}
-        </>
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Search Results</h3>
+          <SitePreviewList results={results} />
+        </div>
       )}
     </Card>
   );
