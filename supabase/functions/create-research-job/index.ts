@@ -1,4 +1,3 @@
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.47.0'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
@@ -165,7 +164,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
           progress_entry: JSON.stringify(`Executing Brave searches for iteration ${i}...`)
         });
         
-        let allResults = [];
+        let allIterationResults = []; // Renamed from allResults to avoid conflict later
         
         // Process each query sequentially
         for (let j = 0; j < queries.length; j++) {
@@ -224,7 +223,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
                 };
                 
                 validResults.push(processedResult);
-                allResults.push(processedResult);
+                allIterationResults.push(processedResult); // Add to iteration results
               } catch (fetchError) {
                 console.error(`Error processing result URL ${result.url}:`, fetchError);
               }
@@ -266,7 +265,7 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         
         await supabaseClient.rpc('append_research_progress', {
           job_id: jobId,
-          progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allResults.length} total results`)
+          progress_entry: JSON.stringify(`Completed searches for iteration ${i} with ${allIterationResults.length} total results`)
         });
         
         // After each iteration, analyze the collected data using OpenRouter
@@ -448,155 +447,11 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       }
     }
     
-    // Generate final analysis with OpenRouter
+    // --- Final Analysis Generation Removed ---
     await supabaseClient.rpc('append_research_progress', {
       job_id: jobId,
-      progress_entry: JSON.stringify(`Generating final analysis of ${allResults.length} total results...`)
+      progress_entry: JSON.stringify(`Skipping final analysis generation. Proceeding to insights extraction.`)
     });
-    
-    let finalAnalysis = "";
-    try {
-      // Combine all content from the results
-      const allContent = allResults
-        .map(result => `Title: ${result.title}\nURL: ${result.url}\nContent: ${result.content}`)
-        .join('\n\n');
-      
-      // Get market price for final analysis
-      let marketPrice = undefined;
-      try {
-        const { data: priceData } = await supabaseClient
-          .from('market_prices')
-          .select('last_traded_price')
-          .eq('market_id', marketId)
-          .order('timestamp', { ascending: false })
-          .limit(1);
-          
-        if (priceData && priceData.length > 0 && priceData[0].last_traded_price !== null) {
-          marketPrice = Math.round(priceData[0].last_traded_price * 100);
-          console.log(`Found market price for final analysis ${marketId}: ${marketPrice}%`);
-        }
-      } catch (priceError) {
-        console.error(`Error fetching market price for final analysis ${marketId}:`, priceError);
-      }
-      
-      // Try to get related markets for final analysis
-      const relatedMarkets = [];
-      try {
-        const { data: relatedData } = await supabaseClient
-          .from('related_markets')
-          .select('related_market_id, relationship_strength')
-          .eq('market_id', marketId)
-          .order('relationship_strength', { ascending: false })
-          .limit(5);
-          
-        if (relatedData && relatedData.length > 0) {
-          for (const relation of relatedData) {
-            try {
-              // Get market details
-              const { data: marketData } = await supabaseClient
-                .from('markets')
-                .select('question')
-                .eq('id', relation.related_market_id)
-                .single();
-                
-              // Get market price
-              const { data: priceData } = await supabaseClient
-                .from('market_prices')
-                .select('last_traded_price')
-                .eq('market_id', relation.related_market_id)
-                .order('timestamp', { ascending: false })
-                .limit(1);
-                
-              if (marketData && priceData && priceData.length > 0) {
-                relatedMarkets.push({
-                  market_id: relation.related_market_id,
-                  question: marketData.question,
-                  probability: priceData[0].last_traded_price
-                });
-              }
-            } catch (relatedError) {
-              console.error(`Error fetching details for related market ${relation.related_market_id}:`, relatedError);
-            }
-          }
-        }
-      } catch (relatedError) {
-        console.error(`Error fetching related markets for final analysis ${marketId}:`, relatedError);
-      }
-      
-      // Get all areas for research that may have been identified in previous iterations
-      const areasForResearch = [];
-      try {
-        for (const iteration of allIterations) {
-          if (iteration.analysis) {
-            // Look for a section with "areas for further research" or similar
-            const analysisText = iteration.analysis.toLowerCase();
-            if (analysisText.includes("areas for further research") || 
-                analysisText.includes("further research needed") ||
-                analysisText.includes("additional research")) {
-              // Extract areas if possible
-              const lines = iteration.analysis.split('\n');
-              let inAreaSection = false;
-              
-              for (const line of lines) {
-                if (!inAreaSection) {
-                  if (line.toLowerCase().includes("areas for") || 
-                      line.toLowerCase().includes("further research") ||
-                      line.toLowerCase().includes("additional research")) {
-                    inAreaSection = true;
-                  }
-                } else if (line.trim().length === 0 || line.startsWith('#')) {
-                  inAreaSection = false;
-                } else if (line.startsWith('-') || line.startsWith('*') || 
-                           (line.match(/^\d+\.\s/) !== null)) {
-                  const area = line.replace(/^[-*\d.]\s+/, '').trim();
-                  if (area && !areasForResearch.includes(area)) {
-                    areasForResearch.push(area);
-                  }
-                }
-              }
-            }
-          }
-        }
-      } catch (areasError) {
-        console.error(`Error extracting areas for research:`, areasError);
-      }
-      
-      // Collect all previous analyses
-      const previousAnalyses = allIterations
-        .filter(iter => iter.analysis)
-        .map(iter => iter.analysis);
-      
-      if (allContent.length > 0) {
-        // Generate final analysis with streaming for real-time updates
-        finalAnalysis = await generateFinalAnalysisWithStreaming(
-          supabaseClient,
-          jobId,
-          allContent, 
-          query, 
-          marketPrice,
-          relatedMarkets,
-          areasForResearch,
-          focusText,
-          previousAnalyses
-        );
-      } else {
-        finalAnalysis = `No content was collected for analysis regarding "${query}".`;
-      }
-    } catch (analysisError) {
-      console.error(`Error generating final analysis for job ${jobId}:`, analysisError);
-      finalAnalysis = `Error generating analysis: ${analysisError.message}`;
-      
-      await supabaseClient.rpc('append_research_progress', {
-        job_id: jobId,
-        progress_entry: JSON.stringify(`Error generating final analysis: ${analysisError.message}`)
-      });
-    }
-    
-    // Create final results object with the text analysis
-    const textAnalysisResults = {
-      data: allResults,
-      analysis: finalAnalysis
-    };
     
     // Now generate the structured insights with the extract-research-insights function
     await supabaseClient.rpc('append_research_progress', {
@@ -726,10 +581,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       console.log(`Preparing web content with ${previousAnalyses.length} analyses prominently included`);
       
-      // Prepare payload with all the same information as non-background research
+      // Prepare payload WITHOUT the finalAnalysis field
       const insightsPayload = {
         webContent: webContentWithAnalyses,
-        analysis: finalAnalysis,
+        // analysis: finalAnalysis, // Removed
         marketId: marketId,
         marketQuestion: query,
         previousAnalyses: previousAnalyses,
@@ -823,9 +678,10 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       };
     }
     
-    // Combine text analysis and structured insights
+    // Combine data and structured insights (NO text analysis)
     const finalResults = {
-      ...textAnalysisResults,
+      data: allResults, // Keep the raw data
+      // analysis: finalAnalysis, // Removed
       structuredInsights: structuredInsights
     };
     
@@ -1167,6 +1023,8 @@ Your analysis should:
 }
 
 // Function to generate final analysis with streaming using OpenRouter
+// --- THIS FUNCTION IS NO LONGER USED ---
+/*
 async function generateFinalAnalysisWithStreaming(
   supabaseClient: any,
   jobId: string,
@@ -1178,235 +1036,9 @@ async function generateFinalAnalysisWithStreaming(
   focusText?: string,
   previousAnalyses?: string[]
 ): Promise<string> {
-  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
-  
-  if (!openRouterKey) {
-    throw new Error('OPENROUTER_API_KEY is not set in environment');
-  }
-  
-  console.log(`Generating final comprehensive analysis using OpenRouter with streaming enabled`);
-  
-  // Limit content length to avoid token limits
-  const contentLimit = 25000;
-  const truncatedContent = content.length > contentLimit 
-    ? content.substring(0, contentLimit) + "... [content truncated]" 
-    : content;
-  
-  // Add market context to the prompt
-  let contextInfo = '';
-  
-  if (marketPrice !== undefined) {
-    contextInfo += `\nCurrent market prediction: ${marketPrice}% probability\n`;
-  }
-  
-  if (relatedMarkets && relatedMarkets.length > 0) {
-    contextInfo += '\nRelated markets:\n';
-    relatedMarkets.forEach(market => {
-      if (market.question && market.probability !== undefined) {
-        const probability = Math.round(market.probability * 100);
-        contextInfo += `- ${market.question}: ${probability}% probability\n`;
-      }
-    });
-  }
-  
-  if (areasForResearch && areasForResearch.length > 0) {
-    contextInfo += '\nAreas identified for further research:\n';
-    areasForResearch.forEach(area => {
-      contextInfo += `- ${area}\n`;
-    });
-  }
-  
-  // Add focus text section if provided
-  let focusSection = '';
-  if (focusText && focusText.trim()) {
-    focusSection = `\nFOCUS AREA: "${focusText.trim()}"\n
-Your analysis must specifically address and deeply analyze this focus area. Connect all insights to this focus.`;
-  }
-  
-  // Add previous analyses section if provided
-  let previousAnalysesSection = '';
-  if (previousAnalyses && previousAnalyses.length > 0) {
-    previousAnalysesSection = `\n\nPREVIOUS ANALYSES: 
-${previousAnalyses.map((analysis, idx) => `--- Analysis ${idx+1} ---\n${analysis}\n`).join('\n')}
-
-IMPORTANT: Your final analysis should:
-1. Synthesize and integrate all prior analyses into a coherent whole
-2. Highlight the most important insights across all iterations
-3. Resolve contradictions and tensions between different findings
-4. Provide a comprehensive assessment that considers all evidence`;
-  }
-  
-  const prompt = `As a market research analyst, provide a FINAL COMPREHENSIVE ANALYSIS of all information collected about this query: "${query}"
-
-Content to analyze:
-${truncatedContent}
-${contextInfo}
-${focusSection}
-${previousAnalysesSection}
-
-Please provide a comprehensive final analysis including:
-
-1. Executive Summary: A concise summary of all critical findings and their implications.
-2. Key Facts and Evidence: Synthesize the most important information across all research iterations.
-3. Probability Assessment: Based on all evidence, what factors most significantly impact the likelihood of outcomes?${focusText ? ` Focus specifically on: "${focusText}"` : ''}
-4. Conflicting Information: Identify and evaluate any contradictory information found.
-5. Strength of Evidence: Assess the overall quality, relevance, and reliability of the research findings.
-6. Final Conclusions: What are the most well-supported conclusions that can be drawn?${focusText ? ` Make explicit connections to: "${focusText}"` : ''}
-7. Areas for Further Investigation: What specific questions remain unanswered or would benefit from additional research?
-
-Present the analysis in a structured, comprehensive format with clear sections and bullet points where appropriate.`;
-
-  try {
-    // Initialize a string to collect the analysis text
-    let finalAnalysis = '';
-    let chunkSequence = 0;
-    
-    // Create temporary results object for updates during streaming
-    let temporaryResults = {
-      analysis: '',
-      data: []
-    };
-    
-    // Start the fetch with stream: true
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${openRouterKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": Deno.env.get("SUPABASE_URL") || "http://localhost",
-        "X-Title": "Market Research App",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.0-flash-001",
-        messages: [
-          {
-            role: "system",
-            content: `You are an expert market research analyst synthesizing all collected information into a final comprehensive analysis. 
-When presented with a research query${focusText ? ` and focus area "${focusText}"` : ''}, you analyze all web content and previous analyses to extract the most valuable insights.
-
-Your final analysis should:
-1. Draw together and synthesize insights from all iterations
-2. Focus specifically on${focusText ? ` the focus area "${focusText}" and` : ''} the main query
-3. Weigh evidence quality and assess reliability
-4. Identify key patterns, trends, and implications
-5. Provide a balanced, evidence-based assessment of probabilities
-6. Draw comprehensive conclusions based on all available information`
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        stream: true, // Enable streaming response
-        temperature: 0.3
-      })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
-    }
-    
-    if (!response.body) {
-      throw new Error('Response body is null');
-    }
-    
-    // Process the stream
-    const reader = response.body.getReader();
-    const textDecoder = new TextDecoder();
-    let incompleteChunk = '';
-    
-    // Log the start of streaming
-    console.log(`Starting to process streaming response chunks for final analysis`);
-    
-    // Process chunks as they come in
-    while (true) {
-      const { done, value } = await reader.read();
-      
-      if (done) {
-        console.log(`Stream complete for final analysis`);
-        break;
-      }
-      
-      // Decode the binary chunk to text
-      const chunk = textDecoder.decode(value, { stream: true });
-      
-      // Combine with any incomplete chunk from previous iteration
-      const textToParse = incompleteChunk + chunk;
-      
-      // Process the text as SSE (Server-Sent Events)
-      // Each SSE message starts with "data: " and ends with two newlines
-      const lines = textToParse.split('\n');
-      
-      let processedUpTo = 0;
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        
-        // Skip empty lines
-        if (!line) continue;
-        
-        // Update the processedUpTo pointer
-        processedUpTo = textToParse.indexOf(line) + line.length + 1; // +1 for the newline
-        
-        // Check if this is a data line
-        if (line.startsWith('data: ')) {
-          const data = line.substring(6); // Remove "data: " prefix
-          
-          // Skip "[DONE]" message which indicates the end of the stream
-          if (data === '[DONE]') continue;
-          
-          try {
-            // Parse the JSON data
-            const jsonData = JSON.parse(data);
-            
-            if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-              const content = jsonData.choices[0].delta.content;
-              
-              // Append to the full analysis text
-              finalAnalysis += content;
-              
-              // Increment chunk sequence
-              chunkSequence++;
-              
-              // Update the temporary results
-              temporaryResults.analysis = finalAnalysis;
-              
-              // Update the results in the database every few chunks to avoid too many updates
-              if (chunkSequence % 5 === 0) {
-                try {
-                  // Update the research_job with intermediate results
-                  await supabaseClient.rpc('update_research_results', {
-                    job_id: jobId,
-                    result_data: JSON.stringify(temporaryResults)
-                  });
-                  
-                  console.log(`Updated results with streaming chunk ${chunkSequence}`);
-                } catch (updateError) {
-                  console.error(`Error updating results with streaming chunk:`, updateError);
-                }
-              }
-            }
-          } catch (parseError) {
-            console.error(`Error parsing JSON in streaming chunk: ${parseError.message}`);
-            console.error(`Problem JSON data: ${data}`);
-            // Continue processing other chunks even if one fails
-          }
-        }
-      }
-      
-      // Save any incomplete chunk for the next iteration
-      incompleteChunk = textToParse.substring(processedUpTo);
-    }
-    
-    console.log(`Final analysis streaming complete, total chunks: ${chunkSequence}`);
-    
-    // Return the full analysis text
-    return finalAnalysis;
-  } catch (error) {
-    console.error(`Error in streaming final analysis generation:`, error);
-    throw error;
-  }
+  // ... implementation removed ...
 }
+*/
 
 // Function to generate analysis using OpenRouter (Old version, replaced with streaming)
 async function generateAnalysis(
