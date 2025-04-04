@@ -199,7 +199,6 @@ export function JobQueueResearchCard({
       try {
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -226,7 +225,6 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -283,7 +281,6 @@ export function JobQueueResearchCard({
     
     if (job.status === 'completed' && job.results) {
       try {
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -309,7 +306,6 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -376,7 +372,6 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -817,17 +812,26 @@ export function JobQueueResearchCard({
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
           <div className="space-y-2">
-            {iterations.map((iteration) => (
-              <IterationCard
-                key={iteration.iteration}
-                iteration={iteration}
-                isExpanded={expandedIterations.includes(iteration.iteration)}
-                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={false}
-                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={parseInt(maxIterations, 10)}
-              />
-            ))}
+            {iterations.map((iteration) => {
+              const isCurrentlyStreaming = 
+                isLoading || 
+                (jobStatus === 'processing' && 
+                iteration.iteration === (iterations.length > 0 ? 
+                  Math.max(...iterations.map(i => i.iteration)) : 0));
+              
+              return (
+                <IterationCard
+                  key={iteration.iteration}
+                  iteration={iteration}
+                  isExpanded={expandedIterations.includes(iteration.iteration)}
+                  onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                  isStreaming={isCurrentlyStreaming}
+                  isCurrentIteration={iteration.iteration === (iterations.length > 0 ? 
+                    Math.max(...iterations.map(i => i.iteration)) : 0)}
+                  maxIterations={parseInt(maxIterations, 10)}
+                />
+              );
+            })}
           </div>
         </div>
       )}
