@@ -29,9 +29,15 @@ export function AnalysisDisplay({
   
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
-    if (!scrollRef.current || !shouldAutoScroll) return
-    
     const scrollContainer = scrollRef.current
+    if (!scrollContainer || !shouldAutoScroll) return
+
+    const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]')
+    if (!viewport) {
+      console.warn("AnalysisDisplay: Could not find scroll viewport element.");
+      return;
+    }
+    
     const currentContentLength = content?.length || 0
     
     console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
@@ -39,10 +45,9 @@ export function AnalysisDisplay({
     // Auto-scroll if content is growing and user hasn't scrolled up
     if (currentContentLength > prevContentLength.current && shouldAutoScroll) {
       requestAnimationFrame(() => {
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight
-          console.log(`AnalysisDisplay: Scrolled to bottom (non-streaming) - height: ${scrollContainer.scrollHeight}`);
-        }
+        // Scroll the viewport, not the container
+        viewport.scrollTop = viewport.scrollHeight
+        console.log(`AnalysisDisplay: Scrolled viewport to bottom - height: ${viewport.scrollHeight}`);
       })
     }
     
@@ -59,26 +64,37 @@ export function AnalysisDisplay({
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
-    if (!scrollRef.current) return
-    
     const scrollContainer = scrollRef.current
+    if (!scrollContainer) return
+
+    const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]')
+    if (!viewport) {
+      console.warn("AnalysisDisplay: Could not find scroll viewport element for event listener.");
+      return;
+    }
+
     const handleScroll = () => {
-      // If user has scrolled up, disable auto-scroll
-      // If they scroll to the bottom, re-enable it
+      // Calculate based on the viewport's properties
       const isAtBottom = Math.abs(
-        (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
-        scrollContainer.scrollTop
+        (viewport.scrollHeight - viewport.clientHeight) - 
+        viewport.scrollTop
       ) < 30 // Small threshold for "close enough" to bottom
       
       if (shouldAutoScroll !== isAtBottom) {
-        console.log(`AnalysisDisplay: Auto-scroll changed to ${isAtBottom}`);
+        console.log(`AnalysisDisplay: Auto-scroll changed to ${isAtBottom} based on viewport scroll`);
         setShouldAutoScroll(isAtBottom);
       }
     }
     
-    scrollContainer.addEventListener('scroll', handleScroll)
-    return () => scrollContainer.removeEventListener('scroll', handleScroll)
-  }, [])
+    // Add listener to the viewport
+    viewport.addEventListener('scroll', handleScroll)
+    // Cleanup function needs to reference the same viewport
+    return () => {
+      if (viewport) { // Check if viewport still exists on cleanup
+        viewport.removeEventListener('scroll', handleScroll)
+      }
+    }
+  }, [shouldAutoScroll]) // Add shouldAutoScroll dependency to ensure the listener uses the latest state
   
   // Check for inactive streaming with longer intervals
   useEffect(() => {
@@ -138,8 +154,14 @@ export function AnalysisDisplay({
         <button 
           onClick={() => {
             setShouldAutoScroll(true);
-            if (scrollRef.current) {
-              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            const scrollContainer = scrollRef.current;
+            if (scrollContainer) {
+              const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
+              if (viewport) {
+                // Scroll the viewport to the bottom
+                viewport.scrollTop = viewport.scrollHeight;
+                console.log(`AnalysisDisplay: Manually scrolled viewport to bottom - height: ${viewport.scrollHeight}`);
+              }
             }
           }}
           className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
