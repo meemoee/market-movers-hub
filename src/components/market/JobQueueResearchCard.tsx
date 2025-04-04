@@ -11,7 +11,7 @@ import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
-import { InsightsDisplay } from "./market/insights/InsightsDisplay"
+import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
@@ -649,8 +649,14 @@ export function JobQueueResearchCard({
               disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
               className="flex items-center gap-2"
             >
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isLoading ? "Starting..." : "Start Research"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Starting...
+                </>
+              ) : (
+                "Start Research"
+              )}
             </Button>
           )}
           
