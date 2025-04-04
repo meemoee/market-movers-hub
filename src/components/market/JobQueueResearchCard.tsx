@@ -197,70 +197,59 @@ export function JobQueueResearchCard({
         setExpandedIterations(prev => [...prev, job.current_iteration]);
       }
     }
-
-    // --- MODIFICATION START: Process results field, especially analysis, during processing ---
-    if (job.results) {
+    
+    if (job.status === 'completed' && job.results) {
       try {
+        console.log('Processing completed job results:', job.results);
+        
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
             parsedResults = JSON.parse(job.results);
           } catch (parseError) {
-            // Handle potentially incomplete JSON during streaming if necessary
-            console.warn('Could not parse job.results string during potential streaming:', parseError);
-            // If analysis is the only thing streaming first, this might fail.
-            // A safer approach might be needed if the backend sends invalid JSON temporarily.
-            // For now, assume backend sends valid (partial) JSON structure.
-            parsedResults = {};
+            console.error('Error parsing job.results string:', parseError);
+            throw new Error('Invalid results format (string parsing failed)');
           }
         } else if (typeof job.results === 'object') {
-          parsedResults = job.results; // Assume it's a valid object
+          parsedResults = job.results;
         } else {
-          console.error(`Unexpected results type: ${typeof job.results}`);
-          parsedResults = {};
+          throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
-
-        // **KEY CHANGE**: Update analysis state even if status is not 'completed'
+        
+        if (parsedResults.data && Array.isArray(parsedResults.data)) {
+          setResults(parsedResults.data);
+        }
+        
         if (parsedResults.analysis) {
           setAnalysis(parsedResults.analysis);
         }
-
-        // **Keep this part conditional on completion**:
-        // Only process final data array and structured insights when fully completed
-        if (job.status === 'completed') {
-          console.log('Processing completed job results:', parsedResults);
-
-          if (parsedResults.data && Array.isArray(parsedResults.data)) {
-            setResults(parsedResults.data); // Set the final list of sources
-          }
-
-          if (parsedResults.structuredInsights) {
-            console.log('Found structuredInsights:', parsedResults.structuredInsights);
-            const goodBuyOpportunities = parsedResults.structuredInsights.probability ?
-              calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) :
-              null;
-
-            setStructuredInsights({
-              rawText: typeof parsedResults.structuredInsights === 'string'
-                ? parsedResults.structuredInsights
-                : JSON.stringify(parsedResults.structuredInsights),
-              parsedData: {
-                ...parsedResults.structuredInsights,
-                goodBuyOpportunities
-              }
-            });
-          }
-          fetchSavedJobs(); // Refresh history list on completion
+        
+        if (parsedResults.structuredInsights) {
+          console.log('Found structuredInsights:', parsedResults.structuredInsights);
+          
+          const goodBuyOpportunities = parsedResults.structuredInsights.probability ? 
+            calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
+            null;
+          
+          // Fix: Correctly structure the data for InsightsDisplay
+          setStructuredInsights({
+            rawText: typeof parsedResults.structuredInsights === 'string' 
+              ? parsedResults.structuredInsights 
+              : JSON.stringify(parsedResults.structuredInsights),
+            parsedData: {
+              ...parsedResults.structuredInsights,
+              goodBuyOpportunities
+            }
+          });
         }
-
+        
+        fetchSavedJobs();
       } catch (e) {
         console.error('Error processing job results:', e);
-        // Consider setting an error state or logging more formally
       }
     }
-    // --- MODIFICATION END ---
-
-
+    
     if (job.status === 'failed') {
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
       setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
