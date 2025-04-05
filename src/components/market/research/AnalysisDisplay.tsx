@@ -31,8 +31,13 @@ export function AnalysisDisplay({
   const anchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (shouldAutoScroll && anchorRef.current) {
-      anchorRef.current.scrollIntoView({ behavior: 'auto' });
+    if (shouldAutoScroll && scrollRef.current) {
+      const viewport = scrollRef.current.querySelector<HTMLDivElement>(
+        '[data-radix-scroll-area-viewport]'
+      );
+      if (viewport) {
+        viewport.scrollTop = viewport.scrollHeight;
+      }
     }
   }, [content, isStreaming, shouldAutoScroll]);
   
