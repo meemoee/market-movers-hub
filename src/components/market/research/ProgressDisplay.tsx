@@ -14,12 +14,20 @@ interface ProgressDisplayProps {
 
 export function ProgressDisplay({ messages, jobId, progress, status }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
+  const [prevMessagesLength, setPrevMessagesLength] = useState(0)
+  const isNewMessages = messages.length > prevMessagesLength
   
   useEffect(() => {
     if (messages.length > 0) {
       setCurrentMessage(messages[messages.length - 1])
     }
-  }, [messages])
+    
+    // Track when new messages are added
+    if (messages.length !== prevMessagesLength) {
+      console.log(`ProgressDisplay: Messages changed from ${prevMessagesLength} to ${messages.length}`);
+      setPrevMessagesLength(messages.length);
+    }
+  }, [messages, prevMessagesLength])
 
   if (!messages.length) return null
   
@@ -42,7 +50,12 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40">
-      <SimpleScrollingContent className="h-full" maxHeight="100%" shouldAutoScroll={true}>
+      <SimpleScrollingContent 
+        className="h-full" 
+        maxHeight="100%" 
+        shouldAutoScroll={true}
+        isStreaming={status === 'processing' && isNewMessages}
+      >
         <div className="p-4 space-y-2">
           {jobId && (
             <div className="space-y-2">

@@ -16,12 +16,26 @@ export function AnalysisDisplay({
 }: AnalysisDisplayProps) {
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const [previousContentLength, setPreviousContentLength] = useState(0)
   
   // Debug logging
   console.log(`AnalysisDisplay: Rendering with content length: ${content?.length || 0}, isStreaming: ${isStreaming}`);
   
-  // Update stream status when streaming state changes
+  // Detect content changes and update streaming status
   useEffect(() => {
+    const currentLength = content?.length || 0;
+    const hasChanged = currentLength !== previousContentLength;
+    
+    if (hasChanged) {
+      console.log(`AnalysisDisplay: Content changed from ${previousContentLength} to ${currentLength} chars`);
+      setPreviousContentLength(currentLength);
+      
+      if (isStreaming) {
+        setStreamStatus('streaming');
+      }
+    }
+    
+    // Update stream status when streaming state changes
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
         console.log('AnalysisDisplay: Stream status changed to idle');
@@ -30,21 +44,17 @@ export function AnalysisDisplay({
       return;
     }
     
-    // If streaming, set to streaming status
-    if (streamStatus !== 'streaming') {
-      console.log('AnalysisDisplay: Stream status changed to streaming');
-      setStreamStatus('streaming');
+    // If streaming but no content change, set up waiting detection
+    if (isStreaming && !hasChanged) {
+      const waitingTimeout = setTimeout(() => {
+        // This will be triggered if no content updates happen for 1.5 seconds
+        setStreamStatus('waiting');
+        console.log('AnalysisDisplay: Stream status changed to waiting');
+      }, 1500);
+      
+      return () => clearTimeout(waitingTimeout);
     }
-    
-    // Set up an interval to detect pauses in streaming
-    const interval = setInterval(() => {
-      // This will be triggered if no content updates happen for 1.5 seconds
-      setStreamStatus('waiting');
-      console.log('AnalysisDisplay: Stream status changed to waiting');
-    }, 1500);
-    
-    return () => clearInterval(interval);
-  }, [isStreaming, content, streamStatus]);
+  }, [isStreaming, content, streamStatus, previousContentLength]);
 
   if (!content) return null
 
@@ -72,7 +82,7 @@ export function AnalysisDisplay({
       </SimpleScrollingContent>
       
       {isStreaming && (
-        <div className="absolute bottom-2 left-2">
+        <div className="absolute bottom-2 left-2 z-10">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
               {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
