@@ -9,8 +9,7 @@ const corsHeaders = {
 }
 
 // Function to send a notification email
-// Added supabaseClient parameter
-async function sendNotificationEmail(supabaseClient: any, jobId: string, email: string) {
+async function sendNotificationEmail(jobId: string, email: string) {
   if (!email) return;
   
   try {
@@ -39,14 +38,11 @@ async function sendNotificationEmail(supabaseClient: any, jobId: string, email: 
 async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
   console.log(`Starting background research for job ${jobId}`)
   
-  // Create Supabase client once at the start
-  const supabaseClient = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  )
-  
   try {
-    // Removed client creation from here
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    )
     
     // Update job status to processing
     await supabaseClient.rpc('update_research_job_status', {
@@ -397,9 +393,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
               }
               
               // Generate analysis for this iteration with market context
-              // Pass the single supabaseClient instance
               const analysisText = await generateAnalysisWithStreaming(
-                supabaseClient, 
+                supabaseClient,
                 jobId,
                 i,
                 combinedContent, 
@@ -573,9 +568,8 @@ async function performWebResearch(jobId: string, query: string, marketId: string
       
       if (allContent.length > 0) {
         // Generate final analysis with streaming for real-time updates
-        // Pass the single supabaseClient instance
         finalAnalysis = await generateFinalAnalysisWithStreaming(
-          supabaseClient, 
+          supabaseClient,
           jobId,
           allContent, 
           query, 
@@ -853,20 +847,22 @@ async function performWebResearch(jobId: string, query: string, marketId: string
     });
     
     // Send notification email if provided
-    // Pass the single supabaseClient instance
     if (notificationEmail) {
-      await sendNotificationEmail(supabaseClient, jobId, notificationEmail);
+      await sendNotificationEmail(jobId, notificationEmail);
     }
     
     console.log(`Completed background research for job ${jobId}`);
   } catch (error) {
     console.error(`Error in background job ${jobId}:`, error);
     
-    // Use the existing supabaseClient instance from the start of the function
-    if (supabaseClient) {
-      try {
-        // Mark job as failed
-        await supabaseClient.rpc('update_research_job_status', {
+    try {
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      
+      // Mark job as failed
+      await supabaseClient.rpc('update_research_job_status', {
         job_id: jobId,
         new_status: 'failed',
         error_msg: error.message || 'Unknown error'
@@ -877,24 +873,19 @@ async function performWebResearch(jobId: string, query: string, marketId: string
         progress_entry: JSON.stringify(`Research failed: ${error.message || 'Unknown error'}`)
       });
       
-        // Send notification email for failure if provided
-        // Pass the single supabaseClient instance
-        if (notificationEmail) {
-          await sendNotificationEmail(supabaseClient, jobId, notificationEmail);
-        }
-      } catch (e) {
-        console.error(`Failed to update job ${jobId} status:`, e);
+      // Send notification email for failure if provided
+      if (notificationEmail) {
+        await sendNotificationEmail(jobId, notificationEmail);
       }
-    } else {
-       console.error(`Supabase client not available in catch block for job ${jobId}. Cannot update status.`);
+    } catch (e) {
+      console.error(`Failed to update job ${jobId} status:`, e);
     }
   }
 }
 
 // NEW IMPLEMENTATION: Function to generate analysis with streaming using OpenRouter
-// Added supabaseClient parameter
 async function generateAnalysisWithStreaming(
-  supabaseClient: any, 
+  supabaseClient: any,
   jobId: string,
   iterationNumber: number,
   content: string, 
@@ -1176,9 +1167,8 @@ Your analysis should:
 }
 
 // Function to generate final analysis with streaming using OpenRouter
-// Added supabaseClient parameter
 async function generateFinalAnalysisWithStreaming(
-  supabaseClient: any, 
+  supabaseClient: any,
   jobId: string,
   content: string, 
   query: string,
@@ -1600,22 +1590,7 @@ serve(async (req) => {
     // Use standard Deno setTimeout for async operation instead
     setTimeout(() => {
       performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
-        console.error(`Background research failed for job ${jobId}: ${err}`);
-        // Attempt to update the job status to failed using a new client 
-        // ONLY if the main function failed catastrophically early.
-        try {
-          const errorClient = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-          );
-          errorClient.rpc('update_research_job_status', {
-            job_id: jobId,
-            new_status: 'failed',
-            error_msg: err.message || 'Unknown error during background execution'
-          }).catch(e => console.error(`Failed to update job ${jobId} status after background error:`, e));
-        } catch (clientError) {
-          console.error(`Failed to create error client for job ${jobId}:`, clientError);
-        }
+        console.error(`Background research failed: ${err}`);
       });
     }, 0);
     

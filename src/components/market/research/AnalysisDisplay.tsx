@@ -27,6 +27,7 @@ export function AnalysisDisplay({
     }
   }, [content, isStreaming]);
   
+<<<<<<< HEAD
   const lastChunkRef = useRef<HTMLDivElement | null>(null);
   const anchorRef = useRef<HTMLDivElement | null>(null);
 
@@ -37,9 +38,34 @@ export function AnalysisDisplay({
       );
       if (viewport) {
         viewport.scrollTop = viewport.scrollHeight;
+=======
+  // Optimize scrolling with less frequent updates
+  useLayoutEffect(() => {
+    if (!scrollRef.current || !shouldAutoScroll) return
+    
+    const scrollContainer = scrollRef.current
+    const currentContentLength = content?.length || 0
+    
+    console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
+    
+    // Only auto-scroll if content is growing or streaming
+    if (currentContentLength > prevContentLength.current || isStreaming) {
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+          console.log(`AnalysisDisplay: Scrolled to bottom - height: ${scrollContainer.scrollHeight}`);
+        }
+        setLastUpdateTime(Date.now())
+      })
+      
+      if (isStreaming) {
+        setStreamStatus('streaming')
+>>>>>>> 394d4281f095561c074ce453e36a01274c9155c6
       }
     }
-  }, [content, isStreaming, shouldAutoScroll]);
+    
+    prevContentLength.current = currentContentLength
+  }, [content, isStreaming, shouldAutoScroll])
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -87,6 +113,28 @@ export function AnalysisDisplay({
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime, streamStatus])
   
+  // For continuous smooth scrolling during active streaming
+  useEffect(() => {
+    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
+    
+    console.log(`AnalysisDisplay: Setting up continuous scroll for streaming`);
+    
+    let rafId: number
+    
+    const scrollToBottom = () => {
+      if (scrollRef.current && shouldAutoScroll) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        rafId = requestAnimationFrame(scrollToBottom)
+      }
+    }
+    
+    rafId = requestAnimationFrame(scrollToBottom)
+    
+    return () => {
+      console.log(`AnalysisDisplay: Cleaning up continuous scroll`);
+      cancelAnimationFrame(rafId);
+    }
+  }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
 
@@ -94,23 +142,13 @@ export function AnalysisDisplay({
     <div className="relative">
       <ScrollArea 
         className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
-        style={{ height: maxHeight, overflowAnchor: 'none' }}
+        style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full max-w-full flex flex-col space-y-2">
-          {content
-            .split(/\n{2,}/)  // split on double newlines (paragraphs)
-            .map((chunk, idx) => (
-              <div key={idx}>
-                <ReactMarkdown
-                  className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full"
-                  components={{ p: 'div' }} // avoid nested <p> inside <p>
-                >
-                  {chunk}
-                </ReactMarkdown>
-              </div>
-            ))}
-          <div ref={anchorRef} style={{ height: 1 }} />
+        <div className="overflow-x-hidden w-full max-w-full">
+          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
+            {content}
+          </ReactMarkdown>
         </div>
       </ScrollArea>
       
