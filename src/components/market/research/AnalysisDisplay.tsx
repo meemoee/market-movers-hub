@@ -1,5 +1,5 @@
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import ReactMarkdown from 'react-markdown'
 import { AutoScrollArea } from "@/components/ui/auto-scroll-area"
 
@@ -21,7 +21,7 @@ export function AnalysisDisplay({
   console.log(`AnalysisDisplay: Rendering with content length: ${content?.length || 0}, isStreaming: ${isStreaming}`);
   
   // Update stream status when streaming state changes
-  useState(() => {
+  useEffect(() => {
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
         console.log('AnalysisDisplay: Stream status changed to idle');
@@ -44,7 +44,7 @@ export function AnalysisDisplay({
     }, 1500);
     
     return () => clearInterval(interval);
-  }, [isStreaming, content]);
+  }, [isStreaming, content, streamStatus]);
 
   if (!content) return null
 
