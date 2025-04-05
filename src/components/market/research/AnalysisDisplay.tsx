@@ -30,8 +30,8 @@ export function AnalysisDisplay({
   const lastChunkRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (shouldAutoScroll && lastChunkRef.current) {
-      lastChunkRef.current.scrollIntoView({ behavior: 'auto' });
+    if (shouldAutoScroll && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [content, isStreaming, shouldAutoScroll]);
   
