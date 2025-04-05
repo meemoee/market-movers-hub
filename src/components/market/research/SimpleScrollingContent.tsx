@@ -30,27 +30,15 @@ export function SimpleScrollingContent({
     contentLengthRef.current = content.length
   }
 
-  // Scroll to bottom function that properly controls scrolling within the container
+  // Scroll to bottom function using only direct scrollTop manipulation
   const scrollToBottom = useCallback(() => {
-    if (!scrollContainerRef.current || !shouldAutoScroll || !scrollTargetRef.current) return
+    if (!scrollContainerRef.current || !shouldAutoScroll) return
     
     const container = scrollContainerRef.current;
     
-    // First set scrollTop directly for immediate effect
+    // Only set scrollTop directly to avoid affecting page scroll
     container.scrollTop = container.scrollHeight;
-    
-    // Then use scrollIntoView with containment to ensure it stays within the container
-    // and doesn't affect the page viewport
-    try {
-      scrollTargetRef.current.scrollIntoView({ 
-        block: "end", 
-        inline: "nearest",
-        behavior: "auto" 
-      });
-      console.log("Scrolled to bottom with combined approach")
-    } catch (err) {
-      console.error("Error in scrollIntoView:", err)
-    }
+    console.log("Scrolled to bottom via direct scrollTop manipulation")
   }, [shouldAutoScroll])
 
   // Detect user scroll
@@ -101,7 +89,7 @@ export function SimpleScrollingContent({
             {content}
           </ReactMarkdown>
         </div>
-        {/* Invisible element at bottom used as scroll target to ensure containment */}
+        {/* Invisible element at bottom used as scroll target */}
         <div ref={scrollTargetRef} style={{ height: "1px", width: "100%" }} />
       </div>
 
