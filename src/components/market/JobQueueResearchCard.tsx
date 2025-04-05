@@ -831,7 +831,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={false}
+                isStreaming={jobStatus === 'processing' && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
