@@ -28,10 +28,11 @@ export function AnalysisDisplay({
   }, [content, isStreaming]);
   
   const lastChunkRef = useRef<HTMLDivElement | null>(null);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (shouldAutoScroll && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    if (shouldAutoScroll && anchorRef.current) {
+      anchorRef.current.scrollIntoView({ behavior: 'auto' });
     }
   }, [content, isStreaming, shouldAutoScroll]);
   
@@ -88,17 +89,14 @@ export function AnalysisDisplay({
     <div className="relative">
       <ScrollArea 
         className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
-        style={{ height: maxHeight }}
+        style={{ height: maxHeight, overflowAnchor: 'none' }}
         ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full flex flex-col space-y-2">
           {content
             .split(/\n{2,}/)  // split on double newlines (paragraphs)
-            .map((chunk, idx, arr) => (
-              <div
-                key={idx}
-                ref={idx === arr.length -1 ? lastChunkRef : undefined}
-              >
+            .map((chunk, idx) => (
+              <div key={idx}>
                 <ReactMarkdown
                   className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full"
                   components={{ p: 'div' }} // avoid nested <p> inside <p>
@@ -107,6 +105,7 @@ export function AnalysisDisplay({
                 </ReactMarkdown>
               </div>
             ))}
+          <div ref={anchorRef} style={{ height: 1 }} />
         </div>
       </ScrollArea>
       
