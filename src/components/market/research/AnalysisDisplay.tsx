@@ -27,18 +27,6 @@ export function AnalysisDisplay({
     }
   }, [content, isStreaming]);
   
-<<<<<<< HEAD
-  const lastChunkRef = useRef<HTMLDivElement | null>(null);
-  const anchorRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (shouldAutoScroll && scrollRef.current) {
-      const viewport = scrollRef.current.querySelector<HTMLDivElement>(
-        '[data-radix-scroll-area-viewport]'
-      );
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight;
-=======
   // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return
@@ -60,7 +48,6 @@ export function AnalysisDisplay({
       
       if (isStreaming) {
         setStreamStatus('streaming')
->>>>>>> 394d4281f095561c074ce453e36a01274c9155c6
       }
     }
     
