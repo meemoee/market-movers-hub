@@ -29,7 +29,6 @@ interface MarketData {
   bestBid?: number;
   bestAsk?: number;
   noBestAsk?: number;
-  noBestBid?: number; // Add missing property
   outcomes?: string[];
 }
 

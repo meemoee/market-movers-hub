@@ -14,12 +14,11 @@ interface IterationCardProps {
     iteration: number;
     queries: string[];
     results: ResearchResult[];
-    analysis: string; // Keep original analysis for reference if needed, but display comes from new prop
+    analysis: string;
   };
   isExpanded: boolean;
   onToggleExpand: () => void;
-  analysisContent: string; // New prop for potentially streamed content
-  isAnalysisStreaming: boolean; // New prop for specific streaming status
+  isStreaming: boolean;
   isCurrentIteration: boolean;
   maxIterations: number;
 }
@@ -28,18 +27,16 @@ export function IterationCard({
   iteration,
   isExpanded,
   onToggleExpand,
-  analysisContent, // Use new prop
-  isAnalysisStreaming, // Use new prop
+  isStreaming,
   isCurrentIteration,
   maxIterations
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
   
-  // Auto-collapse when iteration completes (based on streaming prop) and it's not the final iteration
+  // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
-    // Use isAnalysisStreaming to determine completion for collapsing
-    if (!isAnalysisStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) { 
+    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
       const timer = setTimeout(() => {
         onToggleExpand();
@@ -47,14 +44,12 @@ export function IterationCard({
       
       return () => clearTimeout(timer);
     }
-    // Depend on isAnalysisStreaming instead of the old isStreaming prop
-  }, [isAnalysisStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]); 
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
   return (
     <div className={cn(
       "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      // Use isAnalysisStreaming for border highlight
-      isCurrentIteration && isAnalysisStreaming ? "border-primary/40" : "border-border" 
+      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
     )}>
       <div 
         className={cn(
@@ -66,10 +61,9 @@ export function IterationCard({
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
-            // Use isAnalysisStreaming for pulse animation
-            className={isAnalysisStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}> 
+            className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
             {isFinalIteration ? "Final Iteration" : `Iteration ${iteration.iteration}`}
-            {isAnalysisStreaming && isCurrentIteration && " (Streaming...)"} 
+            {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
             {isFinalIteration ? "Final Research" : `${iteration.results.length} sources found`}
@@ -93,8 +87,8 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 <AnalysisDisplay 
-                  content={analysisContent || "Analysis starting..."} // Use analysisContent prop
-                  isStreaming={isAnalysisStreaming} // Use isAnalysisStreaming prop
+                  content={iteration.analysis || "Analysis in progress..."} 
+                  isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
               </TabsContent>
