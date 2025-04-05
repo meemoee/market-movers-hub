@@ -27,18 +27,12 @@ export function AnalysisDisplay({
     }
   }, [content, isStreaming]);
   
-  // New unified scroll-to-bottom after DOM update
-  useEffect(() => {
-    if (!scrollRef.current || !shouldAutoScroll) return;
+  const lastChunkRef = useRef<HTMLDivElement | null>(null);
 
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (scrollRef.current && shouldAutoScroll) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-          console.log('AnalysisDisplay: Scrolled to bottom (double rAF)');
-        }
-      });
-    });
+  useEffect(() => {
+    if (shouldAutoScroll && lastChunkRef.current) {
+      lastChunkRef.current.scrollIntoView({ behavior: 'auto' });
+    }
   }, [content, isStreaming, shouldAutoScroll]);
   
   // Handle user scroll to disable auto-scroll
@@ -97,10 +91,22 @@ export function AnalysisDisplay({
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full max-w-full">
-          <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
-            {content}
-          </ReactMarkdown>
+        <div className="overflow-x-hidden w-full max-w-full flex flex-col space-y-2">
+          {content
+            .split(/\n{2,}/)  // split on double newlines (paragraphs)
+            .map((chunk, idx, arr) => (
+              <div
+                key={idx}
+                ref={idx === arr.length -1 ? lastChunkRef : undefined}
+              >
+                <ReactMarkdown
+                  className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full"
+                  components={{ p: 'div' }} // avoid nested <p> inside <p>
+                >
+                  {chunk}
+                </ReactMarkdown>
+              </div>
+            ))}
         </div>
       </ScrollArea>
       
