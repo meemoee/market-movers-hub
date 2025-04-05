@@ -771,7 +771,7 @@ async function generateAnalysisWithStreaming(
     throw new Error('OPENROUTER_API_KEY is not set in environment');
   }
   
-  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled for job ${jobId}, iteration ${iterationNumber}`);
+  console.log(`Generating ${analysisType} using OpenRouter with streaming enabled`);
   
   // Limit content length to avoid token limits
   const contentLimit = 20000;
@@ -813,7 +813,8 @@ Your analysis must specifically address and deeply analyze this focus area. Conn
   // Add previous analyses section if provided
   let previousAnalysesSection = '';
   if (previousAnalyses && previousAnalyses.length > 0) {
-    previousAnalysesSection = `\n\nPREVIOUS ANALYSES (DO NOT REPEAT):\n${previousAnalyses.map((analysis, idx) => `--- Analysis ${idx+1} ---\n${analysis}\n`).join('\n')}
+    previousAnalysesSection = `\n\nPREVIOUS ANALYSES: 
+${previousAnalyses.map((analysis, idx) => `--- Analysis ${idx+1} ---\n${analysis}\n`).join('\n')}
 
 IMPORTANT: DO NOT REPEAT information from previous analyses. Instead:
 1. Build upon them with NEW insights
@@ -840,39 +841,36 @@ Please provide:
 
 Present the analysis in a structured, concise format with clear sections and bullet points where appropriate.`;
 
-  let channel: any; // Declare channel outside the try block
-
   try {
     // Initialize the response stream handling
     console.log(`Starting streaming response for iteration ${iterationNumber}`);
     
     // Initialize a string to collect the analysis text
-    let completeAnalysisText = ''; // Renamed to avoid confusion
+    let analysisText = '';
     let chunkSequence = 0;
     
-    // Create a Supabase Realtime channel for broadcasting chunks
-    const channelName = `analysis-stream-${jobId}-${iterationNumber}`;
-    const channel = supabaseClient.channel(channelName, {
-      config: {
-        broadcast: {
-          self: true, // Allow broadcasting to self if needed for testing/logging
-        },
-      },
-    });
+    // First, get the current iterations
+    const { data: jobData } = await supabaseClient
+      .from('research_jobs')
+      .select('iterations')
+      .eq('id', jobId)
+      .single();
     
-    // Subscribe to the channel (required before broadcasting)
-    // We don't actually need to listen here, just establish it.
-    await new Promise((resolve, reject) => {
-      channel.subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`Realtime channel ${channelName} subscribed for broadcasting.`);
-          resolve(true);
-        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          console.error(`Realtime channel ${channelName} subscription failed: ${status}`);
-          reject(new Error(`Failed to subscribe to broadcast channel: ${status}`));
-        }
-      });
-    });
+    if (!jobData || !jobData.iterations) {
+      throw new Error('Failed to retrieve job iterations');
+    }
+    
+    // Make sure the iterations array exists
+    let iterations = jobData.iterations;
+    let iterationIndex = iterations.findIndex(iter => iter.iteration === iterationNumber);
+    
+    if (iterationIndex === -1) {
+      throw new Error(`Iteration ${iterationNumber} not found in job data`);
+    }
+    
+    // Create a new stream for processing response chunks
+    const stream = new TransformStream();
+    const writer = stream.writable.getWriter();
     
     // Start the fetch with stream: true
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -914,6 +912,8 @@ When presented with a research query and focus area, you will analyze informatio
     const decoder = new TextDecoder('utf-8');
     
     // Process the stream
+    let completeResponse = '';
+    
     while (true) {
       const { done, value } = await reader.read();
       
@@ -940,106 +940,39 @@ When presented with a research query and focus area, you will analyze informatio
             if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
               // Extract content from delta
               const contentDelta = parsed.choices[0].delta.content;
-              completeAnalysisText += contentDelta; // Accumulate locally
+              completeResponse += contentDelta;
+              analysisText += contentDelta;
               
-              // Broadcast the chunk over the Realtime channel
-              const broadcastPayload = {
-                type: 'broadcast',
-                event: 'analysis_chunk',
-                payload: { 
-                  chunk: contentDelta, 
-                  sequence: chunkSequence++ 
-                },
-              };
-              
-              // Send broadcast without waiting for confirmation
-              channel.send(broadcastPayload).catch(broadcastError => {
-                console.error(`Error broadcasting chunk on ${channelName}:`, broadcastError);
+              // Insert into analysis_stream table for debug/logging
+              await supabaseClient.from('analysis_stream').insert({
+                job_id: jobId,
+                sequence: chunkSequence++,
+                chunk: contentDelta,
+                iteration: iterationNumber
               });
               
-              // Optional: Insert into analysis_stream table for debug/logging (can be kept)
-              // await supabaseClient.from('analysis_stream').insert({
-              //   job_id: jobId,
-              //   sequence: chunkSequence - 1, // Use the sequence number just sent
-              //   chunk: contentDelta,
-              //   iteration: iterationNumber
-              // });
+              // Update the iteration analysis in the research_jobs table
+              const updatedIterationData = [...iterations];
+              updatedIterationData[iterationIndex].analysis = analysisText;
               
-              // REMOVED: Frequent database update
-              // const updatedIterationData = [...iterations];
-              // updatedIterationData[iterationIndex].analysis = analysisText;
-              // await supabaseClient
-              //   .from('research_jobs')
-              //   .update({ iterations: updatedIterationData })
-              //   .eq('id', jobId);
+              await supabaseClient
+                .from('research_jobs')
+                .update({ iterations: updatedIterationData })
+                .eq('id', jobId);
             }
           } catch (e) {
-            console.error('Error parsing or broadcasting streaming response chunk:', e);
+            console.error('Error parsing streaming response chunk:', e);
           }
         }
       }
     }
     
-    console.log(`Completed streaming for iteration ${iterationNumber}, total response length: ${completeAnalysisText.length}`);
+    console.log(`Completed streaming for iteration ${iterationNumber}, total response length: ${completeResponse.length}`);
     
-    // Unsubscribe from the broadcast channel
-    await channel.unsubscribe();
-    console.log(`Realtime channel ${channelName} unsubscribed.`);
-    
-    // --- Single Database Update AFTER Stream Completion ---
-    try {
-      console.log(`Updating database with final analysis for iteration ${iterationNumber}`);
-      
-      // Fetch the current iterations data one last time
-      const { data: finalJobData, error: fetchError } = await supabaseClient
-        .from('research_jobs')
-        .select('iterations')
-        .eq('id', jobId)
-        .single();
-        
-      if (fetchError || !finalJobData || !finalJobData.iterations) {
-        throw new Error(`Failed to retrieve final job iterations: ${fetchError?.message || 'Not found'}`);
-      }
-      
-      // Find the iteration and update its analysis field
-      // Add type assertion for iterations if needed, assuming a structure like Array<{iteration: number, analysis?: string, ...}>
-      const finalIterations = finalJobData.iterations as Array<{iteration: number, analysis?: string, [key: string]: any}>; 
-      const iterationIndex = finalIterations.findIndex(iter => iter.iteration === iterationNumber);
-      
-      if (iterationIndex === -1) {
-        throw new Error(`Iteration ${iterationNumber} not found in final job data`);
-      }
-      
-      finalIterations[iterationIndex].analysis = completeAnalysisText;
-      
-      // Perform the single update
-      const { error: updateError } = await supabaseClient
-        .from('research_jobs')
-        .update({ iterations: finalIterations })
-        .eq('id', jobId);
-        
-      if (updateError) {
-        throw new Error(`Failed to update final analysis: ${updateError.message}`);
-      }
-      
-      console.log(`Successfully updated final analysis for iteration ${iterationNumber} in database.`);
-      
-    } catch (dbUpdateError) {
-      console.error(`Error saving final analysis to database for iteration ${iterationNumber}:`, dbUpdateError);
-      // Decide how to handle this - maybe log progress differently?
-      // For now, we'll just log the error and return the text anyway
-    }
-    // --- End Database Update ---
-    
-    return completeAnalysisText; // Return the fully accumulated text
-    
+    return analysisText;
   } catch (error) {
-    console.error(`Error in generateAnalysisWithStreaming for job ${jobId}, iteration ${iterationNumber}:`, error);
-    // Ensure channel is unsubscribed on error
-    if (channel) {
-      await channel.unsubscribe().catch(e => console.error("Error unsubscribing channel on error:", e));
-    }
-    throw error; // Re-throw the error
+    console.error(`Error in generateAnalysisWithStreaming:`, error);
+    throw error;
   }
 }
 
