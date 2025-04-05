@@ -45,7 +45,7 @@ export function StreamingAnalysisDisplay({
   return (
     <div className="relative h-full w-full">
       <ScrollArea 
-        className="rounded-md border p-4 bg-accent/5 w-full h-full"
+        className="rounded-md border p-4 bg-accent/5 w-full" // Removed h-full
         style={{ maxHeight }} // Use maxHeight if provided, otherwise defaults from className
         ref={scrollRef} // Pass the ref directly to ScrollArea
       >
