@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
-import { AnalysisDisplay } from "./research/AnalysisDisplay"
+import { StreamingAnalysisDisplay } from "./research/StreamingAnalysisDisplay" // Changed import
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
@@ -866,7 +866,8 @@ export function JobQueueResearchCard({
           {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
+              {/* Changed usage */}
+              <StreamingAnalysisDisplay content={analysis} isStreaming={false} /> 
             </div>
           )}
         </>
