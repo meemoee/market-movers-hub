@@ -3,11 +3,11 @@ import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
+import { SimpleScrollingContent } from "@/components/ui/simple-scrolling-content"
 
 interface IterationCardProps {
   iteration: {
@@ -94,7 +94,7 @@ export function IterationCard({
               </TabsContent>
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full max-w-full">
+                <SimpleScrollingContent className="h-full rounded-md border p-3 w-full max-w-full" maxHeight="100%">
                   <div className="space-y-2 w-full">
                     {iteration.results.map((result, idx) => (
                       <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
@@ -128,11 +128,11 @@ export function IterationCard({
                       </div>
                     )}
                   </div>
-                </ScrollArea>
+                </SimpleScrollingContent>
               </TabsContent>
               
               <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
-                <ScrollArea className="h-full rounded-md border p-3 w-full">
+                <SimpleScrollingContent className="h-full rounded-md border p-3 w-full" maxHeight="100%">
                   <div className="space-y-2 w-full">
                     {iteration.queries.map((query, idx) => (
                       <div key={idx} className="query-badge bg-accent/10 p-2 rounded-md flex items-center gap-1 w-full mb-2">
@@ -147,7 +147,7 @@ export function IterationCard({
                       </div>
                     )}
                   </div>
-                </ScrollArea>
+                </SimpleScrollingContent>
               </TabsContent>
             </div>
           </Tabs>

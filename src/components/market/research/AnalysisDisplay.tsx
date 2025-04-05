@@ -1,7 +1,7 @@
 
 import { useState, useEffect } from "react"
 import ReactMarkdown from 'react-markdown'
-import { AutoScrollArea } from "@/components/ui/auto-scroll-area"
+import { SimpleScrollingContent } from "@/components/ui/simple-scrolling-content"
 
 interface AnalysisDisplayProps {
   content: string
@@ -50,15 +50,16 @@ export function AnalysisDisplay({
 
   return (
     <div className="relative">
-      <AutoScrollArea 
+      <SimpleScrollingContent 
         className="rounded-md border p-4 bg-accent/5 w-full max-w-full"
         maxHeight={maxHeight}
-        autoScroll={shouldAutoScroll}
-        onScrolledAwayFromBottom={() => {
+        shouldAutoScroll={shouldAutoScroll}
+        isStreaming={isStreaming}
+        onScrollAwayFromBottom={() => {
           console.log('AnalysisDisplay: User scrolled away from bottom');
           setShouldAutoScroll(false);
         }}
-        onScrolledToBottom={() => {
+        onScrollToBottom={() => {
           console.log('AnalysisDisplay: User scrolled to bottom');
           setShouldAutoScroll(true);
         }}
@@ -68,10 +69,10 @@ export function AnalysisDisplay({
             {content}
           </ReactMarkdown>
         </div>
-      </AutoScrollArea>
+      </SimpleScrollingContent>
       
       {isStreaming && (
-        <div className="absolute bottom-2 right-2">
+        <div className="absolute bottom-2 left-2">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
               {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
@@ -83,15 +84,6 @@ export function AnalysisDisplay({
             </div>
           </div>
         </div>
-      )}
-      
-      {!shouldAutoScroll && isStreaming && (
-        <button 
-          onClick={() => setShouldAutoScroll(true)}
-          className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
-        >
-          Resume auto-scroll
-        </button>
       )}
     </div>
   )
