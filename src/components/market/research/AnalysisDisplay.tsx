@@ -1,7 +1,7 @@
 
-import { useState, useEffect } from "react"
+import { useLayoutEffect, useRef, useEffect, useState } from "react"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
-import { StreamingContentView } from "@/components/ui/streaming-content-view"
 
 interface AnalysisDisplayProps {
   content: string
@@ -14,78 +14,133 @@ export function AnalysisDisplay({
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
-  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const prevContentLength = useRef(content?.length || 0)
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const [previousContentLength, setPreviousContentLength] = useState(0)
   
   // Debug logging
-  console.log(`AnalysisDisplay: Rendering with content length: ${content?.length || 0}, isStreaming: ${isStreaming}`);
-  
-  // Detect content changes and update streaming status
   useEffect(() => {
-    if (content?.length !== previousContentLength) {
-      console.log(`AnalysisDisplay: Content changed from ${previousContentLength} to ${content?.length || 0} chars`);
-      setPreviousContentLength(content?.length || 0);
+    if (content && content.length > 0) {
+      console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
+    }
+  }, [content, isStreaming]);
+  
+  // Optimize scrolling with less frequent updates
+  useLayoutEffect(() => {
+    if (!scrollRef.current || !shouldAutoScroll) return
+    
+    const scrollContainer = scrollRef.current
+    const currentContentLength = content?.length || 0
+    
+    console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
+    
+    // Only auto-scroll if content is growing or streaming
+    if (currentContentLength > prevContentLength.current || isStreaming) {
+      requestAnimationFrame(() => {
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+          console.log(`AnalysisDisplay: Scrolled to bottom - height: ${scrollContainer.scrollHeight}`);
+        }
+        setLastUpdateTime(Date.now())
+      })
       
-      if (isStreaming && streamStatus !== 'streaming') {
-        setStreamStatus('streaming');
+      if (isStreaming) {
+        setStreamStatus('streaming')
       }
     }
-  }, [content, previousContentLength, isStreaming, streamStatus]);
-  
-  // If streaming but no content change for a while, set to waiting
-  useEffect(() => {
-    let waitingTimeout: ReturnType<typeof setTimeout> | null = null;
     
-    if (isStreaming && streamStatus === 'streaming' && content?.length === previousContentLength) {
-      waitingTimeout = setTimeout(() => {
-        setStreamStatus('waiting');
-        console.log('AnalysisDisplay: Stream status changed to waiting');
-      }, 1500);
+    prevContentLength.current = currentContentLength
+  }, [content, isStreaming, shouldAutoScroll])
+  
+  // Handle user scroll to disable auto-scroll
+  useEffect(() => {
+    if (!scrollRef.current) return
+    
+    const scrollContainer = scrollRef.current
+    const handleScroll = () => {
+      // If user has scrolled up, disable auto-scroll
+      // If they scroll to the bottom, re-enable it
+      const isAtBottom = Math.abs(
+        (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
+        scrollContainer.scrollTop
+      ) < 30 // Small threshold for "close enough" to bottom
+      
+      if (shouldAutoScroll !== isAtBottom) {
+        console.log(`AnalysisDisplay: Auto-scroll changed to ${isAtBottom}`);
+        setShouldAutoScroll(isAtBottom);
+      }
     }
     
-    // Cleanup timeout
+    scrollContainer.addEventListener('scroll', handleScroll)
+    return () => scrollContainer.removeEventListener('scroll', handleScroll)
+  }, [])
+  
+  // Check for inactive streaming with longer intervals
+  useEffect(() => {
+    if (!isStreaming) {
+      if (streamStatus !== 'idle') {
+        console.log(`AnalysisDisplay: Stream status changed to idle`);
+        setStreamStatus('idle');
+      }
+      return;
+    }
+    
+    const interval = setInterval(() => {
+      const timeSinceUpdate = Date.now() - lastUpdateTime
+      const newStatus = timeSinceUpdate > 1500 ? 'waiting' : 'streaming';
+      
+      if (streamStatus !== newStatus) {
+        console.log(`AnalysisDisplay: Stream status changed to ${newStatus}`);
+        setStreamStatus(newStatus);
+      }
+    }, 1000)
+    
+    return () => clearInterval(interval)
+  }, [isStreaming, lastUpdateTime, streamStatus])
+  
+  // For continuous smooth scrolling during active streaming
+  useEffect(() => {
+    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
+    
+    console.log(`AnalysisDisplay: Setting up continuous scroll for streaming`);
+    
+    let rafId: number
+    
+    const scrollToBottom = () => {
+      if (scrollRef.current && shouldAutoScroll) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        rafId = requestAnimationFrame(scrollToBottom)
+      }
+    }
+    
+    rafId = requestAnimationFrame(scrollToBottom)
+    
     return () => {
-      if (waitingTimeout) {
-        clearTimeout(waitingTimeout);
-      }
-    };
-  }, [isStreaming, streamStatus, content, previousContentLength]);
-  
-  // When streaming stops, set to idle
-  useEffect(() => {
-    if (!isStreaming && streamStatus !== 'idle') {
-      setStreamStatus('idle');
+      console.log(`AnalysisDisplay: Cleaning up continuous scroll`);
+      cancelAnimationFrame(rafId);
     }
-  }, [isStreaming, streamStatus]);
+  }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
 
   return (
     <div className="relative">
-      <StreamingContentView 
-        className="rounded-md border p-4 bg-accent/5 w-full max-w-full"
-        maxHeight={maxHeight}
-        shouldScrollToBottom={shouldScrollToBottom}
-        isStreaming={isStreaming}
-        onScrollAwayFromBottom={() => {
-          console.log('AnalysisDisplay: User scrolled away from bottom');
-          setShouldScrollToBottom(false);
-        }}
-        onScrollToBottom={() => {
-          console.log('AnalysisDisplay: User scrolled to bottom');
-          setShouldScrollToBottom(true);
-        }}
+      <ScrollArea 
+        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
+        style={{ height: maxHeight }}
+        ref={scrollRef}
       >
         <div className="overflow-x-hidden w-full max-w-full">
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
             {content}
           </ReactMarkdown>
         </div>
-      </StreamingContentView>
+      </ScrollArea>
       
       {isStreaming && (
-        <div className="absolute bottom-2 left-2 z-10">
+        <div className="absolute bottom-2 right-2">
           <div className="flex items-center space-x-2">
             <span className="text-xs text-muted-foreground">
               {streamStatus === 'waiting' ? "Waiting for data..." : "Streaming..."}
@@ -97,6 +152,20 @@ export function AnalysisDisplay({
             </div>
           </div>
         </div>
+      )}
+      
+      {!shouldAutoScroll && isStreaming && (
+        <button 
+          onClick={() => {
+            setShouldAutoScroll(true);
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+            }
+          }}
+          className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
+        >
+          Resume auto-scroll
+        </button>
       )}
     </div>
   )
