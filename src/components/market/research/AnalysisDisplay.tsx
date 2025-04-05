@@ -1,5 +1,5 @@
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import ReactMarkdown from 'react-markdown'
 import { StreamingContentView } from "@/components/ui/streaming-content-view"
 
@@ -22,30 +22,42 @@ export function AnalysisDisplay({
   console.log(`AnalysisDisplay: Rendering with content length: ${content?.length || 0}, isStreaming: ${isStreaming}`);
   
   // Detect content changes and update streaming status
-  if (content?.length !== previousContentLength) {
-    console.log(`AnalysisDisplay: Content changed from ${previousContentLength} to ${content?.length || 0} chars`);
-    setPreviousContentLength(content?.length || 0);
-    
-    if (isStreaming && streamStatus !== 'streaming') {
-      setStreamStatus('streaming');
+  useEffect(() => {
+    if (content?.length !== previousContentLength) {
+      console.log(`AnalysisDisplay: Content changed from ${previousContentLength} to ${content?.length || 0} chars`);
+      setPreviousContentLength(content?.length || 0);
+      
+      if (isStreaming && streamStatus !== 'streaming') {
+        setStreamStatus('streaming');
+      }
     }
-  }
+  }, [content, previousContentLength, isStreaming, streamStatus]);
   
   // If streaming but no content change for a while, set to waiting
-  if (isStreaming && streamStatus === 'streaming' && content?.length === previousContentLength) {
-    const waitingTimeout = setTimeout(() => {
-      setStreamStatus('waiting');
-      console.log('AnalysisDisplay: Stream status changed to waiting');
-    }, 1500);
+  useEffect(() => {
+    let waitingTimeout: ReturnType<typeof setTimeout> | null = null;
+    
+    if (isStreaming && streamStatus === 'streaming' && content?.length === previousContentLength) {
+      waitingTimeout = setTimeout(() => {
+        setStreamStatus('waiting');
+        console.log('AnalysisDisplay: Stream status changed to waiting');
+      }, 1500);
+    }
     
     // Cleanup timeout
-    return () => clearTimeout(waitingTimeout);
-  }
+    return () => {
+      if (waitingTimeout) {
+        clearTimeout(waitingTimeout);
+      }
+    };
+  }, [isStreaming, streamStatus, content, previousContentLength]);
   
   // When streaming stops, set to idle
-  if (!isStreaming && streamStatus !== 'idle') {
-    setStreamStatus('idle');
-  }
+  useEffect(() => {
+    if (!isStreaming && streamStatus !== 'idle') {
+      setStreamStatus('idle');
+    }
+  }, [isStreaming, streamStatus]);
 
   if (!content) return null
 
