@@ -1,9 +1,9 @@
 
 import { cn } from "@/lib/utils"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useLayoutEffect } from "react"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Progress } from "@/components/ui/progress"
 import { Clock, Loader2, CheckCircle, AlertCircle } from "lucide-react"
-import { SimpleScrollingContent } from "@/components/ui/simple-scrolling-content"
 
 interface ProgressDisplayProps {
   messages: string[]
@@ -14,20 +14,24 @@ interface ProgressDisplayProps {
 
 export function ProgressDisplay({ messages, jobId, progress, status }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
-  const [prevMessagesLength, setPrevMessagesLength] = useState(0)
-  const isNewMessages = messages.length > prevMessagesLength
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
     if (messages.length > 0) {
       setCurrentMessage(messages[messages.length - 1])
     }
-    
-    // Track when new messages are added
-    if (messages.length !== prevMessagesLength) {
-      console.log(`ProgressDisplay: Messages changed from ${prevMessagesLength} to ${messages.length}`);
-      setPrevMessagesLength(messages.length);
+  }, [messages])
+  
+  // Use useLayoutEffect to ensure scroll happens before browser paint
+  useLayoutEffect(() => {
+    if (messagesEndRef.current && scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      }
     }
-  }, [messages, prevMessagesLength])
+  }, [messages]);
 
   if (!messages.length) return null
   
@@ -49,13 +53,8 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   };
   
   return (
-    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40">
-      <SimpleScrollingContent 
-        className="h-full" 
-        maxHeight="100%" 
-        shouldAutoScroll={true}
-        isStreaming={status === 'processing' && isNewMessages}
-      >
+    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
+      <ScrollArea className="h-full">
         <div className="p-4 space-y-2">
           {jobId && (
             <div className="space-y-2">
@@ -97,8 +96,9 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
               </span>
             </div>
           ))}
+          <div ref={messagesEndRef} />
         </div>
-      </SimpleScrollingContent>
+      </ScrollArea>
     </div>
   )
 }
