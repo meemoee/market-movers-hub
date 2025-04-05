@@ -17,13 +17,26 @@ export function StreamingAnalysisDisplay({
 
   useLayoutEffect(() => {
     // Only scroll if streaming is active and the ref is attached
+    // Only scroll if streaming is active and the ref is attached
     if (isStreaming && scrollRef.current) {
       const scrollContainer = scrollRef.current;
+      const currentScrollTop = scrollContainer.scrollTop;
+      const currentScrollHeight = scrollContainer.scrollHeight;
+      const clientHeight = scrollContainer.clientHeight;
+
+      console.log(`[StreamingAnalysisDisplay] Effect Triggered: isStreaming=${isStreaming}, content.length=${content?.length}`);
+      console.log(`[StreamingAnalysisDisplay] Before Scroll: scrollTop=${currentScrollTop}, scrollHeight=${currentScrollHeight}, clientHeight=${clientHeight}`);
+
       // Use requestAnimationFrame for smoother scrolling after render
       requestAnimationFrame(() => {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
-        console.log(`StreamingAnalysisDisplay: Scrolled to bottom - height: ${scrollContainer.scrollHeight}`);
+        const newScrollHeight = scrollContainer.scrollHeight;
+        scrollContainer.scrollTop = newScrollHeight; // Scroll to the very bottom
+        const newScrollTop = scrollContainer.scrollTop;
+        console.log(`[StreamingAnalysisDisplay] After Scroll Attempt: newScrollHeight=${newScrollHeight}, newScrollTop=${newScrollTop}`);
       });
+    } else if (scrollRef.current) {
+      // Log state even when not attempting to scroll
+      console.log(`[StreamingAnalysisDisplay] Effect Triggered (Not Scrolling): isStreaming=${isStreaming}, scrollTop=${scrollRef.current.scrollTop}, scrollHeight=${scrollRef.current.scrollHeight}`);
     }
   }, [content, isStreaming]) // Re-run effect when content changes or streaming status changes
 
