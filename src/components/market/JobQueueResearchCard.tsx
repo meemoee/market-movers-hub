@@ -188,28 +188,7 @@ export function JobQueueResearchCard({
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
-      setIterations(prevIterations => {
-        if (prevIterations.length === 0 || prevIterations.length !== job.iterations.length) {
-          console.log('Initial iterations or length changed, replacing entire array');
-          return job.iterations;
-        }
-        
-        const updatedIterations = [...prevIterations];
-        let hasChanges = false;
-        
-        for (let i = 0; i < job.iterations.length; i++) {
-          const newIter = job.iterations[i];
-          const currentIter = updatedIterations[i];
-          
-          if (newIter.analysis !== currentIter.analysis) {
-            console.log(`Iteration ${i + 1} analysis changed, updating just this iteration`);
-            updatedIterations[i] = newIter;
-            hasChanges = true;
-          }
-        }
-        
-        return hasChanges ? updatedIterations : prevIterations;
-      });
+      setIterations(job.iterations);
       
       if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
         setExpandedIterations(prev => [...prev, job.current_iteration]);
