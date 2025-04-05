@@ -1,7 +1,9 @@
 
-import { useLayoutEffect, useRef, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
+import { Button } from "@/components/ui/button"
+import { ArrowDown } from "lucide-react"
 
 interface AnalysisDisplayProps {
   content: string
@@ -14,165 +16,179 @@ export function AnalysisDisplay({
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
-  const prevContentLength = useRef(content?.length || 0)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const prevContentLengthRef = useRef<number>(0)
+  const observerRef = useRef<MutationObserver | null>(null)
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const userHasScrolledRef = useRef<boolean>(false)
   
-  // Debug logging
+  // Debug logging for content updates
   useEffect(() => {
     if (content && content.length > 0) {
       console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
-    }
-  }, [content, isStreaming]);
-  
-  // Force scroll to bottom on content updates with multiple attempts
-  useLayoutEffect(() => {
-    const scrollContainer = scrollRef.current
-    if (!scrollContainer || !shouldAutoScroll) return
-
-    const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]')
-    if (!viewport) {
-      console.warn("AnalysisDisplay: Could not find scroll viewport element.");
-      return;
-    }
-    
-    const currentContentLength = content?.length || 0
-    
-    console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
-    
-    // Auto-scroll if content is growing and user hasn't scrolled up
-    if (currentContentLength > prevContentLength.current && shouldAutoScroll) {
-      // Make multiple scroll attempts with increasing delays
-      const scrollTimes = [0, 10, 50, 100, 300, 500];
       
-      scrollTimes.forEach(delay => {
-        setTimeout(() => {
-          if (viewport && shouldAutoScroll) {
-            viewport.scrollTop = viewport.scrollHeight;
-            console.log(`AnalysisDisplay: Scrolled to bottom with delay ${delay}ms - scrollTop: ${viewport.scrollTop}, scrollHeight: ${viewport.scrollHeight}`);
-          }
-        }, delay);
-      });
-    }
-    
-    // Update stream status based on isStreaming prop
-    if (isStreaming) {
-      // Update last update time whenever content changes during streaming
-      if (currentContentLength > prevContentLength.current) {
+      // Update last update time when content changes during streaming
+      if (isStreaming && content.length > prevContentLengthRef.current) {
         setLastUpdateTime(Date.now())
       }
+      
+      prevContentLengthRef.current = content.length
+    }
+  }, [content, isStreaming]);
+
+  // Scroll to bottom function with multiple aggressive attempts
+  const scrollToBottom = useCallback(() => {
+    if (!shouldAutoScroll || !containerRef.current || userHasScrolledRef.current) return;
+    
+    const scrollContainer = containerRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement;
+    if (!scrollContainer) return;
+    
+    console.log("Attempting to scroll to bottom");
+    
+    // Clear any existing timeout to avoid conflicting scroll attempts
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = null;
     }
     
-    prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
-  
-  // Set up ResizeObserver to detect content changes and scroll accordingly
-  useEffect(() => {
-    const scrollContainer = scrollRef.current
-    if (!scrollContainer) return
-
-    const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]')
-    if (!viewport) return;
+    // Make multiple scroll attempts with increasing delays
+    const scrollTimes = [0, 10, 50, 100, 300];
     
-    // Create a resize observer to detect content changes
-    const resizeObserver = new ResizeObserver(() => {
-      if (shouldAutoScroll) {
-        viewport.scrollTop = viewport.scrollHeight;
-        console.log(`AnalysisDisplay: Scrolled due to resize - new scrollTop: ${viewport.scrollTop}`);
+    scrollTimes.forEach(delay => {
+      scrollTimeoutRef.current = setTimeout(() => {
+        if (scrollContainer && shouldAutoScroll && !userHasScrolledRef.current) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          console.log(`Scrolled to bottom with delay ${delay}ms - height: ${scrollContainer.scrollHeight}`);
+        }
+      }, delay);
+    });
+  }, [shouldAutoScroll]);
+
+  // Set up mutation observer to detect content changes
+  useEffect(() => {
+    if (!contentRef.current) return;
+    
+    // Clean up previous observer
+    if (observerRef.current) {
+      observerRef.current.disconnect();
+    }
+    
+    // Create a new mutation observer
+    observerRef.current = new MutationObserver((mutations) => {
+      let shouldScroll = false;
+      
+      mutations.forEach(mutation => {
+        if (mutation.type === 'childList' || mutation.type === 'characterData') {
+          shouldScroll = true;
+        }
+      });
+      
+      if (shouldScroll && shouldAutoScroll && !userHasScrolledRef.current) {
+        scrollToBottom();
       }
     });
     
-    // Observe the content area for size changes
-    const content = viewport.firstElementChild;
-    if (content) {
-      resizeObserver.observe(content);
-    }
+    // Start observing content changes
+    observerRef.current.observe(contentRef.current, {
+      childList: true,
+      characterData: true,
+      subtree: true
+    });
     
     return () => {
-      resizeObserver.disconnect();
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
     };
-  }, [shouldAutoScroll]);
-  
-  // Handle user scroll to disable auto-scroll
-  useEffect(() => {
-    const scrollContainer = scrollRef.current
-    if (!scrollContainer) return
+  }, [scrollToBottom, shouldAutoScroll]);
 
-    const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]')
-    if (!viewport) {
-      console.warn("AnalysisDisplay: Could not find scroll viewport element for event listener.");
-      return;
+  // Force initial scroll when content or streaming status changes
+  useEffect(() => {
+    if (isStreaming && content && content.length > 0) {
+      scrollToBottom();
     }
+  }, [content, isStreaming, scrollToBottom]);
+
+  // Manually trigger scroll to bottom on initial load and content change
+  useEffect(() => {
+    if (content && content.length > 0) {
+      scrollToBottom();
+    }
+  }, [content, scrollToBottom]);
+
+  // Handle user scroll to enable/disable auto-scroll
+  useEffect(() => {
+    const scrollContainer = containerRef.current?.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement;
+    if (!scrollContainer) return;
 
     const handleScroll = () => {
-      // Calculate based on the viewport's properties
-      const scrollThreshold = 30; // Pixels from bottom to consider "at bottom"
-      const scrollPosition = viewport.scrollTop;
-      const totalHeight = viewport.scrollHeight;
-      const visibleHeight = viewport.clientHeight;
-      
       // Check if scrollable at all
-      if (totalHeight <= visibleHeight) {
+      if (scrollContainer.scrollHeight <= scrollContainer.clientHeight) {
+        userHasScrolledRef.current = false;
         if (!shouldAutoScroll) {
-          console.log(`AnalysisDisplay: Viewport not scrollable (height <= clientHeight), enabling auto-scroll.`);
-          setShouldAutoScroll(true); // Re-enable if not scrollable
+          setShouldAutoScroll(true);
         }
-        return; 
+        return;
       }
 
-      const isAtBottom = Math.abs((totalHeight - visibleHeight) - scrollPosition) < scrollThreshold;
+      const isAtBottom = Math.abs((scrollContainer.scrollHeight - scrollContainer.clientHeight) - scrollContainer.scrollTop) < 30;
       
       if (shouldAutoScroll !== isAtBottom) {
-        console.log(`AnalysisDisplay: Scroll event - scrollHeight: ${totalHeight}, clientHeight: ${visibleHeight}, scrollTop: ${scrollPosition.toFixed(1)}. Auto-scroll changed to ${isAtBottom}`);
+        console.log(`User scroll detected - at bottom: ${isAtBottom}`);
         setShouldAutoScroll(isAtBottom);
+        userHasScrolledRef.current = !isAtBottom;
       }
-    }
+    };
     
-    // Add listener to the viewport
-    viewport.addEventListener('scroll', handleScroll)
-    // Cleanup function needs to reference the same viewport
-    return () => {
-      if (viewport) { // Check if viewport still exists on cleanup
-        viewport.removeEventListener('scroll', handleScroll)
-      }
-    }
-  }, [shouldAutoScroll]) // Add shouldAutoScroll dependency to ensure the listener uses the latest state
-  
-  // Check for inactive streaming with longer intervals
+    scrollContainer.addEventListener('scroll', handleScroll);
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, [shouldAutoScroll]);
+
+  // Handle streaming status updates
   useEffect(() => {
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
-        console.log(`AnalysisDisplay: Stream status changed to idle`);
         setStreamStatus('idle');
       }
       return;
     }
     
     const interval = setInterval(() => {
-      const timeSinceUpdate = Date.now() - lastUpdateTime
+      const timeSinceUpdate = Date.now() - lastUpdateTime;
       const newStatus = timeSinceUpdate > 1500 ? 'waiting' : 'streaming';
       
       if (streamStatus !== newStatus) {
-        console.log(`AnalysisDisplay: Stream status changed to ${newStatus}`);
         setStreamStatus(newStatus);
       }
-    }, 1000)
+    }, 1000);
     
-    return () => clearInterval(interval)
-  }, [isStreaming, lastUpdateTime, streamStatus])
+    return () => clearInterval(interval);
+  }, [isStreaming, lastUpdateTime, streamStatus]);
 
-  if (!content) return null
+  // Reset user scroll state when content is completely changed
+  useEffect(() => {
+    if (content.length === 0) {
+      userHasScrolledRef.current = false;
+      setShouldAutoScroll(true);
+    }
+  }, [content]);
+
+  if (!content) return null;
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
+        className="rounded-md border p-4 bg-accent/5 w-full max-w-full"
         style={{ height: maxHeight }}
-        ref={scrollRef}
       >
-        <div className="overflow-x-hidden w-full max-w-full">
+        <div className="overflow-x-hidden w-full max-w-full" ref={contentRef}>
           <ReactMarkdown className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full">
             {content}
           </ReactMarkdown>
@@ -194,25 +210,21 @@ export function AnalysisDisplay({
         </div>
       )}
       
-      {!shouldAutoScroll && isStreaming && (
-        <button 
+      {(!shouldAutoScroll || userHasScrolledRef.current) && isStreaming && (
+        <Button 
           onClick={() => {
+            userHasScrolledRef.current = false;
             setShouldAutoScroll(true);
-            const scrollContainer = scrollRef.current;
-            if (scrollContainer) {
-              const viewport = scrollContainer.querySelector<HTMLDivElement>('[data-radix-scroll-area-viewport]');
-              if (viewport) {
-                // Scroll the viewport to the bottom
-                viewport.scrollTop = viewport.scrollHeight;
-                console.log(`AnalysisDisplay: Manually scrolled viewport to bottom - height: ${viewport.scrollHeight}`);
-              }
-            }
+            scrollToBottom();
           }}
-          className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
+          className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors flex items-center gap-1"
+          size="sm"
+          variant="ghost"
         >
+          <ArrowDown className="h-3 w-3" />
           Resume auto-scroll
-        </button>
+        </Button>
       )}
     </div>
-  )
+  );
 }
