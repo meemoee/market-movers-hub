@@ -18,6 +18,7 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
+  const autoScrollTimeoutRef = useRef<number | null>(null)
   
   // Debug logging (we'll keep this minimal)
   useEffect(() => {
@@ -26,7 +27,17 @@ export function AnalysisDisplay({
     }
   }, [content]);
   
-  // Optimize scrolling with less frequent updates
+  // Clear any existing auto-scroll timeouts on unmount to prevent memory leaks
+  useEffect(() => {
+    return () => {
+      if (autoScrollTimeoutRef.current) {
+        window.clearTimeout(autoScrollTimeoutRef.current);
+        autoScrollTimeoutRef.current = null;
+      }
+    };
+  }, []);
+  
+  // Optimize scrolling with less frequent updates and better cleanup
   useLayoutEffect(() => {
     if (!scrollRef.current || !shouldAutoScroll) return;
     
@@ -35,6 +46,12 @@ export function AnalysisDisplay({
     
     // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
+      // Clear any existing timeout to prevent stacking callbacks
+      if (autoScrollTimeoutRef.current) {
+        window.clearTimeout(autoScrollTimeoutRef.current);
+        autoScrollTimeoutRef.current = null;
+      }
+      
       // Use requestAnimationFrame for smoother scrolling
       const scrollToBottom = () => {
         if (scrollContainer) {
@@ -46,13 +63,17 @@ export function AnalysisDisplay({
         }
       };
       
-      requestAnimationFrame(scrollToBottom);
+      // Debounce scroll updates
+      autoScrollTimeoutRef.current = window.setTimeout(() => {
+        requestAnimationFrame(scrollToBottom);
+        autoScrollTimeoutRef.current = null;
+      }, 50); // Small delay to batch scrolling updates
     }
     
     prevContentLength.current = currentContentLength;
   }, [content, isStreaming, shouldAutoScroll]);
   
-  // Handle user scroll to disable auto-scroll
+  // Handle user scroll to disable auto-scroll with improved detection
   useEffect(() => {
     const container = scrollRef.current;
     if (!container) return;
@@ -60,24 +81,25 @@ export function AnalysisDisplay({
     const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
     if (!viewport) return;
     
+    // More efficient scroll handler with improved threshold detection
     const handleScroll = () => {
-      // If user has scrolled up, disable auto-scroll
-      // If they scroll to the bottom, re-enable it
-      const isAtBottom = Math.abs(
-        (viewport.scrollHeight - viewport.clientHeight) - 
-        viewport.scrollTop
-      ) < 30; // Small threshold for "close enough" to bottom
+      if (!viewport) return;
+      
+      // Calculate distance from bottom with improved precision
+      const scrollBottom = viewport.scrollHeight - viewport.clientHeight;
+      const distanceFromBottom = Math.abs(scrollBottom - viewport.scrollTop);
+      const isAtBottom = distanceFromBottom < 50; // Slightly larger threshold
       
       if (shouldAutoScroll !== isAtBottom) {
         setShouldAutoScroll(isAtBottom);
       }
     };
     
-    viewport.addEventListener('scroll', handleScroll);
+    viewport.addEventListener('scroll', handleScroll, { passive: true });
     return () => viewport.removeEventListener('scroll', handleScroll);
   }, [shouldAutoScroll]);
   
-  // Check for inactive streaming with longer intervals
+  // Check for inactive streaming with more efficient timing logic
   useEffect(() => {
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
@@ -86,18 +108,21 @@ export function AnalysisDisplay({
       return;
     }
     
-    const interval = setInterval(() => {
+    const checkStreamStatus = () => {
       const timeSinceUpdate = Date.now() - lastUpdateTime;
       const newStatus = timeSinceUpdate > 1500 ? 'waiting' : 'streaming';
       
       if (streamStatus !== newStatus) {
         setStreamStatus(newStatus);
       }
-    }, 1000);
+    };
+    
+    const interval = setInterval(checkStreamStatus, 1000);
     
     return () => clearInterval(interval);
   }, [isStreaming, lastUpdateTime, streamStatus]);
 
+  // Don't render anything when empty content
   if (!content) return null;
 
   return (

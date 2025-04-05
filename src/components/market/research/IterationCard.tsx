@@ -33,18 +33,26 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
+  const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false)
   
-  // Auto-collapse when iteration completes and it's not the final iteration
+  // Auto-collapse optimization with state tracking to prevent multiple collapses
   useEffect(() => {
-    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
+    // Only auto-collapse once per streaming session
+    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis && !hasAutoCollapsed) {
       // Add a small delay to let the user see the completed results before collapsing
       const timer = setTimeout(() => {
         onToggleExpand();
+        setHasAutoCollapsed(true);
       }, 1500);
       
       return () => clearTimeout(timer);
     }
-  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+    
+    // Reset auto-collapse state when streaming starts again
+    if (isStreaming && isCurrentIteration) {
+      setHasAutoCollapsed(false);
+    }
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand, hasAutoCollapsed]);
 
   return (
     <div className={cn(

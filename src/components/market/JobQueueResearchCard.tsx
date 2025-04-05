@@ -81,6 +81,7 @@ export function JobQueueResearchCard({
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
+  const channelUnsubscribedRef = useRef(false)
 
   const resetState = () => {
     setJobId(null);
@@ -93,23 +94,28 @@ export function JobQueueResearchCard({
     setJobStatus(null);
     setStructuredInsights(null);
     
+    cleanupRealtimeChannel();
+  }
+
+  const cleanupRealtimeChannel = () => {
     if (realtimeChannelRef.current) {
-      console.log('Removing realtime channel on reset');
-      supabase.removeChannel(realtimeChannelRef.current);
+      try {
+        if (!channelUnsubscribedRef.current) {
+          console.log('Removing realtime channel on cleanup');
+          supabase.removeChannel(realtimeChannelRef.current);
+          channelUnsubscribedRef.current = true;
+        }
+      } catch (err) {
+        console.error("Error cleaning up realtime channel:", err);
+      }
       realtimeChannelRef.current = null;
     }
-  }
+  };
 
   useEffect(() => {
     fetchSavedJobs();
     
-    return () => {
-      if (realtimeChannelRef.current) {
-        console.log('Removing realtime channel on unmount');
-        supabase.removeChannel(realtimeChannelRef.current);
-        realtimeChannelRef.current = null;
-      }
-    };
+    return cleanupRealtimeChannel;
   }, [marketId]);
 
   const fetchSavedJobs = async () => {
@@ -137,11 +143,8 @@ export function JobQueueResearchCard({
   };
 
   const subscribeToJobUpdates = (id: string) => {
-    if (realtimeChannelRef.current) {
-      console.log('Removing existing realtime channel before creating new one');
-      supabase.removeChannel(realtimeChannelRef.current);
-      realtimeChannelRef.current = null;
-    }
+    cleanupRealtimeChannel();
+    channelUnsubscribedRef.current = false;
     
     console.log(`Setting up realtime subscription for job id: ${id}`);
     
@@ -165,12 +168,50 @@ export function JobQueueResearchCard({
         )
         .subscribe((status) => {
           console.log(`Realtime subscription status: ${status} for job ${id}`);
+          
+          if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+            console.log("Channel error or closed, will use polling instead");
+            startPollingForUpdates(id);
+          }
         });
       
       realtimeChannelRef.current = channel;
     } catch (error) {
       console.error('Error setting up realtime subscription:', error);
+      startPollingForUpdates(id);
     }
+  };
+
+  const startPollingForUpdates = (id: string) => {
+    console.log(`Starting polling for updates for job ${id}`);
+    const pollingInterval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('research_jobs')
+          .select('*')
+          .eq('id', id)
+          .single();
+          
+        if (error) {
+          console.error('Error polling for job updates:', error);
+          return;
+        }
+        
+        if (data) {
+          console.log('Received update from polling:', data);
+          handleJobUpdate(data as ResearchJob);
+          
+          if (data.status === 'completed' || data.status === 'failed') {
+            console.log(`Job ${id} is ${data.status}, stopping polling`);
+            clearInterval(pollingInterval);
+          }
+        }
+      } catch (e) {
+        console.error('Error in polling loop:', e);
+      }
+    }, 3000);
+    
+    return () => clearInterval(pollingInterval);
   };
 
   const handleJobUpdate = (job: ResearchJob) => {
@@ -184,8 +225,8 @@ export function JobQueueResearchCard({
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
-      const currentProgress = progress;
-      const newItems = job.progress_log.slice(currentProgress.length);
+      const currentProgress = progress.length;
+      const newItems = job.progress_log.slice(currentProgress);
       
       if (newItems.length > 0) {
         console.log('Adding new progress items:', newItems);
@@ -423,9 +464,15 @@ export function JobQueueResearchCard({
       
       console.log('Creating research job with payload:', payload);
       
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      
       const response = await supabase.functions.invoke('create-research-job', {
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
       
       if (response.error) {
         console.error("Error creating research job:", response.error);
@@ -447,7 +494,7 @@ export function JobQueueResearchCard({
       
       setTimeout(() => {
         subscribeToJobUpdates(jobId);
-      }, 300);
+      }, 500);
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
         ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
