@@ -145,26 +145,32 @@ export function JobQueueResearchCard({
     
     console.log(`Setting up realtime subscription for job id: ${id}`);
     
-    const channel = supabase
-      .channel(`job-updates-${id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'research_jobs',
-          filter: `id=eq.${id}`
-        },
-        (payload) => {
-          console.log('Received realtime update:', payload);
-          handleJobUpdate(payload.new as ResearchJob);
-        }
-      )
-      .subscribe((status) => {
-        console.log(`Realtime subscription status: ${status}`, id);
-      });
-    
-    realtimeChannelRef.current = channel;
+    try {
+      const channelName = `job-updates-${id}-${Date.now()}`;
+      
+      const channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'research_jobs',
+            filter: `id=eq.${id}`
+          },
+          (payload) => {
+            console.log('Received realtime update:', payload);
+            handleJobUpdate(payload.new as ResearchJob);
+          }
+        )
+        .subscribe((status) => {
+          console.log(`Realtime subscription status: ${status} for job ${id}`);
+        });
+      
+      realtimeChannelRef.current = channel;
+    } catch (error) {
+      console.error('Error setting up realtime subscription:', error);
+    }
   };
 
   const handleJobUpdate = (job: ResearchJob) => {
@@ -439,7 +445,9 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Background processing started...`]);
       setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
       
-      subscribeToJobUpdates(jobId);
+      setTimeout(() => {
+        subscribeToJobUpdates(jobId);
+      }, 300);
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
         ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
