@@ -27,32 +27,19 @@ export function AnalysisDisplay({
     }
   }, [content, isStreaming]);
   
-  // Optimize scrolling with less frequent updates
-  useLayoutEffect(() => {
-    if (!scrollRef.current || !shouldAutoScroll) return
-    
-    const scrollContainer = scrollRef.current
-    const currentContentLength = content?.length || 0
-    
-    console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
-    
-    // Only auto-scroll if content is growing or streaming
-    if (currentContentLength > prevContentLength.current || isStreaming) {
+  // New unified scroll-to-bottom after DOM update
+  useEffect(() => {
+    if (!scrollRef.current || !shouldAutoScroll) return;
+
+    requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight
-          console.log(`AnalysisDisplay: Scrolled to bottom - height: ${scrollContainer.scrollHeight}`);
+        if (scrollRef.current && shouldAutoScroll) {
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+          console.log('AnalysisDisplay: Scrolled to bottom (double rAF)');
         }
-        setLastUpdateTime(Date.now())
-      })
-      
-      if (isStreaming) {
-        setStreamStatus('streaming')
-      }
-    }
-    
-    prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+      });
+    });
+  }, [content, isStreaming, shouldAutoScroll]);
   
   // Handle user scroll to disable auto-scroll
   useEffect(() => {
@@ -100,28 +87,6 @@ export function AnalysisDisplay({
     return () => clearInterval(interval)
   }, [isStreaming, lastUpdateTime, streamStatus])
   
-  // For continuous smooth scrolling during active streaming
-  useEffect(() => {
-    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
-    
-    console.log(`AnalysisDisplay: Setting up continuous scroll for streaming`);
-    
-    let rafId: number
-    
-    const scrollToBottom = () => {
-      if (scrollRef.current && shouldAutoScroll) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
-        rafId = requestAnimationFrame(scrollToBottom)
-      }
-    }
-    
-    rafId = requestAnimationFrame(scrollToBottom)
-    
-    return () => {
-      console.log(`AnalysisDisplay: Cleaning up continuous scroll`);
-      cancelAnimationFrame(rafId);
-    }
-  }, [isStreaming, shouldAutoScroll])
 
   if (!content) return null
 
