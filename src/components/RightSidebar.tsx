@@ -1,4 +1,3 @@
-
 import { Send } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
@@ -74,8 +73,8 @@ export default function RightSidebar() {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
-        },
-        signal: abortControllerRef.current.signal
+        }
+        // Remove the signal property as it's not supported in FunctionInvokeOptions
       });
 
       clearTimeout(timeoutId);

@@ -464,15 +464,16 @@ export function JobQueueResearchCard({
       
       console.log('Creating research job with payload:', payload);
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 15000);
-      
-      const response = await supabase.functions.invoke('create-research-job', {
-        body: JSON.stringify(payload),
-        signal: controller.signal
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timed out after 15 seconds')), 15000);
       });
       
-      clearTimeout(timeoutId);
+      const response = await Promise.race([
+        supabase.functions.invoke('create-research-job', {
+          body: JSON.stringify(payload)
+        }),
+        timeoutPromise
+      ]) as typeof supabase.functions.invoke extends (...args: any[]) => Promise<infer R> ? R : never;
       
       if (response.error) {
         console.error("Error creating research job:", response.error);
