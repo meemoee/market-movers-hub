@@ -1,5 +1,5 @@
 import { Send } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
@@ -11,74 +11,35 @@ export default function RightSidebar() {
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
-  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null)
 
   interface Message {
     type: 'user' | 'assistant'
     content?: string
   }
 
-  // Cleanup function for any active streams
-  const cleanupActiveStream = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    
-    if (readerRef.current) {
-      try {
-        // This will cause the reader to throw an error, 
-        // which will be caught in the catch block of handleChatMessage
-        readerRef.current.cancel();
-      } catch (e) {
-        console.error('Error cancelling reader', e);
-      }
-      readerRef.current = null;
-    }
-  };
-  
-  // Ensure cleanup on unmount
-  useEffect(() => {
-    return () => {
-      cleanupActiveStream();
-    };
-  }, []);
-
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return
-    
-    // Clean up any existing streaming
-    cleanupActiveStream();
     
     setHasStartedChat(true)
     setIsLoading(true)
     setMessages(prev => [...prev, { type: 'user', content: userMessage }])
     setChatMessage('')
-    setStreamingContent('')
     
     try {
-      abortControllerRef.current = new AbortController();
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort()
+      }
+
+      abortControllerRef.current = new AbortController()
 
       console.log('Sending request to market-analysis function...')
-      
-      // Add a timeout to prevent hanging requests
-      const timeoutId = setTimeout(() => {
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-          console.log('Request to market-analysis timed out after 30s');
-        }
-      }, 30000); // 30 second timeout
-      
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
           chatHistory: messages.map(m => `${m.type}: ${m.content}`).join('\n')
         }
-        // Remove the signal property as it's not supported in FunctionInvokeOptions
-      });
+      })
 
-      clearTimeout(timeoutId);
-      
       if (error) {
         console.error('Supabase function error:', error)
         throw error
@@ -91,26 +52,13 @@ export default function RightSidebar() {
       const stream = new ReadableStream({
         start(controller) {
           const textDecoder = new TextDecoder()
-          
-          if (!data?.body) {
-            controller.close();
-            return;
-          }
-          
           const reader = new Response(data.body).body?.getReader()
-          readerRef.current = reader || null;
           
           function push() {
-            if (!reader) {
-              controller.close();
-              return;
-            }
-            
-            reader.read().then(({done, value}) => {
+            reader?.read().then(({done, value}) => {
               if (done) {
                 console.log('Stream complete')
                 controller.close()
-                readerRef.current = null;
                 return
               }
               
@@ -139,53 +87,34 @@ export default function RightSidebar() {
               }
               
               push()
-            }).catch(err => {
-              if (err.name !== 'AbortError') {
-                console.error('Error reading from stream:', err);
-              }
-              controller.close();
-              readerRef.current = null;
-            });
+            })
           }
           
           push()
         }
-      });
+      })
 
       const reader = stream.getReader()
       while (true) {
-        try {
-          const { done } = await reader.read()
-          if (done) break
-        } catch (e) {
-          console.log('Stream reading interrupted:', e);
-          break;
-        }
+        const { done } = await reader.read()
+        if (done) break
       }
 
-      // Only add the completed message if we have content
-      if (accumulatedContent) {
-        setMessages(prev => [...prev, { 
-          type: 'assistant', 
-          content: accumulatedContent 
-        }]);
-      }
+      setMessages(prev => [...prev, { 
+        type: 'assistant', 
+        content: accumulatedContent 
+      }])
 
     } catch (error) {
       console.error('Error in chat:', error)
-      
-      // Don't set error message if we intentionally aborted
-      if (error instanceof Error && error.name !== 'AbortError') {
-        setMessages(prev => [...prev, { 
-          type: 'assistant', 
-          content: 'Sorry, I encountered an error processing your request.' 
-        }]);
-      }
+      setMessages(prev => [...prev, { 
+        type: 'assistant', 
+        content: 'Sorry, I encountered an error processing your request.' 
+      }])
     } finally {
       setIsLoading(false)
       setStreamingContent('')
       abortControllerRef.current = null
-      readerRef.current = null
     }
   }
 

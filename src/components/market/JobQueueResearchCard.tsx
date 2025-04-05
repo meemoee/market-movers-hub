@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input"
 import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
+import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
@@ -67,6 +68,7 @@ export function JobQueueResearchCard({
   const [progressPercent, setProgressPercent] = useState<number>(0)
   const [results, setResults] = useState<ResearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [analysis, setAnalysis] = useState('')
   const [jobId, setJobId] = useState<string | null>(null)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
@@ -81,7 +83,6 @@ export function JobQueueResearchCard({
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const realtimeChannelRef = useRef<any>(null)
   const { toast } = useToast()
-  const channelUnsubscribedRef = useRef(false)
 
   const resetState = () => {
     setJobId(null);
@@ -89,33 +90,29 @@ export function JobQueueResearchCard({
     setProgressPercent(0);
     setResults([]);
     setError(null);
+    setAnalysis('');
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
     
-    cleanupRealtimeChannel();
-  }
-
-  const cleanupRealtimeChannel = () => {
     if (realtimeChannelRef.current) {
-      try {
-        if (!channelUnsubscribedRef.current) {
-          console.log('Removing realtime channel on cleanup');
-          supabase.removeChannel(realtimeChannelRef.current);
-          channelUnsubscribedRef.current = true;
-        }
-      } catch (err) {
-        console.error("Error cleaning up realtime channel:", err);
-      }
+      console.log('Removing realtime channel on reset');
+      supabase.removeChannel(realtimeChannelRef.current);
       realtimeChannelRef.current = null;
     }
-  };
+  }
 
   useEffect(() => {
     fetchSavedJobs();
     
-    return cleanupRealtimeChannel;
+    return () => {
+      if (realtimeChannelRef.current) {
+        console.log('Removing realtime channel on unmount');
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
   }, [marketId]);
 
   const fetchSavedJobs = async () => {
@@ -143,75 +140,34 @@ export function JobQueueResearchCard({
   };
 
   const subscribeToJobUpdates = (id: string) => {
-    cleanupRealtimeChannel();
-    channelUnsubscribedRef.current = false;
+    if (realtimeChannelRef.current) {
+      console.log('Removing existing realtime channel before creating new one');
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
     
     console.log(`Setting up realtime subscription for job id: ${id}`);
     
-    try {
-      const channelName = `job-updates-${id}-${Date.now()}`;
-      
-      const channel = supabase
-        .channel(channelName)
-        .on(
-          'postgres_changes',
-          {
-            event: '*',
-            schema: 'public',
-            table: 'research_jobs',
-            filter: `id=eq.${id}`
-          },
-          (payload) => {
-            console.log('Received realtime update:', payload);
-            handleJobUpdate(payload.new as ResearchJob);
-          }
-        )
-        .subscribe((status) => {
-          console.log(`Realtime subscription status: ${status} for job ${id}`);
-          
-          if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
-            console.log("Channel error or closed, will use polling instead");
-            startPollingForUpdates(id);
-          }
-        });
-      
-      realtimeChannelRef.current = channel;
-    } catch (error) {
-      console.error('Error setting up realtime subscription:', error);
-      startPollingForUpdates(id);
-    }
-  };
-
-  const startPollingForUpdates = (id: string) => {
-    console.log(`Starting polling for updates for job ${id}`);
-    const pollingInterval = setInterval(async () => {
-      try {
-        const { data, error } = await supabase
-          .from('research_jobs')
-          .select('*')
-          .eq('id', id)
-          .single();
-          
-        if (error) {
-          console.error('Error polling for job updates:', error);
-          return;
+    const channel = supabase
+      .channel(`job-updates-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'research_jobs',
+          filter: `id=eq.${id}`
+        },
+        (payload) => {
+          console.log('Received realtime update:', payload);
+          handleJobUpdate(payload.new as ResearchJob);
         }
-        
-        if (data) {
-          console.log('Received update from polling:', data);
-          handleJobUpdate(data as ResearchJob);
-          
-          if (data.status === 'completed' || data.status === 'failed') {
-            console.log(`Job ${id} is ${data.status}, stopping polling`);
-            clearInterval(pollingInterval);
-          }
-        }
-      } catch (e) {
-        console.error('Error in polling loop:', e);
-      }
-    }, 3000);
+      )
+      .subscribe((status) => {
+        console.log(`Realtime subscription status: ${status}`, id);
+      });
     
-    return () => clearInterval(pollingInterval);
+    realtimeChannelRef.current = channel;
   };
 
   const handleJobUpdate = (job: ResearchJob) => {
@@ -225,8 +181,8 @@ export function JobQueueResearchCard({
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
-      const currentProgress = progress.length;
-      const newItems = job.progress_log.slice(currentProgress);
+      const currentProgress = progress;
+      const newItems = job.progress_log.slice(currentProgress.length);
       
       if (newItems.length > 0) {
         console.log('Adding new progress items:', newItems);
@@ -246,6 +202,7 @@ export function JobQueueResearchCard({
       try {
         console.log('Processing completed job results:', job.results);
         
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -257,12 +214,15 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          console.error('Unexpected results type in handleJobUpdate:', typeof job.results);
-          return;
+          throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
+        }
+        
+        if (parsedResults.analysis) {
+          setAnalysis(parsedResults.analysis);
         }
         
         if (parsedResults.structuredInsights) {
@@ -272,6 +232,7 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -328,6 +289,7 @@ export function JobQueueResearchCard({
     
     if (job.status === 'completed' && job.results) {
       try {
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -339,12 +301,14 @@ export function JobQueueResearchCard({
         } else if (typeof job.results === 'object') {
           parsedResults = job.results;
         } else {
-          console.error('Unexpected results type in loadJobData:', typeof job.results);
-          return;
+          throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
         if (parsedResults.data && Array.isArray(parsedResults.data)) {
           setResults(parsedResults.data);
+        }
+        if (parsedResults.analysis) {
+          setAnalysis(parsedResults.analysis);
         }
         if (parsedResults.structuredInsights) {
           console.log('Found structuredInsights in loadJobData:', parsedResults.structuredInsights);
@@ -353,6 +317,7 @@ export function JobQueueResearchCard({
             calculateGoodBuyOpportunities(parsedResults.structuredInsights.probability) : 
             null;
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -419,6 +384,7 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
+      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -464,16 +430,9 @@ export function JobQueueResearchCard({
       
       console.log('Creating research job with payload:', payload);
       
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timed out after 15 seconds')), 15000);
+      const response = await supabase.functions.invoke('create-research-job', {
+        body: JSON.stringify(payload)
       });
-      
-      const response = await Promise.race([
-        supabase.functions.invoke('create-research-job', {
-          body: JSON.stringify(payload)
-        }),
-        timeoutPromise
-      ]) as typeof supabase.functions.invoke extends (...args: any[]) => Promise<infer R> ? R : never;
       
       if (response.error) {
         console.error("Error creating research job:", response.error);
@@ -493,9 +452,7 @@ export function JobQueueResearchCard({
       setProgress(prev => [...prev, `Background processing started...`]);
       setProgress(prev => [...prev, `Set to run ${numIterations} research iterations`]);
       
-      setTimeout(() => {
-        subscribeToJobUpdates(jobId);
-      }, 500);
+      subscribeToJobUpdates(jobId);
       
       const toastMessage = notifyByEmail && notificationEmail.trim() 
         ? `Job ID: ${jobId}. Email notification will be sent to ${notificationEmail} when complete.`
@@ -868,26 +825,17 @@ export function JobQueueResearchCard({
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
           <div className="space-y-2">
-            {iterations.map((iteration) => {
-              const isCurrentlyStreaming = 
-                isLoading || 
-                (jobStatus === 'processing' && 
-                iteration.iteration === (iterations.length > 0 ? 
-                  Math.max(...iterations.map(i => i.iteration)) : 0));
-              
-              return (
-                <IterationCard
-                  key={iteration.iteration}
-                  iteration={iteration}
-                  isExpanded={expandedIterations.includes(iteration.iteration)}
-                  onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                  isStreaming={isCurrentlyStreaming}
-                  isCurrentIteration={iteration.iteration === (iterations.length > 0 ? 
-                    Math.max(...iterations.map(i => i.iteration)) : 0)}
-                  maxIterations={parseInt(maxIterations, 10)}
-                />
-              );
-            })}
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={iteration.iteration}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(iteration.iteration)}
+                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                isStreaming={false}
+                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                maxIterations={parseInt(maxIterations, 10)}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -909,10 +857,19 @@ export function JobQueueResearchCard({
       )}
       
       {results.length > 0 && (
-        <div className="border-t pt-4 w-full max-w-full">
-          <h3 className="text-lg font-medium mb-2">Search Results</h3>
-          <SitePreviewList results={results} />
-        </div>
+        <>
+          <div className="border-t pt-4 w-full max-w-full">
+            <h3 className="text-lg font-medium mb-2">Search Results</h3>
+            <SitePreviewList results={results} />
+          </div>
+          
+          {analysis && (
+            <div className="border-t pt-4 w-full max-w-full">
+              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
+              <AnalysisDisplay content={analysis} />
+            </div>
+          )}
+        </>
       )}
     </Card>
   );

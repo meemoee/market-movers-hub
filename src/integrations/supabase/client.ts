@@ -9,7 +9,6 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-// Create a singleton instance to prevent multiple initializations
 export const supabase = createClient<Database>(
   SUPABASE_URL, 
   SUPABASE_PUBLISHABLE_KEY,
@@ -17,19 +16,11 @@ export const supabase = createClient<Database>(
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      detectSessionInUrl: false, // Disable automatic URL detection to prevent recursion
     },
     global: {
       headers: {
         'x-client-info': 'lovable-project',
       },
-    },
-    // Add a timeout to prevent hanging requests
-    realtime: {
-      timeout: 30000, // 30 second timeout for realtime connections
-      params: {
-        eventsPerSecond: 2 // Throttle events to prevent overwhelming the client
-      }
     },
   }
 );

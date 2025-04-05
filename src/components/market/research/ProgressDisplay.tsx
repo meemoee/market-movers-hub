@@ -15,8 +15,7 @@ interface ProgressDisplayProps {
 export function ProgressDisplay({ messages, jobId, progress, status }: ProgressDisplayProps) {
   const [currentMessage, setCurrentMessage] = useState<string>("")
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const scrollAreaViewportRef = useRef<HTMLDivElement>(null)
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
     if (messages.length > 0) {
@@ -24,37 +23,15 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
     }
   }, [messages])
   
-  // Handle auto-scrolling with useLayoutEffect to ensure it happens before paint
+  // Use useLayoutEffect to ensure scroll happens before browser paint
   useLayoutEffect(() => {
-    if (!shouldAutoScroll || !messagesEndRef.current || !scrollAreaViewportRef.current) return;
-    
-    const scrollContainer = scrollAreaViewportRef.current.querySelector('[data-radix-scroll-area-viewport]');
-    if (scrollContainer) {
-      scrollContainer.scrollTop = scrollContainer.scrollHeight;
-    }
-  }, [messages, shouldAutoScroll]);
-  
-  // Handle user scroll to disable auto-scroll
-  useEffect(() => {
-    const scrollContainer = scrollAreaViewportRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-    if (!scrollContainer) return;
-    
-    const handleScroll = () => {
-      // If user has scrolled up, disable auto-scroll
-      // If they scroll to the bottom, re-enable it
-      const isAtBottom = Math.abs(
-        (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
-        scrollContainer.scrollTop
-      ) < 30; // Small threshold for "close enough" to bottom
-      
-      if (shouldAutoScroll !== isAtBottom) {
-        setShouldAutoScroll(isAtBottom);
+    if (messagesEndRef.current && scrollAreaRef.current) {
+      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
-    };
-    
-    scrollContainer.addEventListener('scroll', handleScroll);
-    return () => scrollContainer.removeEventListener('scroll', handleScroll);
-  }, [shouldAutoScroll]);
+    }
+  }, [messages]);
 
   if (!messages.length) return null
   
@@ -76,7 +53,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   };
   
   return (
-    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaViewportRef}>
+    <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40" ref={scrollAreaRef}>
       <ScrollArea className="h-full">
         <div className="p-4 space-y-2">
           {jobId && (
@@ -119,25 +96,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
               </span>
             </div>
           ))}
-          
-          {/* This invisible element helps with scrolling to the bottom */}
           <div ref={messagesEndRef} />
-          
-          {/* Show scroll to bottom button if user has scrolled up and there's content */}
-          {!shouldAutoScroll && messages.length > 3 && (
-            <button 
-              onClick={() => {
-                setShouldAutoScroll(true);
-                const scrollContainer = scrollAreaViewportRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-                if (scrollContainer) {
-                  scrollContainer.scrollTop = scrollContainer.scrollHeight;
-                }
-              }}
-              className="absolute bottom-2 right-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded-full transition-colors"
-            >
-              Scroll to latest
-            </button>
-          )}
         </div>
       </ScrollArea>
     </div>

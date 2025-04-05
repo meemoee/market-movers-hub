@@ -1,3 +1,4 @@
+
 import { useLayoutEffect, useRef, useEffect, useState } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -18,117 +19,116 @@ export function AnalysisDisplay({
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const autoScrollTimeoutRef = useRef<number | null>(null)
   
-  // Debug logging (we'll keep this minimal)
+  // Debug logging
   useEffect(() => {
-    if (content?.length > 0 && Math.abs(content.length - prevContentLength.current) > 100) {
-      console.log(`AnalysisDisplay: Content updated - delta: ${content.length - prevContentLength.current}`);
+    if (content && content.length > 0) {
+      console.log(`AnalysisDisplay: Content updated - length: ${content.length}, isStreaming: ${isStreaming}`);
     }
-  }, [content]);
+  }, [content, isStreaming]);
   
-  // Clear any existing auto-scroll timeouts on unmount to prevent memory leaks
-  useEffect(() => {
-    return () => {
-      if (autoScrollTimeoutRef.current) {
-        window.clearTimeout(autoScrollTimeoutRef.current);
-        autoScrollTimeoutRef.current = null;
-      }
-    };
-  }, []);
-  
-  // Optimize scrolling with less frequent updates and better cleanup
+  // Optimize scrolling with less frequent updates
   useLayoutEffect(() => {
-    if (!scrollRef.current || !shouldAutoScroll) return;
+    if (!scrollRef.current || !shouldAutoScroll) return
     
-    const scrollContainer = scrollRef.current;
-    const currentContentLength = content?.length || 0;
+    const scrollContainer = scrollRef.current
+    const currentContentLength = content?.length || 0
+    
+    console.log(`AnalysisDisplay: AutoScroll check - current: ${currentContentLength}, prev: ${prevContentLength.current}, shouldScroll: ${shouldAutoScroll}`);
     
     // Only auto-scroll if content is growing or streaming
     if (currentContentLength > prevContentLength.current || isStreaming) {
-      // Clear any existing timeout to prevent stacking callbacks
-      if (autoScrollTimeoutRef.current) {
-        window.clearTimeout(autoScrollTimeoutRef.current);
-        autoScrollTimeoutRef.current = null;
-      }
-      
-      // Use requestAnimationFrame for smoother scrolling
-      const scrollToBottom = () => {
+      requestAnimationFrame(() => {
         if (scrollContainer) {
-          const viewport = scrollContainer.querySelector('[data-radix-scroll-area-viewport]');
-          if (viewport) {
-            viewport.scrollTop = viewport.scrollHeight;
-          }
-          setLastUpdateTime(Date.now());
+          scrollContainer.scrollTop = scrollContainer.scrollHeight
+          console.log(`AnalysisDisplay: Scrolled to bottom - height: ${scrollContainer.scrollHeight}`);
         }
-      };
+        setLastUpdateTime(Date.now())
+      })
       
-      // Debounce scroll updates
-      autoScrollTimeoutRef.current = window.setTimeout(() => {
-        requestAnimationFrame(scrollToBottom);
-        autoScrollTimeoutRef.current = null;
-      }, 50); // Small delay to batch scrolling updates
+      if (isStreaming) {
+        setStreamStatus('streaming')
+      }
     }
     
-    prevContentLength.current = currentContentLength;
-  }, [content, isStreaming, shouldAutoScroll]);
+    prevContentLength.current = currentContentLength
+  }, [content, isStreaming, shouldAutoScroll])
   
-  // Handle user scroll to disable auto-scroll with improved detection
+  // Handle user scroll to disable auto-scroll
   useEffect(() => {
-    const container = scrollRef.current;
-    if (!container) return;
+    if (!scrollRef.current) return
     
-    const viewport = container.querySelector('[data-radix-scroll-area-viewport]');
-    if (!viewport) return;
-    
-    // More efficient scroll handler with improved threshold detection
+    const scrollContainer = scrollRef.current
     const handleScroll = () => {
-      if (!viewport) return;
-      
-      // Calculate distance from bottom with improved precision
-      const scrollBottom = viewport.scrollHeight - viewport.clientHeight;
-      const distanceFromBottom = Math.abs(scrollBottom - viewport.scrollTop);
-      const isAtBottom = distanceFromBottom < 50; // Slightly larger threshold
+      // If user has scrolled up, disable auto-scroll
+      // If they scroll to the bottom, re-enable it
+      const isAtBottom = Math.abs(
+        (scrollContainer.scrollHeight - scrollContainer.clientHeight) - 
+        scrollContainer.scrollTop
+      ) < 30 // Small threshold for "close enough" to bottom
       
       if (shouldAutoScroll !== isAtBottom) {
+        console.log(`AnalysisDisplay: Auto-scroll changed to ${isAtBottom}`);
         setShouldAutoScroll(isAtBottom);
       }
-    };
+    }
     
-    viewport.addEventListener('scroll', handleScroll, { passive: true });
-    return () => viewport.removeEventListener('scroll', handleScroll);
-  }, [shouldAutoScroll]);
+    scrollContainer.addEventListener('scroll', handleScroll)
+    return () => scrollContainer.removeEventListener('scroll', handleScroll)
+  }, [])
   
-  // Check for inactive streaming with more efficient timing logic
+  // Check for inactive streaming with longer intervals
   useEffect(() => {
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
+        console.log(`AnalysisDisplay: Stream status changed to idle`);
         setStreamStatus('idle');
       }
       return;
     }
     
-    const checkStreamStatus = () => {
-      const timeSinceUpdate = Date.now() - lastUpdateTime;
+    const interval = setInterval(() => {
+      const timeSinceUpdate = Date.now() - lastUpdateTime
       const newStatus = timeSinceUpdate > 1500 ? 'waiting' : 'streaming';
       
       if (streamStatus !== newStatus) {
+        console.log(`AnalysisDisplay: Stream status changed to ${newStatus}`);
         setStreamStatus(newStatus);
       }
-    };
+    }, 1000)
     
-    const interval = setInterval(checkStreamStatus, 1000);
+    return () => clearInterval(interval)
+  }, [isStreaming, lastUpdateTime, streamStatus])
+  
+  // For continuous smooth scrolling during active streaming
+  useEffect(() => {
+    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) return
     
-    return () => clearInterval(interval);
-  }, [isStreaming, lastUpdateTime, streamStatus]);
+    console.log(`AnalysisDisplay: Setting up continuous scroll for streaming`);
+    
+    let rafId: number
+    
+    const scrollToBottom = () => {
+      if (scrollRef.current && shouldAutoScroll) {
+        scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+        rafId = requestAnimationFrame(scrollToBottom)
+      }
+    }
+    
+    rafId = requestAnimationFrame(scrollToBottom)
+    
+    return () => {
+      console.log(`AnalysisDisplay: Cleaning up continuous scroll`);
+      cancelAnimationFrame(rafId);
+    }
+  }, [isStreaming, shouldAutoScroll])
 
-  // Don't render anything when empty content
-  if (!content) return null;
+  if (!content) return null
 
   return (
     <div className="relative">
       <ScrollArea 
-        className="rounded-md border p-4 bg-accent/5 w-full max-w-full"
+        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full`}
         style={{ height: maxHeight }}
         ref={scrollRef}
       >
@@ -158,9 +158,8 @@ export function AnalysisDisplay({
         <button 
           onClick={() => {
             setShouldAutoScroll(true);
-            const viewport = scrollRef.current?.querySelector('[data-radix-scroll-area-viewport]');
-            if (viewport) {
-              viewport.scrollTop = viewport.scrollHeight;
+            if (scrollRef.current) {
+              scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
             }
           }}
           className="absolute bottom-2 left-2 bg-primary/20 hover:bg-primary/30 text-xs px-2 py-1 rounded transition-colors"
@@ -169,5 +168,5 @@ export function AnalysisDisplay({
         </button>
       )}
     </div>
-  );
+  )
 }

@@ -33,26 +33,18 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
-  const [hasAutoCollapsed, setHasAutoCollapsed] = useState(false)
   
-  // Auto-collapse optimization with state tracking to prevent multiple collapses
+  // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
-    // Only auto-collapse once per streaming session
-    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis && !hasAutoCollapsed) {
+    if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
       const timer = setTimeout(() => {
         onToggleExpand();
-        setHasAutoCollapsed(true);
       }, 1500);
       
       return () => clearTimeout(timer);
     }
-    
-    // Reset auto-collapse state when streaming starts again
-    if (isStreaming && isCurrentIteration) {
-      setHasAutoCollapsed(false);
-    }
-  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand, hasAutoCollapsed]);
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
 
   return (
     <div className={cn(
@@ -70,11 +62,11 @@ export function IterationCard({
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
             className={isStreaming && isCurrentIteration ? "animate-pulse bg-primary" : ""}>
-            {isFinalIteration ? "Final Iteration" : `Iteration ${iteration.iteration}`}
+            Iteration {iteration.iteration}
             {isStreaming && isCurrentIteration && " (Streaming...)"}
           </Badge>
           <span className="text-sm truncate">
-            {isFinalIteration ? "Final Research" : `${iteration.results.length} sources found`}
+            {isFinalIteration ? "Final Analysis" : `${iteration.results.length} sources found`}
           </span>
         </div>
         {isExpanded ? 
