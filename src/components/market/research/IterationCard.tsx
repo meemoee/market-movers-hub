@@ -1,10 +1,10 @@
 
 import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp, Search } from "lucide-react"
+import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { StreamingAnalysisDisplay } from "./StreamingAnalysisDisplay" // Import the new component
+import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
@@ -86,11 +86,10 @@ export function IterationCard({
             
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                {/* Use the new StreamingAnalysisDisplay */}
-                <StreamingAnalysisDisplay 
+                <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
-                  isStreaming={isStreaming} // Pass the isStreaming prop directly
-                  maxHeight="100%" 
+                  isStreaming={isStreaming && isCurrentIteration}
+                  maxHeight="100%"
                 />
               </TabsContent>
               

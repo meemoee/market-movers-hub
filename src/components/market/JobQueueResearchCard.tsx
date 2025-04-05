@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
-import { StreamingAnalysisDisplay } from "./research/StreamingAnalysisDisplay" // Changed import
+import { AnalysisDisplay } from "./research/AnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
@@ -831,7 +831,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={jobStatus === 'processing' && iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                isStreaming={false}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
@@ -866,8 +866,7 @@ export function JobQueueResearchCard({
           {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              {/* Changed usage */}
-              <StreamingAnalysisDisplay content={analysis} isStreaming={false} /> 
+              <AnalysisDisplay content={analysis} />
             </div>
           )}
         </>
