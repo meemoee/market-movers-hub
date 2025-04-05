@@ -1,9 +1,9 @@
 
 import { cn } from "@/lib/utils"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState } from "react"
 import { Progress } from "@/components/ui/progress"
 import { Clock, Loader2, CheckCircle, AlertCircle } from "lucide-react"
-import { SimpleScrollingContent } from "@/components/ui/simple-scrolling-content"
+import { StreamingContentView } from "@/components/ui/streaming-content-view"
 
 interface ProgressDisplayProps {
   messages: string[]
@@ -50,10 +50,10 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   
   return (
     <div className="relative rounded-md border bg-card text-card-foreground shadow-sm overflow-hidden h-40">
-      <SimpleScrollingContent 
+      <StreamingContentView 
         className="h-full" 
         maxHeight="100%" 
-        shouldAutoScroll={true}
+        shouldScrollToBottom={true}
         isStreaming={status === 'processing' && isNewMessages}
       >
         <div className="p-4 space-y-2">
@@ -98,7 +98,7 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
             </div>
           ))}
         </div>
-      </SimpleScrollingContent>
+      </StreamingContentView>
     </div>
   )
 }

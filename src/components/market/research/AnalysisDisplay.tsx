@@ -1,7 +1,7 @@
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import ReactMarkdown from 'react-markdown'
-import { SimpleScrollingContent } from "@/components/ui/simple-scrolling-content"
+import { StreamingContentView } from "@/components/ui/streaming-content-view"
 
 interface AnalysisDisplayProps {
   content: string
@@ -14,7 +14,7 @@ export function AnalysisDisplay({
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
-  const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true)
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
   const [previousContentLength, setPreviousContentLength] = useState(0)
   
@@ -22,56 +22,47 @@ export function AnalysisDisplay({
   console.log(`AnalysisDisplay: Rendering with content length: ${content?.length || 0}, isStreaming: ${isStreaming}`);
   
   // Detect content changes and update streaming status
-  useEffect(() => {
-    const currentLength = content?.length || 0;
-    const hasChanged = currentLength !== previousContentLength;
+  if (content?.length !== previousContentLength) {
+    console.log(`AnalysisDisplay: Content changed from ${previousContentLength} to ${content?.length || 0} chars`);
+    setPreviousContentLength(content?.length || 0);
     
-    if (hasChanged) {
-      console.log(`AnalysisDisplay: Content changed from ${previousContentLength} to ${currentLength} chars`);
-      setPreviousContentLength(currentLength);
-      
-      if (isStreaming) {
-        setStreamStatus('streaming');
-      }
+    if (isStreaming && streamStatus !== 'streaming') {
+      setStreamStatus('streaming');
     }
+  }
+  
+  // If streaming but no content change for a while, set to waiting
+  if (isStreaming && streamStatus === 'streaming' && content?.length === previousContentLength) {
+    const waitingTimeout = setTimeout(() => {
+      setStreamStatus('waiting');
+      console.log('AnalysisDisplay: Stream status changed to waiting');
+    }, 1500);
     
-    // Update stream status when streaming state changes
-    if (!isStreaming) {
-      if (streamStatus !== 'idle') {
-        console.log('AnalysisDisplay: Stream status changed to idle');
-        setStreamStatus('idle');
-      }
-      return;
-    }
-    
-    // If streaming but no content change, set up waiting detection
-    if (isStreaming && !hasChanged) {
-      const waitingTimeout = setTimeout(() => {
-        // This will be triggered if no content updates happen for 1.5 seconds
-        setStreamStatus('waiting');
-        console.log('AnalysisDisplay: Stream status changed to waiting');
-      }, 1500);
-      
-      return () => clearTimeout(waitingTimeout);
-    }
-  }, [isStreaming, content, streamStatus, previousContentLength]);
+    // Cleanup timeout
+    return () => clearTimeout(waitingTimeout);
+  }
+  
+  // When streaming stops, set to idle
+  if (!isStreaming && streamStatus !== 'idle') {
+    setStreamStatus('idle');
+  }
 
   if (!content) return null
 
   return (
     <div className="relative">
-      <SimpleScrollingContent 
+      <StreamingContentView 
         className="rounded-md border p-4 bg-accent/5 w-full max-w-full"
         maxHeight={maxHeight}
-        shouldAutoScroll={shouldAutoScroll}
+        shouldScrollToBottom={shouldScrollToBottom}
         isStreaming={isStreaming}
         onScrollAwayFromBottom={() => {
           console.log('AnalysisDisplay: User scrolled away from bottom');
-          setShouldAutoScroll(false);
+          setShouldScrollToBottom(false);
         }}
         onScrollToBottom={() => {
           console.log('AnalysisDisplay: User scrolled to bottom');
-          setShouldAutoScroll(true);
+          setShouldScrollToBottom(true);
         }}
       >
         <div className="overflow-x-hidden w-full max-w-full">
@@ -79,7 +70,7 @@ export function AnalysisDisplay({
             {content}
           </ReactMarkdown>
         </div>
-      </SimpleScrollingContent>
+      </StreamingContentView>
       
       {isStreaming && (
         <div className="absolute bottom-2 left-2 z-10">

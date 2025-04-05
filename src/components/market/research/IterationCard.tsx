@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
@@ -7,7 +6,7 @@ import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { getFaviconUrl } from "@/utils/favicon"
-import { SimpleScrollingContent } from "@/components/ui/simple-scrolling-content"
+import { StreamingContentView } from "@/components/ui/streaming-content-view"
 
 interface IterationCardProps {
   iteration: {
@@ -34,7 +33,6 @@ export function IterationCard({
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
   
-  // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
     if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
@@ -94,7 +92,7 @@ export function IterationCard({
               </TabsContent>
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
-                <SimpleScrollingContent className="h-full rounded-md border p-3 w-full max-w-full" maxHeight="100%">
+                <StreamingContentView className="h-full rounded-md border p-3 w-full max-w-full" maxHeight="100%">
                   <div className="space-y-2 w-full">
                     {iteration.results.map((result, idx) => (
                       <div key={idx} className="source-item bg-accent/5 hover:bg-accent/10 w-full max-w-full p-2 rounded-md">
@@ -128,11 +126,11 @@ export function IterationCard({
                       </div>
                     )}
                   </div>
-                </SimpleScrollingContent>
+                </StreamingContentView>
               </TabsContent>
               
               <TabsContent value="queries" className="w-full max-w-full h-full m-0 p-0">
-                <SimpleScrollingContent className="h-full rounded-md border p-3 w-full" maxHeight="100%">
+                <StreamingContentView className="h-full rounded-md border p-3 w-full" maxHeight="100%">
                   <div className="space-y-2 w-full">
                     {iteration.queries.map((query, idx) => (
                       <div key={idx} className="query-badge bg-accent/10 p-2 rounded-md flex items-center gap-1 w-full mb-2">
@@ -147,7 +145,7 @@ export function IterationCard({
                       </div>
                     )}
                   </div>
-                </SimpleScrollingContent>
+                </StreamingContentView>
               </TabsContent>
             </div>
           </Tabs>
