@@ -30,6 +30,14 @@ interface StreamingState {
   } | null;
 }
 
+interface MarketData {
+  bestBid?: number;
+  bestAsk?: number;
+  noBestAsk?: number;
+  noBestBid?: number;
+  outcomes?: string[];
+}
+
 interface InsightsDisplayProps {
   probability?: string;
   areasForResearch?: string[];
@@ -37,6 +45,7 @@ interface InsightsDisplayProps {
   onResearchArea?: (area: string) => void;
   parentResearch?: ParentResearch;
   childResearches?: ChildResearch[];
+  marketData?: MarketData;
 }
 
 export function InsightsDisplay({ 
@@ -45,7 +54,8 @@ export function InsightsDisplay({
   streamingState,
   onResearchArea,
   parentResearch,
-  childResearches
+  childResearches,
+  marketData
 }: InsightsDisplayProps) {
   const getProbabilityColor = (prob: string) => {
     const numericProb = parseInt(prob.replace('%', ''))
@@ -75,6 +85,10 @@ export function InsightsDisplay({
       }
     }
   }
+
+  // Calculate good buy opportunities if marketData is provided
+  const goodBuyOpportunities = marketData && displayProbability !== "Unknown" ? 
+    calculateGoodBuyOpportunities(displayProbability, marketData) : null;
 
   return (
     <div className="space-y-4 bg-accent/5 rounded-md p-4 overflow-hidden">
@@ -184,6 +198,35 @@ export function InsightsDisplay({
               </>
             )}
             
+            {/* Display buy opportunities if available */}
+            {goodBuyOpportunities && goodBuyOpportunities.length > 0 && (
+              <>
+                <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
+                <div>
+                  <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                    <ChevronRight className="h-4 w-4 text-green-500" />
+                    Trading Opportunities:
+                  </div>
+                  <div className="space-y-2">
+                    {goodBuyOpportunities.map((opp, index) => (
+                      <div key={index} className="p-2 bg-green-500/10 rounded-md">
+                        <p className="text-sm font-medium">
+                          <span className="text-green-600 dark:text-green-400">
+                            {opp.outcome}
+                          </span> appears undervalued
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Analysis suggests {(opp.predictedProbability * 100).toFixed(1)}% probability, 
+                          market is at {(opp.marketPrice * 100).toFixed(1)}% 
+                          (diff: {(opp.difference * 100).toFixed(1)}%)
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+            
             {childResearches && childResearches.length > 0 && (
               <>
                 <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
@@ -225,4 +268,42 @@ export function InsightsDisplay({
       </div>
     </div>
   )
+}
+
+// Helper function to calculate good buy opportunities
+function calculateGoodBuyOpportunities(probabilityStr: string, marketData: MarketData) {
+  if (!probabilityStr || !marketData.bestAsk || !marketData.outcomes || marketData.outcomes.length < 2) {
+    return null;
+  }
+
+  const probability = parseInt(probabilityStr.replace('%', '').trim()) / 100;
+  if (isNaN(probability)) {
+    return null;
+  }
+  
+  const THRESHOLD = 0.05;
+  const opportunities = [];
+  
+  if (probability > (marketData.bestAsk + THRESHOLD)) {
+    opportunities.push({
+      outcome: marketData.outcomes[0],
+      predictedProbability: probability,
+      marketPrice: marketData.bestAsk,
+      difference: (probability - marketData.bestAsk)
+    });
+  }
+  
+  const inferredProbability = 1 - probability;
+  const noAskPrice = marketData.noBestAsk !== undefined ? marketData.noBestAsk : (1 - (marketData.bestBid || 0));
+  
+  if (inferredProbability > (noAskPrice + THRESHOLD)) {
+    opportunities.push({
+      outcome: marketData.outcomes[1] || "NO",
+      predictedProbability: inferredProbability,
+      marketPrice: noAskPrice,
+      difference: (inferredProbability - noAskPrice)
+    });
+  }
+  
+  return opportunities.length > 0 ? opportunities : null;
 }
