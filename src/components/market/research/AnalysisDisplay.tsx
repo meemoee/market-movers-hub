@@ -13,61 +13,76 @@ export function AnalysisDisplay({
   isStreaming = false, 
   maxHeight = "200px" 
 }: AnalysisDisplayProps) {
-  const scrollRef = useRef<HTMLDivElement>(null)
+  // Container refs for different scroll strategies
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const endMarkerRef = useRef<HTMLDivElement>(null)
   const prevContentLength = useRef(content?.length || 0)
+  
+  // Scroll control states
   const [shouldAutoScroll, setShouldAutoScroll] = useState(true)
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now())
   const [streamStatus, setStreamStatus] = useState<'streaming' | 'waiting' | 'idle'>('idle')
-  const renderCount = useRef(0)
-  const scrollPositionLog = useRef<Array<{time: number, scrollTop: number, scrollHeight: number, isStreaming: boolean}>>([])
-  const contentUpdateLog = useRef<Array<{time: number, length: number, delta: number, isStreaming: boolean, action: string}>>([])
-  const effectLog = useRef<Array<{time: number, type: string, info: string}>>([])
-  const rafCounts = useRef({requested: 0, executed: 0})
   
+  // Extensive logging refs
+  const renderCount = useRef(0)
+  const scrollPositionLog = useRef<Array<{time: number, scrollTop: number, scrollHeight: number, clientHeight: number, isStreaming: boolean}>>([])
+  const contentUpdateLog = useRef<Array<{time: number, length: number, delta: number, isStreaming: boolean, action: string}>>([])
+  const scrollAttemptLog = useRef<Array<{time: number, method: string, success: boolean, details: string}>>([])
+  
+  // Performance metrics
+  const renderTimes = useRef<Array<{start: number, end: number}>>([])
+  const markdownRenderTime = useRef<{start: number, end: number}>({start: 0, end: 0})
+  
+  // Track scroll methods tried and their effectiveness
+  const scrollMethodsAttempted = useRef<Record<string, {attempted: number, succeeded: number}>>({
+    'scrollIntoView': {attempted: 0, succeeded: 0},
+    'scrollTo': {attempted: 0, succeeded: 0},
+    'scrollTop': {attempted: 0, succeeded: 0},
+    'RAF': {attempted: 0, succeeded: 0}
+  })
+
+  // Log the render start
   useEffect(() => {
+    const now = performance.now()
     renderCount.current += 1
-    console.log(`🔄 AnalysisDisplay RENDER #${renderCount.current} - content length: ${content?.length}, isStreaming: ${isStreaming}, shouldAutoScroll: ${shouldAutoScroll}`);
+    renderTimes.current.push({ start: now, end: 0 })
     
-    if (scrollRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollRef.current
-      const scrollPercentage = Math.round((scrollTop / (scrollHeight - clientHeight)) * 100)
-      console.log(`📏 DOM Metrics: scrollTop=${scrollTop}, scrollHeight=${scrollHeight}, clientHeight=${clientHeight}, percentage=${scrollPercentage}%`);
+    console.log(`🔄 [RENDER #${renderCount.current}] AnalysisDisplay - content: ${content?.length}chars, streaming: ${isStreaming}, shouldScroll: ${shouldAutoScroll}`);
+    
+    // Log DOM metrics if ref is available
+    if (scrollContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+      const scrollPercentage = Math.round((scrollTop / (scrollHeight - clientHeight || 1)) * 100)
+      console.log(`📏 [RENDER #${renderCount.current}] Container Metrics: scrollTop=${scrollTop}, scrollHeight=${scrollHeight}, clientHeight=${clientHeight}, percentage=${scrollPercentage}%, diff=${scrollHeight - clientHeight}`);
       
       scrollPositionLog.current.push({
         time: Date.now(),
         scrollTop,
         scrollHeight,
+        clientHeight,
         isStreaming
       })
       
+      // Keep log size reasonable
       if (scrollPositionLog.current.length > 50) {
         scrollPositionLog.current.shift()
       }
     }
     
-    if (scrollRef.current) {
-      console.log(`🔍 ScrollArea DOM structure:`, {
-        ref: scrollRef.current,
-        children: Array.from(scrollRef.current.children).map(child => ({
-          tagName: child.tagName,
-          className: (child as HTMLElement).className,
-          childCount: child.childElementCount
-        })),
-        viewport: scrollRef.current.querySelector('[data-radix-scroll-area-viewport]'),
-        scrollbar: scrollRef.current.querySelector('[data-radix-scroll-area-scrollbar]')
-      });
-    }
-    
     return () => {
-      console.log(`🧹 AnalysisDisplay cleanup for render #${renderCount.current}`);
+      const duration = performance.now() - now
+      renderTimes.current[renderTimes.current.length - 1].end = performance.now()
+      console.log(`🧹 [RENDER #${renderCount.current}] AnalysisDisplay cleanup - render took ${duration.toFixed(2)}ms`);
     }
   });
-  
+
+  // Content change detection
   useEffect(() => {
     const currentLength = content?.length || 0
     const delta = currentLength - prevContentLength.current
+    prevContentLength.current = currentLength
     
-    console.log(`📄 Content Update: current=${currentLength}, prev=${prevContentLength.current}, delta=${delta}, isStreaming=${isStreaming}`);
+    console.log(`📄 [Content] Update - current=${currentLength}, prev=${prevContentLength.current}, delta=${delta}, streaming=${isStreaming}`);
     
     contentUpdateLog.current.push({
       time: Date.now(),
@@ -82,183 +97,280 @@ export function AnalysisDisplay({
     }
   }, [content, isStreaming])
   
+  // Debug content format
   useEffect(() => {
     if (content && content !== "") {
-      console.log(`📝 Content first 100 chars: "${content.substring(0, 100)}..."`);
-      console.log(`📝 Content last 100 chars: "...${content.substring(content.length - 100)}"`);
+      console.log(`📝 [Content] First 100 chars: "${content.substring(0, 100)}..."`);
+      console.log(`📝 [Content] Last 100 chars: "...${content.substring(content.length - 100)}"`);
       
       if (content.includes('```')) {
-        console.log(`⚠️ Content contains code blocks which might affect rendering height`);
+        console.log(`⚠️ [Content] Contains code blocks which might affect rendering height`);
       }
     }
   }, [content]);
   
-  useLayoutEffect(() => {
-    if (!scrollRef.current || !shouldAutoScroll) {
-      console.log(`🛑 Skip scrolling - ref exists: ${!!scrollRef.current}, shouldAutoScroll: ${shouldAutoScroll}`);
-      effectLog.current.push({
+  // STRATEGY 1: scrollIntoView with smooth behavior
+  const scrollToBottomWithIntoView = useCallback(() => {
+    if (!endMarkerRef.current || !shouldAutoScroll) {
+      console.log(`🛑 [Scroll-IntoView] Skipped - ref exists: ${!!endMarkerRef.current}, shouldScroll: ${shouldAutoScroll}`);
+      return false;
+    }
+    
+    try {
+      const beforeScrollTop = scrollContainerRef.current?.scrollTop || 0;
+      
+      // Try using scrollIntoView with smooth behavior
+      scrollMethodsAttempted.current.scrollIntoView.attempted++;
+      endMarkerRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      
+      const afterScrollTop = scrollContainerRef.current?.scrollTop || 0;
+      const success = afterScrollTop > beforeScrollTop;
+      
+      console.log(`📜 [Scroll-IntoView] Attempt result: before=${beforeScrollTop}, after=${afterScrollTop}, success=${success}`);
+      
+      scrollAttemptLog.current.push({
         time: Date.now(),
-        type: 'layout-effect-skipped',
-        info: `ref=${!!scrollRef.current}, autoScroll=${shouldAutoScroll}`
-      })
-      return;
-    }
-    
-    const scrollContainer = scrollRef.current
-    const currentContentLength = content?.length || 0
-    const delta = currentContentLength - prevContentLength.current
-    
-    console.log(`🔄 useLayoutEffect scroll check - delta: ${delta}, shouldScroll: ${shouldAutoScroll}, isStreaming: ${isStreaming}`);
-    effectLog.current.push({
-      time: Date.now(),
-      type: 'layout-effect-run',
-      info: `delta=${delta}, autoScroll=${shouldAutoScroll}, streaming=${isStreaming}`
-    })
-    
-    if (delta > 0 || isStreaming) {
-      console.log(`📜 Attempting to scroll - content delta: ${delta}, isStreaming: ${isStreaming}`);
+        method: 'scrollIntoView',
+        success,
+        details: `delta=${afterScrollTop - beforeScrollTop}`
+      });
       
-      rafCounts.current.requested++;
-      const rafId = requestAnimationFrame(() => {
-        rafCounts.current.executed++;
-        if (scrollContainer) {
-          const beforeScrollTop = scrollContainer.scrollTop;
-          const beforeScrollHeight = scrollContainer.scrollHeight;
-          
-          scrollContainer.scrollTop = scrollContainer.scrollHeight;
-          
-          const afterScrollTop = scrollContainer.scrollTop;
-          const afterScrollHeight = scrollContainer.scrollHeight;
-          
-          console.log(`📜 Scroll attempt result: 
-            Before: scrollTop=${beforeScrollTop}, scrollHeight=${beforeScrollHeight}
-            After: scrollTop=${afterScrollTop}, scrollHeight=${afterScrollHeight}
-            Delta: scrollTop=${afterScrollTop - beforeScrollTop}, scrollHeight=${afterScrollHeight - beforeScrollHeight}
-            RAF ID: ${rafId}, isStreaming: ${isStreaming}
-          `);
-          
-          contentUpdateLog.current.push({
-            time: Date.now(),
-            length: currentContentLength,
-            delta,
-            isStreaming,
-            action: 'scroll-adjustment'
-          })
-        }
-        setLastUpdateTime(Date.now())
-      })
-      
-      if (isStreaming) {
-        setStreamStatus('streaming')
+      if (success) {
+        scrollMethodsAttempted.current.scrollIntoView.succeeded++;
       }
       
-      return () => {
-        console.log(`🧯 Cleaning up RAF ID: ${rafId}`);
-        cancelAnimationFrame(rafId);
-      }
+      return success;
+    } catch (error) {
+      console.error(`🚨 [Scroll-IntoView] Error:`, error);
+      return false;
     }
-    
-    prevContentLength.current = currentContentLength
-  }, [content, isStreaming, shouldAutoScroll])
+  }, [shouldAutoScroll]);
   
-  useEffect(() => {
-    if (!scrollRef.current) {
-      console.log(`🛑 Skip scroll listener - no ref`);
-      return;
+  // STRATEGY 2: Direct scrollTo with options
+  const scrollToBottomWithScrollTo = useCallback(() => {
+    if (!scrollContainerRef.current || !shouldAutoScroll) {
+      console.log(`🛑 [Scroll-To] Skipped - ref exists: ${!!scrollContainerRef.current}, shouldScroll: ${shouldAutoScroll}`);
+      return false;
     }
     
-    const scrollContainer = scrollRef.current
+    try {
+      const container = scrollContainerRef.current;
+      const beforeScrollTop = container.scrollTop;
+      const maxScrollTop = container.scrollHeight - container.clientHeight;
+      
+      scrollMethodsAttempted.current.scrollTo.attempted++;
+      container.scrollTo({ 
+        top: maxScrollTop,
+        behavior: 'smooth'
+      });
+      
+      // Need to check after a small delay since smooth scroll is async
+      setTimeout(() => {
+        const afterScrollTop = container.scrollTop;
+        const success = Math.abs(afterScrollTop - maxScrollTop) < 5;
+        
+        console.log(`📜 [Scroll-To] Attempt result: before=${beforeScrollTop}, after=${afterScrollTop}, target=${maxScrollTop}, success=${success}`);
+        
+        scrollAttemptLog.current.push({
+          time: Date.now(),
+          method: 'scrollTo',
+          success,
+          details: `delta=${afterScrollTop - beforeScrollTop}, target=${maxScrollTop}`
+        });
+        
+        if (success) {
+          scrollMethodsAttempted.current.scrollTo.succeeded++;
+        }
+      }, 50);
+      
+      return true; // Optimistic return
+    } catch (error) {
+      console.error(`🚨 [Scroll-To] Error:`, error);
+      return false;
+    }
+  }, [shouldAutoScroll]);
+  
+  // STRATEGY 3: Direct scrollTop setting
+  const scrollToBottomDirect = useCallback(() => {
+    if (!scrollContainerRef.current || !shouldAutoScroll) {
+      console.log(`🛑 [Scroll-Direct] Skipped - ref exists: ${!!scrollContainerRef.current}, shouldScroll: ${shouldAutoScroll}`);
+      return false;
+    }
+    
+    try {
+      const container = scrollContainerRef.current;
+      const beforeScrollTop = container.scrollTop;
+      const maxScrollTop = container.scrollHeight - container.clientHeight;
+      
+      scrollMethodsAttempted.current.scrollTop.attempted++;
+      
+      // Direct manipulation
+      container.scrollTop = maxScrollTop;
+      
+      const afterScrollTop = container.scrollTop;
+      const success = Math.abs(afterScrollTop - maxScrollTop) < 5;
+      
+      console.log(`📜 [Scroll-Direct] Attempt result: before=${beforeScrollTop}, after=${afterScrollTop}, target=${maxScrollTop}, success=${success}, diff=${maxScrollTop - afterScrollTop}`);
+      
+      scrollAttemptLog.current.push({
+        time: Date.now(),
+        method: 'scrollTop',
+        success,
+        details: `delta=${afterScrollTop - beforeScrollTop}, target=${maxScrollTop}`
+      });
+      
+      if (success) {
+        scrollMethodsAttempted.current.scrollTop.succeeded++;
+      }
+      
+      return success;
+    } catch (error) {
+      console.error(`🚨 [Scroll-Direct] Error:`, error);
+      return false;
+    }
+  }, [shouldAutoScroll]);
+  
+  // STRATEGY 4: RequestAnimationFrame for smoother scrolling
+  const scrollToBottomWithRAF = useCallback(() => {
+    if (!scrollContainerRef.current || !shouldAutoScroll) {
+      console.log(`🛑 [Scroll-RAF] Skipped - ref exists: ${!!scrollContainerRef.current}, shouldScroll: ${shouldAutoScroll}`);
+      return false;
+    }
+    
+    try {
+      const container = scrollContainerRef.current;
+      const beforeScrollTop = container.scrollTop;
+      const currentContentLength = content?.length || 0;
+      
+      scrollMethodsAttempted.current.RAF.attempted++;
+      
+      requestAnimationFrame(() => {
+        if (!container) return;
+        
+        const maxScrollTop = container.scrollHeight - container.clientHeight;
+        container.scrollTop = maxScrollTop;
+        
+        const afterScrollTop = container.scrollTop;
+        const success = Math.abs(afterScrollTop - maxScrollTop) < 5;
+        
+        console.log(`📜 [Scroll-RAF] Attempt result: before=${beforeScrollTop}, after=${afterScrollTop}, target=${maxScrollTop}, success=${success}, contentLength=${currentContentLength}`);
+        
+        scrollAttemptLog.current.push({
+          time: Date.now(),
+          method: 'RAF',
+          success,
+          details: `delta=${afterScrollTop - beforeScrollTop}, target=${maxScrollTop}`
+        });
+        
+        if (success) {
+          scrollMethodsAttempted.current.RAF.succeeded++;
+        }
+        
+        setLastUpdateTime(Date.now());
+      });
+      
+      return true; // Optimistic return
+    } catch (error) {
+      console.error(`🚨 [Scroll-RAF] Error:`, error);
+      return false;
+    }
+  }, [shouldAutoScroll, content]);
+
+  // Combined scrolling strategy that tries all methods in sequence
+  const scrollToBottom = useCallback(() => {
+    console.log(`🔄 [Scroll] Attempting scroll with all strategies`);
+    
+    // Get current container metrics for diagnosis
+    if (scrollContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
+      console.log(`📏 [Scroll] Container metrics before scroll attempt: scrollTop=${scrollTop}, scrollHeight=${scrollHeight}, clientHeight=${clientHeight}, diff=${scrollHeight - clientHeight}`);
+    }
+    
+    // Try all strategies, stop when one succeeds
+    const rafSuccess = scrollToBottomWithRAF();
+    if (rafSuccess) return true;
+    
+    const directSuccess = scrollToBottomDirect();
+    if (directSuccess) return true;
+    
+    const scrollToSuccess = scrollToBottomWithScrollTo();
+    if (scrollToSuccess) return true;
+    
+    const intoViewSuccess = scrollToBottomWithIntoView();
+    return intoViewSuccess;
+  }, [scrollToBottomWithRAF, scrollToBottomDirect, scrollToBottomWithScrollTo, scrollToBottomWithIntoView]);
+  
+  // Main scroll effect triggered on content change
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+    
+    const currentContentLength = content?.length || 0;
+    const delta = currentContentLength - prevContentLength.current;
+    
+    console.log(`🔄 [Scroll-Check] delta: ${delta}, shouldScroll: ${shouldAutoScroll}, isStreaming: ${isStreaming}`);
+    
+    if ((delta > 0 || isStreaming) && shouldAutoScroll) {
+      console.log(`📜 [Scroll-Attempt] Content delta: ${delta}, isStreaming: ${isStreaming}`);
+      
+      // Important: Small delay to ensure DOM has updated with new content
+      setTimeout(() => {
+        scrollToBottom();
+      }, 10);
+    }
+  }, [content, isStreaming, shouldAutoScroll, scrollToBottom]);
+  
+  // Monitor user scroll to toggle auto-scroll behavior
+  useEffect(() => {
+    if (!scrollContainerRef.current) return;
+    
+    const scrollContainer = scrollContainerRef.current;
     const handleScroll = () => {
       if (!scrollContainer) return;
       
       const maxScrollTop = scrollContainer.scrollHeight - scrollContainer.clientHeight;
       const currentScrollTop = scrollContainer.scrollTop;
-      const isAtBottom = Math.abs(maxScrollTop - currentScrollTop) < 30;
+      const isAtBottom = Math.abs(maxScrollTop - currentScrollTop) < 50;
       
-      console.log(`📜 Scroll event - position: ${currentScrollTop}/${maxScrollTop} (${Math.round((currentScrollTop/maxScrollTop)*100)}%), isAtBottom: ${isAtBottom}`);
+      console.log(`📜 [User-Scroll] position: ${currentScrollTop}/${maxScrollTop} (${Math.round((currentScrollTop/Math.max(maxScrollTop, 1))*100)}%), isAtBottom: ${isAtBottom}, shouldAutoScroll: ${shouldAutoScroll}`);
       
       if (shouldAutoScroll !== isAtBottom) {
-        console.log(`🔄 Auto-scroll changed to ${isAtBottom} from user scroll`);
+        console.log(`🔄 [User-Scroll] Auto-scroll changed to ${isAtBottom} from user scroll`);
         setShouldAutoScroll(isAtBottom);
-        
-        effectLog.current.push({
-          time: Date.now(),
-          type: 'scroll-user-action',
-          info: `scrollTop=${currentScrollTop}, maxScroll=${maxScrollTop}, isAtBottom=${isAtBottom}`
-        })
       }
-    }
+    };
     
-    console.log(`👂 Adding scroll event listener`);
-    scrollContainer.addEventListener('scroll', handleScroll)
+    console.log(`👂 [Event] Adding scroll event listener`);
+    scrollContainer.addEventListener('scroll', handleScroll);
+    
     return () => {
-      console.log(`🧹 Removing scroll event listener`);
-      scrollContainer.removeEventListener('scroll', handleScroll)
-    }
-  }, [shouldAutoScroll])
+      console.log(`🧹 [Event] Removing scroll event listener`);
+      scrollContainer.removeEventListener('scroll', handleScroll);
+    };
+  }, [shouldAutoScroll]);
   
-  const markdownStartTime = useRef(0)
-  
-  const beforeMarkdownRender = () => {
-    markdownStartTime.current = performance.now()
-    console.log(`⏱️ Starting markdown rendering - content length: ${content?.length || 0}`);
-  }
-  
-  const afterMarkdownRender = () => {
-    const duration = performance.now() - markdownStartTime.current
-    console.log(`⏱️ Markdown rendering completed in ${duration.toFixed(2)}ms`);
-  }
-  
-  const forceScrollToBottom = useCallback(() => {
-    if (!scrollRef.current) return;
-    
-    console.log(`🆘 Emergency scroll to bottom triggered`);
-    scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    
-    setShouldAutoScroll(true);
-    effectLog.current.push({
-      time: Date.now(),
-      type: 'manual-scroll-bottom',
-      info: 'User requested scroll to bottom'
-    })
-  }, []);
-  
+  // Interval for continuous scroll attempts during streaming
   useEffect(() => {
-    if (!isStreaming || !scrollRef.current || !shouldAutoScroll) {
-      console.log(`🛑 Skip continuous scroll - streaming: ${isStreaming}, ref: ${!!scrollRef.current}, autoScroll: ${shouldAutoScroll}`);
+    if (!isStreaming || !scrollContainerRef.current || !shouldAutoScroll) {
+      console.log(`🛑 [Interval] Skip continuous scroll - streaming: ${isStreaming}, ref: ${!!scrollContainerRef.current}, autoScroll: ${shouldAutoScroll}`);
       return;
     }
     
-    console.log(`🔄 Setting up continuous scroll interval for streaming`);
+    console.log(`🔄 [Interval] Setting up continuous scroll interval for streaming`);
     
     const intervalId = setInterval(() => {
-      if (scrollRef.current && shouldAutoScroll) {
-        const beforeScrollTop = scrollRef.current.scrollTop;
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        const afterScrollTop = scrollRef.current.scrollTop;
-        
-        console.log(`🔄 Interval scroll adjustment: ${beforeScrollTop} -> ${afterScrollTop} (delta: ${afterScrollTop - beforeScrollTop})`);
+      if (scrollContainerRef.current && shouldAutoScroll) {
+        console.log(`🔄 [Interval] Continuous scroll check`);
+        scrollToBottom();
       }
-    }, 300);
+    }, 500);
     
     return () => {
-      console.log(`🧹 Clearing continuous scroll interval`);
+      console.log(`🧹 [Interval] Clearing continuous scroll interval`);
       clearInterval(intervalId);
-    }
-  }, [isStreaming, shouldAutoScroll]);
+    };
+  }, [isStreaming, shouldAutoScroll, scrollToBottom]);
   
-  useEffect(() => {
-    console.log(`📊 RAF stats - requested: ${rafCounts.current.requested}, executed: ${rafCounts.current.executed}, ratio: ${(rafCounts.current.executed/rafCounts.current.requested).toFixed(2)}`);
-    
-    const intervalId = setInterval(() => {
-      if (rafCounts.current.requested > 0) {
-        console.log(`📊 RAF stats periodic - requested: ${rafCounts.current.requested}, executed: ${rafCounts.current.executed}, ratio: ${(rafCounts.current.executed/rafCounts.current.requested).toFixed(2)}`);
-      }
-    }, 3000);
-    
-    return () => clearInterval(intervalId);
-  }, []);
-
+  // Stream status monitoring
   useEffect(() => {
     if (!isStreaming) {
       if (streamStatus !== 'idle') {
@@ -269,76 +381,93 @@ export function AnalysisDisplay({
     }
     
     const interval = setInterval(() => {
-      const timeSinceUpdate = Date.now() - lastUpdateTime
+      const timeSinceUpdate = Date.now() - lastUpdateTime;
       const newStatus = timeSinceUpdate > 1500 ? 'waiting' : 'streaming';
       
       if (streamStatus !== newStatus) {
         console.log(`🔄 Stream status changed to ${newStatus} from ${streamStatus}, time since update: ${timeSinceUpdate}ms`);
         setStreamStatus(newStatus);
       }
-    }, 1000)
+    }, 1000);
     
-    return () => clearInterval(interval)
-  }, [isStreaming, lastUpdateTime, streamStatus])
+    return () => clearInterval(interval);
+  }, [isStreaming, lastUpdateTime, streamStatus]);
 
+  // Log statistics on unmount
   useEffect(() => {
     return () => {
       console.log(`📊 ANALYSIS DISPLAY LOG DUMP ON UNMOUNT`);
       console.log(`📊 Scroll positions (${scrollPositionLog.current.length})`, scrollPositionLog.current);
       console.log(`📊 Content updates (${contentUpdateLog.current.length})`, contentUpdateLog.current);
-      console.log(`📊 Effect executions (${effectLog.current.length})`, effectLog.current);
-      console.log(`📊 Final RAF stats - requested: ${rafCounts.current.requested}, executed: ${rafCounts.current.executed}`);
+      console.log(`📊 Scroll attempts (${scrollAttemptLog.current.length})`, scrollAttemptLog.current);
+      console.log(`📊 Scroll methods effectiveness:`, scrollMethodsAttempted.current);
+      
+      const totalRenderTime = renderTimes.current.reduce((acc, time) => acc + (time.end - time.start), 0);
+      console.log(`📊 Rendering statistics:
+        Total renders: ${renderCount.current}
+        Average render time: ${(totalRenderTime / Math.max(1, renderTimes.current.length)).toFixed(2)}ms
+        Total render time: ${totalRenderTime.toFixed(2)}ms
+      `);
     };
   }, []);
-  
-  useEffect(() => {
-    if (!content) {
-      console.log(`⚠️ Content is empty or undefined`);
-    }
-  }, [content]);
 
+  // For markdown rendering performance tracking
+  const beforeMarkdownRender = () => {
+    markdownRenderTime.current.start = performance.now();
+    console.log(`⏱️ [Markdown] Starting rendering - content length: ${content?.length || 0}`);
+  };
+  
+  const afterMarkdownRender = useCallback(() => {
+    if (markdownRenderTime.current.start > 0) {
+      markdownRenderTime.current.end = performance.now();
+      const duration = markdownRenderTime.current.end - markdownRenderTime.current.start;
+      console.log(`⏱️ [Markdown] Rendering completed in ${duration.toFixed(2)}ms`);
+    }
+  }, []);
+
+  // Trigger scroll to bottom programmatically
+  const forceScrollToBottom = useCallback(() => {
+    console.log(`🆘 [Manual] Emergency scroll to bottom triggered by user`);
+    setShouldAutoScroll(true);
+    scrollToBottom();
+  }, [scrollToBottom]);
+  
+  // Add effect to run afterMarkdownRender after content updates
   useEffect(() => {
     if (content) {
       afterMarkdownRender();
     }
-  }, [content]);
+  }, [content, afterMarkdownRender]);
 
   if (!content) {
-    console.log(`⚠️ Rendering null - no content provided`);
+    console.log(`⚠️ [Render] No content provided, rendering null`);
     return null;
   }
 
-  console.log(`🏗️ Rendering with ScrollArea - maxHeight: ${maxHeight}, isStreaming: ${isStreaming}, streamStatus: ${streamStatus}`);
-
+  console.log(`🏗️ [Render] AnalysisDisplay - maxHeight: ${maxHeight}, isStreaming: ${isStreaming}, streamStatus: ${streamStatus}`);
+  
   beforeMarkdownRender();
 
   return (
     <div className="relative">
-      <ScrollArea 
-        className={`rounded-md border p-4 bg-accent/5 w-full max-w-full analysis-scroll-container`}
-        style={{ height: maxHeight }}
-        ref={scrollRef}
+      {/* Using a native div with overflow instead of ScrollArea component */}
+      <div 
+        ref={scrollContainerRef}
+        className="rounded-md border p-4 bg-accent/5 w-full max-w-full overflow-y-auto analysis-scroll-container"
+        style={{ height: maxHeight, maxHeight }}
         data-streaming={isStreaming ? "true" : "false"}
         data-should-scroll={shouldAutoScroll ? "true" : "false"}
       >
         <div className="overflow-x-hidden w-full max-w-full analysis-content" data-testid="analysis-content">
           <ReactMarkdown 
             className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full"
-            components={{
-              p: ({ node, ...props }) => {
-                const isLastParagraph = node.position?.end.offset === content.length;
-                if (isLastParagraph) {
-                  console.log(`🏁 Rendered last paragraph - offset: ${node.position?.end.offset}`);
-                }
-                return <p {...props} />;
-              }
-            }}
           >
             {content}
           </ReactMarkdown>
-          <div id="content-end-marker" style={{ height: '1px' }} />
+          {/* This is the element we'll scroll into view */}
+          <div id="content-end-marker" ref={endMarkerRef} style={{ height: '2px' }} />
         </div>
-      </ScrollArea>
+      </div>
       
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
@@ -368,5 +497,5 @@ export function AnalysisDisplay({
         {content?.length || 0} chars | {isStreaming ? 'streaming' : 'static'} | {shouldAutoScroll ? 'auto' : 'manual'}
       </div>
     </div>
-  )
+  );
 }
