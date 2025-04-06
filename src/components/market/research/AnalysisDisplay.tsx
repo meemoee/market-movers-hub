@@ -305,6 +305,7 @@ export function AnalysisDisplay({
 
   console.log(`🏗️ Rendering with ScrollArea - maxHeight: ${maxHeight}, isStreaming: ${isStreaming}, streamStatus: ${streamStatus}`);
 
+  // Call this before rendering but don't try to render its return value
   beforeMarkdownRender();
 
   return (
@@ -333,9 +334,12 @@ export function AnalysisDisplay({
           </ReactMarkdown>
           <div id="content-end-marker" style={{ height: '1px' }} />
         </div>
-        {/* Fix: Moved outside of render to fix the TypeScript error */}
-        {afterMarkdownRender()}
       </ScrollArea>
+      
+      {/* Call afterMarkdownRender as a side effect after rendering, not trying to render its return value */}
+      {useEffect(() => {
+        afterMarkdownRender();
+      }, [content])}
       
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
@@ -367,3 +371,4 @@ export function AnalysisDisplay({
     </div>
   )
 }
+
