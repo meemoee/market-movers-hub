@@ -84,9 +84,9 @@ export function JobQueueResearchCard({
   const realtimeChannelRef = useRef<any>(null)
   const jobLoadTimesRef = useRef<Record<string, number>>({})
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
+  const streamingChannelRef = useRef<any>(null)
   const { toast } = useToast()
 
-  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -95,7 +95,6 @@ export function JobQueueResearchCard({
       info
     });
     
-    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -134,7 +133,12 @@ export function JobQueueResearchCard({
         realtimeChannelRef.current = null;
       }
       
-      // Log all accumulated data on unmount
+      if (streamingChannelRef.current) {
+        logUpdate('component-unmount', 'Removing streaming channel on unmount');
+        supabase.removeChannel(streamingChannelRef.current);
+        streamingChannelRef.current = null;
+      }
+      
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
       console.log('📊 Update logs:', updateLogRef.current);
       console.log('📊 Job load times:', jobLoadTimesRef.current);
@@ -183,9 +187,15 @@ export function JobQueueResearchCard({
       realtimeChannelRef.current = null;
     }
     
+    if (streamingChannelRef.current) {
+      logUpdate('streaming-cleanup', 'Removing existing streaming channel');
+      supabase.removeChannel(streamingChannelRef.current);
+      streamingChannelRef.current = null;
+    }
+    
     logUpdate('realtime-setup', `Setting up realtime subscription for job id: ${id}`);
     
-    const channel = supabase
+    const jobChannel = supabase
       .channel(`job-updates-${id}`)
       .on(
         'postgres_changes',
@@ -199,6 +209,16 @@ export function JobQueueResearchCard({
           logUpdate('realtime-update', `Received realtime update for job: ${id}, event: ${payload.eventType}`);
           console.log('Received realtime update:', payload);
           handleJobUpdate(payload.new as ResearchJob);
+          
+          if (payload.new.status === 'processing' && payload.new.current_iteration >= payload.new.max_iterations) {
+            setIsFinalAnalysisStreaming(true);
+          } else if (payload.new.status === 'completed') {
+            setIsFinalAnalysisStreaming(false);
+          }
+          
+          if (payload.new.final_analysis_stream) {
+            setStreamingFinalAnalysis(payload.new.final_analysis_stream);
+          }
         }
       )
       .subscribe((status) => {
@@ -206,7 +226,30 @@ export function JobQueueResearchCard({
         console.log(`Realtime subscription status: ${status}`, id);
       });
     
-    realtimeChannelRef.current = channel;
+    const streamingChannel = supabase
+      .channel(`analysis-stream-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'analysis_stream',
+          filter: `job_id=eq.${id} AND iteration=eq.0`
+        },
+        (payload) => {
+          if (payload.new && payload.new.chunk) {
+            logUpdate('streaming-chunk', `Received analysis stream chunk for job ${id}`);
+            setIsFinalAnalysisStreaming(true);
+            setStreamingFinalAnalysis(prevText => prevText + payload.new.chunk);
+          }
+        }
+      )
+      .subscribe((status) => {
+        logUpdate('streaming-status', `Analysis stream subscription status: ${status} for job: ${id}`);
+      });
+    
+    realtimeChannelRef.current = jobChannel;
+    streamingChannelRef.current = streamingChannel;
   };
 
   const handleJobUpdate = (job: ResearchJob) => {
@@ -254,7 +297,6 @@ export function JobQueueResearchCard({
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -298,7 +340,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -369,7 +410,6 @@ export function JobQueueResearchCard({
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -382,10 +422,9 @@ export function JobQueueResearchCard({
             throw new Error('Invalid results format (string parsing failed)');
           }
         } else if (typeof job.results === 'object') {
-          logUpdate('parse-results', 'Results already in object format');
           parsedResults = job.results;
         } else {
-          logUpdate('parse-results-error', `Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -413,7 +452,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -493,7 +531,6 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -752,6 +789,9 @@ export function JobQueueResearchCard({
     }
   };
 
+  const [streamingFinalAnalysis, setStreamingFinalAnalysis] = useState<string>('')
+  const [isFinalAnalysisStreaming, setIsFinalAnalysisStreaming] = useState<boolean>(false)
+
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -999,7 +1039,10 @@ export function JobQueueResearchCard({
           {analysis && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
+              <AnalysisDisplay 
+                content={streamingFinalAnalysis || analysis || "Analysis in progress..."}
+                isStreaming={isFinalAnalysisStreaming} 
+              />
             </div>
           )}
         </>
