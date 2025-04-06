@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -27,7 +28,7 @@ serve(async (req) => {
         'X-Title': 'Market Analysis App',
       },
       body: JSON.stringify({
-        model: "perplexity/llama-3.1-sonar-small-128k-online",
+        model: "google/gemini-2.5-pro-preview-03-25",
         messages: [
           {
             role: "system",

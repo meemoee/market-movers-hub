@@ -1,4 +1,3 @@
-
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -67,14 +66,13 @@ serve(async (req) => {
       throw new Error('No API key configured for OpenRouter');
     }
 
-    // Get current date in a readable format
     const currentDate = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
 
-    const contentLimit = 70000; // Arbitrary limit to prevent token overages
+    const contentLimit = 70000;
     const truncatedContent = webContent.length > contentLimit 
       ? webContent.substring(0, contentLimit) + "... [content truncated]" 
       : webContent;
@@ -207,19 +205,15 @@ ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed
 
 Remember to format your response as a valid JSON object with probability, areasForResearch, and reasoning fields.`;
 
-    // Helper function to validate JSON response
     const isValidInsightsResponse = (data: any): boolean => {
       if (!data) return false;
       
       try {
-        // Check if we have the minimum required fields
         if (typeof data.probability !== 'string') return false;
         if (!Array.isArray(data.areasForResearch)) return false;
         
-        // Check if reasoning exists and has the correct structure
         if (!data.reasoning) return false;
         if (!Array.isArray(data.reasoning.evidenceFor) && !Array.isArray(data.reasoning.evidenceAgainst)) {
-          // If neither evidenceFor nor evidenceAgainst is an array, check if reasoning is a string
           return typeof data.reasoning === 'string';
         }
         
@@ -230,7 +224,6 @@ Remember to format your response as a valid JSON object with probability, areasF
       }
     };
 
-    // Function to extract insights with retry logic
     const getInsightsWithRetry = async (maxRetries = 3): Promise<any> => {
       let retryCount = 0;
       let responseData;
@@ -249,7 +242,7 @@ Remember to format your response as a valid JSON object with probability, areasF
               'X-Title': 'Hunchex Analysis'
             },
             body: JSON.stringify({
-              model: "google/gemini-2.0-flash-lite-001",
+              model: "google/gemini-2.5-pro-preview-03-25",
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: prompt }
@@ -266,24 +259,20 @@ Remember to format your response as a valid JSON object with probability, areasF
             throw new Error(`API error: ${response.status} ${errorText}`);
           }
 
-          // Log the full raw response for debugging
           const rawResponseText = await response.text();
           console.log(`OpenRouter raw response (attempt #${retryCount + 1}):`, rawResponseText);
           
           try {
-            // Parse the raw response text
-            responseData = JSON.parse(rawResponseText);
+            const responseData = JSON.parse(rawResponseText);
             console.log(`OpenRouter parsed response structure (attempt #${retryCount + 1}):`, 
               JSON.stringify(Object.keys(responseData)));
             
-            // Extract the actual model output
             const modelContent = responseData?.choices?.[0]?.message?.content;
             console.log(`Model content (attempt #${retryCount + 1}):`, 
               typeof modelContent === 'string' ? modelContent.substring(0, 500) + '...' : modelContent);
             
             let insightsData;
             
-            // Try to parse the content if it's a string
             if (typeof modelContent === 'string') {
               try {
                 insightsData = JSON.parse(modelContent);
@@ -297,7 +286,6 @@ Remember to format your response as a valid JSON object with probability, areasF
               insightsData = modelContent;
             }
             
-            // Validate the response
             if (isValidInsightsResponse(insightsData)) {
               console.log(`Valid insights response received (attempt #${retryCount + 1})`);
               validResponse = true;
@@ -322,7 +310,6 @@ Remember to format your response as a valid JSON object with probability, areasF
             throw error;
           }
           
-          // Wait a bit before retrying
           await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
         }
       }
@@ -330,10 +317,8 @@ Remember to format your response as a valid JSON object with probability, areasF
       throw new Error('Failed to get valid insights after maximum retries');
     };
 
-    // Call the function with retry logic
     const results = await getInsightsWithRetry();
     
-    // Extract the insights from the response
     const insightsData = results.insights;
     
     return new Response(JSON.stringify({
