@@ -214,14 +214,20 @@ export function JobQueueResearchCard({
 
   const handleJobUpdate = (job: ResearchJob) => {
     logUpdate('job-update', `Processing job update for job: ${job.id}, status: ${job.status}, iteration: ${job.current_iteration}/${job.max_iterations}`);
-    console.log('Processing job update:', job);
+    console.log('[STREAM_DEBUG] Received job update:', { id: job.id, status: job.status, streamLength: job.final_analysis_stream?.length, resultsExist: !!job.results });
 
+    const previousStatus = jobStatus; // Capture previous status for comparison
     setJobStatus(job.status);
 
-    // Handle streaming final analysis
+    // Handle streaming final analysis - Log BEFORE setting state
     if (job.status === 'finalizing' && job.final_analysis_stream) {
       logUpdate('final-stream-update', `Received final analysis chunk, length: ${job.final_analysis_stream.length}`);
+      console.log(`[STREAM_DEBUG] Setting streamingFinalAnalysis state. Current length: ${job.final_analysis_stream.length}`);
       setStreamingFinalAnalysis(job.final_analysis_stream);
+    } else if (previousStatus === 'finalizing' && job.status !== 'finalizing') {
+      // Log when we transition *out* of finalizing without necessarily being completed yet (e.g., if it fails)
+       console.log(`[STREAM_DEBUG] Transitioning out of finalizing state. Clearing streamingFinalAnalysis.`);
+       setStreamingFinalAnalysis(''); // Clear stream if status changes from finalizing
     }
 
     if (job.max_iterations && job.current_iteration !== undefined) {
@@ -320,6 +326,7 @@ export function JobQueueResearchCard({
         }
         
         fetchSavedJobs();
+        console.log(`[STREAM_DEBUG] Job completed. Clearing streamingFinalAnalysis state.`);
         setStreamingFinalAnalysis(''); // Clear streaming state on completion
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : String(e);
@@ -329,6 +336,7 @@ export function JobQueueResearchCard({
     }
 
     if (job.status === 'failed') {
+      console.log(`[STREAM_DEBUG] Job failed. Clearing streamingFinalAnalysis state.`);
       setStreamingFinalAnalysis(''); // Clear streaming state on failure
       logUpdate('job-failed', `Job failed: ${job.error_message || 'Unknown error'}`);
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
@@ -999,6 +1007,7 @@ export function JobQueueResearchCard({
       {/* Display streaming final analysis */}
       {jobStatus === 'finalizing' && streamingFinalAnalysis && (
         <div className="border-t pt-4 w-full max-w-full">
+          {/* Removed invalid console.log from here */}
           <h3 className="text-lg font-medium mb-2">Generating Final Analysis...</h3>
           <AnalysisDisplay
             content={streamingFinalAnalysis}
@@ -1011,9 +1020,10 @@ export function JobQueueResearchCard({
       {/* Display final insights only when fully completed */}
       {jobStatus === 'completed' && structuredInsights && structuredInsights.parsedData && (
         <div className="border-t pt-4 w-full max-w-full">
+           {/* Removed invalid console.log from here */}
           <h3 className="text-lg font-medium mb-2">Research Insights</h3>
-          <InsightsDisplay 
-            streamingState={structuredInsights} 
+          <InsightsDisplay
+            streamingState={structuredInsights}
             onResearchArea={handleResearchArea}
             marketData={{
               bestBid,
@@ -1032,10 +1042,12 @@ export function JobQueueResearchCard({
             <SitePreviewList results={results} />
           </div>
           
-          {analysis && (
+          {/* Display final static analysis rendering */}
+          {jobStatus === 'completed' && analysis && (
             <div className="border-t pt-4 w-full max-w-full">
+               {/* Removed invalid console.log from here */}
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <AnalysisDisplay content={analysis} />
+              <AnalysisDisplay content={analysis} isStreaming={false} />
             </div>
           )}
         </>
