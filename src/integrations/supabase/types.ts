@@ -563,6 +563,7 @@ export type Database = {
           created_at: string
           current_iteration: number
           error_message: string | null
+          final_analysis_stream: string | null
           focus_text: string | null
           id: string
           iterations: Json
@@ -584,6 +585,7 @@ export type Database = {
           created_at?: string
           current_iteration?: number
           error_message?: string | null
+          final_analysis_stream?: string | null
           focus_text?: string | null
           id?: string
           iterations?: Json
@@ -605,6 +607,7 @@ export type Database = {
           created_at?: string
           current_iteration?: number
           error_message?: string | null
+          final_analysis_stream?: string | null
           focus_text?: string | null
           id?: string
           iterations?: Json
