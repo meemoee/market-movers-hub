@@ -39,9 +39,9 @@ export function IterationCard({
   // Debug logs to track component lifecycle
   useEffect(() => {
     renderCount.current += 1;
-    console.log(`🔍 IterationCard #${iteration.iteration} RENDER #${renderCount.current}`, {
-      isExpanded, isStreaming, isCurrentIteration, analysisLength: iteration.analysis?.length || 0
-    });
+    // console.log(`🔍 IterationCard #${iteration.iteration} RENDER #${renderCount.current}`, {
+    //   isExpanded, isStreaming, isCurrentIteration, analysisLength: iteration.analysis?.length || 0
+    // });
     
     // Log content state
     contentLog.current.push({
@@ -57,56 +57,56 @@ export function IterationCard({
     }
     
     return () => {
-      console.log(`🧹 IterationCard #${iteration.iteration} cleanup for render #${renderCount.current}`);
+      // console.log(`🧹 IterationCard #${iteration.iteration} cleanup for render #${renderCount.current}`);
     };
   });
   
-  // Log when analysis content changes
-  useEffect(() => {
-    console.log(`📝 IterationCard #${iteration.iteration} analysis update:
-      Length: ${iteration.analysis?.length || 0}
-      First 50 chars: "${iteration.analysis?.substring(0, 50) || ''}..."
-      Last 50 chars: "...${iteration.analysis?.substring((iteration.analysis?.length || 0) - 50) || ''}"
-      isStreaming: ${isStreaming}
-      isCurrentIteration: ${isCurrentIteration}
-      isExpanded: ${isExpanded}
-    `);
-  }, [iteration.analysis, iteration, isStreaming, isCurrentIteration, isExpanded]);
+  // Log when analysis content changes - Removed
+  // useEffect(() => {
+  //   // console.log(`📝 IterationCard #${iteration.iteration} analysis update:
+  //   //   Length: ${iteration.analysis?.length || 0}
+  //   //   First 50 chars: "${iteration.analysis?.substring(0, 50) || ''}..."
+  //   //   Last 50 chars: "...${iteration.analysis?.substring((iteration.analysis?.length || 0) - 50) || ''}"
+  //   //   isStreaming: ${isStreaming}
+  //   //   isCurrentIteration: ${isCurrentIteration}
+  //   //   isExpanded: ${isExpanded}
+  //   // `);
+  // }, [iteration.analysis, iteration, isStreaming, isCurrentIteration, isExpanded]);
   
-  // Log when expansion state changes
-  useEffect(() => {
-    console.log(`${isExpanded ? '📂 Expanded' : '📁 Collapsed'} IterationCard #${iteration.iteration}`);
-  }, [isExpanded, iteration.iteration]);
+  // Log when expansion state changes - Removed
+  // useEffect(() => {
+  //   // console.log(`${isExpanded ? '📂 Expanded' : '📁 Collapsed'} IterationCard #${iteration.iteration}`);
+  // }, [isExpanded, iteration.iteration]);
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
     if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
-      console.log(`⏱️ Setting up auto-collapse timer for iteration #${iteration.iteration}`);
+      // console.log(`⏱️ Setting up auto-collapse timer for iteration #${iteration.iteration}`);
       
       const timer = setTimeout(() => {
-        console.log(`⏱️ Auto-collapse triggered for iteration #${iteration.iteration}`);
+        // console.log(`⏱️ Auto-collapse triggered for iteration #${iteration.iteration}`);
         onToggleExpand();
       }, 1500);
       
       return () => {
-        console.log(`🧹 Clearing auto-collapse timer for iteration #${iteration.iteration}`);
+        // console.log(`🧹 Clearing auto-collapse timer for iteration #${iteration.iteration}`);
         clearTimeout(timer);
       }
     }
   }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand, iteration.iteration]);
 
-  // Track tab changes
-  useEffect(() => {
-    console.log(`📑 Tab changed to "${activeTab}" in iteration #${iteration.iteration}`);
-  }, [activeTab, iteration.iteration]);
+  // Track tab changes - Removed
+  // useEffect(() => {
+  //   // console.log(`📑 Tab changed to "${activeTab}" in iteration #${iteration.iteration}`);
+  // }, [activeTab, iteration.iteration]);
 
-  // Special debug for analysis tab visibility
-  useEffect(() => {
-    if (isExpanded && activeTab === "analysis") {
-      console.log(`📊 Analysis tab ACTIVE in iteration #${iteration.iteration} - analysis length: ${iteration.analysis?.length || 0}`);
-    }
-  }, [isExpanded, activeTab, iteration.iteration, iteration.analysis]);
+  // Special debug for analysis tab visibility - Removed
+  // useEffect(() => {
+  //   if (isExpanded && activeTab === "analysis") {
+  //     // console.log(`📊 Analysis tab ACTIVE in iteration #${iteration.iteration} - analysis length: ${iteration.analysis?.length || 0}`);
+  //   }
+  // }, [isExpanded, activeTab, iteration.iteration, iteration.analysis]);
 
   return (
     <div 
@@ -125,7 +125,7 @@ export function IterationCard({
           "hover:bg-accent/10 cursor-pointer"
         )}
         onClick={() => {
-          console.log(`🖱️ User clicked iteration #${iteration.iteration} header to ${isExpanded ? 'collapse' : 'expand'}`);
+          // console.log(`🖱️ User clicked iteration #${iteration.iteration} header to ${isExpanded ? 'collapse' : 'expand'}`);
           onToggleExpand();
         }}
       >
@@ -148,7 +148,7 @@ export function IterationCard({
       {isExpanded && (
         <div className="p-3 w-full max-w-full">
           <Tabs value={activeTab} onValueChange={(value) => {
-            console.log(`📑 Tab changing from "${activeTab}" to "${value}" in iteration #${iteration.iteration}`);
+            // console.log(`📑 Tab changing from "${activeTab}" to "${value}" in iteration #${iteration.iteration}`);
             setActiveTab(value);
           }} className="w-full max-w-full">
             <TabsList className="w-full grid grid-cols-3 mb-3">
