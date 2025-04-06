@@ -31,6 +31,15 @@ export function AnalysisDisplay({
     diff: number;
   }>({ scrollTop: 0, scrollHeight: 0, clientHeight: 0, diff: 0 })
 
+  // Debug logging for component rendering
+  useEffect(() => {
+    console.log(`🔄 AnalysisDisplay RENDER: content length=${content?.length || 0}, isStreaming=${isStreaming}, maxHeight=${maxHeight}`);
+    
+    if (content) {
+      console.log(`📝 Content preview: "${content.substring(0, 50)}..."`);
+    }
+  }, [content, isStreaming, maxHeight]);
+
   // Force height difference to enable scrolling
   useEffect(() => {
     if (scrollContainerRef.current) {
@@ -72,6 +81,16 @@ export function AnalysisDisplay({
           clientHeight: container.clientHeight,
           diff: container.scrollHeight - container.clientHeight
         });
+        
+        // Try to scroll to the bottom on mutation if auto-scroll is enabled
+        if (shouldAutoScroll && endMarkerRef.current) {
+          try {
+            console.log(`📜 [Observer] Attempting to scroll to bottom after DOM mutation`);
+            endMarkerRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+          } catch (err) {
+            console.error('Error scrolling on mutation:', err);
+          }
+        }
       });
       
       observer.observe(scrollContainerRef.current, { 
@@ -88,7 +107,7 @@ export function AnalysisDisplay({
         observer.disconnect();
       };
     }
-  }, []);
+  }, [shouldAutoScroll]);
 
   // Main auto-scroll effect - using combined strategy
   useEffect(() => {
@@ -105,28 +124,27 @@ export function AnalysisDisplay({
     if (delta > 0 || isStreaming) {
       console.log(`📜 [Scroll] Attempting to scroll - delta: ${delta}, container height: ${container.clientHeight}, content height: ${container.scrollHeight}`);
       
-      // TRY STRATEGY 1: Use requestAnimationFrame for smooth scrolling
-      requestAnimationFrame(() => {
+      // Use immediate scrolling for reliability
+      setTimeout(() => {
         try {
-          // First try scrollIntoView
-          if (endMarker) {
-            console.log(`📜 [Scroll] Strategy 1: Using scrollIntoView`);
-            endMarker.scrollIntoView({ behavior: 'smooth', block: 'end' });
-          }
+          if (!container || !endMarker) return;
+          
+          // First try scrollIntoView with auto for reliability
+          console.log(`📜 [Scroll] Using scrollIntoView with 'auto'`);
+          endMarker.scrollIntoView({ behavior: 'auto', block: 'end' });
           
           // Then ensure we're at the bottom with direct scrollTop
           setTimeout(() => {
             if (!container) return;
             const maxScroll = container.scrollHeight - container.clientHeight;
             
-            // Only apply if we're not already at the bottom
-            if (container.scrollTop < maxScroll - 10) {
-              console.log(`📜 [Scroll] Strategy 2: Setting scrollTop directly to ${maxScroll}`);
+            if (maxScroll > 0) {
+              console.log(`📜 [Scroll] Setting scrollTop to maximum: ${maxScroll}`);
               container.scrollTop = maxScroll;
             }
             
             // Log scroll position after attempt
-            console.log(`📜 [Scroll] Result - scrollTop: ${container.scrollTop}/${maxScroll}, overflow: ${container.scrollHeight > container.clientHeight ? 'yes' : 'no'}`);
+            console.log(`📜 [Scroll] Final position: ${container.scrollTop}/${maxScroll}`);
             
             // Update debug info
             setDebugInfo({
@@ -135,11 +153,11 @@ export function AnalysisDisplay({
               clientHeight: container.clientHeight,
               diff: container.scrollHeight - container.clientHeight
             });
-          }, 50);
+          }, 10);
         } catch (err) {
           console.error(`🚨 [Scroll] Error during scroll attempt:`, err);
         }
-      });
+      }, 10);
     }
   }, [content, shouldAutoScroll, isStreaming]);
 
@@ -240,7 +258,7 @@ export function AnalysisDisplay({
         
         try {
           if (endMarkerRef.current) {
-            endMarkerRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            endMarkerRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
           } else {
             container.scrollTop = maxScroll;
           }
@@ -280,8 +298,22 @@ export function AnalysisDisplay({
     container.style.paddingBottom = '40px';
     console.log(`🔧 [Layout] Adding bottom padding: 40px to container`);
     
-    // Log metrics
-    console.log(`📏 [Layout] Container metrics: scrollHeight=${container.scrollHeight}, clientHeight=${container.clientHeight}, difference=${container.scrollHeight - container.clientHeight}`);
+    // Ensure scroll works on first render
+    setTimeout(() => {
+      if (endMarkerRef.current && shouldAutoScroll) {
+        try {
+          console.log(`🔧 [Layout] Initial scroll to bottom`);
+          endMarkerRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+        } catch (err) {
+          console.error(`🚨 [Layout] Initial scroll error:`, err);
+        }
+      }
+      
+      // Log metrics
+      if (container) {
+        console.log(`📏 [Layout] Container metrics: scrollHeight=${container.scrollHeight}, clientHeight=${container.clientHeight}, difference=${container.scrollHeight - container.clientHeight}`);
+      }
+    }, 10);
     
     // Update debug info
     setDebugInfo({
@@ -290,7 +322,7 @@ export function AnalysisDisplay({
       clientHeight: container.clientHeight,
       diff: container.scrollHeight - container.clientHeight
     });
-  }, [maxHeight, content]);
+  }, [maxHeight, content, shouldAutoScroll]);
 
   // Programmatic scroll to bottom
   const forceScrollToBottom = useCallback(() => {
@@ -300,7 +332,7 @@ export function AnalysisDisplay({
     setShouldAutoScroll(true);
     
     try {
-      endMarkerRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      endMarkerRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
       
       setTimeout(() => {
         const container = scrollContainerRef.current;
@@ -331,7 +363,7 @@ export function AnalysisDisplay({
 
   return (
     <div className="relative">
-      {/* Native scrollable div instead of RadixUI ScrollArea */}
+      {/* Native scrollable div with explicit overflow behavior */}
       <div 
         ref={scrollContainerRef}
         className="rounded-md border p-4 bg-accent/5 w-full max-w-full overflow-y-auto analysis-scroll-container"
@@ -348,7 +380,7 @@ export function AnalysisDisplay({
           <ReactMarkdown 
             className="text-sm prose prose-invert prose-sm break-words prose-p:my-1 prose-headings:my-2 max-w-full"
           >
-            {content}
+            {content || ""}
           </ReactMarkdown>
           
           {/* Debug visualization of container metrics - helpful for diagnosing scroll issues */}

@@ -86,7 +86,6 @@ export function JobQueueResearchCard({
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
   const { toast } = useToast()
 
-  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -95,7 +94,6 @@ export function JobQueueResearchCard({
       info
     });
     
-    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -134,7 +132,6 @@ export function JobQueueResearchCard({
         realtimeChannelRef.current = null;
       }
       
-      // Log all accumulated data on unmount
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
       console.log('📊 Update logs:', updateLogRef.current);
       console.log('📊 Job load times:', jobLoadTimesRef.current);
@@ -211,7 +208,8 @@ export function JobQueueResearchCard({
 
   const handleJobUpdate = (job: ResearchJob) => {
     logUpdate('job-update', `Processing job update for job: ${job.id}, status: ${job.status}, iteration: ${job.current_iteration}/${job.max_iterations}`);
-    console.log('Processing job update:', job);
+    
+    console.log('Full job update data:', JSON.stringify(job, null, 2));
     
     setJobStatus(job.status);
     
@@ -235,17 +233,36 @@ export function JobQueueResearchCard({
     
     if (job.iterations && Array.isArray(job.iterations)) {
       logUpdate('iterations-update', `Setting ${job.iterations.length} iterations`);
-      console.log('Iteration details:', job.iterations.map(it => ({
+      
+      const iterationDetails = job.iterations.map(it => ({
         iteration: it.iteration,
         analysisLength: it.analysis?.length || 0,
+        analysisType: typeof it.analysis,
+        analysisFirstChars: it.analysis?.substring(0, 30) || 'none',
         queriesCount: it.queries?.length || 0,
         resultsCount: it.results?.length || 0
-      })));
-      setIterations(job.iterations);
+      }));
       
-      if (job.current_iteration > 0 && !expandedIterations.includes(job.current_iteration)) {
-        logUpdate('expand-iteration', `Auto-expanding iteration ${job.current_iteration}`);
-        setExpandedIterations(prev => [...prev, job.current_iteration]);
+      console.log('Iteration details:', iterationDetails);
+      console.log('Raw iterations array:', JSON.stringify(job.iterations));
+      
+      const sanitizedIterations = job.iterations.map(it => ({
+        ...it,
+        queries: Array.isArray(it.queries) ? it.queries : [],
+        results: Array.isArray(it.results) ? it.results : [],
+        analysis: it.analysis || ""
+      }));
+      
+      setIterations(sanitizedIterations);
+      
+      if (job.current_iteration > 0) {
+        const currentIteration = job.current_iteration;
+        logUpdate('expand-iteration', `Checking for auto-expanding iteration ${currentIteration}`);
+        
+        if (!expandedIterations.includes(currentIteration)) {
+          logUpdate('expand-iteration', `Auto-expanding iteration ${currentIteration}`);
+          setExpandedIterations(prev => [...prev, currentIteration]);
+        }
       }
     }
     
@@ -254,7 +271,6 @@ export function JobQueueResearchCard({
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -298,7 +314,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -369,7 +384,6 @@ export function JobQueueResearchCard({
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -413,7 +427,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -493,7 +506,6 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -956,11 +968,16 @@ export function JobQueueResearchCard({
       
       {iterations.length > 0 && (
         <div className="border-t pt-4 w-full max-w-full space-y-2">
-          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
+          <h3 className="text-lg font-medium mb-2">
+            Research Iterations 
+            <span className="ml-2 text-sm text-muted-foreground">
+              ({iterations.length} iterations, {expandedIterations.length} expanded)
+            </span>
+          </h3>
           <div className="space-y-2">
-            {iterations.map((iteration) => (
+            {iterations.map((iteration, idx) => (
               <IterationCard
-                key={iteration.iteration}
+                key={`iteration-${iteration.iteration}-${idx}`}
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
@@ -969,6 +986,13 @@ export function JobQueueResearchCard({
                 maxIterations={parseInt(maxIterations, 10)}
               />
             ))}
+
+            <div className="mt-4 p-3 border border-dashed border-gray-700 rounded-md bg-gray-900 text-xs text-gray-400">
+              <div>Iterations Debug ({iterations.length}):</div>
+              <div>Current Job Status: {jobStatus}</div>
+              <div>Expanded Iterations: {expandedIterations.join(', ')}</div>
+              <div>Iterations List: {iterations.map(i => i.iteration).join(', ')}</div>
+            </div>
           </div>
         </div>
       )}

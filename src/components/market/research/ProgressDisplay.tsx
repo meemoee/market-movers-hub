@@ -18,17 +18,39 @@ export function ProgressDisplay({ messages, jobId, progress, status }: ProgressD
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   
   useEffect(() => {
+    // Log messages for debugging
+    console.log(`🔄 ProgressDisplay update: ${messages.length} messages, status=${status}, progress=${progress}`);
+    
     if (messages.length > 0) {
       setCurrentMessage(messages[messages.length - 1])
     }
-  }, [messages])
+  }, [messages, status, progress])
   
   // Use useLayoutEffect to ensure scroll happens before browser paint
   useLayoutEffect(() => {
     if (messagesEndRef.current && scrollAreaRef.current) {
-      const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
+      console.log(`📜 ProgressDisplay: Scrolling to latest message`);
+      
+      // Try both scrolling methods for compatibility
+      try {
+        // First, try using Radix ScrollArea's viewport
+        const scrollContainer = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]');
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          console.log(`📜 ProgressDisplay: Scrolled using Radix viewport`);
+        }
+        
+        // Also try using native scrolling as fallback
+        if (scrollAreaRef.current) {
+          scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+          console.log(`📜 ProgressDisplay: Scrolled using native scrollTop`);
+        }
+        
+        // Try scrollIntoView as a final fallback
+        messagesEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+        console.log(`📜 ProgressDisplay: Scrolled using scrollIntoView`);
+      } catch (e) {
+        console.error('Error scrolling progress display:', e);
       }
     }
   }, [messages]);
