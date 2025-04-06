@@ -160,10 +160,10 @@ export function IterationCard({
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
                 {/* Fix: Removed console.log statement here that was causing the error */}
-                <AnalysisDisplay 
-                  content={iteration.analysis || "Analysis in progress..."} 
+                <AnalysisDisplay
+                  content={iteration.analysis || "Analysis in progress..."}
                   isStreaming={isStreaming && isCurrentIteration}
-                  maxHeight="100%"
+                  maxHeight={200} // Pass fixed pixel height from parent container
                 />
                 {/* Fix: Removed console.log statement here that was causing the error */}
               </TabsContent>
