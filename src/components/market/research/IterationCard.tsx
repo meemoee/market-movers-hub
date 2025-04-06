@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
@@ -158,13 +159,13 @@ export function IterationCard({
             
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
-                {console.log(`📝 Rendering AnalysisDisplay for iteration #${iteration.iteration} - content length: ${iteration.analysis?.length || 0}, streaming: ${isStreaming && isCurrentIteration}`)}
+                {/* Fix: Removed console.log statement here that was causing the error */}
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
-                {console.log(`📝 After AnalysisDisplay render for iteration #${iteration.iteration}`)}
+                {/* Fix: Removed console.log statement here that was causing the error */}
               </TabsContent>
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">

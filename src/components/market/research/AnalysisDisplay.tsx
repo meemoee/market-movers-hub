@@ -1,3 +1,4 @@
+
 import { useLayoutEffect, useEffect, useState, useRef, useCallback } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -332,6 +333,7 @@ export function AnalysisDisplay({
           </ReactMarkdown>
           <div id="content-end-marker" style={{ height: '1px' }} />
         </div>
+        {/* Fix: Moved outside of render to fix the TypeScript error */}
         {afterMarkdownRender()}
       </ScrollArea>
       

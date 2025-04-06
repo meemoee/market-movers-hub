@@ -55,12 +55,14 @@ const ScrollBar = React.forwardRef<
       console.log(`🔍 ScrollBar ${orientation} mounted:`, node);
     }
     
-    // Forward the ref
+    // Forward the ref - Fix the type casting here to resolve the error
     if (ref) {
       if (typeof ref === 'function') {
-        ref(node);
+        // Type assertion needed here since we know it's compatible with the API
+        ref(node as any);
       } else {
-        ref.current = node;
+        // Type assertion to avoid the TypeScript error
+        ref.current = node as any;
       }
     }
   }, [ref, orientation]);
