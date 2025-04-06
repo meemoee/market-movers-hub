@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -52,6 +53,14 @@ interface ResearchJob {
   focus_text?: string;
   notification_email?: string;
   notification_sent?: boolean;
+  final_analysis_stream?: string;
+}
+
+// Define a type for the Supabase real-time payload
+interface RealtimePayload {
+  new: ResearchJob;
+  old: ResearchJob;
+  eventType: string;
 }
 
 export function JobQueueResearchCard({ 
@@ -208,16 +217,26 @@ export function JobQueueResearchCard({
         (payload) => {
           logUpdate('realtime-update', `Received realtime update for job: ${id}, event: ${payload.eventType}`);
           console.log('Received realtime update:', payload);
-          handleJobUpdate(payload.new as ResearchJob);
+
+          // Safely cast the payload to our expected type
+          const newData = payload.new as ResearchJob;
           
-          if (payload.new.status === 'processing' && payload.new.current_iteration >= payload.new.max_iterations) {
-            setIsFinalAnalysisStreaming(true);
-          } else if (payload.new.status === 'completed') {
-            setIsFinalAnalysisStreaming(false);
-          }
-          
-          if (payload.new.final_analysis_stream) {
-            setStreamingFinalAnalysis(payload.new.final_analysis_stream);
+          // Ensure we have the data we need before processing
+          if (newData) {
+            handleJobUpdate(newData);
+            
+            if (newData.status === 'processing' && 
+                newData.current_iteration !== undefined && 
+                newData.max_iterations !== undefined && 
+                newData.current_iteration >= newData.max_iterations) {
+              setIsFinalAnalysisStreaming(true);
+            } else if (newData.status === 'completed') {
+              setIsFinalAnalysisStreaming(false);
+            }
+            
+            if (newData.final_analysis_stream) {
+              setStreamingFinalAnalysis(newData.final_analysis_stream);
+            }
           }
         }
       )
