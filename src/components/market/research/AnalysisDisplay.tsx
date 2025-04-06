@@ -274,51 +274,61 @@ export function AnalysisDisplay({
       console.error(`🚨 [Scroll-RAF] Error:`, error);
       return false;
     }
-  }, [shouldAutoScroll, content]);
+  }, [shouldAutoScroll, content]); // Keep RAF definition
 
-  // Combined scrolling strategy that tries all methods in sequence
+  // Simplified scroll function (direct method only for now)
   const scrollToBottom = useCallback(() => {
-    console.log(`🔄 [Scroll] Attempting scroll with all strategies`);
-    
-    // Get current container metrics for diagnosis
-    if (scrollContainerRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-      console.log(`📏 [Scroll] Container metrics before scroll attempt: scrollTop=${scrollTop}, scrollHeight=${scrollHeight}, clientHeight=${clientHeight}, diff=${scrollHeight - clientHeight}`);
+    if (!scrollContainerRef.current || !shouldAutoScroll) {
+      console.log(`🛑 [Scroll-Direct] Skipped - ref exists: ${!!scrollContainerRef.current}, shouldScroll: ${shouldAutoScroll}`);
+      return false;
     }
     
-    // Try all strategies, stop when one succeeds
-    const rafSuccess = scrollToBottomWithRAF();
-    if (rafSuccess) return true;
-    
-    const directSuccess = scrollToBottomDirect();
-    if (directSuccess) return true;
-    
-    const scrollToSuccess = scrollToBottomWithScrollTo();
-    if (scrollToSuccess) return true;
-    
-    const intoViewSuccess = scrollToBottomWithIntoView();
-    return intoViewSuccess;
-  }, [scrollToBottomWithRAF, scrollToBottomDirect, scrollToBottomWithScrollTo, scrollToBottomWithIntoView]);
-  
-  // Main scroll effect triggered on content change
-  useEffect(() => {
-    if (!scrollContainerRef.current) return;
-    
-    const currentContentLength = content?.length || 0;
-    const delta = currentContentLength - prevContentLength.current;
-    
-    console.log(`🔄 [Scroll-Check] delta: ${delta}, shouldScroll: ${shouldAutoScroll}, isStreaming: ${isStreaming}`);
-    
-    if ((delta > 0 || isStreaming) && shouldAutoScroll) {
-      console.log(`📜 [Scroll-Attempt] Content delta: ${delta}, isStreaming: ${isStreaming}`);
+    try {
+      const container = scrollContainerRef.current;
+      const beforeScrollTop = container.scrollTop;
+      const maxScrollTop = container.scrollHeight - container.clientHeight;
       
-      // Important: Small delay to ensure DOM has updated with new content
-      setTimeout(() => {
-        scrollToBottom();
-      }, 10);
+      // Direct manipulation
+      container.scrollTop = maxScrollTop;
+      
+      const afterScrollTop = container.scrollTop;
+      // Check if scroll position is close to the bottom
+      const success = Math.abs(afterScrollTop - maxScrollTop) < 5; 
+      
+      console.log(`📜 [Scroll-Direct] Attempt result: before=${beforeScrollTop}, after=${afterScrollTop}, target=${maxScrollTop}, success=${success}, diff=${maxScrollTop - afterScrollTop}`);
+      
+      scrollAttemptLog.current.push({
+        time: Date.now(),
+        method: 'scrollTop-direct', // Renamed for clarity
+        success,
+        details: `delta=${afterScrollTop - beforeScrollTop}, target=${maxScrollTop}`
+      });
+      
+      return success;
+    } catch (error) {
+      console.error(`🚨 [Scroll-Direct] Error:`, error);
+      return false;
     }
-  }, [content, isStreaming, shouldAutoScroll, scrollToBottom]);
-  
+  }, [shouldAutoScroll]);
+
+  // Main scroll effect using useLayoutEffect for better timing
+  useLayoutEffect(() => {
+    if (!scrollContainerRef.current) return;
+
+    const currentContentLength = content?.length || 0;
+    const delta = currentContentLength - prevContentLength.current; // prevContentLength updated in separate useEffect
+
+    console.log(`🔄 [LayoutScroll-Check] delta: ${delta}, shouldScroll: ${shouldAutoScroll}, isStreaming: ${isStreaming}`);
+
+    // Trigger scroll if content changed OR if streaming is active (covers initial load during stream)
+    // and auto-scroll is enabled.
+    if ((delta > 0 || isStreaming) && shouldAutoScroll) {
+      console.log(`📜 [LayoutScroll-Attempt] Triggering direct scroll.`);
+      scrollToBottom(); // Call the simplified direct scroll function
+    }
+    // No timeout needed here as useLayoutEffect runs after DOM mutations
+  }, [content, isStreaming, shouldAutoScroll, scrollToBottom]); // Dependency on content ensures it runs after updates
+
   // Monitor user scroll to toggle auto-scroll behavior
   useEffect(() => {
     if (!scrollContainerRef.current) return;
