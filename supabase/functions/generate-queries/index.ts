@@ -162,7 +162,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         "X-Title": "Market Research App",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-preview-03-25",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",

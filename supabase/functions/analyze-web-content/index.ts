@@ -242,7 +242,7 @@ Ensure your analysis is factual, balanced, and directly addresses the market que
         'X-Title': 'Hunchex Analysis'
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-preview-03-25",
+        model: "google/gemini-2.0-flash-lite-001",
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt }

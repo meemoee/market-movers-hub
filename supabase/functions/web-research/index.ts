@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { load } from "https://esm.sh/cheerio@1.0.0-rc.12"
@@ -68,7 +69,7 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
         'X-Title': 'Market Research App',
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro-preview-03-25",
+        model: "google/gemini-flash-1.5",
         messages: [
           {
             role: "system",

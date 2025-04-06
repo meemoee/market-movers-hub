@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -106,7 +107,7 @@ serve(async (req) => {
         'X-Title': 'HunchEx QA Evaluator'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro-preview-03-25',
+        model: 'anthropic/claude-3-haiku',
         messages: [
           { role: 'user', content: prompt }
         ],
