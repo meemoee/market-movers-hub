@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
