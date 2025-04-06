@@ -37,7 +37,7 @@ interface ResearchJob {
   id: string;
   market_id: string;
   query: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: 'queued' | 'processing' | 'finalizing' | 'completed' | 'failed'; // Add 'finalizing' status here
   max_iterations: number;
   current_iteration: number;
   progress_log: string[];
@@ -52,9 +52,10 @@ interface ResearchJob {
   focus_text?: string;
   notification_email?: string;
   notification_sent?: boolean;
+  final_analysis_stream?: string; // Add new field for streaming final analysis
 }
 
-export function JobQueueResearchCard({ 
+export function JobQueueResearchCard({
   description, 
   marketId, 
   bestBid, 
@@ -72,7 +73,8 @@ export function JobQueueResearchCard({
   const [jobId, setJobId] = useState<string | null>(null)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
-  const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
+  const [jobStatus, setJobStatus] = useState<ResearchJob['status'] | null>(null) // Use type from interface
+  const [streamingFinalAnalysis, setStreamingFinalAnalysis] = useState(''); // Add state for streaming final analysis
   const [structuredInsights, setStructuredInsights] = useState<any>(null)
   const [focusText, setFocusText] = useState<string>('')
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
@@ -113,8 +115,9 @@ export function JobQueueResearchCard({
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
+    setStreamingFinalAnalysis(''); // Reset streaming final analysis
     setStructuredInsights(null);
-    
+
     if (realtimeChannelRef.current) {
       logUpdate('reset-state', 'Removing existing realtime channel');
       supabase.removeChannel(realtimeChannelRef.current);
@@ -212,9 +215,15 @@ export function JobQueueResearchCard({
   const handleJobUpdate = (job: ResearchJob) => {
     logUpdate('job-update', `Processing job update for job: ${job.id}, status: ${job.status}, iteration: ${job.current_iteration}/${job.max_iterations}`);
     console.log('Processing job update:', job);
-    
+
     setJobStatus(job.status);
-    
+
+    // Handle streaming final analysis
+    if (job.status === 'finalizing' && job.final_analysis_stream) {
+      logUpdate('final-stream-update', `Received final analysis chunk, length: ${job.final_analysis_stream.length}`);
+      setStreamingFinalAnalysis(job.final_analysis_stream);
+    }
+
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
       const newPercent = job.status === 'completed' ? 100 : percent;
@@ -311,14 +320,16 @@ export function JobQueueResearchCard({
         }
         
         fetchSavedJobs();
+        setStreamingFinalAnalysis(''); // Clear streaming state on completion
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : String(e);
         logUpdate('process-results-error', `Error processing job results: ${errorMsg}`);
         console.error('Error processing job results:', e);
       }
     }
-    
+
     if (job.status === 'failed') {
+      setStreamingFinalAnalysis(''); // Clear streaming state on failure
       logUpdate('job-failed', `Job failed: ${job.error_message || 'Unknown error'}`);
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
       setProgress(prev => [...prev, `Job failed: ${job.error_message || 'Unknown error'}`]);
@@ -335,7 +346,15 @@ export function JobQueueResearchCard({
     
     setJobId(job.id);
     setJobStatus(job.status);
-    
+
+    // Handle finalizing status when loading saved job
+    if (job.status === 'finalizing' && job.final_analysis_stream) {
+      logUpdate('load-job-finalizing', `Loading job in finalizing state, setting stream length: ${job.final_analysis_stream.length}`);
+      setStreamingFinalAnalysis(job.final_analysis_stream);
+    } else {
+      setStreamingFinalAnalysis(''); // Ensure it's cleared otherwise
+    }
+
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
       logUpdate('set-progress', `Setting progress to ${percent}% (${job.current_iteration}/${job.max_iterations})`);
@@ -434,6 +453,7 @@ export function JobQueueResearchCard({
     if (job.status === 'failed') {
       logUpdate('job-failed', `Job failed: ${job.error_message || 'Unknown error'}`);
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
+      setStreamingFinalAnalysis(''); // Clear stream on failure
     }
 
     if (job.focus_text) {
@@ -697,10 +717,11 @@ export function JobQueueResearchCard({
           </Badge>
         );
       case 'processing':
+      case 'finalizing': // Use same style for finalizing
         return (
           <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200">
             <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Processing</span>
+            <span>{jobStatus === 'finalizing' ? 'Finalizing' : 'Processing'}</span>
           </Badge>
         );
       case 'completed':
@@ -737,13 +758,15 @@ export function JobQueueResearchCard({
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  // Use the defined status type for the parameter
+  const getStatusIcon = (status: ResearchJob['status']) => {
     switch (status) {
       case 'completed':
         return <CheckCircle className="h-4 w-4 text-green-500 mr-2" />;
       case 'failed':
         return <AlertCircle className="h-4 w-4 text-red-500 mr-2" />;
       case 'processing':
+      case 'finalizing': // Add finalizing status icon
         return <Loader2 className="h-4 w-4 text-blue-500 animate-spin mr-2" />;
       case 'queued':
         return <Clock className="h-4 w-4 text-yellow-500 mr-2" />;
@@ -953,7 +976,7 @@ export function JobQueueResearchCard({
           status={jobStatus}
         />
       )}
-      
+
       {iterations.length > 0 && (
         <div className="border-t pt-4 w-full max-w-full space-y-2">
           <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
@@ -964,7 +987,7 @@ export function JobQueueResearchCard({
                 iteration={iteration}
                 isExpanded={expandedIterations.includes(iteration.iteration)}
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                isStreaming={jobStatus === 'processing'}
+                isStreaming={jobStatus === 'processing'} // Iteration streaming only happens during 'processing'
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
                 maxIterations={parseInt(maxIterations, 10)}
               />
@@ -972,8 +995,21 @@ export function JobQueueResearchCard({
           </div>
         </div>
       )}
-      
-      {structuredInsights && structuredInsights.parsedData && (
+
+      {/* Display streaming final analysis */}
+      {jobStatus === 'finalizing' && streamingFinalAnalysis && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Generating Final Analysis...</h3>
+          <AnalysisDisplay
+            content={streamingFinalAnalysis}
+            isStreaming={true} // Enable streaming mode
+            maxHeight="300px"
+          />
+        </div>
+      )}
+
+      {/* Display final insights only when fully completed */}
+      {jobStatus === 'completed' && structuredInsights && structuredInsights.parsedData && (
         <div className="border-t pt-4 w-full max-w-full">
           <h3 className="text-lg font-medium mb-2">Research Insights</h3>
           <InsightsDisplay 
