@@ -1,4 +1,3 @@
-
 import { useLayoutEffect, useEffect, useState, useRef, useCallback } from "react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
@@ -298,6 +297,12 @@ export function AnalysisDisplay({
     }
   }, [content]);
 
+  useEffect(() => {
+    if (content) {
+      afterMarkdownRender();
+    }
+  }, [content]);
+
   if (!content) {
     console.log(`⚠️ Rendering null - no content provided`);
     return null;
@@ -305,7 +310,6 @@ export function AnalysisDisplay({
 
   console.log(`🏗️ Rendering with ScrollArea - maxHeight: ${maxHeight}, isStreaming: ${isStreaming}, streamStatus: ${streamStatus}`);
 
-  // Call this before rendering but don't try to render its return value
   beforeMarkdownRender();
 
   return (
@@ -335,11 +339,6 @@ export function AnalysisDisplay({
           <div id="content-end-marker" style={{ height: '1px' }} />
         </div>
       </ScrollArea>
-      
-      {/* Call afterMarkdownRender as a side effect after rendering, not trying to render its return value */}
-      {useEffect(() => {
-        afterMarkdownRender();
-      }, [content])}
       
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
@@ -371,4 +370,3 @@ export function AnalysisDisplay({
     </div>
   )
 }
-
