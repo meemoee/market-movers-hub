@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Badge } from "@/components/ui/badge"
-import { ChevronDown, ChevronUp } from "lucide-react"
+import { ChevronDown, ChevronUp, Search } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AnalysisDisplay } from "./AnalysisDisplay"
