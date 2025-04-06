@@ -230,3 +230,27 @@ p, h1, h2, h3, h4, h5, h6, span, div {
   width: 100%;
   margin-top: 10px;
 }
+
+/* Force content to create scrollable area even when content is small */
+.analysis-content {
+  min-height: 250px;
+  position: relative;
+}
+
+/* Improve debugging visualization */
+.analysis-scroll-container[data-streaming="true"] {
+  border-left: 3px solid rgba(0, 100, 255, 0.2);
+}
+
+/* Add scroll metrics indicator - helps with visual debugging */
+.scroll-metrics-debug {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  font-size: 10px;
+  color: rgba(100, 100, 100, 0.5);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 4px;
+  border-radius: 2px;
+  pointer-events: none;
+}

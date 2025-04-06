@@ -1,6 +1,5 @@
 
 import { useLayoutEffect, useEffect, useState, useRef, useCallback } from "react"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import ReactMarkdown from 'react-markdown'
 
 interface AnalysisDisplayProps {
@@ -53,12 +52,13 @@ export function AnalysisDisplay({
           if (!spacer) {
             spacer = document.createElement('div');
             spacer.className = 'scroll-spacer';
-            spacer.style.height = '50px';
-            spacer.style.width = '100%';
+            // Fix: Type assertions for HTMLElement
+            (spacer as HTMLElement).style.height = '50px';
+            (spacer as HTMLElement).style.width = '100%';
             container.appendChild(spacer);
             console.log(`🔧 [Observer] Created new spacer element`);
           } else {
-            // Increase existing spacer height
+            // Fix: Type assertions for HTMLElement
             const currentHeight = parseInt((spacer as HTMLElement).style.height, 10) || 50;
             (spacer as HTMLElement).style.height = `${currentHeight + 20}px`;
             console.log(`🔧 [Observer] Increased spacer height to ${(spacer as HTMLElement).style.height}`);
