@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Badge } from "@/components/ui/badge"
 import { ChevronDown, ChevronUp, FileText, Search, ExternalLink } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -33,31 +32,101 @@ export function IterationCard({
 }: IterationCardProps) {
   const [activeTab, setActiveTab] = useState<string>("analysis")
   const isFinalIteration = iteration.iteration === maxIterations
+  const renderCount = useRef(0)
+  const contentLog = useRef<Array<{time: number, length: number, expanded: boolean, streaming: boolean}>>([])
+
+  // Debug logs to track component lifecycle
+  useEffect(() => {
+    renderCount.current += 1;
+    console.log(`🔍 IterationCard #${iteration.iteration} RENDER #${renderCount.current}`, {
+      isExpanded, isStreaming, isCurrentIteration, analysisLength: iteration.analysis?.length || 0
+    });
+    
+    // Log content state
+    contentLog.current.push({
+      time: Date.now(),
+      length: iteration.analysis?.length || 0,
+      expanded: isExpanded,
+      streaming: isStreaming && isCurrentIteration
+    });
+    
+    // Keep log at reasonable size
+    if (contentLog.current.length > 20) {
+      contentLog.current.shift();
+    }
+    
+    return () => {
+      console.log(`🧹 IterationCard #${iteration.iteration} cleanup for render #${renderCount.current}`);
+    };
+  });
+  
+  // Log when analysis content changes
+  useEffect(() => {
+    console.log(`📝 IterationCard #${iteration.iteration} analysis update:
+      Length: ${iteration.analysis?.length || 0}
+      First 50 chars: "${iteration.analysis?.substring(0, 50) || ''}..."
+      Last 50 chars: "...${iteration.analysis?.substring((iteration.analysis?.length || 0) - 50) || ''}"
+      isStreaming: ${isStreaming}
+      isCurrentIteration: ${isCurrentIteration}
+      isExpanded: ${isExpanded}
+    `);
+  }, [iteration.analysis, iteration, isStreaming, isCurrentIteration, isExpanded]);
+  
+  // Log when expansion state changes
+  useEffect(() => {
+    console.log(`${isExpanded ? '📂 Expanded' : '📁 Collapsed'} IterationCard #${iteration.iteration}`);
+  }, [isExpanded, iteration.iteration]);
   
   // Auto-collapse when iteration completes and it's not the final iteration
   useEffect(() => {
     if (!isStreaming && isCurrentIteration && isExpanded && !isFinalIteration && iteration.analysis) {
       // Add a small delay to let the user see the completed results before collapsing
+      console.log(`⏱️ Setting up auto-collapse timer for iteration #${iteration.iteration}`);
+      
       const timer = setTimeout(() => {
+        console.log(`⏱️ Auto-collapse triggered for iteration #${iteration.iteration}`);
         onToggleExpand();
       }, 1500);
       
-      return () => clearTimeout(timer);
+      return () => {
+        console.log(`🧹 Clearing auto-collapse timer for iteration #${iteration.iteration}`);
+        clearTimeout(timer);
+      }
     }
-  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand]);
+  }, [isStreaming, isCurrentIteration, isExpanded, isFinalIteration, iteration.analysis, onToggleExpand, iteration.iteration]);
+
+  // Track tab changes
+  useEffect(() => {
+    console.log(`📑 Tab changed to "${activeTab}" in iteration #${iteration.iteration}`);
+  }, [activeTab, iteration.iteration]);
+
+  // Special debug for analysis tab visibility
+  useEffect(() => {
+    if (isExpanded && activeTab === "analysis") {
+      console.log(`📊 Analysis tab ACTIVE in iteration #${iteration.iteration} - analysis length: ${iteration.analysis?.length || 0}`);
+    }
+  }, [isExpanded, activeTab, iteration.iteration, iteration.analysis]);
 
   return (
-    <div className={cn(
-      "iteration-card border rounded-md overflow-hidden w-full max-w-full",
-      isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
-    )}>
+    <div 
+      className={cn(
+        "iteration-card border rounded-md overflow-hidden w-full max-w-full",
+        isCurrentIteration && isStreaming ? "border-primary/40" : "border-border"
+      )}
+      data-iteration={iteration.iteration}
+      data-streaming={isStreaming && isCurrentIteration ? "true" : "false"}
+      data-expanded={isExpanded ? "true" : "false"}
+    >
       <div 
         className={cn(
           "iteration-card-header flex items-center justify-between p-3 w-full",
           isExpanded ? "bg-accent/10" : "",
           "hover:bg-accent/10 cursor-pointer"
         )}
-        onClick={onToggleExpand}
+        onClick={() => {
+          console.log(`🖱️ User clicked iteration #${iteration.iteration} header to ${isExpanded ? 'collapse' : 'expand'}`);
+          onToggleExpand();
+        }}
       >
         <div className="flex items-center gap-2 overflow-hidden">
           <Badge variant={isFinalIteration ? "default" : "outline"} 
@@ -77,7 +146,10 @@ export function IterationCard({
       
       {isExpanded && (
         <div className="p-3 w-full max-w-full">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full max-w-full">
+          <Tabs value={activeTab} onValueChange={(value) => {
+            console.log(`📑 Tab changing from "${activeTab}" to "${value}" in iteration #${iteration.iteration}`);
+            setActiveTab(value);
+          }} className="w-full max-w-full">
             <TabsList className="w-full grid grid-cols-3 mb-3">
               <TabsTrigger value="analysis" className="text-xs">Analysis</TabsTrigger>
               <TabsTrigger value="sources" className="text-xs">Sources ({iteration.results.length})</TabsTrigger>
@@ -86,11 +158,13 @@ export function IterationCard({
             
             <div className="tab-content-container h-[200px] w-full">
               <TabsContent value="analysis" className="w-full max-w-full h-full m-0 p-0">
+                {console.log(`📝 Rendering AnalysisDisplay for iteration #${iteration.iteration} - content length: ${iteration.analysis?.length || 0}, streaming: ${isStreaming && isCurrentIteration}`)}
                 <AnalysisDisplay 
                   content={iteration.analysis || "Analysis in progress..."} 
                   isStreaming={isStreaming && isCurrentIteration}
                   maxHeight="100%"
                 />
+                {console.log(`📝 After AnalysisDisplay render for iteration #${iteration.iteration}`)}
               </TabsContent>
               
               <TabsContent value="sources" className="w-full max-w-full h-full m-0 p-0">
