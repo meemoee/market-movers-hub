@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
+import { FinalAnalysisDisplay } from "./research/FinalAnalysisDisplay"
 import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
@@ -52,6 +53,7 @@ interface ResearchJob {
   focus_text?: string;
   notification_email?: string;
   notification_sent?: boolean;
+  final_analysis_stream?: string;
 }
 
 export function JobQueueResearchCard({ 
@@ -69,6 +71,8 @@ export function JobQueueResearchCard({
   const [results, setResults] = useState<ResearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState('')
+  const [streamingFinalAnalysis, setStreamingFinalAnalysis] = useState<string>('')
+  const [isFinalAnalysisStreaming, setIsFinalAnalysisStreaming] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
@@ -82,11 +86,11 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const realtimeChannelRef = useRef<any>(null)
+  const analysisStreamChannelRef = useRef<any>(null)
   const jobLoadTimesRef = useRef<Record<string, number>>({})
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
   const { toast } = useToast()
 
-  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -95,7 +99,6 @@ export function JobQueueResearchCard({
       info
     });
     
-    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -110,6 +113,8 @@ export function JobQueueResearchCard({
     setResults([]);
     setError(null);
     setAnalysis('');
+    setStreamingFinalAnalysis('');
+    setIsFinalAnalysisStreaming(false);
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
@@ -119,6 +124,12 @@ export function JobQueueResearchCard({
       logUpdate('reset-state', 'Removing existing realtime channel');
       supabase.removeChannel(realtimeChannelRef.current);
       realtimeChannelRef.current = null;
+    }
+    
+    if (analysisStreamChannelRef.current) {
+      logUpdate('reset-state', 'Removing existing analysis stream channel');
+      supabase.removeChannel(analysisStreamChannelRef.current);
+      analysisStreamChannelRef.current = null;
     }
   }
 
@@ -134,7 +145,6 @@ export function JobQueueResearchCard({
         realtimeChannelRef.current = null;
       }
       
-      // Log all accumulated data on unmount
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
       console.log('📊 Update logs:', updateLogRef.current);
       console.log('📊 Job load times:', jobLoadTimesRef.current);
@@ -176,6 +186,42 @@ export function JobQueueResearchCard({
     }
   };
 
+  const subscribeToAnalysisStream = (id: string) => {
+    if (analysisStreamChannelRef.current) {
+      logUpdate('analysis-stream-cleanup', 'Removing existing analysis stream channel');
+      supabase.removeChannel(analysisStreamChannelRef.current);
+      analysisStreamChannelRef.current = null;
+    }
+    
+    logUpdate('analysis-stream-setup', `Setting up analysis stream subscription for job id: ${id}`);
+    
+    const channel = supabase
+      .channel(`analysis-stream-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'analysis_stream',
+          filter: `job_id=eq.${id} AND iteration=eq.0`
+        },
+        (payload) => {
+          logUpdate('analysis-stream-update', `Received analysis stream update for job: ${id}`);
+          const chunk = payload.new?.chunk;
+          if (chunk) {
+            setIsFinalAnalysisStreaming(true);
+            setStreamingFinalAnalysis(prev => prev + chunk);
+          }
+        }
+      )
+      .subscribe((status) => {
+        logUpdate('analysis-stream-status', `Analysis stream subscription status: ${status} for job: ${id}`);
+        console.log(`Analysis stream subscription status: ${status}`, id);
+      });
+    
+    analysisStreamChannelRef.current = channel;
+  };
+
   const subscribeToJobUpdates = (id: string) => {
     if (realtimeChannelRef.current) {
       logUpdate('realtime-cleanup', 'Removing existing realtime channel before creating new one');
@@ -207,6 +253,8 @@ export function JobQueueResearchCard({
       });
     
     realtimeChannelRef.current = channel;
+    
+    subscribeToAnalysisStream(id);
   };
 
   const handleJobUpdate = (job: ResearchJob) => {
@@ -214,6 +262,11 @@ export function JobQueueResearchCard({
     console.log('Processing job update:', job);
     
     setJobStatus(job.status);
+    
+    if (job.final_analysis_stream) {
+      logUpdate('final-analysis-stream', `Setting streaming final analysis: ${job.final_analysis_stream.substring(0, 50)}...`);
+      setStreamingFinalAnalysis(job.final_analysis_stream);
+    }
     
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
@@ -254,7 +307,6 @@ export function JobQueueResearchCard({
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -298,7 +350,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -336,6 +387,11 @@ export function JobQueueResearchCard({
     setJobId(job.id);
     setJobStatus(job.status);
     
+    if (job.final_analysis_stream) {
+      logUpdate('final-analysis-stream', `Setting streaming final analysis from job data: ${job.final_analysis_stream.substring(0, 50)}...`);
+      setStreamingFinalAnalysis(job.final_analysis_stream);
+    }
+    
     if (job.max_iterations && job.current_iteration !== undefined) {
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
       logUpdate('set-progress', `Setting progress to ${percent}% (${job.current_iteration}/${job.max_iterations})`);
@@ -354,6 +410,10 @@ export function JobQueueResearchCard({
     if (job.status === 'queued' || job.status === 'processing') {
       logUpdate('subscribe-updates', `Setting up realtime subscription for active job: ${job.id}`);
       subscribeToJobUpdates(job.id);
+      
+      if (job.current_iteration >= job.max_iterations && job.status === 'processing') {
+        setIsFinalAnalysisStreaming(true);
+      }
     }
     
     if (job.iterations && Array.isArray(job.iterations)) {
@@ -369,7 +429,6 @@ export function JobQueueResearchCard({
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -382,10 +441,9 @@ export function JobQueueResearchCard({
             throw new Error('Invalid results format (string parsing failed)');
           }
         } else if (typeof job.results === 'object') {
-          logUpdate('parse-results', 'Results already in object format');
           parsedResults = job.results;
         } else {
-          logUpdate('parse-results-error', `Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -413,7 +471,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -435,7 +492,7 @@ export function JobQueueResearchCard({
       logUpdate('job-failed', `Job failed: ${job.error_message || 'Unknown error'}`);
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
     }
-
+    
     if (job.focus_text) {
       logUpdate('set-focus', `Setting focus text: ${job.focus_text}`);
       setFocusText(job.focus_text);
@@ -493,7 +550,6 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -973,6 +1029,24 @@ export function JobQueueResearchCard({
         </div>
       )}
       
+      {jobId && (streamingFinalAnalysis || isFinalAnalysisStreaming) && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
+            {isFinalAnalysisStreaming && (
+              <Badge variant="outline" className="animate-pulse bg-primary/10 text-primary flex items-center gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                <span>Streaming</span>
+              </Badge>
+            )}
+          </div>
+          <FinalAnalysisDisplay 
+            content={streamingFinalAnalysis} 
+            isStreaming={isFinalAnalysisStreaming} 
+          />
+        </div>
+      )}
+      
       {structuredInsights && structuredInsights.parsedData && (
         <div className="border-t pt-4 w-full max-w-full">
           <h3 className="text-lg font-medium mb-2">Research Insights</h3>
@@ -996,7 +1070,7 @@ export function JobQueueResearchCard({
             <SitePreviewList results={results} />
           </div>
           
-          {analysis && (
+          {analysis && !streamingFinalAnalysis && !isFinalAnalysisStreaming && (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
               <AnalysisDisplay content={analysis} />
