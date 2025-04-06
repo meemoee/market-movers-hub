@@ -187,3 +187,46 @@ p, h1, h2, h3, h4, h5, h6, span, div {
   inset: 0;
   height: 100%;
 }
+
+/* Analysis scroll container styles */
+.analysis-scroll-container {
+  position: relative;
+  transition: background-color 0.2s;
+}
+
+/* Add visual indicator when content is scrollable */
+.analysis-scroll-container::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.1));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.analysis-scroll-container[data-should-scroll="true"]::after {
+  opacity: 1;
+}
+
+/* Highlight containers that have scroll issues for debugging */
+.analysis-scroll-container:has(.scroll-spacer) {
+  border-bottom: 2px dashed rgba(255, 0, 0, 0.3);
+}
+
+/* Style for the end marker to make it more noticeable during debugging */
+#content-end-marker {
+  position: relative;
+}
+
+#content-end-marker::after {
+  content: "";
+  display: block;
+  height: 2px;
+  background-color: rgba(100, 100, 255, 0.1);
+  width: 100%;
+  margin-top: 10px;
+}
