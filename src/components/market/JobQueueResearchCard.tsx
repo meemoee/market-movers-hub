@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,7 +11,7 @@ import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
 import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
-import { InsightsDisplay } from "./research/InsightsDisplay"
+import { InsightsDisplay } from "./insights/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
@@ -56,7 +55,6 @@ interface ResearchJob {
   final_analysis_stream?: string;
 }
 
-// Define a type for the Supabase real-time payload
 interface RealtimePayload {
   new: ResearchJob;
   old: ResearchJob;
@@ -129,6 +127,9 @@ export function JobQueueResearchCard({
       realtimeChannelRef.current = null;
     }
   }
+
+  const [streamingFinalAnalysis, setStreamingFinalAnalysis] = useState<string>('')
+  const [isFinalAnalysisStreaming, setIsFinalAnalysisStreaming] = useState<boolean>(false)
 
   useEffect(() => {
     fetchSavedJobs();
@@ -808,9 +809,6 @@ export function JobQueueResearchCard({
     }
   };
 
-  const [streamingFinalAnalysis, setStreamingFinalAnalysis] = useState<string>('')
-  const [isFinalAnalysisStreaming, setIsFinalAnalysisStreaming] = useState<boolean>(false)
-
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
@@ -1055,7 +1053,7 @@ export function JobQueueResearchCard({
             <SitePreviewList results={results} />
           </div>
           
-          {analysis && (
+          {isFinalAnalysisStreaming || analysis ? (
             <div className="border-t pt-4 w-full max-w-full">
               <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
               <AnalysisDisplay 
@@ -1063,7 +1061,7 @@ export function JobQueueResearchCard({
                 isStreaming={isFinalAnalysisStreaming} 
               />
             </div>
-          )}
+          ) : null}
         </>
       )}
     </Card>
