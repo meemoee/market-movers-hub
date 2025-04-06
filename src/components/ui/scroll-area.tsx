@@ -25,6 +25,7 @@ const ScrollArea = React.forwardRef<
       ref={ref}
       className={cn("relative overflow-hidden", className)}
       {...props}
+      asChild={false} // Force using the div to ensure scrolling works as expected
     >
       <ScrollAreaPrimitive.Viewport 
         className="h-full w-full rounded-[inherit] overflow-x-hidden"
