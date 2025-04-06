@@ -55,6 +55,8 @@ CRITICAL REQUIREMENTS:
 7. PRIORITIZE RECENT INFORMATION - include time indicators like "latest", "2025", "recent" or date ranges
 8. TARGET SPECIFIC STATISTICS AND NUMBERS - focus on finding exact data points, percentages, and metrics
 9. Make each query different to gather a wide range of statistical and recent information
+10. INCLUDE "OFFICIAL" OR "OFFICIAL SOURCE" in at least two queries to target authoritative information
+11. TARGET DEADLINE-RELATED INFORMATION by including terms like "deadline", "timeline", "by [date]", "before [event]" in at least one query
 
 Respond with a JSON object containing a 'queries' array with exactly 5 search queries.`;
 
@@ -113,25 +115,25 @@ Respond with a JSON object containing a 'queries' array with exactly 5 search qu
 
   } catch (error) {
     console.error("Error generating queries:", error)
-    // Generate fallback queries in search format with recency and statistics focus
+    // Generate fallback queries in search format with recency, statistics, and official sources emphasis
     if (focusText) {
-      // Add focused variants with recency and stats emphasis
+      // Add focused variants with recency, stats, and official sources emphasis
       const focusKeywords = focusText.split(' ').slice(0, 3).join(' ');
       return [
-        `${query} ${focusKeywords} latest statistics 2025`,
-        `${query} ${focusKeywords} recent data trends`,
-        `${query} ${focusKeywords} current metrics percentages`,
-        `${focusKeywords} impact on ${query} data 2023-2025`,
-        `${query} ${focusKeywords} comparative analysis numbers`
+        `${query} ${focusKeywords} latest statistics 2025 official`,
+        `${query} ${focusKeywords} recent data trends deadline`,
+        `${query} ${focusKeywords} current metrics percentages official source`,
+        `${focusKeywords} impact on ${query} data 2023-2025 timeline`,
+        `${query} ${focusKeywords} comparative analysis numbers before deadline`
       ]
     }
     
     return [
-      `${query} latest statistics data 2025`,
-      `${query} current metrics percentages`,
-      `${query} historical data trends 2020-2025`,
-      `${query} recent analysis numbers`,
-      `${query} comparative statistics last 2 years`
+      `${query} latest statistics data 2025 official source`,
+      `${query} current metrics percentages official`,
+      `${query} historical data trends 2020-2025 deadline`,
+      `${query} recent analysis numbers timeline`,
+      `${query} comparative statistics last 2 years before resolution`
     ]
   }
 }

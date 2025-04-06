@@ -124,6 +124,7 @@ Your task is to analyze web content to assess the probability of market outcomes
    - Note potential biases or limitations
    - EXTRACT SPECIFIC NUMBERS AND STATISTICS wherever possible
    - PRIORITIZE RECENT DATA over older information
+   - EMPHASIZE OFFICIAL SOURCES mentioned in the market description
 
 3. Impact Factor Analysis
    - List major factors affecting probability
@@ -162,12 +163,26 @@ Your task is to analyze web content to assess the probability of market outcomes
    - Note any official announcement dates or deadlines
    - Discuss factors that could accelerate or delay resolution
 
-${focusText ? `9. Focus Area Priority
+9. Time Horizon Assessment
+   - CRITICALLY ASSESS the time remaining until market resolution deadline
+   - Calculate the likelihood of changes occurring within the remaining timeframe
+   - Compare historical rates of change with time remaining
+   - Identify upcoming events that could impact the outcome before deadline
+   - Assess whether the current trajectory will remain stable until resolution
+
+10. Change Momentum Analysis
+    - Evaluate the rate and direction of recent changes
+    - Identify accelerating or decelerating trends
+    - Assess whether the market has likely reached equilibrium
+    - Determine if there is sufficient time for significant changes to occur
+    - Consider the time typically required for similar changes in comparable cases
+
+${focusText ? `11. Focus Area Priority
    - EVERY insight MUST explicitly address the focus area: "${focusText}"
    - Information not directly related to the focus area should be excluded
    - Clearly explain how each point connects to the specified focus` : ''}
 
-Be factual, precise, and evidence-based in your analysis. Prioritize recent information and exact statistics.`;
+Be factual, precise, and evidence-based in your analysis. Prioritize recent information, exact statistics, and official sources, especially those mentioned in the market description. Pay special attention to time-sensitive factors and the likelihood of changes before the market deadline.`;
 
     let prompt = `Here is the web content I've collected during research:
 ---
@@ -184,9 +199,9 @@ ${previousAnalyses.substring(0, 10000)}${previousAnalyses.length > 10000 ? '... 
     prompt += `\nTODAY'S DATE: ${currentDate}
 
 Based solely on the information in this content:
-1. What are the key facts and insights relevant to the market question "${question}"? PRIORITIZE recent information (2024-2025) and extract specific numbers, percentages and statistics.
+1. What are the key facts and insights relevant to the market question "${question}"? PRIORITIZE recent information (2024-2025), LATEST FIGURES and OFFICIAL SOURCES mentioned in the market description. Extract specific numbers, percentages and statistics.
 ${focusText ? `1a. CRITICAL: Focus specifically ONLY on aspects directly related to: "${focusText}"` : ''}
-2. What evidence supports or contradicts the proposition? Pay special attention to verifiable data points, statistics, and recent developments.
+2. What evidence supports or contradicts the proposition? Pay special attention to verifiable data points, statistics, and recent developments from OFFICIAL SOURCES.
 3. Considering today's date (${currentDate}), how recent and relevant is the information? CLEARLY INDICATE the dates of any statistics or data points.
 ${isMarketResolved ? 
   `4. Since the market price is ${marketPrice}%, which indicates the event has ${marketPrice === 100 ? 'already occurred' : 'definitely not occurred'}, explain what evidence supports this outcome.` : 
@@ -196,8 +211,14 @@ ${isMarketResolved ?
 6. IMPORTANT: Provide an estimated probability range (e.g., 30-40%) based on the evidence analyzed.
 7. IMPORTANT: List specific areas that need further research or inspection to improve confidence in this assessment.
 8. CRITICAL: When will this market question be resolved, and when will conclusive data become available? Identify any official deadlines, announcement dates, or resolution criteria.
-${marketPrice !== undefined && !isMarketResolved ? `9. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
-${relatedMarkets && relatedMarkets.length > 0 ? `10. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
+9. CRITICAL: Assess the likelihood of significant changes before the market resolution deadline. Consider:
+   a. The time remaining until the deadline
+   b. Historical rates of change for similar situations
+   c. Upcoming events that might impact the outcome
+   d. Whether current trajectories are likely to remain stable
+10. CRITICAL: Evaluate the momentum of recent changes and whether there is sufficient time for the outcome to change before the deadline.
+${marketPrice !== undefined && !isMarketResolved ? `11. Does the current market price of ${marketPrice}% seem reasonable based on the evidence? Why or why not?` : ''}
+${relatedMarkets && relatedMarkets.length > 0 ? `12. Are there any insights that might relate to the connected markets mentioned in context? Explain any potential correlations or dependencies.` : ''}
 ${focusText ? `\nCRITICAL REMINDER: Your analysis MUST focus EXCLUSIVELY on: "${focusText}"\nEnsure ALL insights directly address this specific focus area.\n` : ''}
 
 IMPORTANT REQUIREMENTS:
@@ -207,6 +228,8 @@ IMPORTANT REQUIREMENTS:
 - Apply greater weight to information from 2024-2025 compared to older sources
 - Flag any data points older than 2023 as potentially outdated
 - Specifically address WHEN this market will be resolved and when conclusive data will be available
+- Explicitly assess whether there is enough time for significant changes before the deadline
+- Emphasize information from OFFICIAL SOURCES, especially those mentioned in the market description
 
 Ensure your analysis is factual, balanced, and directly addresses the market question.`;
 

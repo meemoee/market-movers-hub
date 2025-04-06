@@ -142,7 +142,9 @@ CRITICAL GUIDELINES FOR PROBABILITY ASSESSMENT:
 8. Temporal Relevance: Consider how the recency of information (relative to today, ${currentDate}) affects your probability assessment
 9. LATEST DATA: PRIORITIZE recent figures, numbers and statistics from official sources over older data
 10. OFFICIAL SOURCES: Give greater weight to authoritative sources, government data, regulatory documents, especially those mentioned in the market description
-${focusText ? `11. FOCUS AREA: Every evidence point MUST explicitly connect to the focus area: "${focusText}". Prioritize evidence that directly addresses this specific aspect.\n` : ''}
+11. DEADLINE ANALYSIS: Explicitly assess the likelihood of changes occurring before the market resolution deadline
+12. CHANGE MOMENTUM: Evaluate the rate and direction of recent developments and whether there is sufficient time for significant changes before the deadline
+${focusText ? `13. FOCUS AREA: Every evidence point MUST explicitly connect to the focus area: "${focusText}". Prioritize evidence that directly addresses this specific aspect.\n` : ''}
 
 Format your analysis as a JSON object with:
 {
@@ -169,7 +171,9 @@ IMPORTANT:
 - Each evidence point should be a complete, well-reasoned argument, not just a simple statement.
 - Evaluate the temporal relevance of all evidence - clearly indicate when information may be outdated relative to today (${currentDate}).
 - CRITICAL: Emphasize the MOST RECENT figures, percentages, and statistics available in your analysis.
-- OFFICIAL SOURCES: Clearly identify and prioritize information from official sources, especially when mentioned in the market description.${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
+- OFFICIAL SOURCES: Clearly identify and prioritize information from official sources, especially when mentioned in the market description.
+- DEADLINE ASSESSMENT: For each evidence point, consider how likely it is to change before the market resolution deadline.
+- TIME HORIZON: Explicitly assess whether there is sufficient time for significant changes to occur before the deadline.${focusText ? `\n- EVERY evidence point MUST explicitly address the focus area: "${focusText}". If evidence doesn't directly relate to this focus, it should be excluded or clearly connected to the focus.` : ''}`;
 
     const prompt = `Here is the web content I've collected during research:
 ---
@@ -193,9 +197,11 @@ Based on all this information, please provide:
    - Evidence AGAINST the event happening (with specific historical precedents, examples, statistics, LATEST FIGURES from OFFICIAL SOURCES)
 4. Consider the temporal relevance of all evidence relative to today's date (${currentDate})
 5. CRITICAL: Prioritize the MOST RECENT data, figures and statistics available, especially from official sources mentioned in the description
+6. CRITICAL: Assess the likelihood of significant changes occurring before the market resolution deadline
+7. CRITICAL: Evaluate whether there is sufficient time for the outcome to change before the deadline
 ${focusText ? `\nCRITICAL: Your analysis MUST focus specifically on: "${focusText}"\nEnsure ALL evidence points directly address this specific focus area.\n` : ''}
 ${relatedMarkets && relatedMarkets.length > 0 ? 
-  `6. Analysis of how the following related markets affect your assessment:
+  `8. Analysis of how the following related markets affect your assessment:
 ${relatedMarkets.map(m => `   - "${m.question}": ${(m.probability * 100).toFixed(1)}%${m.price_change ? ` (${m.price_change > 0 ? '+' : ''}${(m.price_change * 100).toFixed(1)}pp change)` : ''}`).join('\n')}` 
   : ''}
 

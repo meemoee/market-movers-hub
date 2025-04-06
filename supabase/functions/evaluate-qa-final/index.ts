@@ -1,3 +1,4 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 
@@ -32,6 +33,14 @@ serve(async (req) => {
 
 ${isContinuation ? 'This is a continuation or in-depth exploration of a previous analysis.' : ''}
 ${historyContext ? 'Consider this previous analysis context when forming your response:' + historyContext : ''}
+
+When forming your evaluation:
+- Consider the time remaining until the market resolution deadline
+- Assess whether current trends are likely to change before the deadline
+- Evaluate if there is sufficient time for significant developments to occur
+- Prioritize the LATEST data and figures from OFFICIAL SOURCES
+- Consider the resolution criteria specified in the market description
+
 Be specific and data-driven in your evaluation.`
 
     const userPrompt = `Market Question: ${questionToUse}
@@ -45,7 +54,11 @@ ${researchContext.analysis}` : ''}
 Based on this analysis, provide:
 1. A probability estimate (just the number, e.g. "75%")
 2. 2-3 key areas that need more research
-3. A concise final analysis explaining the reasoning
+3. A concise final analysis explaining the reasoning that addresses:
+   - The strength of evidence supporting the probability estimate
+   - The timeline until market resolution and likelihood of changes before then
+   - Whether current trends will continue or change by the resolution deadline
+   - The MOST RECENT and RELEVANT data points from OFFICIAL SOURCES
 
 Format your response as JSON with these fields:
 {

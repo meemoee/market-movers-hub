@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 
@@ -129,6 +128,14 @@ Areas Needing Further Research: ${researchContext.areasForResearch.join(', ')}`;
     }
     
     systemPrompt += "\n\nStart your response with complete sentences, avoid markdown headers or numbered lists at the start. Include citations in square brackets [1] where relevant. Use **bold** text sparingly and ensure proper markdown formatting.";
+
+    systemPrompt += "\n\nCritical analysis requirements:";
+    systemPrompt += "\n- Consider the market resolution timeline and examine if changes are likely before the deadline";
+    systemPrompt += "\n- Prioritize the LATEST numbers and statistics available, especially from OFFICIAL SOURCES";
+    systemPrompt += "\n- Assess the momentum of current trends and whether they will continue until resolution";
+    systemPrompt += "\n- Explicitly address time-dependent factors that could impact the outcome";
+    systemPrompt += "\n- Evaluate information recency relative to the current date";
+    systemPrompt += "\n- For each factor, consider whether there is sufficient time for it to change before deadline";
 
     console.log("Generating primary analysis with system prompt length:", systemPrompt.length);
 
