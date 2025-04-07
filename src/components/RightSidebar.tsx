@@ -1,5 +1,5 @@
 import { Send } from 'lucide-react'
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
@@ -16,33 +16,6 @@ export default function RightSidebar() {
     type: 'user' | 'assistant'
     content?: string
   }
-
-  // Test subscription to analysis_stream table for development
-  useEffect(() => {
-    console.log('Setting up test subscription to analysis_stream...')
-    
-    const channel = supabase
-      .channel('analysis-stream-test')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'analysis_stream',
-          filter: 'iteration=eq.0'
-        },
-        (payload) => {
-          console.log('Received analysis stream chunk:', payload)
-        }
-      )
-      .subscribe((status) => {
-        console.log('Analysis stream subscription status:', status)
-      })
-      
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [])
 
   const handleChatMessage = async (userMessage: string) => {
     if (!userMessage.trim() || isLoading) return

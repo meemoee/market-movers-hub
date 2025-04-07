@@ -112,72 +112,25 @@ Deno.serve(async (req) => {
     
     // Generate final report
     console.log("Generating final report");
+    const finalReport = await generateFinalReport(researchState, openRouter);
     
-    // Create an async readable stream for streaming the final report
-    const encoder = new TextEncoder();
-    const stream = new TransformStream();
-    const writer = stream.writable.getWriter();
-    
-    // Stream the initial response
-    writer.write(encoder.encode(JSON.stringify({
-      success: true,
-      steps: researchState.steps,
-      streaming: true
-    })));
-    
-    // Start the final report generation in the background
-    (async () => {
-      try {
-        // Generate the final report
-        const finalReport = await generateFinalReport(researchState, openRouter, async (chunk) => {
-          // Stream each chunk as it's generated
-          try {
-            const { supabase } = await import("https://esm.sh/@supabase/supabase-js@2");
-            
-            if (marketId) {
-              const client = supabase(
-                "https://lfmkoismabbhujycnqpn.supabase.co",
-                Deno.env.get("SUPABASE_SERVICE_KEY") || ""
-              );
-              
-              await client.from('analysis_stream').insert({
-                job_id: marketId,
-                iteration: 0, // Using 0 to indicate final analysis
-                sequence: Date.now(),
-                chunk
-              });
-            }
-          } catch (err) {
-            console.error("Error streaming chunk:", err);
-          }
-        });
-        
-        // Write the final result
-        writer.write(encoder.encode(JSON.stringify({
-          success: true,
-          report: finalReport,
-          steps: researchState.steps,
-          streaming: false
-        })));
-        
-        writer.close();
-      } catch (error) {
-        console.error(`Error in report generation: ${error.message}`);
-        writer.write(encoder.encode(JSON.stringify({ 
-          success: false, 
-          error: `Error in report generation: ${error.message}`
-        })));
-        writer.close();
-      }
-    })();
-    
-    return new Response(stream.readable, {
-      headers: { 
-        ...corsHeaders, 
-        'Content-Type': 'application/json',
-        'Transfer-Encoding': 'chunked'
-      }
+    researchState.steps.push({
+      query: "Final synthesis",
+      results: "Generating comprehensive research report."
     });
+    
+    console.log("Research completed successfully");
+    
+    return new Response(
+      JSON.stringify({
+        success: true,
+        report: finalReport,
+        steps: researchState.steps
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
     
   } catch (error) {
     console.error(`Error in deep-research function: ${error.message}`);
@@ -463,11 +416,7 @@ function isValidUrl(url: string): boolean {
 /**
  * Generate final research report
  */
-async function generateFinalReport(
-  researchState: any, 
-  openRouter: OpenRouter,
-  onChunk?: (chunk: string) => Promise<void>
-): Promise<ResearchReport> {
+async function generateFinalReport(researchState: any, openRouter: OpenRouter): Promise<ResearchReport> {
   console.log('Generating final research synthesis...');
   
   // Prepare findings summary
@@ -494,32 +443,15 @@ Create a comprehensive research report with these sections:
 
 Make the report clear, factual, and directly answer the original research question.`;
 
-    // If we have a streaming callback, use it
-    if (onChunk) {
-      // Stream the report generation
-      const streamingResponse = await openRouter.streamComplete(researchState.model, [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], async (chunk: string) => {
-        await onChunk(chunk);
-      });
-      
-      console.log("Final report generation completed via streaming");
-      
-      // Parse the report into sections
-      return parseReportToStructure(streamingResponse);
-    } else {
-      // Generate normally without streaming
-      const fullReport = await openRouter.complete(researchState.model, [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ], 1500, 0.3);
-      
-      console.log("Final report generated");
-      
-      // Parse the report into sections
-      return parseReportToStructure(fullReport);
-    }
+    const fullReport = await openRouter.complete(researchState.model, [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ], 1500, 0.3);
+    
+    console.log("Final report generated");
+    
+    // Parse the report into sections
+    return parseReportToStructure(fullReport);
   } catch (error) {
     console.error(`Final report generation failed: ${error.message}`);
     
@@ -602,4 +534,3 @@ function parseReportToStructure(reportText: string): ResearchReport {
     };
   }
 }
-

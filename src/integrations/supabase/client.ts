@@ -22,10 +22,5 @@ export const supabase = createClient<Database>(
         'x-client-info': 'lovable-project',
       },
     },
-    realtime: {
-      params: {
-        eventsPerSecond: 20,
-      },
-    },
   }
 );
