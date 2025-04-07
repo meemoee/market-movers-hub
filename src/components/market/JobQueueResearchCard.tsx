@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
@@ -89,7 +89,6 @@ export function JobQueueResearchCard({
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
   const { toast } = useToast()
 
-  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -98,7 +97,6 @@ export function JobQueueResearchCard({
       info
     });
     
-    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -113,8 +111,8 @@ export function JobQueueResearchCard({
     setResults([]);
     setError(null);
     setAnalysis('');
-    setStreamingAnalysis(''); // Reset streaming analysis
-    setIsAnalysisStreaming(false); // Reset analysis streaming flag
+    setStreamingAnalysis('');
+    setIsAnalysisStreaming(false);
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
@@ -126,7 +124,6 @@ export function JobQueueResearchCard({
       realtimeChannelRef.current = null;
     }
     
-    // Cleanup analysis stream channel
     if (analysisStreamChannelRef.current) {
       logUpdate('reset-state', 'Removing analysis stream channel');
       supabase.removeChannel(analysisStreamChannelRef.current);
@@ -152,7 +149,6 @@ export function JobQueueResearchCard({
         analysisStreamChannelRef.current = null;
       }
       
-      // Log all accumulated data on unmount
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
       console.log('📊 Update logs:', updateLogRef.current);
       console.log('📊 Job load times:', jobLoadTimesRef.current);
@@ -194,7 +190,6 @@ export function JobQueueResearchCard({
     }
   };
 
-  // Add subscription for analysis stream
   const subscribeToAnalysisStream = (jobId: string) => {
     if (analysisStreamChannelRef.current) {
       logUpdate('analysis-stream-cleanup', 'Removing existing analysis stream channel');
@@ -212,7 +207,7 @@ export function JobQueueResearchCard({
           event: 'INSERT',
           schema: 'public',
           table: 'analysis_stream',
-          filter: `job_id=eq.${jobId} AND iteration=eq.0` // Iteration 0 for final analysis
+          filter: `job_id=eq.${jobId} AND iteration=eq.0`
         },
         (payload) => {
           if (payload.new && payload.new.chunk) {
@@ -261,7 +256,6 @@ export function JobQueueResearchCard({
     
     realtimeChannelRef.current = channel;
     
-    // Also subscribe to analysis stream for this job
     subscribeToAnalysisStream(id);
   };
 
@@ -310,7 +304,6 @@ export function JobQueueResearchCard({
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -341,7 +334,6 @@ export function JobQueueResearchCard({
           console.log(`Analysis first 100 chars: "${parsedResults.analysis.substring(0, 100)}..."`);
           setAnalysis(parsedResults.analysis);
           
-          // If we were streaming, use the complete analysis now
           if (isAnalysisStreaming) {
             setIsAnalysisStreaming(false);
             setStreamingAnalysis(parsedResults.analysis);
@@ -360,7 +352,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -431,7 +422,6 @@ export function JobQueueResearchCard({
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -447,7 +437,7 @@ export function JobQueueResearchCard({
           logUpdate('parse-results', 'Results already in object format');
           parsedResults = job.results;
         } else {
-          logUpdate('parse-results-error', `Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -476,7 +466,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -498,7 +487,7 @@ export function JobQueueResearchCard({
       logUpdate('job-failed', `Job failed: ${job.error_message || 'Unknown error'}`);
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
     }
-
+    
     if (job.focus_text) {
       logUpdate('set-focus', `Setting focus text: ${job.focus_text}`);
       setFocusText(job.focus_text);
@@ -507,7 +496,6 @@ export function JobQueueResearchCard({
     const duration = performance.now() - startTime;
     logUpdate('job-load-complete', `Job data load completed in ${duration.toFixed(0)}ms`);
     
-    // Also subscribe to analysis stream for this job if it's still processing
     if (job.status === 'processing') {
       subscribeToAnalysisStream(job.id);
     }
@@ -561,7 +549,6 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -823,4 +810,181 @@ export function JobQueueResearchCard({
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
-        <div
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-semibold">Research</h3>
+          {renderStatusBadge()}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          {jobId && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleClearDisplay}
+              className="text-xs h-8"
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      </div>
+      
+      {!jobId ? (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="focus-text">Research Focus (Optional)</Label>
+              <Input 
+                id="focus-text" 
+                placeholder="Specific topic or question to investigate" 
+                value={focusText}
+                onChange={(e) => setFocusText(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="iterations">Iterations</Label>
+              <Select value={maxIterations} onValueChange={setMaxIterations}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Number of iterations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 - Quick research</SelectItem>
+                  <SelectItem value="2">2 - Basic research</SelectItem>
+                  <SelectItem value="3">3 - Standard research</SelectItem>
+                  <SelectItem value="4">4 - Thorough research</SelectItem>
+                  <SelectItem value="5">5 - Deep research</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="flex items-center gap-2 mt-2">
+              <Checkbox 
+                id="email-notify" 
+                checked={notifyByEmail}
+                onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
+              />
+              <div className="grid gap-1">
+                <Label htmlFor="email-notify" className="text-sm">Email notification when complete</Label>
+                {notifyByEmail && (
+                  <Input 
+                    id="notification-email" 
+                    placeholder="your@email.com" 
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    className="w-full mt-1"
+                    type="email"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={() => handleResearch()}
+              className="w-full"
+              disabled={isLoading || isLoadingSaved}
+            >
+              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Start Research
+            </Button>
+          </div>
+          
+          {isLoadingJobs ? (
+            <div className="text-center py-4">
+              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
+              <p className="text-sm text-muted-foreground mt-2">Loading previous research...</p>
+            </div>
+          ) : savedJobs && savedJobs.length > 0 ? (
+            <div className="space-y-2">
+              <h4 className="text-sm font-medium">Previous Research</h4>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {savedJobs.map((job) => (
+                  <div 
+                    key={job.id} 
+                    className="flex items-center justify-between p-2 text-sm bg-accent/10 rounded-md hover:bg-accent/20 cursor-pointer"
+                    onClick={() => loadSavedResearch(job.id)}
+                  >
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      {getStatusIcon(job.status)}
+                      <span className="truncate">
+                        {job.focus_text 
+                          ? `Focus: ${job.focus_text}` 
+                          : `Research ${job.id.substring(0, 8)}`}
+                      </span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatDate(job.created_at)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <ProgressDisplay 
+            percent={progressPercent} 
+            logEntries={progress} 
+            error={error}
+            isLoading={isLoading}
+          />
+          
+          {iterations.length > 0 && (
+            <div className="space-y-2">
+              {iterations.map((iteration) => (
+                <IterationCard 
+                  key={iteration.iteration}
+                  iteration={iteration}
+                  isExpanded={expandedIterations.includes(iteration.iteration)}
+                  onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                  isStreaming={jobStatus === 'processing' && iteration.iteration === iterations.length}
+                  isCurrentIteration={iteration.iteration === iterations.length}
+                  maxIterations={iterations.length}
+                />
+              ))}
+            </div>
+          )}
+          
+          {isAnalysisStreaming && streamingAnalysis && (
+            <div className="mt-4">
+              <h3 className="text-lg font-medium flex items-center gap-2 mb-2">
+                <span>Final Analysis</span>
+                <Badge variant="outline" className="animate-pulse bg-primary/20">Streaming</Badge>
+              </h3>
+              <Card className="p-2 bg-accent/5">
+                <AnalysisDisplay content={streamingAnalysis} isStreaming={true} />
+              </Card>
+            </div>
+          )}
+          
+          {!isAnalysisStreaming && analysis && (
+            <div className="mt-4">
+              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
+              <Card className="p-2 bg-accent/5">
+                <AnalysisDisplay content={analysis} />
+              </Card>
+            </div>
+          )}
+          
+          {structuredInsights && (
+            <div className="mt-4">
+              <h3 className="text-lg font-medium mb-2">Key Insights</h3>
+              <InsightsDisplay insights={structuredInsights} />
+            </div>
+          )}
+          
+          {results && results.length > 0 && (
+            <div className="mt-4">
+              <h3 className="text-lg font-medium mb-2">Sources</h3>
+              <SitePreviewList sites={results} />
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
