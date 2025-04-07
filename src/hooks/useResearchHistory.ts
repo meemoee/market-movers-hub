@@ -40,12 +40,49 @@ export const useResearchHistory = (marketId: string) => {
           let processedIterations: ResearchIteration[] = [];
           if (job.iterations) {
             if (Array.isArray(job.iterations)) {
-              processedIterations = job.iterations as ResearchIteration[];
+              // Cast each iteration item to ResearchIteration after validation
+              processedIterations = (job.iterations as any[]).map(iter => {
+                // Ensure item has required properties for ResearchIteration
+                if (iter && 
+                    typeof iter === 'object' && 
+                    'iteration' in iter && 
+                    'queries' in iter &&
+                    'results' in iter &&
+                    'analysis' in iter) {
+                  return iter as ResearchIteration;
+                }
+                // If missing required properties, return a minimal valid ResearchIteration
+                return {
+                  iteration: 0,
+                  queries: [],
+                  results: [],
+                  analysis: ''
+                } as ResearchIteration;
+              });
             } else if (typeof job.iterations === 'object') {
-              // Handle case where iterations might be a Json object
-              const iterObj = job.iterations as unknown;
-              if (iterObj && Array.isArray(iterObj)) {
-                processedIterations = iterObj as ResearchIteration[];
+              // Try to convert from other object types
+              try {
+                const iterObj = job.iterations as unknown;
+                if (iterObj && Array.isArray(iterObj)) {
+                  processedIterations = (iterObj as any[]).map(iter => {
+                    if (iter && 
+                        typeof iter === 'object' && 
+                        'iteration' in iter && 
+                        'queries' in iter &&
+                        'results' in iter &&
+                        'analysis' in iter) {
+                      return iter as ResearchIteration;
+                    }
+                    return {
+                      iteration: 0,
+                      queries: [],
+                      results: [],
+                      analysis: ''
+                    } as ResearchIteration;
+                  });
+                }
+              } catch (e) {
+                console.error('Error processing iterations:', e);
               }
             }
           }
@@ -109,12 +146,47 @@ export const useResearchHistory = (marketId: string) => {
       let processedIterations: ResearchIteration[] = [];
       if (data.iterations) {
         if (Array.isArray(data.iterations)) {
-          processedIterations = data.iterations as ResearchIteration[];
+          // Cast each iteration item to ResearchIteration after validation
+          processedIterations = (data.iterations as any[]).map(iter => {
+            if (iter && 
+                typeof iter === 'object' && 
+                'iteration' in iter && 
+                'queries' in iter &&
+                'results' in iter &&
+                'analysis' in iter) {
+              return iter as ResearchIteration;
+            }
+            return {
+              iteration: 0,
+              queries: [],
+              results: [],
+              analysis: ''
+            } as ResearchIteration;
+          });
         } else if (typeof data.iterations === 'object') {
-          // Handle case where iterations might be a Json object
-          const iterObj = data.iterations as unknown;
-          if (iterObj && Array.isArray(iterObj)) {
-            processedIterations = iterObj as ResearchIteration[];
+          // Try to convert from other object types
+          try {
+            const iterObj = data.iterations as unknown;
+            if (iterObj && Array.isArray(iterObj)) {
+              processedIterations = (iterObj as any[]).map(iter => {
+                if (iter && 
+                    typeof iter === 'object' && 
+                    'iteration' in iter && 
+                    'queries' in iter &&
+                    'results' in iter &&
+                    'analysis' in iter) {
+                  return iter as ResearchIteration;
+                }
+                return {
+                  iteration: 0,
+                  queries: [],
+                  results: [],
+                  analysis: ''
+                } as ResearchIteration;
+              });
+            }
+          } catch (e) {
+            console.error('Error processing iterations in loadSavedResearch:', e);
           }
         }
       }
