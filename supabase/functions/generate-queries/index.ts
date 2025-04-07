@@ -11,7 +11,6 @@ interface GenerateQueriesRequest {
   previousQueries?: string[];
   focusText?: string;
   previousAnalyses?: string[];
-  topic?: string;  // Added to maintain backward compatibility
 }
 
 Deno.serve(async (req) => {
@@ -34,11 +33,8 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const requestData: GenerateQueriesRequest = await req.json();
-    
-    // Handle both 'query' and 'topic' parameters for backward compatibility
-    const query = requestData.query || requestData.topic || "";
-    
     const { 
+      query, 
       marketId, 
       marketQuestion,
       marketDescription,
