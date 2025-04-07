@@ -51,7 +51,8 @@ export function JobQueueResearchCard({
     handleResearch,
     resetState,
     loadJobData,
-    toggleIterationExpand
+    toggleIterationExpand,
+    maxIterations
   } = useResearchJob(marketId);
   
   const {
@@ -160,7 +161,7 @@ export function JobQueueResearchCard({
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
                 isStreaming={jobStatus === 'processing'}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={parseInt(maxIterations, 10)}
+                maxIterations={maxIterations}
               />
             ))}
           </div>

@@ -1,4 +1,6 @@
 
+import { Json } from '@/integrations/supabase/types';
+
 export interface ResearchResult {
   url: string;
   content: string;
@@ -13,7 +15,7 @@ export interface ResearchJob {
   max_iterations: number;
   current_iteration: number;
   progress_log: string[];
-  iterations: ResearchIteration[];
+  iterations: ResearchIteration[] | Json;
   results: any;
   error_message?: string;
   created_at: string;

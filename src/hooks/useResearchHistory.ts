@@ -32,7 +32,8 @@ export const useResearchHistory = (marketId: string) => {
       
       if (data && data.length > 0) {
         console.log(`Fetched ${data.length} jobs in ${duration.toFixed(0)}ms`);
-        setSavedJobs(data as ResearchJob[]);
+        // Explicitly cast data to ResearchJob[] since we know the structure is compatible
+        setSavedJobs(data as unknown as ResearchJob[]);
       } else {
         console.log(`No saved jobs found for market: ${marketId}`);
       }
@@ -80,7 +81,8 @@ export const useResearchHistory = (marketId: string) => {
         return;
       }
       
-      const job = data as ResearchJob;
+      // Cast to ResearchJob since we know the structure is compatible
+      const job = data as unknown as ResearchJob;
       console.log('Loaded research job:', job);
       
       onLoadCallback(job);
