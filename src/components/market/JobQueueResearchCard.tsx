@@ -6,7 +6,7 @@ import { supabase } from "@/integrations/supabase/client"
 import { ProgressDisplay } from "./research/ProgressDisplay"
 import { SitePreviewList } from "./research/SitePreviewList"
 import { AnalysisDisplay } from "./research/AnalysisDisplay"
-import { useToast } from "@/hooks/use-toast"
+import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
@@ -69,8 +69,6 @@ export function JobQueueResearchCard({
   const [results, setResults] = useState<ResearchResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const [analysis, setAnalysis] = useState('')
-  const [streamingAnalysis, setStreamingAnalysis] = useState('') // New state for streaming final analysis
-  const [isAnalysisStreaming, setIsAnalysisStreaming] = useState(false) // Track if final analysis is streaming
   const [jobId, setJobId] = useState<string | null>(null)
   const [iterations, setIterations] = useState<any[]>([])
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
@@ -84,11 +82,11 @@ export function JobQueueResearchCard({
   const [notificationEmail, setNotificationEmail] = useState('')
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const realtimeChannelRef = useRef<any>(null)
-  const analysisStreamChannelRef = useRef<any>(null) // New ref for analysis stream channel
   const jobLoadTimesRef = useRef<Record<string, number>>({})
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
   const { toast } = useToast()
 
+  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -97,6 +95,7 @@ export function JobQueueResearchCard({
       info
     });
     
+    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -111,8 +110,6 @@ export function JobQueueResearchCard({
     setResults([]);
     setError(null);
     setAnalysis('');
-    setStreamingAnalysis('');
-    setIsAnalysisStreaming(false);
     setIterations([]);
     setExpandedIterations([]);
     setJobStatus(null);
@@ -122,12 +119,6 @@ export function JobQueueResearchCard({
       logUpdate('reset-state', 'Removing existing realtime channel');
       supabase.removeChannel(realtimeChannelRef.current);
       realtimeChannelRef.current = null;
-    }
-    
-    if (analysisStreamChannelRef.current) {
-      logUpdate('reset-state', 'Removing analysis stream channel');
-      supabase.removeChannel(analysisStreamChannelRef.current);
-      analysisStreamChannelRef.current = null;
     }
   }
 
@@ -143,12 +134,7 @@ export function JobQueueResearchCard({
         realtimeChannelRef.current = null;
       }
       
-      if (analysisStreamChannelRef.current) {
-        logUpdate('component-unmount', 'Removing analysis stream channel on unmount');
-        supabase.removeChannel(analysisStreamChannelRef.current);
-        analysisStreamChannelRef.current = null;
-      }
-      
+      // Log all accumulated data on unmount
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
       console.log('📊 Update logs:', updateLogRef.current);
       console.log('📊 Job load times:', jobLoadTimesRef.current);
@@ -190,40 +176,6 @@ export function JobQueueResearchCard({
     }
   };
 
-  const subscribeToAnalysisStream = (jobId: string) => {
-    if (analysisStreamChannelRef.current) {
-      logUpdate('analysis-stream-cleanup', 'Removing existing analysis stream channel');
-      supabase.removeChannel(analysisStreamChannelRef.current);
-      analysisStreamChannelRef.current = null;
-    }
-    
-    logUpdate('analysis-stream-setup', `Setting up analysis stream for job id: ${jobId}`);
-    
-    const channel = supabase
-      .channel(`analysis-stream-${jobId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'analysis_stream',
-          filter: `job_id=eq.${jobId} AND iteration=eq.0`
-        },
-        (payload) => {
-          if (payload.new && payload.new.chunk) {
-            logUpdate('analysis-stream-update', `Received analysis chunk for job: ${jobId}`);
-            setIsAnalysisStreaming(true);
-            setStreamingAnalysis(prev => prev + payload.new.chunk);
-          }
-        }
-      )
-      .subscribe((status) => {
-        logUpdate('analysis-stream-status', `Analysis stream subscription status: ${status} for job: ${jobId}`);
-      });
-    
-    analysisStreamChannelRef.current = channel;
-  };
-
   const subscribeToJobUpdates = (id: string) => {
     if (realtimeChannelRef.current) {
       logUpdate('realtime-cleanup', 'Removing existing realtime channel before creating new one');
@@ -255,8 +207,6 @@ export function JobQueueResearchCard({
       });
     
     realtimeChannelRef.current = channel;
-    
-    subscribeToAnalysisStream(id);
   };
 
   const handleJobUpdate = (job: ResearchJob) => {
@@ -304,6 +254,7 @@ export function JobQueueResearchCard({
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -333,11 +284,6 @@ export function JobQueueResearchCard({
           logUpdate('set-analysis', `Setting analysis with length ${analysisLength}`);
           console.log(`Analysis first 100 chars: "${parsedResults.analysis.substring(0, 100)}..."`);
           setAnalysis(parsedResults.analysis);
-          
-          if (isAnalysisStreaming) {
-            setIsAnalysisStreaming(false);
-            setStreamingAnalysis(parsedResults.analysis);
-          }
         }
         
         if (parsedResults.structuredInsights) {
@@ -352,6 +298,7 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -422,6 +369,7 @@ export function JobQueueResearchCard({
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
+        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -437,7 +385,7 @@ export function JobQueueResearchCard({
           logUpdate('parse-results', 'Results already in object format');
           parsedResults = job.results;
         } else {
-          console.error('Unexpected results type in loadJobData:', typeof job.results);
+          logUpdate('parse-results-error', `Unexpected results type: ${typeof job.results}`);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -451,7 +399,6 @@ export function JobQueueResearchCard({
           logUpdate('set-analysis', `Setting analysis with length ${analysisLength}`);
           console.log(`Analysis first 100 chars: "${parsedResults.analysis.substring(0, 100)}..."`);
           setAnalysis(parsedResults.analysis);
-          setStreamingAnalysis(parsedResults.analysis);
         }
         
         if (parsedResults.structuredInsights) {
@@ -466,6 +413,7 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
+          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -487,7 +435,7 @@ export function JobQueueResearchCard({
       logUpdate('job-failed', `Job failed: ${job.error_message || 'Unknown error'}`);
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
     }
-    
+
     if (job.focus_text) {
       logUpdate('set-focus', `Setting focus text: ${job.focus_text}`);
       setFocusText(job.focus_text);
@@ -495,10 +443,6 @@ export function JobQueueResearchCard({
     
     const duration = performance.now() - startTime;
     logUpdate('job-load-complete', `Job data load completed in ${duration.toFixed(0)}ms`);
-    
-    if (job.status === 'processing') {
-      subscribeToAnalysisStream(job.id);
-    }
   }
 
   const calculateGoodBuyOpportunities = (probabilityStr: string) => {
@@ -549,6 +493,7 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
+      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -810,180 +755,254 @@ export function JobQueueResearchCard({
   return (
     <Card className="p-4 space-y-4 w-full max-w-full">
       <div className="flex items-center justify-between w-full max-w-full">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold">Research</h3>
-          {renderStatusBadge()}
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold">Background Job Research</h2>
+            {renderStatusBadge()}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            This research continues in the background even if you close your browser.
+          </p>
         </div>
         
         <div className="flex items-center gap-2">
-          {jobId && (
+          {jobId ? (
             <Button 
               variant="outline" 
               size="sm" 
               onClick={handleClearDisplay}
-              className="text-xs h-8"
+              disabled={isLoading || isLoadingSaved}
             >
-              Clear
+              New Research
             </Button>
+          ) : (
+            <Button 
+              onClick={() => handleResearch()} 
+              disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
+              className="flex items-center gap-2"
+            >
+              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isLoading ? "Starting..." : "Start Research"}
+            </Button>
+          )}
+          
+          {savedJobs.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  disabled={isLoadingJobs || isLoading || isLoadingSaved}
+                  className="flex items-center gap-2"
+                >
+                  {isLoadingJobs ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> 
+                  ) : (
+                    <History className="h-4 w-4 mr-2" />
+                  )}
+                  History ({savedJobs.length})
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[300px] max-h-[400px] overflow-y-auto">
+                {savedJobs.map((job) => {
+                  const probability = extractProbability(job);
+                  
+                  return (
+                    <DropdownMenuItem
+                      key={job.id}
+                      onClick={() => loadSavedResearch(job.id)}
+                      disabled={isLoadingSaved}
+                      className="flex flex-col items-start py-2"
+                    >
+                      <div className="flex items-center w-full">
+                        {getStatusIcon(job.status)}
+                        <span className="font-medium truncate flex-1">
+                          {job.focus_text ? job.focus_text.slice(0, 20) + (job.focus_text.length > 20 ? '...' : '') : 'General research'}
+                        </span>
+                        <Badge 
+                          variant="outline" 
+                          className={`ml-2 ${
+                            job.status === 'completed' ? 'bg-green-50 text-green-700' : 
+                            job.status === 'failed' ? 'bg-red-50 text-red-700' :
+                            job.status === 'processing' ? 'bg-blue-50 text-blue-700' :
+                            'bg-yellow-50 text-yellow-700'
+                          }`}
+                        >
+                          {job.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between w-full mt-1">
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(job.created_at)}
+                        </span>
+                        {probability && (
+                          <Badge variant="secondary" className="text-xs">
+                            P: {probability}
+                          </Badge>
+                        )}
+                      </div>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
         </div>
       </div>
-      
-      {!jobId ? (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="focus-text">Research Focus (Optional)</Label>
-              <Input 
-                id="focus-text" 
-                placeholder="Specific topic or question to investigate" 
+
+      {!jobId && (
+        <>
+          <div className="flex flex-col space-y-4 w-full">
+            <div className="flex items-center gap-2 w-full">
+              <Input
+                placeholder="Add an optional focus area for your research..."
                 value={focusText}
                 onChange={(e) => setFocusText(e.target.value)}
-                className="w-full"
+                disabled={isLoading}
+                className="flex-1"
               />
             </div>
             
-            <div className="flex flex-col gap-1">
-              <Label htmlFor="iterations">Iterations</Label>
-              <Select value={maxIterations} onValueChange={setMaxIterations}>
+            <div className="flex flex-col space-y-2">
+              <div className="flex items-center gap-2">
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <Label>Iterations</Label>
+              </div>
+              <Select
+                value={maxIterations}
+                onValueChange={setMaxIterations}
+                disabled={isLoading}
+              >
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder="Number of iterations" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">1 - Quick research</SelectItem>
-                  <SelectItem value="2">2 - Basic research</SelectItem>
-                  <SelectItem value="3">3 - Standard research</SelectItem>
-                  <SelectItem value="4">4 - Thorough research</SelectItem>
-                  <SelectItem value="5">5 - Deep research</SelectItem>
+                  <SelectItem value="1">1 iteration</SelectItem>
+                  <SelectItem value="2">2 iterations</SelectItem>
+                  <SelectItem value="3">3 iterations (default)</SelectItem>
+                  <SelectItem value="4">4 iterations</SelectItem>
+                  <SelectItem value="5">5 iterations</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                More iterations provide deeper research but take longer to complete.
+              </p>
             </div>
-            
-            <div className="flex items-center gap-2 mt-2">
-              <Checkbox 
-                id="email-notify" 
-                checked={notifyByEmail}
-                onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
-              />
-              <div className="grid gap-1">
-                <Label htmlFor="email-notify" className="text-sm">Email notification when complete</Label>
-                {notifyByEmail && (
-                  <Input 
-                    id="notification-email" 
-                    placeholder="your@email.com" 
+          
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="notify-email" 
+                  checked={notifyByEmail} 
+                  onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
+                />
+                <Label htmlFor="notify-email" className="cursor-pointer">
+                  Notify me by email when research is complete
+                </Label>
+              </div>
+              
+              {notifyByEmail && (
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    placeholder="Enter your email address"
                     value={notificationEmail}
                     onChange={(e) => setNotificationEmail(e.target.value)}
-                    className="w-full mt-1"
-                    type="email"
+                    className="flex-1"
                   />
+                </div>
+              )}
+              
+              <Button 
+                onClick={() => handleResearch()} 
+                disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
+                className="w-full"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Starting...
+                  </>
+                ) : (
+                  "Start Background Research"
                 )}
-              </div>
+              </Button>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <Button 
-              onClick={() => handleResearch()}
-              className="w-full"
-              disabled={isLoading || isLoadingSaved}
-            >
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Start Research
-            </Button>
-          </div>
-          
-          {isLoadingJobs ? (
-            <div className="text-center py-4">
-              <Loader2 className="h-6 w-6 animate-spin mx-auto" />
-              <p className="text-sm text-muted-foreground mt-2">Loading previous research...</p>
-            </div>
-          ) : savedJobs && savedJobs.length > 0 ? (
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium">Previous Research</h4>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
-                {savedJobs.map((job) => (
-                  <div 
-                    key={job.id} 
-                    className="flex items-center justify-between p-2 text-sm bg-accent/10 rounded-md hover:bg-accent/20 cursor-pointer"
-                    onClick={() => loadSavedResearch(job.id)}
-                  >
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      {getStatusIcon(job.status)}
-                      <span className="truncate">
-                        {job.focus_text 
-                          ? `Focus: ${job.focus_text}` 
-                          : `Research ${job.id.substring(0, 8)}`}
-                      </span>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {formatDate(job.created_at)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : null}
+        </>
+      )}
+
+      {focusText && jobId && (
+        <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
+          <span className="font-medium">Research focus:</span> {focusText}
         </div>
-      ) : (
-        <div className="space-y-4">
-          <ProgressDisplay 
-            percent={progressPercent} 
-            logEntries={progress} 
-            error={error}
-            isLoading={isLoading}
+      )}
+
+      {error && (
+        <div className="text-sm text-red-500 bg-red-50 dark:bg-red-950/50 p-2 rounded w-full max-w-full">
+          {error}
+        </div>
+      )}
+
+      {jobId && (
+        <ProgressDisplay 
+          messages={progress} 
+          jobId={jobId || undefined} 
+          progress={progressPercent}
+          status={jobStatus}
+        />
+      )}
+      
+      {iterations.length > 0 && (
+        <div className="border-t pt-4 w-full max-w-full space-y-2">
+          <h3 className="text-lg font-medium mb-2">Research Iterations</h3>
+          <div className="space-y-2">
+            {iterations.map((iteration) => (
+              <IterationCard
+                key={iteration.iteration}
+                iteration={iteration}
+                isExpanded={expandedIterations.includes(iteration.iteration)}
+                onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
+                isStreaming={jobStatus === 'processing'}
+                isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
+                maxIterations={parseInt(maxIterations, 10)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {structuredInsights && structuredInsights.parsedData && (
+        <div className="border-t pt-4 w-full max-w-full">
+          <h3 className="text-lg font-medium mb-2">Research Insights</h3>
+          <InsightsDisplay 
+            streamingState={structuredInsights} 
+            onResearchArea={handleResearchArea}
+            marketData={{
+              bestBid,
+              bestAsk,
+              noBestAsk,
+              outcomes
+            }}
           />
-          
-          {iterations.length > 0 && (
-            <div className="space-y-2">
-              {iterations.map((iteration) => (
-                <IterationCard 
-                  key={iteration.iteration}
-                  iteration={iteration}
-                  isExpanded={expandedIterations.includes(iteration.iteration)}
-                  onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
-                  isStreaming={jobStatus === 'processing' && iteration.iteration === iterations.length}
-                  isCurrentIteration={iteration.iteration === iterations.length}
-                  maxIterations={iterations.length}
-                />
-              ))}
-            </div>
-          )}
-          
-          {isAnalysisStreaming && streamingAnalysis && (
-            <div className="mt-4">
-              <h3 className="text-lg font-medium flex items-center gap-2 mb-2">
-                <span>Final Analysis</span>
-                <Badge variant="outline" className="animate-pulse bg-primary/20">Streaming</Badge>
-              </h3>
-              <Card className="p-2 bg-accent/5">
-                <AnalysisDisplay content={streamingAnalysis} isStreaming={true} />
-              </Card>
-            </div>
-          )}
-          
-          {!isAnalysisStreaming && analysis && (
-            <div className="mt-4">
-              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
-              <Card className="p-2 bg-accent/5">
-                <AnalysisDisplay content={analysis} />
-              </Card>
-            </div>
-          )}
-          
-          {structuredInsights && (
-            <div className="mt-4">
-              <h3 className="text-lg font-medium mb-2">Key Insights</h3>
-              <InsightsDisplay insights={structuredInsights} />
-            </div>
-          )}
-          
-          {results && results.length > 0 && (
-            <div className="mt-4">
-              <h3 className="text-lg font-medium mb-2">Sources</h3>
-              <SitePreviewList sites={results} />
-            </div>
-          )}
         </div>
+      )}
+      
+      {results.length > 0 && (
+        <>
+          <div className="border-t pt-4 w-full max-w-full">
+            <h3 className="text-lg font-medium mb-2">Search Results</h3>
+            <SitePreviewList results={results} />
+          </div>
+          
+          {analysis && (
+            <div className="border-t pt-4 w-full max-w-full">
+              <h3 className="text-lg font-medium mb-2">Final Analysis</h3>
+              <AnalysisDisplay content={analysis} />
+            </div>
+          )}
+        </>
       )}
     </Card>
   );

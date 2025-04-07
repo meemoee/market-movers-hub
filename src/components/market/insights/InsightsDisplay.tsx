@@ -30,13 +30,6 @@ interface StreamingState {
   } | null;
 }
 
-interface MarketData {
-  bestBid?: number;
-  bestAsk?: number;
-  noBestAsk?: number;
-  outcomes?: string[];
-}
-
 interface InsightsDisplayProps {
   probability?: string;
   areasForResearch?: string[];
@@ -44,7 +37,6 @@ interface InsightsDisplayProps {
   onResearchArea?: (area: string) => void;
   parentResearch?: ParentResearch;
   childResearches?: ChildResearch[];
-  marketData?: MarketData;
 }
 
 export function InsightsDisplay({ 
@@ -53,8 +45,7 @@ export function InsightsDisplay({
   streamingState,
   onResearchArea,
   parentResearch,
-  childResearches,
-  marketData
+  childResearches
 }: InsightsDisplayProps) {
   const getProbabilityColor = (prob: string) => {
     const numericProb = parseInt(prob.replace('%', ''))
@@ -83,12 +74,6 @@ export function InsightsDisplay({
         evidenceAgainst.push(...reasoning.evidenceAgainst);
       }
     }
-  }
-
-  // Calculate good buy opportunities
-  let goodBuyOpportunities = null;
-  if (streamingState?.parsedData?.goodBuyOpportunities) {
-    goodBuyOpportunities = streamingState.parsedData.goodBuyOpportunities;
   }
 
   return (
@@ -194,34 +179,6 @@ export function InsightsDisplay({
                   </div>
                   <div className="text-sm text-muted-foreground">
                     {reasoning}
-                  </div>
-                </div>
-              </>
-            )}
-            
-            {/* Display buy opportunities if available */}
-            {goodBuyOpportunities && goodBuyOpportunities.length > 0 && (
-              <>
-                <div className="h-px bg-black/10 dark:bg-white/10 my-3" />
-                <div>
-                  <div className="flex items-center gap-2 text-sm font-medium mb-2">
-                    <TrendingUp className="h-4 w-4 text-green-500" />
-                    Potential Market Opportunities:
-                  </div>
-                  <div className="space-y-2">
-                    {goodBuyOpportunities.map((opportunity, index) => (
-                      <div key={index} className="bg-green-500/5 border border-green-500/20 rounded-md p-2">
-                        <div className="flex items-center justify-between">
-                          <div className="font-medium text-sm">{opportunity.outcome}</div>
-                          <Badge variant="outline" className="bg-green-500/10 text-green-600">
-                            +{opportunity.difference}%
-                          </Badge>
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1">
-                          Research predicts {(opportunity.predictedProbability * 100).toFixed(1)}% vs market price of {(opportunity.marketPrice * 100).toFixed(1)}%
-                        </div>
-                      </div>
-                    ))}
                   </div>
                 </div>
               </>

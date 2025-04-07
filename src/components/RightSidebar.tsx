@@ -1,10 +1,8 @@
-
 import { Send } from 'lucide-react'
 import { useState, useRef } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
-import { Card } from './ui/card'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
