@@ -426,10 +426,9 @@ export function JobQueueResearchCard({
             throw new Error('Invalid results format (string parsing failed)');
           }
         } else if (typeof job.results === 'object') {
-          logUpdate('parse-results', 'Results already in object format');
           parsedResults = job.results;
         } else {
-          logUpdate('parse-results-error', `Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
