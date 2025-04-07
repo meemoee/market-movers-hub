@@ -1056,7 +1056,10 @@ export function JobQueueResearchCard({
               </Badge>
             )}
           </h3>
-          <AnalysisDisplay content={finalAnalysisStream} />
+          <AnalysisDisplay 
+            content={finalAnalysisStream} 
+            isStreaming={isStreaming} 
+          />
         </div>
       )}
     </Card>
