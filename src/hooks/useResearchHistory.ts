@@ -1,8 +1,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { ResearchJob } from '@/types/research';
+import { ResearchJob, ResearchIteration } from '@/types/research';
 import { useToast } from '@/components/ui/use-toast';
+import { Json } from '@/integrations/supabase/types';
 
 export const useResearchHistory = (marketId: string) => {
   const [isLoadingJobs, setIsLoadingJobs] = useState(false);
@@ -32,8 +33,31 @@ export const useResearchHistory = (marketId: string) => {
       
       if (data && data.length > 0) {
         console.log(`Fetched ${data.length} jobs in ${duration.toFixed(0)}ms`);
-        // Explicitly cast data to ResearchJob[] since we know the structure is compatible
-        setSavedJobs(data as unknown as ResearchJob[]);
+        
+        // Convert data to ResearchJob[] with appropriate typing
+        const typedJobs = data.map(job => {
+          // Process iterations if they exist
+          let processedIterations: ResearchIteration[] = [];
+          if (job.iterations) {
+            if (Array.isArray(job.iterations)) {
+              processedIterations = job.iterations as ResearchIteration[];
+            } else if (typeof job.iterations === 'object') {
+              // Handle case where iterations might be a Json object
+              const iterObj = job.iterations as unknown;
+              if (iterObj && Array.isArray(iterObj)) {
+                processedIterations = iterObj as ResearchIteration[];
+              }
+            }
+          }
+          
+          // Return properly typed ResearchJob
+          return {
+            ...job,
+            iterations: processedIterations
+          } as ResearchJob;
+        });
+        
+        setSavedJobs(typedJobs);
       } else {
         console.log(`No saved jobs found for market: ${marketId}`);
       }
@@ -81,15 +105,33 @@ export const useResearchHistory = (marketId: string) => {
         return;
       }
       
-      // Cast to ResearchJob since we know the structure is compatible
-      const job = data as unknown as ResearchJob;
-      console.log('Loaded research job:', job);
+      // Process the data with proper typing for iterations
+      let processedIterations: ResearchIteration[] = [];
+      if (data.iterations) {
+        if (Array.isArray(data.iterations)) {
+          processedIterations = data.iterations as ResearchIteration[];
+        } else if (typeof data.iterations === 'object') {
+          // Handle case where iterations might be a Json object
+          const iterObj = data.iterations as unknown;
+          if (iterObj && Array.isArray(iterObj)) {
+            processedIterations = iterObj as ResearchIteration[];
+          }
+        }
+      }
       
-      onLoadCallback(job);
+      // Create properly typed job object
+      const typedJob: ResearchJob = {
+        ...data,
+        iterations: processedIterations
+      } as ResearchJob;
+      
+      console.log('Loaded research job:', typedJob);
+      
+      onLoadCallback(typedJob);
       
       toast({
         title: "Research Loaded",
-        description: `Loaded research job ${job.focus_text ? `focused on: ${job.focus_text}` : ''}`,
+        description: `Loaded research job ${typedJob.focus_text ? `focused on: ${typedJob.focus_text}` : ''}`,
       });
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);

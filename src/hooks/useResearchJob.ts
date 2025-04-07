@@ -16,11 +16,11 @@ export const useResearchJob = (marketId: string) => {
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null);
   const [structuredInsights, setStructuredInsights] = useState<any>(null);
   const [focusText, setFocusText] = useState<string>('');
+  const [maxIterations, setMaxIterations] = useState<number>(3);
   const realtimeChannelRef = useRef<any>(null);
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([]);
   const { toast } = useToast();
 
-  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -29,7 +29,6 @@ export const useResearchJob = (marketId: string) => {
       info
     });
     
-    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -100,6 +99,8 @@ export const useResearchJob = (marketId: string) => {
       const newPercent = job.status === 'completed' ? 100 : percent;
       logUpdate('progress-update', `Setting progress to ${newPercent}% (${job.current_iteration}/${job.max_iterations})`);
       setProgressPercent(newPercent);
+      
+      setMaxIterations(job.max_iterations);
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
@@ -134,7 +135,6 @@ export const useResearchJob = (marketId: string) => {
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -246,26 +246,28 @@ export const useResearchJob = (marketId: string) => {
     return opportunities.length > 0 ? opportunities : null;
   };
 
-  const handleResearch = async (initialFocusText = '', maxIterations = 3, email = '') => {
+  const handleResearch = async (initialFocusText = '', initialMaxIterations = 3, email = '') => {
     resetState();
     setIsLoading(true);
 
     const useFocusText = initialFocusText || focusText;
     const notifyByEmail = email.trim() !== '';
+    
+    setMaxIterations(initialMaxIterations);
 
     try {
-      logUpdate('start-research', `Starting research job with ${maxIterations} iterations`);
+      logUpdate('start-research', `Starting research job with ${initialMaxIterations} iterations`);
       setProgress(prev => [...prev, "Starting research job..."]);
       
       const payload = {
         marketId,
         query: marketId, // Using marketId as query - adjust this if needed
-        maxIterations,
+        maxIterations: initialMaxIterations,
         focusText: useFocusText.trim() || undefined,
         notificationEmail: notifyByEmail ? email.trim() : undefined
       };
       
-      logUpdate('create-job', `Creating research job with payload: marketId=${marketId}, maxIterations=${maxIterations}`);
+      logUpdate('create-job', `Creating research job with payload: marketId=${marketId}, maxIterations=${initialMaxIterations}`);
       console.log('Creating research job with payload:', payload);
       
       const startTime = performance.now();
@@ -295,7 +297,7 @@ export const useResearchJob = (marketId: string) => {
       setJobStatus('queued');
       setProgress(prev => [...prev, `Research job created with ID: ${newJobId}`]);
       setProgress(prev => [...prev, `Background processing started...`]);
-      setProgress(prev => [...prev, `Set to run ${maxIterations} research iterations`]);
+      setProgress(prev => [...prev, `Set to run ${initialMaxIterations} research iterations`]);
       
       subscribeToJobUpdates(newJobId);
       
@@ -331,6 +333,8 @@ export const useResearchJob = (marketId: string) => {
       logUpdate('set-progress', `Setting progress to ${percent}% (${job.current_iteration}/${job.max_iterations})`);
       setProgressPercent(percent);
       
+      setMaxIterations(job.max_iterations);
+      
       if (job.status === 'completed') {
         setProgressPercent(100);
       }
@@ -359,7 +363,6 @@ export const useResearchJob = (marketId: string) => {
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -403,7 +406,6 @@ export const useResearchJob = (marketId: string) => {
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -459,6 +461,7 @@ export const useResearchJob = (marketId: string) => {
     analysis,
     structuredInsights,
     focusText,
+    maxIterations,
     setFocusText,
     handleResearch,
     resetState,

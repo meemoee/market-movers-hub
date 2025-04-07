@@ -1,4 +1,3 @@
-
 import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -47,12 +46,12 @@ export function JobQueueResearchCard({
     analysis,
     structuredInsights,
     focusText,
+    maxIterations,
     setFocusText,
     handleResearch,
     resetState,
     loadJobData,
-    toggleIterationExpand,
-    maxIterations
+    toggleIterationExpand
   } = useResearchJob(marketId);
   
   const {
