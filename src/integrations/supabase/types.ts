@@ -563,6 +563,7 @@ export type Database = {
           created_at: string
           current_iteration: number
           error_message: string | null
+          final_analysis_stream: string | null
           focus_text: string | null
           id: string
           iterations: Json
@@ -584,6 +585,7 @@ export type Database = {
           created_at?: string
           current_iteration?: number
           error_message?: string | null
+          final_analysis_stream?: string | null
           focus_text?: string | null
           id?: string
           iterations?: Json
@@ -605,6 +607,7 @@ export type Database = {
           created_at?: string
           current_iteration?: number
           error_message?: string | null
+          final_analysis_stream?: string | null
           focus_text?: string | null
           id?: string
           iterations?: Json
@@ -699,12 +702,7 @@ export type Database = {
     }
     Functions: {
       append_analysis_chunk: {
-        Args: {
-          job_id: string
-          iteration: number
-          chunk: string
-          seq: number
-        }
+        Args: { job_id: string; iteration: number; chunk: string; seq: number }
         Returns: string
       }
       append_iteration_field_text: {
@@ -717,52 +715,29 @@ export type Database = {
         Returns: undefined
       }
       append_progress_log: {
-        Args: {
-          job_id: string
-          log_message: string
-        }
+        Args: { job_id: string; log_message: string }
         Returns: undefined
       }
       append_research_iteration: {
-        Args: {
-          job_id: string
-          iteration_data: Json
-        }
+        Args: { job_id: string; iteration_data: Json }
         Returns: undefined
       }
-      append_research_progress:
-        | {
-            Args: {
-              job_id: string
-              progress_entry: Json
-            }
-            Returns: undefined
-          }
-        | {
-            Args: {
-              job_id: string
-              progress_entry: string
-            }
-            Returns: undefined
-          }
+      append_research_progress: {
+        Args:
+          | { job_id: string; progress_entry: Json }
+          | { job_id: string; progress_entry: string }
+        Returns: undefined
+      }
       batch_insert_market_data: {
-        Args: {
-          event_records: Json
-          market_records: Json
-          price_records: Json
-        }
+        Args: { event_records: Json; market_records: Json; price_records: Json }
         Returns: undefined
       }
       check_research_job_complete: {
-        Args: {
-          job_id: string
-        }
+        Args: { job_id: string }
         Returns: boolean
       }
       check_table_exists: {
-        Args: {
-          p_table_name: string
-        }
+        Args: { p_table_name: string }
         Returns: boolean
       }
       clean_old_market_data: {
@@ -774,11 +749,7 @@ export type Database = {
         Returns: undefined
       }
       debug_market_prices: {
-        Args: {
-          market_id: string
-          start_time: string
-          end_time: string
-        }
+        Args: { market_id: string; start_time: string; end_time: string }
         Returns: {
           price_timestamp: string
           last_traded_price: number
@@ -786,9 +757,7 @@ export type Database = {
         }[]
       }
       enable_realtime_for_table: {
-        Args: {
-          table_name: string
-        }
+        Args: { table_name: string }
         Returns: undefined
       }
       execute_market_order: {
@@ -804,38 +773,14 @@ export type Database = {
         Returns: string
       }
       get_active_markets: {
-        Args: {
-          market_ids: string[]
-        }
+        Args: { market_ids: string[] }
         Returns: {
           id: string
         }[]
       }
-      get_active_markets_with_prices:
-        | {
-            Args: {
-              start_time: string
-              end_time: string
-            }
-            Returns: {
-              id: string
-            }[]
-          }
-        | {
-            Args: {
-              start_time: string
-              end_time: string
-              p_limit?: number
-              p_offset?: number
-            }
-            Returns: {
-              output_market_id: string
-              initial_price: number
-              final_price: number
-            }[]
-          }
-        | {
-            Args: {
+      get_active_markets_with_prices: {
+        Args:
+          | {
               start_time: string
               end_time: string
               p_limit?: number
@@ -845,36 +790,34 @@ export type Database = {
               p_price_change_min?: number
               p_price_change_max?: number
             }
-            Returns: {
-              output_market_id: string
-              initial_price: number
-              final_price: number
-            }[]
-          }
+          | { start_time: string; end_time: string }
+          | {
+              start_time: string
+              end_time: string
+              p_limit?: number
+              p_offset?: number
+            }
+        Returns: {
+          output_market_id: string
+          initial_price: number
+          final_price: number
+        }[]
+      }
       get_active_markets_with_prices_full: {
-        Args: {
-          start_time: string
-          end_time: string
-        }
+        Args: { start_time: string; end_time: string }
         Returns: {
           output_market_id: string
         }[]
       }
       get_market_price_counts: {
-        Args: {
-          market_ids: string[]
-          time_threshold: string
-        }
+        Args: { market_ids: string[]; time_threshold: string }
         Returns: {
           market_id: string
           count: number
         }[]
       }
       get_markets_with_prices: {
-        Args: {
-          start_time: string
-          end_time: string
-        }
+        Args: { start_time: string; end_time: string }
         Returns: {
           market_id: string
         }[]
@@ -889,18 +832,11 @@ export type Database = {
         Returns: undefined
       }
       update_research_job_status: {
-        Args: {
-          job_id: string
-          new_status: string
-          error_msg?: string
-        }
+        Args: { job_id: string; new_status: string; error_msg?: string }
         Returns: undefined
       }
       update_research_results: {
-        Args: {
-          job_id: string
-          result_data: Json
-        }
+        Args: { job_id: string; result_data: Json }
         Returns: undefined
       }
     }
@@ -915,27 +851,29 @@ export type Database = {
   }
 }
 
-type PublicSchema = Database[Extract<keyof Database, "public">]
+type DefaultSchema = Database[Extract<keyof Database, "public">]
 
 export type Tables<
-  PublicTableNameOrOptions extends
-    | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-        Database[PublicTableNameOrOptions["schema"]]["Views"])
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? (Database[PublicTableNameOrOptions["schema"]]["Tables"] &
-      Database[PublicTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? (Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      Database[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : PublicTableNameOrOptions extends keyof (PublicSchema["Tables"] &
-        PublicSchema["Views"])
-    ? (PublicSchema["Tables"] &
-        PublicSchema["Views"])[PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -943,20 +881,22 @@ export type Tables<
     : never
 
 export type TablesInsert<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -964,20 +904,22 @@ export type TablesInsert<
     : never
 
 export type TablesUpdate<
-  PublicTableNameOrOptions extends
-    | keyof PublicSchema["Tables"]
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
     | { schema: keyof Database },
-  TableName extends PublicTableNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicTableNameOrOptions["schema"]]["Tables"]
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
     : never = never,
-> = PublicTableNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+> = DefaultSchemaTableNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : PublicTableNameOrOptions extends keyof PublicSchema["Tables"]
-    ? PublicSchema["Tables"][PublicTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -985,21 +927,23 @@ export type TablesUpdate<
     : never
 
 export type Enums<
-  PublicEnumNameOrOptions extends
-    | keyof PublicSchema["Enums"]
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
     | { schema: keyof Database },
-  EnumName extends PublicEnumNameOrOptions extends { schema: keyof Database }
-    ? keyof Database[PublicEnumNameOrOptions["schema"]]["Enums"]
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof Database
+  }
+    ? keyof Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
     : never = never,
-> = PublicEnumNameOrOptions extends { schema: keyof Database }
-  ? Database[PublicEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : PublicEnumNameOrOptions extends keyof PublicSchema["Enums"]
-    ? PublicSchema["Enums"][PublicEnumNameOrOptions]
+> = DefaultSchemaEnumNameOrOptions extends { schema: keyof Database }
+  ? Database[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof PublicSchema["CompositeTypes"]
+    | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof Database },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof Database
@@ -1008,6 +952,16 @@ export type CompositeTypes<
     : never = never,
 > = PublicCompositeTypeNameOrOptions extends { schema: keyof Database }
   ? Database[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof PublicSchema["CompositeTypes"]
-    ? PublicSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
     : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      order_side: ["buy", "sell"],
+      order_status: ["pending", "completed", "cancelled", "failed"],
+      order_type: ["market", "limit"],
+    },
+  },
+} as const
