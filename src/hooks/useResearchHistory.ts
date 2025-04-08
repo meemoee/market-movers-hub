@@ -32,12 +32,22 @@ export function useResearchHistory({ marketId }: UseResearchHistoryProps) {
       }
       
       if (data && data.length > 0) {
-        // Type assertion to handle JSON conversion
+        // Map and validate the data to ensure it conforms to the ResearchJob type
         const typedJobs: ResearchJob[] = data.map(job => ({
           ...job,
+          // Ensure status is one of the allowed values
+          status: validateStatus(job.status),
           // Handle the Json[] to proper typed arrays conversion
-          iterations: Array.isArray(job.iterations) ? job.iterations as unknown as any[] : [],
-          progress_log: Array.isArray(job.progress_log) ? job.progress_log as string[] : []
+          iterations: Array.isArray(job.iterations) ? job.iterations as any[] : [],
+          progress_log: Array.isArray(job.progress_log) ? job.progress_log as string[] : [],
+          // Ensure nullable fields are handled properly
+          error_message: job.error_message || undefined,
+          focus_text: job.focus_text || undefined,
+          notification_email: job.notification_email || undefined,
+          notification_sent: job.notification_sent || false,
+          completed_at: job.completed_at || undefined,
+          started_at: job.started_at || undefined,
+          user_id: job.user_id || undefined
         }));
         
         setSavedJobs(typedJobs);
@@ -48,6 +58,20 @@ export function useResearchHistory({ marketId }: UseResearchHistoryProps) {
       console.error('Error in fetchSavedJobs:', e);
     } finally {
       setIsLoadingJobs(false);
+    }
+  };
+
+  // Helper function to validate status is one of the allowed types
+  const validateStatus = (status: string): 'queued' | 'processing' | 'completed' | 'failed' => {
+    switch (status) {
+      case 'queued':
+      case 'processing':
+      case 'completed':
+      case 'failed':
+        return status;
+      default:
+        console.warn(`Invalid status value encountered: ${status}, defaulting to 'queued'`);
+        return 'queued'; // Default to a valid status if we get an unexpected value
     }
   };
 
@@ -115,10 +139,21 @@ export function useResearchHistory({ marketId }: UseResearchHistoryProps) {
         return null;
       }
       
-      const job = data as unknown as ResearchJob;
-      // Handle the Json[] to proper typed arrays conversion
-      job.iterations = Array.isArray(job.iterations) ? job.iterations as unknown as any[] : [];
-      job.progress_log = Array.isArray(job.progress_log) ? job.progress_log as string[] : [];
+      // Transform and validate the job data to match our ResearchJob type
+      const jobData = data as any;
+      const job: ResearchJob = {
+        ...jobData,
+        status: validateStatus(jobData.status),
+        iterations: Array.isArray(jobData.iterations) ? jobData.iterations as any[] : [],
+        progress_log: Array.isArray(jobData.progress_log) ? jobData.progress_log as string[] : [],
+        error_message: jobData.error_message || undefined,
+        focus_text: jobData.focus_text || undefined,
+        notification_email: jobData.notification_email || undefined,
+        notification_sent: jobData.notification_sent || false,
+        completed_at: jobData.completed_at || undefined,
+        started_at: jobData.started_at || undefined,
+        user_id: jobData.user_id || undefined
+      };
       
       return job;
       
