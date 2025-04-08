@@ -1,4 +1,3 @@
-
 import { useState } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -96,19 +95,8 @@ export function JobQueueResearchCard({
     const useFocusText = initialFocusText || focusText;
     setFocusText(useFocusText);
     
-    // Create the research job payload
-    const payload = {
-      marketId,
-      query: description,
-      maxIterations,
-      focusText: useFocusText.trim() || undefined,
-      notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
-    };
+    handleResearch(description, useFocusText);
     
-    // Call the handleResearch function
-    handleResearch(useFocusText);
-    
-    // Show notification if email notification is enabled
     if (notifyByEmail && notificationEmail) {
       toast({
         title: "Email Notification Enabled",

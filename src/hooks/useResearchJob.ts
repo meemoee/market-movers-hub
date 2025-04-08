@@ -37,7 +37,6 @@ export function useResearchJob({
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([]);
   const { toast } = useToast();
 
-  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -46,7 +45,6 @@ export function useResearchJob({
       info
     });
     
-    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -83,7 +81,6 @@ export function useResearchJob({
         realtimeChannelRef.current = null;
       }
       
-      // Log all accumulated data on unmount
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
       console.log('📊 Update logs:', updateLogRef.current);
     };
@@ -167,7 +164,6 @@ export function useResearchJob({
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -211,7 +207,6 @@ export function useResearchJob({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -327,7 +322,6 @@ export function useResearchJob({
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -371,7 +365,6 @@ export function useResearchJob({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -395,7 +388,7 @@ export function useResearchJob({
     }
   };
 
-  const handleResearch = async (focusText = '') => {
+  const handleResearch = async (query: string, focusText = '') => {
     resetState();
     setIsLoading(true);
     
@@ -407,7 +400,7 @@ export function useResearchJob({
       
       const payload = {
         marketId,
-        query: focusText || '',
+        query: query,
         maxIterations: numIterations,
         focusText: focusText.trim() || undefined,
       };
