@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useRef } from 'react'
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,7 +11,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
+import { Loader2, AlertCircle, Clock, History, Mail, Settings, CheckCircle } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
