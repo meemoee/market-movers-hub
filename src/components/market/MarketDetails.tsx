@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
 import { QADisplay } from './QADisplay';
+import { WebResearchCard } from './WebResearchCard';
 import { JobQueueResearchCard } from './JobQueueResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
@@ -17,8 +18,8 @@ interface MarketDetailsProps {
   eventId?: string;
   bestBid?: number;
   bestAsk?: number;
-  noBestBid?: number;
-  noBestAsk?: number;
+  noBestBid?: number; // Add this property to the interface
+  noBestAsk?: number; // Add this property to the interface
   outcomes?: string[];
 }
 
@@ -163,6 +164,15 @@ export function MarketDetails({
           selectedInterval={selectedInterval}
         />
       )}
+
+      {description && (
+        <div>
+          <WebResearchCard 
+            description={fullResearchContext} 
+            marketId={marketId}
+          />
+        </div>
+      )}
       
       {description && (
         <div>
@@ -171,8 +181,8 @@ export function MarketDetails({
             marketId={marketId}
             bestBid={bestBid}
             bestAsk={bestAsk}
-            noBestBid={noBestBid}
-            noBestAsk={noBestAsk}
+            noBestBid={noBestBid} // Pass the noBestBid property
+            noBestAsk={noBestAsk} // Pass the noBestAsk property
             outcomes={outcomes}
           />
         </div>
