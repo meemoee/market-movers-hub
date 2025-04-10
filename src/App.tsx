@@ -8,21 +8,19 @@ import Index from "./pages/Index";
 
 const queryClient = new QueryClient();
 
-const App = () => {
-  return (
-    <BrowserRouter>
-      <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/market/:marketId" element={<Index />} />
-          </Routes>
-          <Toaster />
-          <Sonner />
-        </TooltipProvider>
-      </QueryClientProvider>
-    </BrowserRouter>
-  );
-};
+const App = () => (
+  <BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider delayDuration={0}>
+        <Routes>
+          <Route path="/" element={<Index />} />
+          <Route path="/market/:marketId" element={<Index />} />
+        </Routes>
+        <Toaster />
+        <Sonner />
+      </TooltipProvider>
+    </QueryClientProvider>
+  </BrowserRouter>
+);
 
 export default App;

@@ -36,10 +36,8 @@ async function sendNotificationEmail(jobId: string, email: string) {
 
 // Function to perform web research
 async function performWebResearch(jobId: string, query: string, marketId: string, maxIterations: number, focusText?: string, notificationEmail?: string) {
-  console.log(`[${jobId}] Entering performWebResearch`); // <-- ADDED LOG
-
   console.log(`Starting background research for job ${jobId}`)
-
+  
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -1545,28 +1543,14 @@ Your analysis should:
 }
 
 serve(async (req) => {
-  console.log(`[create-research-job] Received request: ${req.method}`); // <-- ADDED LOG
-
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
-
+  
   try {
-    console.log(`[create-research-job] Checking environment variables...`); // <-- ADDED LOG
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
-
-    if (!supabaseUrl || !serviceRoleKey || !openRouterKey) {
-      console.error(`[create-research-job] Missing environment variables! SUPABASE_URL: ${!!supabaseUrl}, SUPABASE_SERVICE_ROLE_KEY: ${!!serviceRoleKey}, OPENROUTER_API_KEY: ${!!openRouterKey}`); // <-- ADDED LOG
-      throw new Error('Missing required environment variables');
-    }
-    console.log(`[create-research-job] Environment variables OK.`); // <-- ADDED LOG
-
     const { marketId, query, maxIterations = 3, focusText, notificationEmail } = await req.json()
-    console.log(`[create-research-job] Parsed request body for marketId: ${marketId}`); // <-- ADDED LOG
-
+    
     if (!marketId || !query) {
       return new Response(
         JSON.stringify({ error: 'marketId and query are required' }),
@@ -1578,10 +1562,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
-    console.log(`[create-research-job] Supabase client created.`); // <-- ADDED LOG
-
+    
     // Create a new job record
-    console.log(`[create-research-job] Attempting to insert job record for marketId: ${marketId}`); // <-- ADDED LOG
     const { data: jobData, error: jobError } = await supabaseClient
       .from('research_jobs')
       .insert({
@@ -1603,14 +1585,12 @@ serve(async (req) => {
     }
     
     const jobId = jobData.id
-    console.log(`[create-research-job] Job record inserted successfully. Job ID: ${jobId}`); // <-- ADDED LOG
-
+    
     // Start the background process without EdgeRuntime
     // Use standard Deno setTimeout for async operation instead
-    console.log(`[create-research-job] Scheduling performWebResearch for Job ID: ${jobId}`); // <-- ADDED LOG
     setTimeout(() => {
       performWebResearch(jobId, query, marketId, maxIterations, focusText, notificationEmail).catch(err => {
-        console.error(`[${jobId}] Background research failed: ${err}`); // <-- MODIFIED LOG
+        console.error(`Background research failed: ${err}`);
       });
     }, 0);
     
