@@ -3,12 +3,13 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import "https://deno.land/x/xhr@0.1.0/mod.ts"
 import { corsHeaders } from "../_shared/cors.ts"
 import { SSEMessage, BraveSearchResult } from "./types.ts"
-import { fetchPageContents } from "./contentFetcher.ts"
 
 // Constants for request management
 const CHUNK_SIZE = 2; // Process 2 queries at a time
 const DELAY_BETWEEN_CHUNKS_MS = 1500; // 1.5 second delay between chunks
 const DELAY_BETWEEN_REQUESTS_MS = 350; // 350ms between individual requests
+const MAX_CONTENT_RETRIES = 2; // Max retries for content fetching
+const FETCH_TIMEOUT_MS = 5000; // 5 second timeout for content fetches
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -99,15 +100,101 @@ serve(async (req) => {
                 urls: webPages.map(p => p.url)
               });
               
-              // Get the content for each page using our utility function
-              const validResults = await fetchPageContents(webPages, jobId);
+              // Get the content for each page with exponential backoff for failures
+              const pageResults = await Promise.all(webPages.map(async (page) => {
+                let retries = 0;
+                let contentBackoffDelay = 1000;
+                
+                while (retries <= MAX_CONTENT_RETRIES) {
+                  try {
+                    // Use a timeout for each content fetch
+                    const contentAbortController = new AbortController();
+                    const contentTimeoutId = setTimeout(() => contentAbortController.abort(), FETCH_TIMEOUT_MS);
+                    
+                    const contentResponse = await fetch(page.url, {
+                      signal: contentAbortController.signal
+                    });
+                    
+                    clearTimeout(contentTimeoutId);
+                    
+                    if (!contentResponse.ok) {
+                      console.log(`[Background][${jobId}] Failed to fetch content for ${page.url}, using description`, {
+                        status: contentResponse.status,
+                        url: page.url,
+                        fallbackContentLength: page.description.length
+                      });
+                      return {
+                        url: page.url,
+                        title: page.title,
+                        content: page.description
+                      };
+                    }
+                    
+                    const html = await contentResponse.text();
+                    const text = html
+                      .replace(/<head>.*?<\/head>/s, '')
+                      .replace(/<style>.*?<\/style>/gs, '')
+                      .replace(/<script>.*?<\/script>/gs, '')
+                      .replace(/<[^>]*>/g, ' ')
+                      .replace(/\s{2,}/g, ' ')
+                      .trim();
+                    
+                    const contentLength = text.length;
+                    console.log(`[Background][${jobId}] Successfully fetched content from ${page.url}`, {
+                      url: page.url,
+                      contentLength,
+                      truncated: contentLength > 15000
+                    });
+                    
+                    return {
+                      url: page.url,
+                      title: page.title,
+                      content: text.slice(0, 15000)
+                    };
+                  } catch (error) {
+                    retries++;
+                    
+                    if (error.name === 'AbortError' || retries > MAX_CONTENT_RETRIES) {
+                      console.log(`[Background][${jobId}] Fetch timeout or max retries for ${page.url}, using description`, {
+                        errorType: error.name === 'AbortError' ? 'timeout' : 'maxRetries',
+                        url: page.url,
+                        retries
+                      });
+                      return {
+                        url: page.url,
+                        title: page.title,
+                        content: page.description
+                      };
+                    }
+                    
+                    console.error(`[Background][${jobId}] Error fetching content for ${page.url}, retry ${retries}/${MAX_CONTENT_RETRIES}:`, {
+                      errorMessage: error.message,
+                      errorName: error.name,
+                      url: page.url,
+                      retryCount: retries,
+                      backoffDelay: contentBackoffDelay
+                    });
+                    await new Promise(resolve => setTimeout(resolve, contentBackoffDelay));
+                    contentBackoffDelay *= 2; // Exponential backoff
+                  }
+                }
+                
+                // Fallback if loop exits without returning
+                return {
+                  url: page.url,
+                  title: page.title,
+                  content: page.description
+                };
+              }));
               
+              // Filter out empty results
+              const validResults = pageResults.filter(r => r.content && r.content.length > 0);
               allResults = [...allResults, ...validResults];
               
               console.log(`[Background][${jobId}] Processed query ${queryIndex + 1}/${cleanedQueries.length} with ${validResults.length} valid results`, {
                 validResultCount: validResults.length,
-                totalResultCount: webPages.length,
-                invalidCount: webPages.length - validResults.length,
+                totalResultCount: pageResults.length,
+                invalidCount: pageResults.length - validResults.length,
                 cumulativeResults: allResults.length
               });
               
