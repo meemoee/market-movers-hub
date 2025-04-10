@@ -16,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
-import { ResearchJobForm } from "./research/ResearchJobForm"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -75,11 +74,13 @@ export function JobQueueResearchCard({
   const [expandedIterations, setExpandedIterations] = useState<number[]>([])
   const [jobStatus, setJobStatus] = useState<'queued' | 'processing' | 'completed' | 'failed' | null>(null)
   const [structuredInsights, setStructuredInsights] = useState<any>(null)
-  const [currentFocusText, setCurrentFocusText] = useState<string | null>(null); // State for loaded job's focus
-  const [currentMaxIterations, setCurrentMaxIterations] = useState<number>(3); // State for loaded job's max iterations
+  const [focusText, setFocusText] = useState<string>('')
   const [isLoadingSaved, setIsLoadingSaved] = useState(false)
   const [savedJobs, setSavedJobs] = useState<ResearchJob[]>([])
   const [isLoadingJobs, setIsLoadingJobs] = useState(false)
+  const [notifyByEmail, setNotifyByEmail] = useState(false)
+  const [notificationEmail, setNotificationEmail] = useState('')
+  const [maxIterations, setMaxIterations] = useState<string>("3")
   const realtimeChannelRef = useRef<any>(null)
   const jobLoadTimesRef = useRef<Record<string, number>>({})
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
@@ -113,8 +114,6 @@ export function JobQueueResearchCard({
     setExpandedIterations([]);
     setJobStatus(null);
     setStructuredInsights(null);
-    setCurrentFocusText(null); // Reset focus text state
-    setCurrentMaxIterations(3); // Reset max iterations to default
     
     if (realtimeChannelRef.current) {
       logUpdate('reset-state', 'Removing existing realtime channel');
@@ -217,13 +216,10 @@ export function JobQueueResearchCard({
     setJobStatus(job.status);
     
     if (job.max_iterations && job.current_iteration !== undefined) {
-      setCurrentMaxIterations(job.max_iterations); // Update max iterations state
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
       const newPercent = job.status === 'completed' ? 100 : percent;
       logUpdate('progress-update', `Setting progress to ${newPercent}% (${job.current_iteration}/${job.max_iterations})`);
       setProgressPercent(newPercent);
-    } else if (job.max_iterations) {
-      setCurrentMaxIterations(job.max_iterations); // Update even if iteration is 0
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
@@ -341,7 +337,6 @@ export function JobQueueResearchCard({
     setJobStatus(job.status);
     
     if (job.max_iterations && job.current_iteration !== undefined) {
-      setCurrentMaxIterations(job.max_iterations); // Set max iterations state
       const percent = Math.round((job.current_iteration / job.max_iterations) * 100);
       logUpdate('set-progress', `Setting progress to ${percent}% (${job.current_iteration}/${job.max_iterations})`);
       setProgressPercent(percent);
@@ -349,8 +344,6 @@ export function JobQueueResearchCard({
       if (job.status === 'completed') {
         setProgressPercent(100);
       }
-    } else if (job.max_iterations) {
-       setCurrentMaxIterations(job.max_iterations); // Set max iterations even if iteration is 0
     }
     
     if (job.progress_log && Array.isArray(job.progress_log)) {
@@ -443,12 +436,9 @@ export function JobQueueResearchCard({
       setError(`Job failed: ${job.error_message || 'Unknown error'}`);
     }
 
-    // Set currentFocusText state from loaded job
     if (job.focus_text) {
-      logUpdate('set-focus', `Setting current focus text: ${job.focus_text}`);
-      setCurrentFocusText(job.focus_text);
-    } else {
-      setCurrentFocusText(null); // Clear if job has no focus text
+      logUpdate('set-focus', `Setting focus text: ${job.focus_text}`);
+      setFocusText(job.focus_text);
     }
     
     const duration = performance.now() - startTime;
@@ -529,17 +519,15 @@ export function JobQueueResearchCard({
     }
   };
 
-  // Modified to accept form data as arguments
-  const handleResearch = async (formFocusText: string, formMaxIterations: string, formNotify: boolean, formEmail: string) => {
+  const handleResearch = async (initialFocusText = '') => {
     resetState();
     setIsLoading(true);
 
-    // Use arguments directly
-    const useFocusText = formFocusText;
-    const numIterations = parseInt(formMaxIterations, 10);
+    const useFocusText = initialFocusText || focusText;
+    const numIterations = parseInt(maxIterations, 10);
 
     try {
-      logUpdate('start-research', `Starting research job with ${numIterations} iterations, focus: '${useFocusText}'`);
+      logUpdate('start-research', `Starting research job with ${numIterations} iterations`);
       setProgress(prev => [...prev, "Starting research job..."]);
       
       const payload = {
@@ -547,11 +535,10 @@ export function JobQueueResearchCard({
         query: description,
         maxIterations: numIterations,
         focusText: useFocusText.trim() || undefined,
-        // Use arguments for notification email
-        notificationEmail: formNotify && formEmail.trim() ? formEmail.trim() : undefined
+        notificationEmail: notifyByEmail && notificationEmail.trim() ? notificationEmail.trim() : undefined
       };
       
-      logUpdate('create-job', `Creating research job with payload: marketId=${marketId}, maxIterations=${numIterations}, notify=${formNotify}, email=${formEmail}`);
+      logUpdate('create-job', `Creating research job with payload: marketId=${marketId}, maxIterations=${numIterations}`);
       console.log('Creating research job with payload:', payload);
       
       const startTime = performance.now();
@@ -585,9 +572,8 @@ export function JobQueueResearchCard({
       
       subscribeToJobUpdates(newJobId);
       
-      // Use arguments for toast message
-      const toastMessage = formNotify && formEmail.trim()
-        ? `Job ID: ${newJobId}. Email notification will be sent to ${formEmail} when complete.`
+      const toastMessage = notifyByEmail && notificationEmail.trim() 
+        ? `Job ID: ${newJobId}. Email notification will be sent to ${notificationEmail} when complete.`
         : `Job ID: ${newJobId}. You can close this window and check back later.`;
       
       toast({
@@ -683,21 +669,20 @@ export function JobQueueResearchCard({
 
   const handleResearchArea = (area: string) => {
     logUpdate('research-area', `Starting focused research on: ${area}`);
-    // Removed setFocusText(''); as state is moved
+    setFocusText('');
     
     toast({
       title: "Starting Focused Research",
       description: `Creating new research job focused on: ${area}`,
     });
     
-    // Call handleResearch with area and default settings for iterations/notifications
-    handleResearch(area, "3", false, ''); 
+    handleResearch(area);
   };
 
   const handleClearDisplay = () => {
     logUpdate('clear-display', 'Clearing display and resetting state');
     resetState();
-    // Removed setFocusText(''); as state is moved
+    setFocusText('');
   };
 
   const renderStatusBadge = () => {
@@ -790,7 +775,16 @@ export function JobQueueResearchCard({
             >
               New Research
             </Button>
-          ) : null /* Removed redundant button, form handles starting new research */ }
+          ) : (
+            <Button 
+              onClick={() => handleResearch()} 
+              disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
+              className="flex items-center gap-2"
+            >
+              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {isLoading ? "Starting..." : "Start Research"}
+            </Button>
+          )}
           
           {savedJobs.length > 0 && (
             <DropdownMenu>
@@ -856,19 +850,92 @@ export function JobQueueResearchCard({
         </div>
       </div>
 
-      {/* Render ResearchJobForm when no job is active */}
       {!jobId && (
-        <ResearchJobForm 
-          isLoading={isLoading} 
-          onStartResearch={handleResearch} 
-          // Optionally pass initial values if needed, e.g., from last job? For now, let form handle defaults.
-        />
+        <>
+          <div className="flex flex-col space-y-4 w-full">
+            <div className="flex items-center gap-2 w-full">
+              <Input
+                placeholder="Add an optional focus area for your research..."
+                value={focusText}
+                onChange={(e) => setFocusText(e.target.value)}
+                disabled={isLoading}
+                className="flex-1"
+              />
+            </div>
+            
+            <div className="flex flex-col space-y-2">
+              <div className="flex items-center gap-2">
+                <Settings className="h-4 w-4 text-muted-foreground" />
+                <Label>Iterations</Label>
+              </div>
+              <Select
+                value={maxIterations}
+                onValueChange={setMaxIterations}
+                disabled={isLoading}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Number of iterations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1 iteration</SelectItem>
+                  <SelectItem value="2">2 iterations</SelectItem>
+                  <SelectItem value="3">3 iterations (default)</SelectItem>
+                  <SelectItem value="4">4 iterations</SelectItem>
+                  <SelectItem value="5">5 iterations</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                More iterations provide deeper research but take longer to complete.
+              </p>
+            </div>
+          
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="notify-email" 
+                  checked={notifyByEmail} 
+                  onCheckedChange={(checked) => setNotifyByEmail(checked === true)}
+                />
+                <Label htmlFor="notify-email" className="cursor-pointer">
+                  Notify me by email when research is complete
+                </Label>
+              </div>
+              
+              {notifyByEmail && (
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="email"
+                    placeholder="Enter your email address"
+                    value={notificationEmail}
+                    onChange={(e) => setNotificationEmail(e.target.value)}
+                    className="flex-1"
+                  />
+                </div>
+              )}
+              
+              <Button 
+                onClick={() => handleResearch()} 
+                disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
+                className="w-full"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Starting...
+                  </>
+                ) : (
+                  "Start Background Research"
+                )}
+              </Button>
+            </div>
+          </div>
+        </>
       )}
 
-      {/* Display focus text from the currently loaded job */}
-      {currentFocusText && jobId && (
+      {focusText && jobId && (
         <div className="bg-accent/10 px-3 py-2 rounded-md text-sm">
-          <span className="font-medium">Research focus:</span> {currentFocusText}
+          <span className="font-medium">Research focus:</span> {focusText}
         </div>
       )}
 
@@ -899,7 +966,7 @@ export function JobQueueResearchCard({
                 onToggleExpand={() => toggleIterationExpand(iteration.iteration)}
                 isStreaming={jobStatus === 'processing'}
                 isCurrentIteration={iteration.iteration === (iterations.length > 0 ? Math.max(...iterations.map(i => i.iteration)) : 0)}
-                maxIterations={currentMaxIterations} // Use state variable
+                maxIterations={parseInt(maxIterations, 10)}
               />
             ))}
           </div>
