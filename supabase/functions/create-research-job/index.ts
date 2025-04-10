@@ -1222,3 +1222,80 @@ async function generateFinalAnalysisWithStreaming(
     return `Error generating final analysis: ${error.message}`;
   }
 }
+
+function createAnalysisPrompt(
+  content: string, 
+  query: string, 
+  analysisType: string,
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
+) {
+  // Implement the function logic here
+  // This is a placeholder implementation
+  let prompt = `Analyze the following web content related to "${query}":\n\n${content}\n\n`;
+  
+  prompt += `Provide a detailed analysis for ${analysisType}. Focus on key findings, trends, and implications.`;
+  
+  if (marketPrice !== undefined) {
+    prompt += `\n\nThe current market probability is ${marketPrice}%.`;
+  }
+  
+  if (relatedMarkets && relatedMarkets.length > 0) {
+    prompt += `\n\nRelated markets data: ${JSON.stringify(relatedMarkets)}`;
+  }
+  
+  if (areasForResearch && areasForResearch.length > 0) {
+    prompt += `\n\nAreas marked for further research: ${areasForResearch.join(', ')}`;
+  }
+  
+  if (focusText) {
+    prompt += `\n\nSpecial focus area: ${focusText}`;
+  }
+  
+  if (previousAnalyses && previousAnalyses.length > 0) {
+    prompt += `\n\nPrevious analysis insights: ${previousAnalyses.join('\n\n')}`;
+  }
+  
+  return prompt;
+}
+
+function createFinalAnalysisPrompt(
+  content: string, 
+  query: string,
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
+) {
+  // Implement the function logic here
+  // This is a placeholder implementation
+  let prompt = `Synthesize the following web content related to "${query}":\n\n${content}\n\n`;
+  
+  prompt += `Provide a comprehensive final analysis. Focus on key findings, trends, implications, and a final assessment.`;
+  
+  if (marketPrice !== undefined) {
+    prompt += `\n\nThe current market probability is ${marketPrice}%.`;
+  }
+  
+  if (relatedMarkets && relatedMarkets.length > 0) {
+    prompt += `\n\nRelated markets data: ${JSON.stringify(relatedMarkets)}`;
+  }
+  
+  if (areasForResearch && areasForResearch.length > 0) {
+    prompt += `\n\nAreas marked for further research: ${areasForResearch.join(', ')}`;
+  }
+  
+  if (focusText) {
+    prompt += `\n\nSpecial focus area: ${focusText}`;
+  }
+  
+  if (previousAnalyses && previousAnalyses.length > 0) {
+    prompt += `\n\nPrevious analysis insights: ${previousAnalyses.join('\n\n')}`;
+  }
+  
+  return prompt;
+}

@@ -8,6 +8,7 @@ import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
 import { toast } from '@/components/ui/use-toast'
+import { getFaviconUrl } from "@/utils/favicon"
 
 interface IterationCardProps {
   iteration: {
