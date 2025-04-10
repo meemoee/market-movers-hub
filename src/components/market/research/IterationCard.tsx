@@ -7,7 +7,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { AnalysisDisplay } from "./AnalysisDisplay"
 import { cn } from "@/lib/utils"
 import { ResearchResult } from "./SitePreviewList"
-import { getFaviconUrl } from "@/utils/favicon"
 import { toast } from '@/components/ui/use-toast'
 
 interface IterationCardProps {
@@ -64,7 +63,7 @@ export function IterationCard({
         toast({
           title: "Analysis taking longer than expected",
           description: `Iteration ${iteration.iteration} analysis is taking longer than expected. We've switched to the sources tab so you can review the data.`,
-          variant: "warning",
+          variant: "destructive",
         });
       }, 45000) as unknown as number; // 45 seconds
     }

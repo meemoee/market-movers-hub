@@ -891,4 +891,334 @@ async function generateAnalysisWithStreaming(
   query: string, 
   analysisType: string,
   marketPrice?: number,
-  relatedMarkets?:
+  relatedMarkets?: any[],
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
+): Promise<string> {
+  console.log(`Generating ${analysisType} with streaming for job ${jobId}, iteration ${iterationNumber}`);
+  
+  // First create/initialize the analysis field with a processing marker
+  try {
+    await supabaseClient.rpc('update_iteration_field', {
+      job_id: jobId,
+      iteration_num: iterationNumber,
+      field_key: 'analysis',
+      field_value: 'ANALYSIS_PROCESSING'
+    });
+  } catch (initError) {
+    console.error(`Error initializing analysis field:`, initError);
+  }
+  
+  let analysisText = "";
+  
+  try {
+    const prompt = createAnalysisPrompt(
+      content, 
+      query, 
+      analysisType, 
+      marketPrice, 
+      relatedMarkets, 
+      areasForResearch,
+      focusText,
+      previousAnalyses
+    );
+    
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+        "HTTP-Referer": "https://example.com"
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-3-opus:beta",
+        messages: [
+          { role: "user", content: prompt }
+        ],
+        stream: true
+      })
+    });
+    
+    if (!openRouterResponse.ok || !openRouterResponse.body) {
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} ${openRouterResponse.statusText}`);
+    }
+    
+    const reader = openRouterResponse.body.getReader();
+    const decoder = new TextDecoder();
+    
+    // Process the streaming response
+    let buffer = "";
+    
+    const processStream = async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            // Add completion marker for the frontend to know analysis is done
+            try {
+              await supabaseClient.rpc('update_iteration_field', {
+                job_id: jobId,
+                iteration_num: iterationNumber,
+                field_key: 'analysis_complete',
+                field_value: 'true'
+              });
+              
+              console.log(`Successfully marked analysis as complete for iteration ${iterationNumber}`);
+            } catch (completeError) {
+              console.error(`Error marking analysis as complete:`, completeError);
+            }
+            break;
+          }
+          
+          // Decode chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE messages from buffer
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // Keep the last incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              let data = line.slice(6);
+              
+              // Check for [DONE] marker
+              if (data.trim() === "[DONE]") {
+                continue;
+              }
+              
+              try {
+                const parsed = JSON.parse(data);
+                if (!parsed.choices || !parsed.choices[0] || !parsed.choices[0].delta) {
+                  continue;
+                }
+                
+                const content = parsed.choices[0].delta.content || "";
+                
+                if (content) {
+                  analysisText += content;
+                  
+                  // Use our new append_iteration_field_text RPC function
+                  try {
+                    await supabaseClient.rpc('append_iteration_field_text', {
+                      job_id: jobId,
+                      iteration_num: iterationNumber,
+                      field_key: 'analysis',
+                      append_text: content
+                    });
+                  } catch (appendError) {
+                    console.error(`Error appending analysis chunk:`, appendError);
+                  }
+                }
+              } catch (parseError) {
+                console.error(`Error parsing SSE data: ${parseError.message}`, data);
+              }
+            }
+          }
+        }
+      } catch (streamError) {
+        console.error(`Error processing stream:`, streamError);
+        
+        // Mark analysis as having an error
+        try {
+          await supabaseClient.rpc('update_iteration_field', {
+            job_id: jobId,
+            iteration_num: iterationNumber,
+            field_key: 'analysis_error',
+            field_value: `Error: ${streamError.message}`
+          });
+        } catch (errorUpdateError) {
+          console.error(`Error updating analysis_error field:`, errorUpdateError);
+        }
+        
+        throw streamError;
+      }
+    };
+    
+    await processStream();
+    return analysisText;
+    
+  } catch (error) {
+    console.error(`Error generating analysis:`, error);
+    
+    // Update the database with error information
+    try {
+      await supabaseClient.rpc('update_iteration_field', {
+        job_id: jobId,
+        iteration_num: iterationNumber,
+        field_key: 'analysis_error',
+        field_value: `Error generating analysis: ${error.message}`
+      });
+    } catch (errorUpdateError) {
+      console.error(`Error updating analysis_error field:`, errorUpdateError);
+    }
+    
+    return `Error generating analysis: ${error.message}`;
+  }
+}
+
+// Function to generate final analysis with streaming 
+async function generateFinalAnalysisWithStreaming(
+  supabaseClient: any,
+  jobId: string,
+  content: string, 
+  query: string, 
+  marketPrice?: number,
+  relatedMarkets?: any[],
+  areasForResearch?: string[],
+  focusText?: string,
+  previousAnalyses?: string[]
+): Promise<string> {
+  console.log(`Generating final analysis with streaming for job ${jobId}`);
+  
+  // First create/initialize the analysis field with a processing marker
+  try {
+    await supabaseClient.rpc('update_iteration_field', {
+      job_id: jobId,
+      iteration_num: 0,
+      field_key: 'final_analysis_stream',
+      field_value: 'ANALYSIS_PROCESSING'
+    });
+  } catch (initError) {
+    console.error(`Error initializing final analysis field:`, initError);
+  }
+  
+  let analysisText = "";
+  
+  try {
+    const prompt = createFinalAnalysisPrompt(
+      content, 
+      query, 
+      marketPrice,
+      relatedMarkets,
+      areasForResearch,
+      focusText,
+      previousAnalyses
+    );
+    
+    const openRouterResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${Deno.env.get('OPENROUTER_API_KEY')}`,
+        "HTTP-Referer": "https://example.com"
+      },
+      body: JSON.stringify({
+        model: "anthropic/claude-3-opus:beta",
+        messages: [
+          { role: "user", content: prompt }
+        ],
+        stream: true
+      })
+    });
+    
+    if (!openRouterResponse.ok || !openRouterResponse.body) {
+      throw new Error(`OpenRouter API error: ${openRouterResponse.status} ${openRouterResponse.statusText}`);
+    }
+    
+    const reader = openRouterResponse.body.getReader();
+    const decoder = new TextDecoder();
+    
+    // Process the streaming response
+    let buffer = "";
+    
+    const processStream = async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            // Add a final_analysis_complete flag to the job
+            try {
+              const { error: updateError } = await supabaseClient
+                .from('research_jobs')
+                .update({ 
+                  final_analysis_stream: analysisText,
+                  status: 'completed'  // Mark as completed when final analysis is done
+                })
+                .eq('id', jobId);
+              
+              if (updateError) {
+                console.error(`Error marking final analysis as complete:`, updateError);
+              }
+            } catch (completeError) {
+              console.error(`Error marking final analysis as complete:`, completeError);
+            }
+            break;
+          }
+          
+          // Decode chunk and add to buffer
+          buffer += decoder.decode(value, { stream: true });
+          
+          // Process complete SSE messages from buffer
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || ""; // Keep the last incomplete line in buffer
+          
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              let data = line.slice(6);
+              
+              // Check for [DONE] marker
+              if (data.trim() === "[DONE]") {
+                continue;
+              }
+              
+              try {
+                const parsed = JSON.parse(data);
+                if (!parsed.choices || !parsed.choices[0] || !parsed.choices[0].delta) {
+                  continue;
+                }
+                
+                const content = parsed.choices[0].delta.content || "";
+                
+                if (content) {
+                  analysisText += content;
+                  
+                  // Update the database with the latest accumulated text
+                  try {
+                    const { error: updateError } = await supabaseClient
+                      .from('research_jobs')
+                      .update({ final_analysis_stream: analysisText })
+                      .eq('id', jobId);
+                    
+                    if (updateError) {
+                      console.error(`Error updating final analysis stream:`, updateError);
+                    }
+                  } catch (updateError) {
+                    console.error(`Error updating final analysis stream:`, updateError);
+                  }
+                }
+              } catch (parseError) {
+                console.error(`Error parsing SSE data: ${parseError.message}`, data);
+              }
+            }
+          }
+        }
+      } catch (streamError) {
+        console.error(`Error processing final analysis stream:`, streamError);
+        throw streamError;
+      }
+    };
+    
+    await processStream();
+    return analysisText;
+    
+  } catch (error) {
+    console.error(`Error generating final analysis:`, error);
+    
+    // Update the database with error information
+    try {
+      await supabaseClient.rpc('update_iteration_field', {
+        job_id: jobId,
+        iteration_num: 0,
+        field_key: 'final_analysis_error',
+        field_value: `Error generating final analysis: ${error.message}`
+      });
+    } catch (errorUpdateError) {
+      console.error(`Error updating final_analysis_error field:`, errorUpdateError);
+    }
+    
+    return `Error generating final analysis: ${error.message}`;
+  }
+}
