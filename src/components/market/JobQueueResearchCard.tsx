@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useJobLogger } from "@/hooks/research/useJobLogger"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -83,23 +84,8 @@ export function JobQueueResearchCard({
   const [maxIterations, setMaxIterations] = useState<string>("3")
   const realtimeChannelRef = useRef<any>(null)
   const jobLoadTimesRef = useRef<Record<string, number>>({})
-  const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
   const { toast } = useToast()
-
-  // Debug logging utils
-  const logUpdate = (type: string, info: string) => {
-    console.log(`🔍 JobCard ${type}: ${info}`);
-    updateLogRef.current.push({
-      time: Date.now(),
-      type,
-      info
-    });
-    
-    // Keep the log at a reasonable size
-    if (updateLogRef.current.length > 100) {
-      updateLogRef.current.shift();
-    }
-  }
+  const { logUpdate, getLogs } = useJobLogger("JobCard")
 
   const resetState = () => {
     logUpdate('reset-state', 'Resetting state of research component');
@@ -136,7 +122,7 @@ export function JobQueueResearchCard({
       
       // Log all accumulated data on unmount
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
-      console.log('📊 Update logs:', updateLogRef.current);
+      console.log('📊 Update logs:', getLogs());
       console.log('📊 Job load times:', jobLoadTimesRef.current);
     };
   }, [marketId]);
