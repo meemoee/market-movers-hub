@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
+import { QADisplay } from './QADisplay';
 import { JobQueueResearchCard } from './JobQueueResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
 import { SimilarHistoricalEvents } from './SimilarHistoricalEvents';
@@ -119,6 +120,8 @@ export function MarketDetails({
       day: 'numeric'
     }).format(date);
   };
+
+  const shouldShowQADisplay = marketId && question;
   
   const fullResearchContext = question ? 
     (description ? `${question} - ${description}` : question) : 
@@ -171,6 +174,17 @@ export function MarketDetails({
             noBestBid={noBestBid}
             noBestAsk={noBestAsk}
             outcomes={outcomes}
+          />
+        </div>
+      )}
+
+      {shouldShowQADisplay && (
+        <div className="mt-6 border-t border-border pt-4">
+          <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
+          <QADisplay 
+            marketId={marketId} 
+            marketQuestion={question}
+            marketDescription={description || 'No description available'}
           />
         </div>
       )}
