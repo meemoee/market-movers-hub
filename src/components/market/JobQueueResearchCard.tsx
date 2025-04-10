@@ -10,12 +10,13 @@ import { useToast } from "@/components/ui/use-toast"
 import { SSEMessage } from "supabase/functions/web-scrape/types"
 import { IterationCard } from "./research/IterationCard"
 import { Badge } from "@/components/ui/badge"
-import { Loader2, CheckCircle, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
+import { Loader2, AlertCircle, Clock, History, Mail, Settings } from "lucide-react"
 import { InsightsDisplay } from "./research/InsightsDisplay"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
+import { StatusBadge } from "./research/StatusBadge"
 
 interface JobQueueResearchCardProps {
   description: string;
@@ -86,7 +87,6 @@ export function JobQueueResearchCard({
   const updateLogRef = useRef<Array<{time: number, type: string, info: string}>>([])
   const { toast } = useToast()
 
-  // Debug logging utils
   const logUpdate = (type: string, info: string) => {
     console.log(`🔍 JobCard ${type}: ${info}`);
     updateLogRef.current.push({
@@ -95,7 +95,6 @@ export function JobQueueResearchCard({
       info
     });
     
-    // Keep the log at a reasonable size
     if (updateLogRef.current.length > 100) {
       updateLogRef.current.shift();
     }
@@ -134,7 +133,6 @@ export function JobQueueResearchCard({
         realtimeChannelRef.current = null;
       }
       
-      // Log all accumulated data on unmount
       console.log('📊 JOB QUEUE RESEARCH CARD LOG DUMP ON UNMOUNT');
       console.log('📊 Update logs:', updateLogRef.current);
       console.log('📊 Job load times:', jobLoadTimesRef.current);
@@ -254,7 +252,6 @@ export function JobQueueResearchCard({
         logUpdate('process-results', `Processing completed job results for job: ${job.id}`);
         console.log('Processing completed job results:', job.results);
         
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -298,7 +295,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -369,7 +365,6 @@ export function JobQueueResearchCard({
     if (job.status === 'completed' && job.results) {
       try {
         logUpdate('process-results', `Processing results for completed job: ${job.id}`);
-        // Handle both string and object results
         let parsedResults;
         if (typeof job.results === 'string') {
           try {
@@ -385,7 +380,7 @@ export function JobQueueResearchCard({
           logUpdate('parse-results', 'Results already in object format');
           parsedResults = job.results;
         } else {
-          logUpdate('parse-results-error', `Unexpected results type: ${typeof job.results}`);
+          console.error('Unexpected results type in loadJobData:', typeof job.results);
           throw new Error(`Unexpected results type: ${typeof job.results}`);
         }
         
@@ -413,7 +408,6 @@ export function JobQueueResearchCard({
             logUpdate('opportunities', `Found ${goodBuyOpportunities.length} good buy opportunities`);
           }
           
-          // Fix: Correctly structure the data for InsightsDisplay
           setStructuredInsights({
             rawText: typeof parsedResults.structuredInsights === 'string' 
               ? parsedResults.structuredInsights 
@@ -493,7 +487,6 @@ export function JobQueueResearchCard({
     if (!job.results || job.status !== 'completed') return null;
     
     try {
-      // Handle both string and object results
       let parsedResults;
       if (typeof job.results === 'string') {
         try {
@@ -685,43 +678,6 @@ export function JobQueueResearchCard({
     setFocusText('');
   };
 
-  const renderStatusBadge = () => {
-    if (!jobStatus) return null;
-    
-    switch (jobStatus) {
-      case 'queued':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-yellow-50 text-yellow-700 border-yellow-200">
-            <Clock className="h-3 w-3" />
-            <span>Queued</span>
-          </Badge>
-        );
-      case 'processing':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-blue-50 text-blue-700 border-blue-200">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>Processing</span>
-          </Badge>
-        );
-      case 'completed':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-green-50 text-green-700 border-green-200">
-            <CheckCircle className="h-3 w-3" />
-            <span>Completed</span>
-          </Badge>
-        );
-      case 'failed':
-        return (
-          <Badge variant="outline" className="flex items-center gap-1 bg-red-50 text-red-700 border-red-200">
-            <AlertCircle className="h-3 w-3" />
-            <span>Failed</span>
-          </Badge>
-        );
-      default:
-        return null;
-    }
-  };
-
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString);
@@ -758,7 +714,7 @@ export function JobQueueResearchCard({
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-semibold">Background Job Research</h2>
-            {renderStatusBadge()}
+            <StatusBadge status={jobStatus} />
           </div>
           <p className="text-sm text-muted-foreground">
             This research continues in the background even if you close your browser.
@@ -781,8 +737,14 @@ export function JobQueueResearchCard({
               disabled={isLoading || (notifyByEmail && !notificationEmail.trim())}
               className="flex items-center gap-2"
             >
-              {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isLoading ? "Starting..." : "Start Research"}
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Starting...
+                </>
+              ) : (
+                "Start Research"
+              )}
             </Button>
           )}
           
