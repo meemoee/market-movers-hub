@@ -48,28 +48,12 @@ ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName
 const ScrollBar = React.forwardRef<
   React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>,
   React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>
+// Revert to explicit function body
 >(({ className, orientation = "vertical", ...props }, ref) => {
-  // Add ref callback to log when scrollbar is rendered
-  const refCallback = React.useCallback((node: HTMLElement | null) => {
-    if (node) {
-      console.log(`🔍 ScrollBar ${orientation} mounted:`, node);
-    }
-    
-    // Forward the ref - Fix the type casting here to resolve the error
-    if (ref) {
-      if (typeof ref === 'function') {
-        // Type assertion needed here since we know it's compatible with the API
-        ref(node as any);
-      } else {
-        // Type assertion to avoid the TypeScript error
-        ref.current = node as any;
-      }
-    }
-  }, [ref, orientation]);
-  
+  // Pass the ref directly to the Radix component
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
-      ref={refCallback}
+      ref={ref}
       orientation={orientation}
       className={cn(
         "flex touch-none select-none transition-colors",
@@ -83,8 +67,8 @@ const ScrollBar = React.forwardRef<
     >
       <ScrollAreaPrimitive.ScrollAreaThumb className="relative flex-1 rounded-full bg-border" />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
-  )
-})
+  );
+});
 ScrollBar.displayName = ScrollAreaPrimitive.ScrollAreaScrollbar.displayName
 
 export { ScrollArea, ScrollBar }
