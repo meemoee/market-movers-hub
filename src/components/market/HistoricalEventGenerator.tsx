@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -254,8 +255,10 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                 // Append to the full content
                 fullContent += content;
                 
-                // Update the streaming content state
-                setStreamingContent(fullContent);
+                // Force immediate update to the UI with flushSync
+                flushSync(() => {
+                  setStreamingContent(fullContent);
+                });
               }
             } catch (parseError) {
               console.error(`Error parsing JSON in streaming chunk:`, parseError);
