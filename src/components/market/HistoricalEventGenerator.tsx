@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -45,6 +46,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   // Streaming state
   const [streamingProgress, setStreamingProgress] = useState(0);
   const [streamingStatus, setStreamingStatus] = useState("");
+  // Debug state
+  const [debugInfo, setDebugInfo] = useState<string>("");
+  
   const { user } = useCurrentUser();
 
   // Fetch available models when the component mounts and user has an API key
@@ -53,6 +57,11 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       fetchModels();
     }
   }, [user?.openrouter_api_key]);
+
+  const appendDebugInfo = (info: string) => {
+    setDebugInfo(prev => prev + "\n" + info);
+    console.log(info);
+  };
 
   const fetchModels = async () => {
     if (!user?.openrouter_api_key) {
@@ -161,6 +170,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     setIsLoading(true);
     setStreamingProgress(0);
     setStreamingStatus("Preparing request...");
+    setDebugInfo(""); // Clear previous debug info
     
     try {
       const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".`;
@@ -220,7 +230,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         ];
       }
 
-      console.log("Request body:", JSON.stringify(requestBody, null, 2));
+      appendDebugInfo("REQUEST BODY: " + JSON.stringify(requestBody, null, 2));
       setStreamingStatus("Connecting to OpenRouter...");
       
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -235,8 +245,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("OpenRouter API error status:", response.status);
-        console.error("OpenRouter API error response:", errorText);
+        appendDebugInfo("OpenRouter API error status: " + response.status);
+        appendDebugInfo("OpenRouter API error response: " + errorText);
         throw new Error(`Error ${response.status}: ${errorText}`);
       }
       
@@ -250,38 +260,45 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       const decoder = new TextDecoder();
       let partialData = "";
       let allChunks = ""; // Store all chunks for debugging
+      let chunkCount = 0;
       
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done) {
+          appendDebugInfo("Stream reading complete");
+          break;
+        }
         
         const chunk = decoder.decode(value);
         partialData += chunk;
         allChunks += chunk; // Accumulate all chunks
         
-        console.log("Raw chunk received:", chunk);
+        chunkCount++;
+        appendDebugInfo(`CHUNK ${chunkCount}: ${JSON.stringify(chunk)}`);
         
         // Process the chunk to extract the JSON
         const lines = partialData.split("\n");
+        appendDebugInfo(`Lines in this chunk: ${lines.length}`);
         
-        for (const line of lines) {
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i];
+          appendDebugInfo(`Processing line: ${line}`);
+          
           if (line.startsWith("data: ")) {
-            console.log("Data line:", line);
             if (line === "data: [DONE]") {
-              console.log("Stream complete");
+              appendDebugInfo("Stream complete marker received");
               continue;
             }
             
             try {
               const jsonData = JSON.parse(line.substring(6));
-              console.log("Parsed JSON:", jsonData);
+              appendDebugInfo(`Parsed JSON from line: ${JSON.stringify(jsonData)}`);
               
               if (jsonData.choices && jsonData.choices[0]) {
                 const contentDelta = jsonData.choices[0].delta?.content;
                 
                 if (contentDelta) {
-                  console.log("Content delta:", contentDelta);
-                  // Update progress
+                  appendDebugInfo(`Content delta: ${contentDelta}`);
                   setStreamingProgress(prev => Math.min(prev + 5, 90));
                   
                   // Update streaming status based on what's being generated
@@ -299,7 +316,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                 }
               }
             } catch (e) {
-              console.log("Error parsing JSON:", e);
+              appendDebugInfo(`Error parsing JSON from line: ${e.message}`);
               // Ignore parsing errors for incomplete JSON
             }
           }
@@ -309,105 +326,180 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         partialData = lines[lines.length - 1];
       }
       
-      console.log("All data received:", allChunks);
+      appendDebugInfo("ALL DATA RECEIVED: " + allChunks);
       
       // Process the complete response
       setStreamingStatus("Finalizing response...");
       setStreamingProgress(95);
       
-      console.log("Final partialData:", partialData);
+      appendDebugInfo("FINAL PARTIAL DATA: " + partialData);
       
-      // Extract the full JSON from partialData
+      // Attempt different parsing approaches
+      
+      // 1. First attempt: Extract the full JSON using a regex
+      appendDebugInfo("TRYING REGEX PATTERN 1:");
       const jsonMatch = allChunks.match(/data: ({.*})/s); // Use 's' flag to match across multiple lines
-      console.log("JSON match:", jsonMatch);
+      appendDebugInfo(`REGEX MATCH 1 RESULT: ${jsonMatch ? 'Match found' : 'No match'}`);
       
-      if (jsonMatch && jsonMatch[1]) {
+      // 2. Second attempt: New regex pattern looking for data: followed by a complete JSON object
+      appendDebugInfo("TRYING REGEX PATTERN 2:");
+      const jsonMatch2 = allChunks.match(/data: ({[\s\S]*?})(?=\ndata:|$)/);
+      appendDebugInfo(`REGEX MATCH 2 RESULT: ${jsonMatch2 ? 'Match found' : 'No match'}`);
+      if (jsonMatch2) {
+        appendDebugInfo(`REGEX MATCH 2 CONTENT: ${jsonMatch2[1]}`);
+      }
+      
+      // 3. Third attempt: Search for complete JSON objects anywhere in the string
+      appendDebugInfo("TRYING REGEX PATTERN 3:");
+      const jsonMatch3 = allChunks.match(/({[\s\S]*?})/);
+      appendDebugInfo(`REGEX MATCH 3 RESULT: ${jsonMatch3 ? 'Match found' : 'No match'}`);
+      if (jsonMatch3) {
+        appendDebugInfo(`REGEX MATCH 3 CONTENT: ${jsonMatch3[1]}`);
+      }
+      
+      // 4. Try to find valid JSON in the stream data directly
+      appendDebugInfo("ATTEMPTING MANUAL JSON EXTRACTION:");
+      // Split by data: prefix and try to parse each section
+      const dataParts = allChunks.split('data: ').filter(Boolean);
+      appendDebugInfo(`Found ${dataParts.length} data: sections`);
+      
+      let validContent = null;
+      
+      for (let i = 0; i < dataParts.length; i++) {
+        const part = dataParts[i].trim();
+        appendDebugInfo(`Examining data section ${i+1}: ${part.substring(0, 100)}${part.length > 100 ? '...' : ''}`);
+        
+        // Skip the [DONE] marker
+        if (part === '[DONE]') continue;
+        
         try {
-          const finalJson = JSON.parse(jsonMatch[1]);
-          console.log("Final JSON parsed:", finalJson);
+          const parsed = JSON.parse(part);
+          appendDebugInfo(`Successfully parsed JSON from section ${i+1}`);
           
-          if (finalJson.choices && finalJson.choices[0] && finalJson.choices[0].message) {
-            const content = finalJson.choices[0].message.content;
-            console.log("Content from message:", content);
+          // Check if this contains complete chat message content
+          if (parsed.choices && parsed.choices[0] && parsed.choices[0].message && parsed.choices[0].message.content) {
+            const content = parsed.choices[0].message.content;
+            appendDebugInfo(`Found complete content in section ${i+1}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`);
             
             try {
-              // Parse the JSON content
-              const eventData = JSON.parse(content);
-              console.log("Event data parsed:", eventData);
-              
-              setEventTitle(eventData.title || "");
-              setEventDate(eventData.date || "");
-              setImageUrl(eventData.image_url || "");
-              setSimilarities(eventData.similarities || ['']);
-              setDifferences(eventData.differences || ['']);
-              
-              setStreamingProgress(100);
-              setStreamingStatus("Completed!");
-              toast.success("Historical event generated successfully!");
+              // Check if this content is valid JSON itself
+              const contentJson = JSON.parse(content);
+              appendDebugInfo("Content is valid JSON!");
+              validContent = contentJson;
+              break;
             } catch (e) {
-              console.error("Error parsing event data:", e);
-              console.error("Raw content causing the error:", content);
-              throw new Error(`Failed to parse event data: ${e.message}`);
+              appendDebugInfo(`Content is not valid JSON: ${e.message}`);
             }
-          } else {
-            console.error("Invalid final JSON structure:", finalJson);
-            throw new Error("Invalid response structure from API");
           }
         } catch (e) {
-          console.error("Error parsing final JSON:", e);
-          console.error("Raw match causing the error:", jsonMatch[1]);
-          throw new Error(`Failed to parse final JSON: ${e.message}`);
+          appendDebugInfo(`Failed to parse section ${i+1}: ${e.message}`);
         }
-      } else {
-        // Try a different approach - look for complete JSON objects in the accumulated chunks
-        console.log("No JSON match, trying alternative parsing approach");
-        const allDataLines = allChunks.split('\n')
-          .filter(line => line.startsWith('data: ') && line !== 'data: [DONE]')
-          .map(line => line.substring(6));
+      }
+      
+      // Try to manually extract the JSON object from the final message
+      if (!validContent) {
+        appendDebugInfo("ATTEMPTING BRUTE FORCE JSON EXTRACTION:");
         
-        console.log("All data lines:", allDataLines);
+        // Look for patterns that might indicate JSON objects
+        const potentialJsons = allChunks.match(/({[\s\S]*?})/g) || [];
+        appendDebugInfo(`Found ${potentialJsons.length} potential JSON objects`);
         
-        // Try to find a complete JSON object in the last few lines
-        let foundValidJson = false;
-        
-        for (let i = allDataLines.length - 1; i >= 0; i--) {
+        for (let i = 0; i < potentialJsons.length; i++) {
+          const jsonCandidate = potentialJsons[i];
+          appendDebugInfo(`Testing JSON candidate ${i+1}: ${jsonCandidate.substring(0, 100)}${jsonCandidate.length > 100 ? '...' : ''}`);
+          
           try {
-            const line = allDataLines[i];
-            const parsedJson = JSON.parse(line);
-            console.log("Found valid JSON at line", i, ":", parsedJson);
+            const parsedCandidate = JSON.parse(jsonCandidate);
             
-            if (parsedJson.choices && parsedJson.choices[0] && parsedJson.choices[0].message) {
-              const content = parsedJson.choices[0].message.content;
-              console.log("Content from valid JSON:", content);
+            // Check if this looks like our expected object
+            if (parsedCandidate.title && parsedCandidate.date && 
+                parsedCandidate.image_url && 
+                Array.isArray(parsedCandidate.similarities) && 
+                Array.isArray(parsedCandidate.differences)) {
               
-              // Parse the JSON content
-              const eventData = JSON.parse(content);
-              
-              setEventTitle(eventData.title || "");
-              setEventDate(eventData.date || "");
-              setImageUrl(eventData.image_url || "");
-              setSimilarities(eventData.similarities || ['']);
-              setDifferences(eventData.differences || ['']);
-              
-              setStreamingProgress(100);
-              setStreamingStatus("Completed!");
-              toast.success("Historical event generated successfully!");
-              foundValidJson = true;
+              appendDebugInfo(`Found valid event data in candidate ${i+1}!`);
+              validContent = parsedCandidate;
               break;
+            } else {
+              appendDebugInfo(`Candidate ${i+1} doesn't match our schema.`);
             }
           } catch (e) {
-            // Continue to next line if this one isn't valid JSON
-            console.log("Line", i, "isn't valid JSON");
+            appendDebugInfo(`Candidate ${i+1} is not valid JSON: ${e.message}`);
           }
         }
+      }
+      
+      // If we found valid content, use it
+      if (validContent) {
+        appendDebugInfo(`SUCCESSFUL EXTRACTION: ${JSON.stringify(validContent)}`);
         
-        if (!foundValidJson) {
-          console.error("Failed to find any valid JSON in the response");
-          throw new Error("Failed to parse the final response");
+        setEventTitle(validContent.title || "");
+        setEventDate(validContent.date || "");
+        setImageUrl(validContent.image_url || "");
+        setSimilarities(validContent.similarities || ['']);
+        setDifferences(validContent.differences || ['']);
+        
+        setStreamingProgress(100);
+        setStreamingStatus("Completed!");
+        toast.success("Historical event generated successfully!");
+      } else {
+        // Final desperate attempt: try to manually build the event data from the stream
+        appendDebugInfo("ATTEMPTING MANUAL RECONSTRUCTION:");
+        
+        // Look for individual field values in the chunks
+        const titleMatch = allChunks.match(/"title"\s*:\s*"([^"]+)"/);
+        const dateMatch = allChunks.match(/"date"\s*:\s*"([^"]+)"/);
+        const imageUrlMatch = allChunks.match(/"image_url"\s*:\s*"([^"]+)"/);
+        
+        const similaritiesMatch = allChunks.match(/"similarities"\s*:\s*\[([\s\S]*?)\]/);
+        const differencesMatch = allChunks.match(/"differences"\s*:\s*\[([\s\S]*?)\]/);
+        
+        appendDebugInfo(`Title match: ${titleMatch ? titleMatch[1] : 'None'}`);
+        appendDebugInfo(`Date match: ${dateMatch ? dateMatch[1] : 'None'}`);
+        appendDebugInfo(`Image URL match: ${imageUrlMatch ? imageUrlMatch[1] : 'None'}`);
+        appendDebugInfo(`Similarities match: ${similaritiesMatch ? 'Found' : 'None'}`);
+        appendDebugInfo(`Differences match: ${differencesMatch ? 'Found' : 'None'}`);
+        
+        if (titleMatch && dateMatch && imageUrlMatch) {
+          setEventTitle(titleMatch[1]);
+          setEventDate(dateMatch[1]);
+          setImageUrl(imageUrlMatch[1]);
+          
+          if (similaritiesMatch) {
+            try {
+              // Try to parse similarities array
+              const similaritiesStr = `[${similaritiesMatch[1]}]`;
+              const parsedSimilarities = JSON.parse(similaritiesStr.replace(/\n/g, ''));
+              setSimilarities(Array.isArray(parsedSimilarities) ? parsedSimilarities : ['']);
+            } catch (e) {
+              appendDebugInfo(`Failed to parse similarities: ${e.message}`);
+              setSimilarities(['']);
+            }
+          }
+          
+          if (differencesMatch) {
+            try {
+              // Try to parse differences array
+              const differencesStr = `[${differencesMatch[1]}]`;
+              const parsedDifferences = JSON.parse(differencesStr.replace(/\n/g, ''));
+              setDifferences(Array.isArray(parsedDifferences) ? parsedDifferences : ['']);
+            } catch (e) {
+              appendDebugInfo(`Failed to parse differences: ${e.message}`);
+              setDifferences(['']);
+            }
+          }
+          
+          setStreamingProgress(100);
+          setStreamingStatus("Partially completed with manual extraction");
+          toast.success("Historical event partially generated");
+        } else {
+          throw new Error("Failed to extract event data from response");
         }
       }
     } catch (error: any) {
       console.error("Error generating historical event:", error);
+      appendDebugInfo(`FINAL ERROR: ${error.message}`);
+      appendDebugInfo(`ERROR STACK: ${error.stack || 'No stack available'}`);
       toast.error(`Failed to generate historical event: ${error.message}`);
       setStreamingStatus("Error occurred");
     } finally {
@@ -553,6 +645,16 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                 </div>
               )}
             </div>
+            
+            {/* Debug Info */}
+            {debugInfo && (
+              <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-md">
+                <h4 className="text-sm font-medium mb-1">Debug Information:</h4>
+                <pre className="text-xs overflow-auto max-h-40 whitespace-pre-wrap">
+                  {debugInfo}
+                </pre>
+              </div>
+            )}
             
             {/* Streaming Progress Display */}
             {isLoading && (
