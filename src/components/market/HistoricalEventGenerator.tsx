@@ -14,6 +14,9 @@ import { Loader2 } from "lucide-react";
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from 'sonner';
+import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
+import { Label } from "@/components/ui/label";
 
 interface OpenRouterModel {
   id: string;
@@ -35,6 +38,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion }: Historica
   const [imageUrl, setImageUrl] = useState("");
   const [similarities, setSimilarities] = useState<string[]>(['']);
   const [differences, setDifferences] = useState<string[]>(['']);
+  // Web search options
+  const [enableWebSearch, setEnableWebSearch] = useState(true);
+  const [maxSearchResults, setMaxSearchResults] = useState(3);
   const { user } = useCurrentUser();
 
   // Fetch available models when the component mounts and user has an API key
@@ -52,8 +58,8 @@ export function HistoricalEventGenerator({ marketId, marketQuestion }: Historica
 
     setIsFetchingModels(true);
     try {
-      // The filter parameters we want to require
-      const requiredParameters = ['structured_outputs', 'web_search_options'];
+      // We only require structured_outputs parameter now
+      const requiredParameters = ['structured_outputs'];
       
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
@@ -69,7 +75,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion }: Historica
 
       const data = await response.json();
       
-      // Filter models that support both structured_outputs and web_search_options
+      // Filter models that support structured_outputs
       const filteredData = data.data.filter(model => {
         if (!model.supported_parameters) return false;
         return requiredParameters.every(param => 
@@ -163,6 +169,26 @@ Format your response as strict JSON with the following structure:
 
 Make sure the JSON is valid and contains exactly these fields. For the image_url, use a real, accessible URL to a relevant image.`;
 
+      // Base request body
+      const requestBody: any = {
+        model: enableWebSearch ? `${selectedModel}:online` : selectedModel,
+        messages: [
+          { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
+          { role: "user", content: promptText }
+        ],
+        response_format: { type: "json_object" }
+      };
+      
+      // Add web search plugin configuration if enabled with custom max results
+      if (enableWebSearch) {
+        requestBody.plugins = [
+          {
+            id: "web",
+            max_results: maxSearchResults
+          }
+        ];
+      }
+
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -170,13 +196,7 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
           "Content-Type": "application/json",
           "HTTP-Referer": window.location.origin,
         },
-        body: JSON.stringify({
-          model: selectedModel,
-          messages: [
-            { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
-            { role: "user", content: promptText }
-          ]
-        })
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
@@ -315,6 +335,41 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
           </div>
 
           <div className="space-y-4 mb-4">
+            {/* Web Search Options */}
+            <div className="space-y-3 p-3 bg-secondary/30 rounded-md">
+              <h4 className="font-medium">Web Search Options</h4>
+              
+              <div className="flex items-center justify-between">
+                <Label htmlFor="web-search-toggle" className="text-sm">Enable Web Search</Label>
+                <Switch 
+                  id="web-search-toggle"
+                  checked={enableWebSearch}
+                  onCheckedChange={setEnableWebSearch}
+                />
+              </div>
+              
+              {enableWebSearch && (
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="max-results-slider" className="text-sm">
+                      Max Search Results: {maxSearchResults}
+                    </Label>
+                    <div className="text-xs text-muted-foreground">
+                      (~${(maxSearchResults * 0.004).toFixed(3)} per request)
+                    </div>
+                  </div>
+                  <Slider
+                    id="max-results-slider"
+                    min={1}
+                    max={10}
+                    step={1}
+                    value={[maxSearchResults]}
+                    onValueChange={([value]) => setMaxSearchResults(value)}
+                  />
+                </div>
+              )}
+            </div>
+            
             <Button 
               onClick={generateHistoricalEvent} 
               disabled={isLoading || !selectedModel}

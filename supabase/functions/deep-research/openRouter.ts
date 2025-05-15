@@ -61,19 +61,40 @@ export class OpenRouter {
    * @param messages Messages for the model
    * @param maxTokens Maximum tokens to generate
    * @param temperature Temperature parameter
+   * @param webSearchOptions Optional web search configuration
    * @returns The response content
    */
   async complete(
     model: string, 
     messages: Array<{role: string, content: string}>,
     maxTokens: number = 500,
-    temperature: number = 0.7
+    temperature: number = 0.7,
+    webSearchOptions?: { enabled: boolean, maxResults?: number }
   ): Promise<string> {
     if (!this.apiKey) {
       throw new Error("OpenRouter API key is required");
     }
     
     try {
+      // Base request body
+      const requestBody: any = {
+        model: webSearchOptions?.enabled ? `${model}:online` : model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+        response_format: { type: "json_object" }
+      };
+      
+      // Add web search plugin configuration if custom options are provided
+      if (webSearchOptions?.enabled && webSearchOptions?.maxResults) {
+        requestBody.plugins = [
+          {
+            id: "web",
+            max_results: webSearchOptions.maxResults
+          }
+        ];
+      }
+      
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
@@ -81,12 +102,7 @@ export class OpenRouter {
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://hunchex.app'
         },
-        body: JSON.stringify({
-          model,
-          messages,
-          max_tokens: maxTokens,
-          temperature
-        })
+        body: JSON.stringify(requestBody)
       });
       
       if (!response.ok) {
