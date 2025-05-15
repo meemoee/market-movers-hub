@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -53,6 +52,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion }: Historica
 
     setIsFetchingModels(true);
     try {
+      // The filter parameters we want to require
+      const requiredParameters = ['structured_outputs', 'web_search_options'];
+      
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
@@ -67,8 +69,16 @@ export function HistoricalEventGenerator({ marketId, marketQuestion }: Historica
 
       const data = await response.json();
       
+      // Filter models that support both structured_outputs and web_search_options
+      const filteredData = data.data.filter(model => {
+        if (!model.supported_parameters) return false;
+        return requiredParameters.every(param => 
+          model.supported_parameters.includes(param)
+        );
+      });
+      
       // Format models for the dropdown
-      const formattedModels = data.data.map((model: any) => ({
+      const formattedModels = filteredData.map((model: any) => ({
         id: model.id,
         name: model.name || model.id
       }));

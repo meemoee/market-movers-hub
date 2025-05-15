@@ -12,9 +12,10 @@ export class OpenRouter {
   
   /**
    * Get available models from OpenRouter
+   * @param filterSupportedParams Optional array of parameters to filter models by support
    * @returns List of available models
    */
-  async getModels() {
+  async getModels(filterSupportedParams: string[] = []) {
     if (!this.apiKey) {
       throw new Error("OpenRouter API key is required");
     }
@@ -34,7 +35,20 @@ export class OpenRouter {
         throw new Error(`OpenRouter API error: ${response.status} - ${JSON.stringify(errorData)}`);
       }
       
-      return await response.json();
+      const modelData = await response.json();
+      
+      // If we have filter parameters, only return models that support all specified parameters
+      if (filterSupportedParams.length > 0) {
+        modelData.data = modelData.data.filter(model => {
+          if (!model.supported_parameters) return false;
+          
+          return filterSupportedParams.every(param => 
+            model.supported_parameters.includes(param)
+          );
+        });
+      }
+      
+      return modelData;
     } catch (error) {
       console.error(`OpenRouter API models request failed: ${error.message}`);
       throw error;
