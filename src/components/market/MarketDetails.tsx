@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
-import { QADisplay } from './QADisplay';
 import { WebResearchCard } from './WebResearchCard';
 import { JobQueueResearchCard } from './JobQueueResearchCard';
 import { RelatedMarkets } from './RelatedMarkets';
@@ -134,8 +133,6 @@ export function MarketDetails({
     }).format(date);
   };
 
-  const shouldShowQADisplay = marketId && question;
-  
   const fullResearchContext = question ? 
     (description ? `${question} - ${description}` : question) : 
     (description || 'No description available');
@@ -175,17 +172,6 @@ export function MarketDetails({
           marketId={marketId}
           selectedInterval={selectedInterval}
         />
-      )}
-
-      {shouldShowQADisplay && (
-        <div className="mt-6">
-          <QADisplay 
-            marketId={marketId} 
-            question={question}  // This prop name matches the updated interface
-            description={description}
-            userId={userId}
-          />
-        </div>
       )}
 
       <div className="mt-6">
