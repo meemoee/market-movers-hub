@@ -55,12 +55,12 @@ interface FinalEvaluation {
 
 interface QADisplayProps {
   marketId: string;
-  marketQuestion: string;
-  marketDescription?: string;
-  userId: string;
+  question: string;  // Changed from marketQuestion to question to match usage in MarketDetails.tsx
+  description?: string;  // Changed from marketDescription to description to match usage
+  userId: string | null;  // Updated to allow null since userId could be null
 }
 
-export function QADisplay({ marketId, marketQuestion, marketDescription, userId }: QADisplayProps) {
+export function QADisplay({ marketId, question, description, userId }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);
@@ -370,13 +370,11 @@ export function QADisplay({ marketId, marketQuestion, marketDescription, userId 
         areasForResearch: selectedResearchData.areas_for_research
       } : null;
       
-      // Determine if this is a continuation and get the original question
       const isContinuation = qaData[0]?.isExtendedRoot === true;
       const originalNodeId = qaData[0]?.originalNodeId;
-      let originalQuestion = marketQuestion;
+      let originalQuestion = question;
       
       if (isContinuation && originalNodeId) {
-        // Find the original node's question by looking through all extensions
         const originalNode = rootExtensions.find(ext => ext.id === originalNodeId);
         if (originalNode) {
           console.log("Found original node:", originalNode.id, "with question:", originalNode.question);
@@ -385,7 +383,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription, userId 
       }
       
       console.log("Calling evaluate-qa-final with:", { 
-        marketQuestion, 
+        marketQuestion: question, 
         qaContextLength: qaContext.length,
         hasResearchContext: !!researchContext,
         isContinuation,
@@ -394,7 +392,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription, userId 
       
       const { data, error } = await supabase.functions.invoke('evaluate-qa-final', {
         body: { 
-          marketQuestion, 
+          marketQuestion: question, 
           qaContext,
           researchContext,
           isContinuation,
@@ -463,7 +461,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription, userId 
         .insert({
           user_id: user.user.id,
           market_id: marketId,
-          title: marketQuestion,
+          title: question,
           tree_data: treeWithEvaluations as unknown as Database['public']['Tables']['qa_trees']['Insert']['tree_data'],
           final_evaluation: finalEvaluation || activeFinalEvaluation || null
         })
@@ -655,7 +653,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription, userId 
     setExpandedNodes(new Set());
     setFinalEvaluation(null);
     try {
-      await analyzeQuestion(marketQuestion);
+      await analyzeQuestion(question);
     } finally {
       setIsAnalyzing(false);
       setCurrentNodeId(null);
@@ -828,7 +826,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription, userId 
           question: node.question,
           isFollowUp: false,
           historyContext,
-          originalQuestion: marketQuestion, // Pass original market question
+          originalQuestion: question, // Pass original market question
           isContinuation: true, // Flag this as a continuation
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,
@@ -858,7 +856,7 @@ export function QADisplay({ marketId, marketQuestion, marketDescription, userId 
           parentContent: analysis,
           historyContext,
           isFollowUp: true,
-          originalQuestion: marketQuestion, // Pass original market question
+          originalQuestion: question, // Pass original market question
           isContinuation: true, // Flag this as a continuation
           researchContext: selectedResearchData ? {
             analysis: selectedResearchData.analysis,

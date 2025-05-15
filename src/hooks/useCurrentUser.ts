@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 export interface User {
   id: string;
   email: string;
+  openrouter_api_key?: string | null;  // Add the new field to the interface
 }
 
 export const useCurrentUser = () => {
@@ -18,9 +19,17 @@ export const useCurrentUser = () => {
         const { data: { session } } = await supabase.auth.getSession();
         
         if (session?.user) {
+          // Get profile data including the openrouter_api_key
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('openrouter_api_key')
+            .eq('id', session.user.id)
+            .single();
+          
           setUser({
             id: session.user.id,
             email: session.user.email || '',
+            openrouter_api_key: profile?.openrouter_api_key || null,
           });
         }
       } catch (error) {
@@ -34,11 +43,19 @@ export const useCurrentUser = () => {
     
     // Subscribe to auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (_event, session) => {
         if (session?.user) {
+          // Get profile data including the openrouter_api_key
+          const { data: profile, error } = await supabase
+            .from('profiles')
+            .select('openrouter_api_key')
+            .eq('id', session.user.id)
+            .single();
+          
           setUser({
             id: session.user.id,
             email: session.user.email || '',
+            openrouter_api_key: profile?.openrouter_api_key || null,
           });
         } else {
           setUser(null);

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -182,7 +181,7 @@ export function MarketDetails({
         <div className="mt-6">
           <QADisplay 
             marketId={marketId} 
-            question={question} 
+            question={question}  // This prop name matches the updated interface
             description={description}
             userId={userId}
           />
