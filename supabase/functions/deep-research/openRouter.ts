@@ -11,6 +11,37 @@ export class OpenRouter {
   }
   
   /**
+   * Get available models from OpenRouter
+   * @returns List of available models
+   */
+  async getModels() {
+    if (!this.apiKey) {
+      throw new Error("OpenRouter API key is required");
+    }
+    
+    try {
+      const response = await fetch(`${this.baseUrl}/models`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://hunchex.app'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`OpenRouter API error: ${response.status} - ${JSON.stringify(errorData)}`);
+      }
+      
+      return await response.json();
+    } catch (error) {
+      console.error(`OpenRouter API models request failed: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
    * Create a completion using OpenRouter API
    * @param model Model to use
    * @param messages Messages for the model

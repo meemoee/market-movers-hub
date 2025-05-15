@@ -1,24 +1,46 @@
 
+import { useState } from "react";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useHistoricalEvents, HistoricalEvent } from '@/hooks/useHistoricalEvents';
-import { History } from "lucide-react";
+import { History, PlusCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { HistoricalEventGenerator } from "./HistoricalEventGenerator";
 
 interface SimilarHistoricalEventsProps {
   marketId?: string;
+  marketQuestion?: string;
 }
 
-export function SimilarHistoricalEvents({ marketId }: SimilarHistoricalEventsProps) {
+export function SimilarHistoricalEvents({ marketId, marketQuestion }: SimilarHistoricalEventsProps) {
+  const [showGenerator, setShowGenerator] = useState(false);
   const { historicalEvents, isLoading } = useHistoricalEvents(marketId);
 
   return (
     <Card className="p-6 bg-card">
-      <div className="flex items-center gap-2 mb-4">
-        <History className="w-5 h-5 text-primary" />
-        <h3 className="text-lg font-semibold">Similar Historical Events</h3>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <History className="w-5 h-5 text-primary" />
+          <h3 className="text-lg font-semibold">Similar Historical Events</h3>
+        </div>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={() => setShowGenerator(!showGenerator)}
+        >
+          <PlusCircle className="w-4 h-4 mr-1" />
+          {showGenerator ? "Hide Generator" : "Add Event"}
+        </Button>
       </div>
+      
+      {showGenerator && marketId && marketQuestion && (
+        <div className="mb-4">
+          <HistoricalEventGenerator marketId={marketId} marketQuestion={marketQuestion} />
+        </div>
+      )}
+
       <ScrollArea className="max-h-[400px]">
         {isLoading ? (
           <div className="space-y-4">
