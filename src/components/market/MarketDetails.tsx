@@ -175,7 +175,7 @@ export function MarketDetails({
       )}
 
       <div className="mt-6">
-        <SimilarHistoricalEvents />
+        <SimilarHistoricalEvents marketId={marketId} />
       </div>
 
       {description && (

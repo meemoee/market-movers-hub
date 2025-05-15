@@ -77,6 +77,33 @@ export type Database = {
         }
         Relationships: []
       }
+      historical_events: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          image_url: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          date: string
+          id?: string
+          image_url: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          image_url?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       holdings: {
         Row: {
           amount: number | null
@@ -165,6 +192,51 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "market_events_market_id_fkey"
+            columns: ["market_id"]
+            isOneToOne: false
+            referencedRelation: "markets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      market_historical_comparisons: {
+        Row: {
+          created_at: string
+          differences: Json
+          historical_event_id: string
+          id: string
+          market_id: string
+          similarities: Json
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          differences?: Json
+          historical_event_id: string
+          id?: string
+          market_id: string
+          similarities?: Json
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          differences?: Json
+          historical_event_id?: string
+          id?: string
+          market_id?: string
+          similarities?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "market_historical_comparisons_historical_event_id_fkey"
+            columns: ["historical_event_id"]
+            isOneToOne: false
+            referencedRelation: "historical_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "market_historical_comparisons_market_id_fkey"
             columns: ["market_id"]
             isOneToOne: false
             referencedRelation: "markets"
