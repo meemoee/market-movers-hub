@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 
 interface OpenRouterModel {
   id: string;
@@ -41,6 +42,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   // Web search options
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
+  // Streaming state
+  const [streamingProgress, setStreamingProgress] = useState(0);
+  const [streamingStatus, setStreamingStatus] = useState("");
   const { user } = useCurrentUser();
 
   // Fetch available models when the component mounts and user has an API key
@@ -155,20 +159,12 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
 
     setIsLoading(true);
+    setStreamingProgress(0);
+    setStreamingStatus("Preparing request...");
+    
     try {
-      const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
+      const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".`;
       
-Format your response as strict JSON with the following structure:
-{
-  "title": "Name of the historical event",
-  "date": "Date or time period (e.g., 'March 2008' or '1929-1932')",
-  "image_url": "A relevant image URL",
-  "similarities": ["Similarity 1", "Similarity 2", "Similarity 3", "Similarity 4", "Similarity 5"],
-  "differences": ["Difference 1", "Difference 2", "Difference 3", "Difference 4", "Difference 5"]
-}
-
-Make sure the JSON is valid and contains exactly these fields. For the image_url, use a real, accessible URL to a relevant image.`;
-
       // Base request body
       const requestBody: any = {
         model: enableWebSearch ? `${selectedModel}:online` : selectedModel,
@@ -176,7 +172,42 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
           { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
           { role: "user", content: promptText }
         ],
-        response_format: { type: "json_object" }
+        stream: true,
+        response_format: { 
+          type: "json_schema",
+          schema: {
+            type: "object",
+            properties: {
+              title: {
+                type: "string",
+                description: "Name of the historical event"
+              },
+              date: {
+                type: "string",
+                description: "Date or time period (e.g., 'March 2008' or '1929-1932')"
+              },
+              image_url: {
+                type: "string",
+                description: "A relevant image URL"
+              },
+              similarities: {
+                type: "array",
+                items: {
+                  type: "string"
+                },
+                description: "List of similarities between the market question and historical event"
+              },
+              differences: {
+                type: "array",
+                items: {
+                  type: "string"
+                },
+                description: "List of differences between the market question and historical event"
+              }
+            },
+            required: ["title", "date", "image_url", "similarities", "differences"]
+          }
+        }
       };
       
       // Add web search plugin configuration if enabled with custom max results
@@ -189,6 +220,8 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
         ];
       }
 
+      setStreamingStatus("Connecting to OpenRouter...");
+      
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -202,35 +235,102 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
       if (!response.ok) {
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
-
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error("No content in response");
+      
+      if (!response.body) {
+        throw new Error("Response body is null");
       }
 
-      // Extract JSON from the response
-      let extractedJson = content;
+      // Process the stream
+      setStreamingStatus("Receiving data...");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let partialData = "";
+      let partialObject = {};
       
-      // Check if the response contains a code block
-      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/```\n([\s\S]*?)\n```/);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        partialData += chunk;
+        
+        // Process the chunk to extract the JSON
+        const lines = partialData.split("\n");
+        
+        for (const line of lines) {
+          if (line.startsWith("data: ") && line !== "data: [DONE]") {
+            try {
+              const jsonData = JSON.parse(line.substring(6));
+              if (jsonData.choices && jsonData.choices[0]) {
+                const contentDelta = jsonData.choices[0].delta?.content;
+                
+                if (contentDelta) {
+                  // Update progress
+                  setStreamingProgress(prev => Math.min(prev + 5, 90));
+                  
+                  // Try to parse the accumulated JSON so far
+                  try {
+                    // If we have a valid partial JSON that looks like an object
+                    if (contentDelta.trim().startsWith("{") || contentDelta.includes("}")) {
+                      // Update streaming status based on what's being generated
+                      if (contentDelta.includes("title")) {
+                        setStreamingStatus("Generating event title...");
+                      } else if (contentDelta.includes("date")) {
+                        setStreamingStatus("Determining historical date...");
+                      } else if (contentDelta.includes("image_url")) {
+                        setStreamingStatus("Finding relevant image...");
+                      } else if (contentDelta.includes("similarities")) {
+                        setStreamingStatus("Analyzing similarities...");
+                      } else if (contentDelta.includes("differences")) {
+                        setStreamingStatus("Identifying differences...");
+                      }
+                    }
+                  } catch (e) {
+                    // Ignore parsing errors during streaming
+                  }
+                }
+              }
+            } catch (e) {
+              // Ignore parsing errors for incomplete JSON
+            }
+          }
+        }
+        
+        // Update what's left to process
+        partialData = lines[lines.length - 1];
+      }
+      
+      // Process the complete response
+      setStreamingStatus("Finalizing response...");
+      setStreamingProgress(95);
+      
+      // Extract the full JSON from partialData
+      const jsonMatch = partialData.match(/data: ({.*})/);
       if (jsonMatch && jsonMatch[1]) {
-        extractedJson = jsonMatch[1];
+        const finalJson = JSON.parse(jsonMatch[1]);
+        if (finalJson.choices && finalJson.choices[0] && finalJson.choices[0].message) {
+          const content = finalJson.choices[0].message.content;
+          
+          // Parse the JSON content
+          const eventData = JSON.parse(content);
+          
+          setEventTitle(eventData.title || "");
+          setEventDate(eventData.date || "");
+          setImageUrl(eventData.image_url || "");
+          setSimilarities(eventData.similarities || ['']);
+          setDifferences(eventData.differences || ['']);
+          
+          setStreamingProgress(100);
+          setStreamingStatus("Completed!");
+          toast.success("Historical event generated successfully!");
+        }
+      } else {
+        throw new Error("Failed to parse the final response");
       }
-      
-      const eventData = JSON.parse(extractedJson);
-      
-      setEventTitle(eventData.title || "");
-      setEventDate(eventData.date || "");
-      setImageUrl(eventData.image_url || "");
-      setSimilarities(eventData.similarities || ['']);
-      setDifferences(eventData.differences || ['']);
-      
-      toast.success("Historical event generated successfully!");
     } catch (error) {
       console.error("Error generating historical event:", error);
       toast.error("Failed to generate historical event");
+      setStreamingStatus("Error occurred");
     } finally {
       setIsLoading(false);
     }
@@ -374,6 +474,17 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
                 </div>
               )}
             </div>
+            
+            {/* Streaming Progress Display */}
+            {isLoading && (
+              <div className="space-y-2 my-3">
+                <div className="flex justify-between items-center text-sm">
+                  <span>{streamingStatus}</span>
+                  <span>{streamingProgress}%</span>
+                </div>
+                <Progress value={streamingProgress} className="w-full" />
+              </div>
+            )}
             
             <Button 
               onClick={generateHistoricalEvent} 
