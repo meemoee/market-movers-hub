@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
+import { useStreamingContent } from '@/hooks/useStreamingContent';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -44,8 +44,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
   // Streaming state
-  const [streamingContent, setStreamingContent] = useState("");
-  const [isStreaming, setIsStreaming] = useState(false);
+  const { content: streamingContent, isStreaming, startStreaming, addChunk, stopStreaming } = useStreamingContent();
   const [showRawResponse, setShowRawResponse] = useState(true); // Show raw response by default
   const { user } = useCurrentUser();
 
@@ -151,8 +150,7 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
 
     setIsLoading(true);
-    setIsStreaming(true);
-    setStreamingContent(""); // Clear previous content
+    startStreaming(); // Start streaming and clear previous content
     
     try {
       const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
@@ -255,10 +253,8 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                 // Append to the full content
                 fullContent += content;
                 
-                // Force immediate update to the UI with flushSync
-                flushSync(() => {
-                  setStreamingContent(fullContent);
-                });
+                // Add the chunk to the streaming content
+                addChunk(content);
               }
             } catch (parseError) {
               console.error(`Error parsing JSON in streaming chunk:`, parseError);
@@ -279,7 +275,7 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       toast.error("Failed to generate historical event");
     } finally {
       setIsLoading(false);
-      setIsStreaming(false);
+      stopStreaming(); // Stop streaming and ensure final content is set
     }
   };
 
