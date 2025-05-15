@@ -167,16 +167,7 @@ export function MarketDetails({
 
       {/* WebResearchCard and JobQueueResearchCard components removed from view */}
 
-      {shouldShowQADisplay && (
-        <div className="mt-6 border-t border-border pt-4">
-          <div className="text-sm text-muted-foreground mb-2">Analysis Tree</div>
-          <QADisplay 
-            marketId={marketId} 
-            marketQuestion={question}
-            marketDescription={description || 'No description available'}
-          />
-        </div>
-      )}
+      {/* Analysis Tree (QADisplay) component removed from view */}
 
       <div className="mt-6">
         <SimilarHistoricalEvents />
