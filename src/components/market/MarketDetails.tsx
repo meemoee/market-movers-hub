@@ -165,28 +165,7 @@ export function MarketDetails({
         />
       )}
 
-      {description && (
-        <div>
-          <WebResearchCard 
-            description={fullResearchContext} 
-            marketId={marketId}
-          />
-        </div>
-      )}
-      
-      {description && (
-        <div>
-          <JobQueueResearchCard 
-            description={fullResearchContext} 
-            marketId={marketId}
-            bestBid={bestBid}
-            bestAsk={bestAsk}
-            noBestBid={noBestBid} // Pass the noBestBid property
-            noBestAsk={noBestAsk} // Pass the noBestAsk property
-            outcomes={outcomes}
-          />
-        </div>
-      )}
+      {/* WebResearchCard and JobQueueResearchCard components removed from view */}
 
       {shouldShowQADisplay && (
         <div className="mt-6 border-t border-border pt-4">
