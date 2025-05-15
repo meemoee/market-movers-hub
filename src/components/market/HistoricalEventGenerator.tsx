@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { AnalysisDisplay } from "@/components/market/research/AnalysisDisplay";
 
 interface OpenRouterModel {
   id: string;
@@ -41,6 +42,10 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   // Web search options
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
+  // Streaming state
+  const [streamingContent, setStreamingContent] = useState("");
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [showRawResponse, setShowRawResponse] = useState(false);
   const { user } = useCurrentUser();
 
   // Fetch available models when the component mounts and user has an API key
@@ -58,9 +63,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
 
     setIsFetchingModels(true);
     try {
-      // We only require structured_outputs parameter now
-      const requiredParameters = ['structured_outputs'];
-      
       const response = await fetch("https://openrouter.ai/api/v1/models", {
         method: "GET",
         headers: {
@@ -75,16 +77,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
 
       const data = await response.json();
       
-      // Filter models that support structured_outputs
-      const filteredData = data.data.filter(model => {
-        if (!model.supported_parameters) return false;
-        return requiredParameters.every(param => 
-          model.supported_parameters.includes(param)
-        );
-      });
-      
-      // Format models for the dropdown
-      const formattedModels = filteredData.map((model: any) => ({
+      // No longer filtering by structured_outputs since we use Gemini 2.5 Flash for parsing
+      // Format all models for the dropdown
+      const formattedModels = data.data.map((model: any) => ({
         id: model.id,
         name: model.name || model.id
       }));
@@ -155,6 +150,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
 
     setIsLoading(true);
+    setIsStreaming(true);
+    setStreamingContent(""); // Clear previous content
+    
     try {
       const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
       
@@ -176,7 +174,7 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
           { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
           { role: "user", content: promptText }
         ],
-        response_format: { type: "json_object" }
+        stream: true // Enable streaming
       };
       
       // Add web search plugin configuration if enabled with custom max results
@@ -203,36 +201,106 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      const content = data.choices[0]?.message?.content;
-
-      if (!content) {
-        throw new Error("No content in response");
+      if (!response.body) {
+        throw new Error("Response body is null");
       }
 
-      // Extract JSON from the response
-      let extractedJson = content;
+      // Process the stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let incompleteChunk = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) {
+          console.log("Stream complete");
+          break;
+        }
+        
+        // Decode the chunk
+        const chunk = decoder.decode(value, { stream: true });
+        
+        // Combine with any incomplete chunk from previous iteration
+        const textToParse = incompleteChunk + chunk;
+        
+        // Process the text as SSE (Server-Sent Events)
+        const lines = textToParse.split('\n');
+        
+        let processedUpTo = 0;
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          
+          // Skip empty lines
+          if (!line) continue;
+          
+          // Update the processedUpTo pointer
+          processedUpTo = textToParse.indexOf(line) + line.length + 1; // +1 for the newline
+          
+          // Check if this is a data line
+          if (line.startsWith('data: ')) {
+            const data = line.substring(6); // Remove "data: " prefix
+            
+            // Skip "[DONE]" message which indicates the end of the stream
+            if (data === '[DONE]') continue;
+            
+            try {
+              // Parse the JSON data
+              const jsonData = JSON.parse(data);
+              
+              if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+                const content = jsonData.choices[0].delta.content;
+                
+                // Append to the full content
+                fullContent += content;
+                
+                // Update the streaming content state
+                setStreamingContent(fullContent);
+              }
+            } catch (parseError) {
+              console.error(`Error parsing JSON in streaming chunk:`, parseError);
+              // Continue processing other chunks even if one fails
+            }
+          }
+        }
+        
+        // Save any incomplete chunk for the next iteration
+        incompleteChunk = textToParse.substring(processedUpTo);
+      }
+
+      // Now that we have the full content, try to extract the JSON
+      let extractedJson = fullContent;
       
       // Check if the response contains a code block
-      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/```\n([\s\S]*?)\n```/);
+      const jsonMatch = fullContent.match(/```json\n([\s\S]*?)\n```/) || fullContent.match(/```\n([\s\S]*?)\n```/);
       if (jsonMatch && jsonMatch[1]) {
         extractedJson = jsonMatch[1];
       }
       
-      const eventData = JSON.parse(extractedJson);
-      
-      setEventTitle(eventData.title || "");
-      setEventDate(eventData.date || "");
-      setImageUrl(eventData.image_url || "");
-      setSimilarities(eventData.similarities || ['']);
-      setDifferences(eventData.differences || ['']);
-      
-      toast.success("Historical event generated successfully!");
+      try {
+        const eventData = JSON.parse(extractedJson);
+        
+        setEventTitle(eventData.title || "");
+        setEventDate(eventData.date || "");
+        setImageUrl(eventData.image_url || "");
+        setSimilarities(eventData.similarities || ['']);
+        setDifferences(eventData.differences || ['']);
+        
+        toast.success("Historical event generated successfully!");
+      } catch (jsonError) {
+        console.error("Error parsing JSON from response:", jsonError);
+        toast.error("Failed to parse response as JSON. Check the raw response for details.");
+        
+        // Show the raw response automatically if parsing fails
+        setShowRawResponse(true);
+      }
     } catch (error) {
       console.error("Error generating historical event:", error);
       toast.error("Failed to generate historical event");
     } finally {
       setIsLoading(false);
+      setIsStreaming(false);
     }
   };
 
@@ -375,6 +443,15 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
               )}
             </div>
             
+            <div className="flex items-center justify-between mb-2">
+              <Label htmlFor="show-raw-response" className="text-sm">Show Raw Response</Label>
+              <Switch 
+                id="show-raw-response"
+                checked={showRawResponse}
+                onCheckedChange={setShowRawResponse}
+              />
+            </div>
+            
             <Button 
               onClick={generateHistoricalEvent} 
               disabled={isLoading || !selectedModel}
@@ -389,6 +466,17 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
                 "Generate Historical Event"
               )}
             </Button>
+            
+            {showRawResponse && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium mb-2">Raw Response</h4>
+                <AnalysisDisplay 
+                  content={streamingContent} 
+                  isStreaming={isStreaming}
+                  maxHeight="200px"
+                />
+              </div>
+            )}
 
             <div className="grid gap-4">
               <div>
