@@ -16,7 +16,6 @@ import { toast } from 'sonner';
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
 
 interface OpenRouterModel {
   id: string;
@@ -27,15 +26,6 @@ interface HistoricalEventGeneratorProps {
   marketId: string;
   marketQuestion: string;
   onEventSaved?: () => void;
-}
-
-// Define the expected structure of the historical event data
-interface HistoricalEventData {
-  title: string;
-  date: string;
-  image_url: string;
-  similarities: string[];
-  differences: string[];
 }
 
 export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSaved }: HistoricalEventGeneratorProps) {
@@ -51,12 +41,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   // Web search options
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [maxSearchResults, setMaxSearchResults] = useState(3);
-  // Streaming state
-  const [streamingProgress, setStreamingProgress] = useState(0);
-  const [streamingStatus, setStreamingStatus] = useState("");
-  // Debug state
-  const [debugInfo, setDebugInfo] = useState<string>("");
-  
   const { user } = useCurrentUser();
 
   // Fetch available models when the component mounts and user has an API key
@@ -65,11 +49,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       fetchModels();
     }
   }, [user?.openrouter_api_key]);
-
-  const appendDebugInfo = (info: string) => {
-    setDebugInfo(prev => prev + "\n" + info);
-    console.log(info);
-  };
 
   const fetchModels = async () => {
     if (!user?.openrouter_api_key) {
@@ -164,7 +143,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
   };
 
-  // Generate a historical event using a non-streaming approach for better reliability
   const generateHistoricalEvent = async () => {
     if (!user?.openrouter_api_key) {
       toast.error("You need to add your OpenRouter API key in account settings");
@@ -177,58 +155,28 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     }
 
     setIsLoading(true);
-    setStreamingProgress(10);
-    setStreamingStatus("Preparing request...");
-    setDebugInfo(""); // Clear previous debug info
-    
     try {
-      const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".`;
+      const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
       
-      // Base request body - important change: using structured_outputs instead of response_format
+Format your response as strict JSON with the following structure:
+{
+  "title": "Name of the historical event",
+  "date": "Date or time period (e.g., 'March 2008' or '1929-1932')",
+  "image_url": "A relevant image URL",
+  "similarities": ["Similarity 1", "Similarity 2", "Similarity 3", "Similarity 4", "Similarity 5"],
+  "differences": ["Difference 1", "Difference 2", "Difference 3", "Difference 4", "Difference 5"]
+}
+
+Make sure the JSON is valid and contains exactly these fields. For the image_url, use a real, accessible URL to a relevant image.`;
+
+      // Base request body
       const requestBody: any = {
         model: enableWebSearch ? `${selectedModel}:online` : selectedModel,
         messages: [
-          { 
-            role: "system", 
-            content: "You are a helpful assistant that generates historical event comparisons for market analysis. Return ONLY a JSON object with the requested fields, nothing else."
-          },
+          { role: "system", content: "You are a helpful assistant that generates historical event comparisons for market analysis." },
           { role: "user", content: promptText }
         ],
-        // Using structured_outputs instead of response_format as it's more widely supported
-        structured_outputs: {
-          type: "object",
-          properties: {
-            title: {
-              type: "string",
-              description: "Name of the historical event"
-            },
-            date: {
-              type: "string",
-              description: "Date or time period (e.g., 'March 2008' or '1929-1932')"
-            },
-            image_url: {
-              type: "string",
-              description: "A relevant image URL"
-            },
-            similarities: {
-              type: "array",
-              items: {
-                type: "string"
-              },
-              description: "List of similarities between the market question and historical event"
-            },
-            differences: {
-              type: "array",
-              items: {
-                type: "string"
-              },
-              description: "List of differences between the market question and historical event"
-            }
-          },
-          required: ["title", "date", "image_url", "similarities", "differences"]
-        },
-        // Disable streaming for structured output to get complete JSON response
-        stream: false
+        response_format: { type: "json_object" }
       };
       
       // Add web search plugin configuration if enabled with custom max results
@@ -241,10 +189,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
         ];
       }
 
-      appendDebugInfo("REQUEST BODY: " + JSON.stringify(requestBody, null, 2));
-      setStreamingStatus("Connecting to OpenRouter...");
-      setStreamingProgress(20);
-      
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -256,168 +200,40 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        appendDebugInfo("OpenRouter API error status: " + response.status);
-        appendDebugInfo("OpenRouter API error response: " + errorText);
-        throw new Error(`Error ${response.status}: ${errorText}`);
+        throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
-      
-      setStreamingStatus("Processing response...");
-      setStreamingProgress(50);
-      
-      // Parse the complete response
+
       const data = await response.json();
-      appendDebugInfo("FULL RESPONSE: " + JSON.stringify(data, null, 2));
+      const content = data.choices[0]?.message?.content;
+
+      if (!content) {
+        throw new Error("No content in response");
+      }
+
+      // Extract JSON from the response
+      let extractedJson = content;
       
-      let historicalEvent: HistoricalEventData | null = null;
-      
-      // Extract the JSON content from the completion
-      if (data.choices && data.choices.length > 0) {
-        const content = data.choices[0].message?.content;
-        
-        // If it's a structuredOutput, get it directly
-        if (data.choices[0].message?.structured_outputs) {
-          historicalEvent = data.choices[0].message.structured_outputs;
-          appendDebugInfo("Extracted structured output successfully");
-        }
-        // Otherwise try to parse from the content
-        else if (content) {
-          appendDebugInfo("Trying to parse JSON from content: " + content.substring(0, 200) + "...");
-          
-          try {
-            // First try: direct JSON parse
-            historicalEvent = JSON.parse(content);
-            appendDebugInfo("Successfully parsed JSON directly");
-          } catch (e) {
-            appendDebugInfo("Direct JSON parse failed: " + e.message);
-            
-            // Second try: Look for JSON between backticks or code blocks
-            const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/) || 
-                            content.match(/`([\s\S]*?)`/);
-            
-            if (jsonMatch && jsonMatch[1]) {
-              try {
-                historicalEvent = JSON.parse(jsonMatch[1].trim());
-                appendDebugInfo("Successfully parsed JSON from code block");
-              } catch (e) {
-                appendDebugInfo("JSON code block parse failed: " + e.message);
-              }
-            }
-            
-            // Third try: Attempt to extract JSON object with regex
-            if (!historicalEvent) {
-              const jsonObjectMatch = content.match(/{[\s\S]*}/);
-              if (jsonObjectMatch) {
-                try {
-                  historicalEvent = JSON.parse(jsonObjectMatch[0]);
-                  appendDebugInfo("Successfully parsed JSON object with regex");
-                } catch (e) {
-                  appendDebugInfo("JSON regex parse failed: " + e.message);
-                }
-              }
-            }
-            
-            // Last resort: manually extract fields
-            if (!historicalEvent) {
-              appendDebugInfo("Attempting manual field extraction");
-              
-              // Create a default event with fallback values
-              const fallbackEvent = createFallbackEvent(marketQuestion);
-              
-              // Try to extract title
-              const titleMatch = content.match(/"title":\s*"([^"]+)"/);
-              if (titleMatch) fallbackEvent.title = titleMatch[1];
-              
-              // Try to extract date
-              const dateMatch = content.match(/"date":\s*"([^"]+)"/);
-              if (dateMatch) fallbackEvent.date = dateMatch[1];
-              
-              // Try to extract image_url
-              const imageMatch = content.match(/"image_url":\s*"([^"]+)"/);
-              if (imageMatch) fallbackEvent.image_url = imageMatch[1];
-              
-              // Try to extract similarities
-              const similaritiesMatch = content.match(/"similarities":\s*\[([\s\S]*?)\]/);
-              if (similaritiesMatch) {
-                const similarityItems = similaritiesMatch[1].match(/"([^"]+)"/g);
-                if (similarityItems) {
-                  fallbackEvent.similarities = similarityItems.map(item => 
-                    item.replace(/"/g, '')
-                  );
-                }
-              }
-              
-              // Try to extract differences
-              const differencesMatch = content.match(/"differences":\s*\[([\s\S]*?)\]/);
-              if (differencesMatch) {
-                const differenceItems = differencesMatch[1].match(/"([^"]+)"/g);
-                if (differenceItems) {
-                  fallbackEvent.differences = differenceItems.map(item => 
-                    item.replace(/"/g, '')
-                  );
-                }
-              }
-              
-              historicalEvent = fallbackEvent;
-              appendDebugInfo("Used fallback event with manual extraction");
-            }
-          }
-        }
+      // Check if the response contains a code block
+      const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/```\n([\s\S]*?)\n```/);
+      if (jsonMatch && jsonMatch[1]) {
+        extractedJson = jsonMatch[1];
       }
       
-      if (historicalEvent && isValidHistoricalEvent(historicalEvent)) {
-        appendDebugInfo("Successfully extracted historical event: " + JSON.stringify(historicalEvent));
-        
-        // Update UI with the extracted data
-        setEventTitle(historicalEvent.title);
-        setEventDate(historicalEvent.date);
-        setImageUrl(historicalEvent.image_url);
-        setSimilarities(historicalEvent.similarities.length ? historicalEvent.similarities : ['']);
-        setDifferences(historicalEvent.differences.length ? historicalEvent.differences : ['']);
-        
-        setStreamingProgress(100);
-        setStreamingStatus("Completed!");
-        toast.success("Historical event generated successfully!");
-      } else {
-        throw new Error("Failed to extract valid historical event data from response");
-      }
-    } catch (error: any) {
+      const eventData = JSON.parse(extractedJson);
+      
+      setEventTitle(eventData.title || "");
+      setEventDate(eventData.date || "");
+      setImageUrl(eventData.image_url || "");
+      setSimilarities(eventData.similarities || ['']);
+      setDifferences(eventData.differences || ['']);
+      
+      toast.success("Historical event generated successfully!");
+    } catch (error) {
       console.error("Error generating historical event:", error);
-      appendDebugInfo(`FINAL ERROR: ${error.message}`);
-      if (error.stack) appendDebugInfo(`ERROR STACK: ${error.stack}`);
-      toast.error(`Failed to generate historical event: ${error.message}`);
-      setStreamingStatus("Error occurred");
+      toast.error("Failed to generate historical event");
     } finally {
       setIsLoading(false);
     }
-  };
-  
-  // Create a fallback event if all parsing methods fail
-  const createFallbackEvent = (marketQuestion: string): HistoricalEventData => {
-    // Extract key terms from the market question for the title
-    const keyTerms = marketQuestion
-      .split(' ')
-      .filter(word => word.length > 3)
-      .slice(0, 3)
-      .join(' ');
-      
-    return {
-      title: `Historical comparison for ${keyTerms}`,
-      date: "Recent comparable event",
-      image_url: "https://placehold.co/600x400?text=Historical+Event",
-      similarities: ["Similar market conditions", "Comparable outcome probability"],
-      differences: ["Different time period", "Distinct contextual factors"]
-    };
-  };
-  
-  // Validate if the object has the required fields for a historical event
-  const isValidHistoricalEvent = (obj: any): obj is HistoricalEventData => {
-    return obj && 
-      typeof obj.title === 'string' && 
-      typeof obj.date === 'string' && 
-      typeof obj.image_url === 'string' && 
-      Array.isArray(obj.similarities) && 
-      Array.isArray(obj.differences);
   };
 
   const saveHistoricalEvent = async () => {
@@ -558,27 +374,6 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
                 </div>
               )}
             </div>
-            
-            {/* Debug Info */}
-            {debugInfo && (
-              <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded-md">
-                <h4 className="text-sm font-medium mb-1">Debug Information:</h4>
-                <pre className="text-xs overflow-auto max-h-40 whitespace-pre-wrap">
-                  {debugInfo}
-                </pre>
-              </div>
-            )}
-            
-            {/* Streaming Progress Display */}
-            {isLoading && (
-              <div className="space-y-2 my-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span>{streamingStatus}</span>
-                  <span>{streamingProgress}%</span>
-                </div>
-                <Progress value={streamingProgress} className="w-full" />
-              </div>
-            )}
             
             <Button 
               onClick={generateHistoricalEvent} 
