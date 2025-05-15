@@ -16,7 +16,7 @@ interface SimilarHistoricalEventsProps {
 
 export function SimilarHistoricalEvents({ marketId, marketQuestion }: SimilarHistoricalEventsProps) {
   const [showGenerator, setShowGenerator] = useState(false);
-  const { historicalEvents, isLoading } = useHistoricalEvents(marketId);
+  const { historicalEvents, isLoading, refetch } = useHistoricalEvents(marketId);
 
   return (
     <Card className="p-6 bg-card">
@@ -37,7 +37,11 @@ export function SimilarHistoricalEvents({ marketId, marketQuestion }: SimilarHis
       
       {showGenerator && marketId && marketQuestion && (
         <div className="mb-4">
-          <HistoricalEventGenerator marketId={marketId} marketQuestion={marketQuestion} />
+          <HistoricalEventGenerator 
+            marketId={marketId} 
+            marketQuestion={marketQuestion} 
+            onEventSaved={refetch} 
+          />
         </div>
       )}
 

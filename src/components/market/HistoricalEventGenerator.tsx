@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,9 +25,10 @@ interface OpenRouterModel {
 interface HistoricalEventGeneratorProps {
   marketId: string;
   marketQuestion: string;
+  onEventSaved?: () => void;
 }
 
-export function HistoricalEventGenerator({ marketId, marketQuestion }: HistoricalEventGeneratorProps) {
+export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSaved }: HistoricalEventGeneratorProps) {
   const [models, setModels] = useState<OpenRouterModel[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -285,6 +285,11 @@ Make sure the JSON is valid and contains exactly these fields. For the image_url
       setImageUrl("");
       setSimilarities(['']);
       setDifferences(['']);
+      
+      // Call the refetch function to update the list
+      if (onEventSaved) {
+        onEventSaved();
+      }
     } catch (error: any) {
       console.error("Error saving historical event:", error);
       toast.error(`Failed to save historical event: ${error.message}`);

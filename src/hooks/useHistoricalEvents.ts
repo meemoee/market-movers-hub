@@ -16,7 +16,7 @@ export interface HistoricalEvent {
 export const useHistoricalEvents = (marketId: string | undefined) => {
   const [isLoading, setIsLoading] = useState(false);
 
-  const { data: historicalEvents } = useQuery({
+  const { data: historicalEvents, refetch } = useQuery({
     queryKey: ['historicalEvents', marketId],
     queryFn: async () => {
       if (!marketId) return [];
@@ -66,5 +66,6 @@ export const useHistoricalEvents = (marketId: string | undefined) => {
   return {
     historicalEvents: historicalEvents || [],
     isLoading,
+    refetch,
   };
 };
