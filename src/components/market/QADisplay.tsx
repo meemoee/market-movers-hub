@@ -57,9 +57,10 @@ interface QADisplayProps {
   marketId: string;
   marketQuestion: string;
   marketDescription?: string;
+  userId: string;
 }
 
-export function QADisplay({ marketId, marketQuestion, marketDescription }: QADisplayProps) {
+export function QADisplay({ marketId, marketQuestion, marketDescription, userId }: QADisplayProps) {
   const { toast } = useToast();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qaData, setQaData] = useState<QANode[]>([]);

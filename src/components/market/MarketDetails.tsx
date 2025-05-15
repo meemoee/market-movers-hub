@@ -1,5 +1,5 @@
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import PriceChart from './PriceChart';
@@ -18,8 +18,8 @@ interface MarketDetailsProps {
   eventId?: string;
   bestBid?: number;
   bestAsk?: number;
-  noBestBid?: number; // Add this property to the interface
-  noBestAsk?: number; // Add this property to the interface
+  noBestBid?: number;
+  noBestAsk?: number;
   outcomes?: string[];
 }
 
@@ -36,6 +36,19 @@ export function MarketDetails({
   outcomes
 }: MarketDetailsProps) {
   const [selectedChartInterval, setSelectedChartInterval] = useState('1d');
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Get the current user ID if available
+  useEffect(() => {
+    async function getUserId() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setUserId(session.user.id);
+      }
+    }
+    
+    getUserId();
+  }, []);
 
   const { data: priceHistory, isLoading: isPriceLoading } = useQuery({
     queryKey: ['priceHistory', marketId, selectedChartInterval],
@@ -165,9 +178,16 @@ export function MarketDetails({
         />
       )}
 
-      {/* WebResearchCard and JobQueueResearchCard components removed from view */}
-
-      {/* Analysis Tree (QADisplay) component removed from view */}
+      {shouldShowQADisplay && (
+        <div className="mt-6">
+          <QADisplay 
+            marketId={marketId} 
+            question={question} 
+            description={description}
+            userId={userId}
+          />
+        </div>
+      )}
 
       <div className="mt-6">
         <SimilarHistoricalEvents />

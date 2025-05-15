@@ -11,6 +11,8 @@ import { AccountAvatar } from "./account/AccountAvatar";
 import { AccountBalance } from "./account/AccountBalance";
 import { AccountHoldings } from "./account/AccountHoldings";
 import { useIsMobile } from "@/hooks/use-mobile";
+import AccountSettings from "./account/AccountSettings";
+import { Settings } from "lucide-react";
 
 type AccountIslandContext = 'desktop' | 'mobile';
 
@@ -22,6 +24,7 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
   const [session, setSession] = useState<any>(null);
   const [balance, setBalance] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   
@@ -79,6 +82,16 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
     }
   };
 
+  // Open settings modal
+  const openSettings = () => {
+    setShowSettings(true);
+  };
+
+  // Close settings modal
+  const closeSettings = () => {
+    setShowSettings(false);
+  };
+
   // If we shouldn't render this context, return null
   if (!shouldRender) {
     return null;
@@ -120,6 +133,15 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
               <h2 className="text-xl font-bold mb-1">Account</h2>
               <p className="text-sm text-muted-foreground truncate overflow-hidden">{session.user.email}</p>
             </div>
+            <Button 
+              variant="ghost" 
+              size="icon"
+              className="ml-auto" 
+              onClick={openSettings}
+              title="Settings"
+            >
+              <Settings size={18} />
+            </Button>
           </div>
           
           <AccountBalance 
@@ -140,6 +162,11 @@ export default function AccountIsland({ context = 'desktop' }: AccountIslandProp
           >
             Sign Out
           </Button>
+          
+          <AccountSettings 
+            isOpen={showSettings}
+            onClose={closeSettings}
+          />
         </div>
       )}
     </Card>
