@@ -23,8 +23,8 @@ export function StreamingContentDisplay({
   const contentRef = useRef<HTMLDivElement>(null);
   const shouldScrollRef = useRef<boolean>(true);
   
-  // State to show debug info (available in development only)
-  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  // State to show debug info (always visible for debugging)
+  const [showDebugInfo, setShowDebugInfo] = useState(true);
   
   // Debug state to count content updates
   const [updateCount, setUpdateCount] = useState(0);
@@ -38,18 +38,6 @@ export function StreamingContentDisplay({
       console.log(`StreamingContentDisplay: Content updated, length: ${content.length} (update #${updateCount + 1})`);
     }
   }, [content]);
-  
-  useEffect(() => {
-    // Set up a keyboard shortcut (Alt+D) to toggle debug info
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && e.key === 'd') {
-        setShowDebugInfo(prev => !prev);
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   // Scroll to bottom when content changes if auto-scroll is enabled
   useEffect(() => {
@@ -88,15 +76,23 @@ export function StreamingContentDisplay({
         className="rounded-md border p-4 bg-accent/5 w-full max-w-full overflow-y-auto"
         style={{ height: maxHeight, maxHeight }}
       >
-        {/* Main content display */}
+        {/* Main content display - using pre instead of ReactMarkdown for debugging */}
         <div 
           ref={contentRef}
           className="text-sm whitespace-pre-wrap break-words w-full max-w-full"
         >
           {content ? (
-            <ReactMarkdown>
-              {content}
-            </ReactMarkdown>
+            <>
+              {/* For debugging, show raw text first */}
+              <pre className="mb-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs overflow-auto max-h-32">
+                {content.substring(0, 200)}{content.length > 200 ? "..." : ""}
+              </pre>
+              
+              {/* Then show the markdown rendering */}
+              <ReactMarkdown>
+                {content}
+              </ReactMarkdown>
+            </>
           ) : isStreaming ? (
             <span className="text-muted-foreground italic">Waiting for content...</span>
           ) : (
@@ -104,8 +100,8 @@ export function StreamingContentDisplay({
           )}
         </div>
         
-        {/* Debug information overlay (toggled with Alt+D) */}
-        {(showDebugInfo || true) && (
+        {/* Debug information overlay (always visible) */}
+        {showDebugInfo && (
           <div className="mt-4 p-2 border-t border-dashed border-gray-500 text-xs">
             <div className="font-mono">
               <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>

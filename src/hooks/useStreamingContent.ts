@@ -1,8 +1,7 @@
-
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 // Adjust this to control how fast content appears to stream
-const ARTIFICIAL_DELAY = 25; // milliseconds between character displays (reduced for more responsive display)
+const ARTIFICIAL_DELAY = 10; // milliseconds between character displays (reduced for faster display)
 
 /**
  * Custom hook for handling streaming content with real-time updates
@@ -33,14 +32,18 @@ export function useStreamingContent() {
   // Track last update for debugging
   const lastUpdateRef = useRef<number>(0);
   
+  // Debug state to keep track of chunks received
+  const chunksRef = useRef<{timestamp: number, size: number, content: string}[]>([]);
+  
   // Start streaming with reset state
   const startStreaming = useCallback(() => {
-    console.log(`Starting streaming with new buffer...`);
+    console.log(`STREAMING: Starting streaming with new buffer...`);
     
     // Clear existing content and reset refs
     contentBuffer.current = '';
     displayPositionRef.current = 0;
     setContent('');
+    chunksRef.current = [];
     
     // Clear any existing intervals
     if (intervalRef.current) {
@@ -59,18 +62,14 @@ export function useStreamingContent() {
     
     // Start the typewriter effect interval
     typewriterIntervalRef.current = window.setInterval(() => {
-      // Log when typewriter runs and what it does
-      console.log(`Typewriter tick: buffer=${contentBuffer.current.length}, position=${displayPositionRef.current}`);
-      
       // If we've caught up to the buffer, do nothing
       if (displayPositionRef.current >= contentBuffer.current.length) {
-        console.log(`No new content to display (buffer: ${contentBuffer.current.length}, position: ${displayPositionRef.current})`);
         return;
       }
       
       // Display the next character(s)
       const nextPosition = Math.min(
-        displayPositionRef.current + 2, // Show 2 characters at a time for smoother display
+        displayPositionRef.current + 5, // Show 5 characters at a time for smoother display
         contentBuffer.current.length
       );
       
@@ -81,7 +80,6 @@ export function useStreamingContent() {
       const visibleContent = contentBuffer.current.substring(0, nextPosition);
       setContent(visibleContent);
       
-      console.log(`Typewriter update: ${displayPositionRef.current}/${contentBuffer.current.length} characters`);
       lastUpdateRef.current = Date.now();
     }, ARTIFICIAL_DELAY);
     
@@ -90,15 +88,14 @@ export function useStreamingContent() {
       // Only update if streaming is active and there's new content
       if (isStreamingRef.current && displayPositionRef.current < contentBuffer.current.length) {
         const now = Date.now();
-        console.log(`Polling update: ${displayPositionRef.current}/${contentBuffer.current.length} chars, last update was ${now - lastUpdateRef.current}ms ago`);
         
         // If it's been too long since the typewriter ran, force an update
         if (now - lastUpdateRef.current > 500) {
-          console.log('Forcing update due to delay');
+          console.log('STREAMING: Forcing update due to delay');
           
           // Force display a chunk of content
           const nextPosition = Math.min(
-            displayPositionRef.current + 10,
+            displayPositionRef.current + 20,
             contentBuffer.current.length
           );
           
@@ -113,26 +110,42 @@ export function useStreamingContent() {
   // Add a chunk to the stream with improved debugging
   const addChunk = useCallback((chunk: string) => {
     if (!isStreamingRef.current) {
-      console.log(`Not streaming, ignoring chunk: "${chunk}"`);
+      console.log(`STREAMING: Not streaming, ignoring chunk: "${chunk}"`);
       return;
     }
     
-    // Use a timestamp for detailed logging
-    const timestamp = new Date().toISOString().substring(11, 23);
+    // Record chunk details for debugging
+    chunksRef.current.push({
+      timestamp: Date.now(),
+      size: chunk.length,
+      content: chunk.substring(0, 50) + (chunk.length > 50 ? "..." : "")
+    });
     
     // Add the chunk to the buffer
     const oldLength = contentBuffer.current.length;
     contentBuffer.current += chunk;
     
-    console.log(`[${timestamp}] Added chunk (${chunk.length} chars). Buffer: ${oldLength} → ${contentBuffer.current.length}`);
+    console.log(`STREAMING: [${new Date().toISOString().substring(11, 23)}] Added chunk (${chunk.length} chars). Buffer: ${oldLength} → ${contentBuffer.current.length}`);
+    console.log(`STREAMING: Chunk content: "${chunk}"`);
     
-    // For debugging, log the actual chunk content
-    console.log(`Chunk content (${chunk.length} chars): "${chunk}"`);
+    // Immediate update for very first chunk (for better UX)
+    if (oldLength === 0 && chunk.length > 0) {
+      const initialDisplayLength = Math.min(chunk.length, 10);
+      displayPositionRef.current = initialDisplayLength;
+      setContent(contentBuffer.current.substring(0, initialDisplayLength));
+      lastUpdateRef.current = Date.now();
+    }
   }, []);
   
   // Stop streaming and ensure full content is displayed immediately
   const stopStreaming = useCallback(() => {
-    console.log(`Stopping streaming... Final buffer length: ${contentBuffer.current.length}`);
+    console.log(`STREAMING: Stopping streaming... Final buffer length: ${contentBuffer.current.length}`);
+    console.log(`STREAMING: Received ${chunksRef.current.length} chunks in total`);
+    
+    // Log all chunks for debugging
+    chunksRef.current.forEach((chunk, i) => {
+      console.log(`STREAMING: Chunk #${i+1}: ${chunk.size} chars at ${new Date(chunk.timestamp).toISOString().substring(11, 23)}: "${chunk.content}"`);
+    });
     
     // Update streaming state
     isStreamingRef.current = false;
@@ -153,7 +166,7 @@ export function useStreamingContent() {
     setContent(contentBuffer.current);
     displayPositionRef.current = contentBuffer.current.length;
     
-    console.log(`Set final content (${contentBuffer.current.length} characters)`);
+    console.log(`STREAMING: Set final content (${contentBuffer.current.length} characters)`);
   }, []);
   
   // Clean up on unmount

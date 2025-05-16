@@ -197,7 +197,7 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       }
 
       addDebugLog(`Sending request to OpenRouter with model: ${requestBody.model}`);
-      console.log("Full request body:", JSON.stringify(requestBody, null, 2));
+      console.log("STREAMING: Full request body:", JSON.stringify(requestBody, null, 2));
 
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
@@ -224,10 +224,10 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
-      let buffer = "";
 
       addDebugLog("Starting to process stream...");
 
+      // Simplified direct streaming approach
       while (true) {
         const { done, value } = await reader.read();
         
@@ -236,76 +236,71 @@ Be thorough in your analysis and explain your reasoning clearly.`;
           break;
         }
         
-        // Decode the chunk and log raw data for debugging
+        // Decode the chunk and log raw data
         const chunkText = decoder.decode(value, { stream: true });
         
-        // Log raw chunk data
+        // Log complete raw chunk data for debugging
+        console.log("STREAMING: Raw SSE chunk:", chunkText);
         addDebugLog(`Raw chunk received (${chunkText.length} bytes)`);
-        console.log("Raw chunk data:", chunkText);
         
-        // Append to buffer for processing
-        buffer += chunkText;
-        
-        // Process complete SSE messages from buffer
-        const lines = buffer.split('\n');
-        let newBuffer = "";
-        
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i];
-          
-          // If this is a complete data line
-          if (line.startsWith('data: ')) {
-            const data = line.substring(6); // Remove "data: " prefix
-            
-            // Skip "[DONE]" which indicates end of stream
-            if (data === '[DONE]') {
-              addDebugLog("Received [DONE] message");
-              continue;
-            }
-            
-            try {
-              // Parse the JSON data
-              const parsedData = JSON.parse(data);
-              console.log("Parsed SSE data:", parsedData);
+        // Process the chunk to extract content - simplified processing
+        try {
+          // Split by newlines and find data lines
+          const lines = chunkText.split('\n');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.substring(6); // Remove "data: " prefix
               
-              // Extract content if available
-              if (parsedData.choices && 
-                  parsedData.choices[0] && 
-                  parsedData.choices[0].delta && 
-                  parsedData.choices[0].delta.content) {
-                
-                const content = parsedData.choices[0].delta.content;
-                fullContent += content;
-                
-                // Log each content piece
-                addDebugLog(`Content chunk: "${content}" (${content.length} chars)`);
-                
-                // Add the chunk to streaming display
-                addChunk(content);
+              // Skip "[DONE]" which indicates end of stream
+              if (data === '[DONE]') {
+                console.log("STREAMING: Received [DONE] message");
+                continue;
               }
-            } catch (parseError) {
-              console.error("Error parsing SSE JSON:", parseError, "Raw data:", data);
-              addDebugLog(`Parse error: ${parseError.message}`);
+              
+              try {
+                // Parse the JSON data
+                const parsedData = JSON.parse(data);
+                console.log("STREAMING: Parsed SSE data:", JSON.stringify(parsedData, null, 2));
+                
+                // Extract content if available
+                if (parsedData.choices && 
+                    parsedData.choices[0] && 
+                    parsedData.choices[0].delta && 
+                    parsedData.choices[0].delta.content) {
+                  
+                  const content = parsedData.choices[0].delta.content;
+                  fullContent += content;
+                  
+                  // Log exact content for debugging
+                  console.log(`STREAMING: Content delta: "${content}"`);
+                  addDebugLog(`Content received: "${content.substring(0, 20)}${content.length > 20 ? "..." : ""}"`);
+                  
+                  // Add the chunk directly to the streaming display
+                  addChunk(content);
+                } else {
+                  console.log("STREAMING: No content in delta:", JSON.stringify(parsedData.choices[0]?.delta || {}, null, 2));
+                }
+              } catch (parseError) {
+                console.error("STREAMING: Error parsing SSE JSON:", parseError, "Raw data:", data);
+                addDebugLog(`Parse error: ${parseError.message}`);
+              }
             }
-          } else if (line.trim()) {
-            // Keep incomplete lines in the buffer
-            newBuffer += line + '\n';
           }
+        } catch (processError) {
+          console.error("STREAMING: Error processing chunk:", processError);
+          addDebugLog(`Processing error: ${processError.message}`);
         }
-        
-        // Update buffer to contain only incomplete data
-        buffer = newBuffer;
       }
 
       addDebugLog(`Generation complete. Total content: ${fullContent.length} chars`);
       toast.success("Historical event generated successfully!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error generating historical event:", error);
       addDebugLog(`Error: ${error.message}`);
       toast.error("Failed to generate historical event");
     } finally {
       setIsLoading(false);
-      stopStreaming(); // Stop streaming and ensure final content is displayed
+      stopStreaming(); // Stop streaming and ensure full content is displayed
     }
   };
 
