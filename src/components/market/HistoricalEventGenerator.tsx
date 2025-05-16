@@ -254,6 +254,7 @@ Be thorough in your analysis and explain your reasoning clearly.`;
                 fullContent += content;
                 
                 // Add the chunk to the streaming content
+                console.log(`Received chunk: "${content}"`);
                 addChunk(content);
               }
             } catch (parseError) {

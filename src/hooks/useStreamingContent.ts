@@ -19,6 +19,7 @@ export function useStreamingContent() {
   
   // Function to start streaming
   const startStreaming = useCallback(() => {
+    console.log(`Starting streaming...`);
     // Clear existing content
     contentBuffer.current = '';
     setContent('');
@@ -29,33 +30,46 @@ export function useStreamingContent() {
       clearInterval(renderIntervalRef.current);
     }
     
-    // Update the UI every 50ms while streaming
+    // Update the UI every 10ms while streaming for more responsive updates
     renderIntervalRef.current = window.setInterval(() => {
+      console.log(`Interval update: Buffer length: ${contentBuffer.current.length}`);
       setContent(contentBuffer.current);
-    }, 50);
+    }, 10);
   }, []);
   
   // Function to add a chunk to the stream
   const addChunk = useCallback((chunk: string) => {
-    if (!isStreaming) return;
+    if (!isStreaming) {
+      console.log(`Not streaming, ignoring chunk: "${chunk}"`);
+      return;
+    }
     
     // Add the chunk to the buffer
     contentBuffer.current += chunk;
+    console.log(`Added chunk to buffer. Buffer length: ${contentBuffer.current.length}`);
   }, [isStreaming]);
   
   // Function to stop streaming
   const stopStreaming = useCallback(() => {
+    console.log(`Stopping streaming... Final buffer length: ${contentBuffer.current.length}`);
     setIsStreaming(false);
     
     // Clear the interval
     if (renderIntervalRef.current) {
       clearInterval(renderIntervalRef.current);
       renderIntervalRef.current = null;
+      console.log(`Cleared interval`);
     }
     
     // Ensure the final content is set
     setContent(contentBuffer.current);
+    console.log(`Set final content`);
   }, []);
+  
+  // Log when content changes
+  useEffect(() => {
+    console.log(`Content state updated. Length: ${content.length}`);
+  }, [content]);
   
   // Clean up on unmount
   useEffect(() => {
