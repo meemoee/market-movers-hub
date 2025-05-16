@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -18,6 +19,9 @@ export function StreamingContentDisplay({
   const contentRef = useRef<HTMLDivElement>(null);
   const lastContentRef = useRef<string>('');
   const shouldScrollRef = useRef<boolean>(true);
+  
+  // Track the last rendered content length to determine what's new
+  const lastRenderedLengthRef = useRef<number>(0);
 
   // Effect to handle direct DOM updates for streaming content
   useEffect(() => {
@@ -30,8 +34,25 @@ export function StreamingContentDisplay({
       
       // Update the content directly in the DOM
       if (isStreaming) {
-        // For streaming, we want to update the content directly
+        // For streaming, we want to APPEND only the new content, not replace it all
+        const newContentPortion = content.substring(lastRenderedLengthRef.current);
+        
+        if (newContentPortion.length > 0) {
+          // Create a new text node with just the new portion
+          const newNode = document.createTextNode(newContentPortion);
+          
+          // Append only the new text to the content div
+          contentRef.current.appendChild(newNode);
+          
+          // Update the last rendered length
+          lastRenderedLengthRef.current = content.length;
+          
+          console.log(`Appended ${newContentPortion.length} new characters`);
+        }
+      } else {
+        // When not streaming, we can just set the full content
         contentRef.current.textContent = content;
+        lastRenderedLengthRef.current = content.length;
       }
       
       // Scroll to bottom if auto-scroll is enabled
@@ -40,6 +61,17 @@ export function StreamingContentDisplay({
       }
     }
   }, [content, isStreaming]);
+
+  // Reset the last rendered length when streaming starts
+  useEffect(() => {
+    if (isStreaming) {
+      lastRenderedLengthRef.current = 0;
+      if (contentRef.current) {
+        // Clear content when streaming starts
+        contentRef.current.textContent = '';
+      }
+    }
+  }, [isStreaming]);
 
   // Handle scroll events to detect if user has scrolled up
   useEffect(() => {
@@ -75,7 +107,7 @@ export function StreamingContentDisplay({
           ref={contentRef}
           className="text-sm whitespace-pre-wrap break-words w-full max-w-full"
         >
-          {content}
+          {/* Content is managed imperatively via the ref */}
         </div>
       </div>
       

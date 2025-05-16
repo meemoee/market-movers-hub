@@ -1,3 +1,4 @@
+
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 /**
@@ -36,10 +37,21 @@ export function useStreamingContent() {
       clearInterval(renderIntervalRef.current);
     }
     
-    // Update the UI every 10ms while streaming for more responsive updates
+    // We need regular updates to trigger effect in StreamingContentDisplay
+    // but we'll update the state only with new content since last update
+    let lastRenderLength = 0;
+    
     renderIntervalRef.current = window.setInterval(() => {
-      console.log(`Interval update: Buffer length: ${contentBuffer.current.length}`);
-      setContent(contentBuffer.current);
+      // Only update state if there's actually new content
+      if (contentBuffer.current.length > lastRenderLength) {
+        console.log(`Interval update: New content length: ${contentBuffer.current.length - lastRenderLength} characters`);
+        
+        // Update the state with the current buffer
+        setContent(contentBuffer.current);
+        
+        // Track what we've rendered so far
+        lastRenderLength = contentBuffer.current.length;
+      }
     }, 10);
   }, []);
   
@@ -52,8 +64,8 @@ export function useStreamingContent() {
     
     // Add the chunk to the buffer
     contentBuffer.current += chunk;
-    console.log(`Added chunk to buffer. Buffer length: ${contentBuffer.current.length}`);
-  }, []); // Remove isStreaming from dependencies
+    console.log(`Added chunk: "${chunk}". Buffer length now: ${contentBuffer.current.length}`);
+  }, []); 
   
   // Function to stop streaming
   const stopStreaming = useCallback(() => {
@@ -74,11 +86,6 @@ export function useStreamingContent() {
     setContent(contentBuffer.current);
     console.log(`Set final content`);
   }, []);
-  
-  // Log when content changes
-  useEffect(() => {
-    console.log(`Content state updated. Length: ${content.length}`);
-  }, [content]);
   
   // Clean up on unmount
   useEffect(() => {
