@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useStreamingContent } from '@/hooks/useStreamingContent';
+import { StreamingContentDisplay } from '@/components/market/research/StreamingContentDisplay';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -539,7 +540,7 @@ ${streamingContent}`;
                     </Button>
                   )}
                 </div>
-                <AnalysisDisplay 
+                <StreamingContentDisplay 
                   content={streamingContent} 
                   isStreaming={isStreaming}
                   maxHeight="200px"
