@@ -26,6 +26,19 @@ export function StreamingContentDisplay({
   // State to show debug info (available in development only)
   const [showDebugInfo, setShowDebugInfo] = useState(false);
   
+  // Debug state to count content updates
+  const [updateCount, setUpdateCount] = useState(0);
+  const prevContentRef = useRef<string>("");
+  
+  // Track content length changes
+  useEffect(() => {
+    if (content !== prevContentRef.current) {
+      setUpdateCount(prev => prev + 1);
+      prevContentRef.current = content;
+      console.log(`StreamingContentDisplay: Content updated, length: ${content.length} (update #${updateCount + 1})`);
+    }
+  }, [content]);
+  
   useEffect(() => {
     // Set up a keyboard shortcut (Alt+D) to toggle debug info
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -80,18 +93,24 @@ export function StreamingContentDisplay({
           ref={contentRef}
           className="text-sm whitespace-pre-wrap break-words w-full max-w-full"
         >
-          {/* Use ReactMarkdown to render streaming content */}
-          <ReactMarkdown>
-            {content}
-          </ReactMarkdown>
+          {content ? (
+            <ReactMarkdown>
+              {content}
+            </ReactMarkdown>
+          ) : isStreaming ? (
+            <span className="text-muted-foreground italic">Waiting for content...</span>
+          ) : (
+            <span className="text-muted-foreground">No content to display</span>
+          )}
         </div>
         
         {/* Debug information overlay (toggled with Alt+D) */}
-        {showDebugInfo && (
+        {(showDebugInfo || true) && (
           <div className="mt-4 p-2 border-t border-dashed border-gray-500 text-xs">
             <div className="font-mono">
               <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
               <div>Content length: {content.length} chars</div>
+              <div>Content updates: {updateCount}</div>
               {rawBuffer !== undefined && (
                 <div>Raw buffer: {rawBuffer.length} chars</div>
               )}
@@ -101,6 +120,9 @@ export function StreamingContentDisplay({
               <div>
                 Segments: {content.split('\n\n').length}, 
                 Lines: {content.split('\n').length}
+              </div>
+              <div className="mt-1">
+                First 50 chars: "{content.substring(0, 50)}{content.length > 50 ? "..." : ""}"
               </div>
             </div>
           </div>

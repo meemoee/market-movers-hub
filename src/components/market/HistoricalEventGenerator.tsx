@@ -49,6 +49,13 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
   const [showRawResponse, setShowRawResponse] = useState(true); // Show raw response by default
   const { user } = useCurrentUser();
 
+  // Debug state
+  const [debugLogs, setDebugLogs] = useState<string[]>([]);
+  const addDebugLog = (message: string) => {
+    console.log(`[HistoricalEventGenerator] ${message}`);
+    setDebugLogs(prev => [...prev.slice(-20), message]); // Keep last 20 logs
+  };
+
   // Fetch available models when the component mounts and user has an API key
   useEffect(() => {
     if (user?.openrouter_api_key) {
@@ -153,6 +160,9 @@ export function HistoricalEventGenerator({ marketId, marketQuestion, onEventSave
     setIsLoading(true);
     startStreaming(); // Start streaming and clear previous content
     
+    // Clear debug logs
+    setDebugLogs([]);
+    
     try {
       const promptText = `Generate a historical event comparison for the market question: "${marketQuestion}".
 
@@ -186,6 +196,9 @@ Be thorough in your analysis and explain your reasoning clearly.`;
         ];
       }
 
+      addDebugLog(`Sending request to OpenRouter with model: ${requestBody.model}`);
+      console.log("Full request body:", JSON.stringify(requestBody, null, 2));
+
       const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -197,87 +210,102 @@ Be thorough in your analysis and explain your reasoning clearly.`;
       });
 
       if (!response.ok) {
+        const errorText = await response.text();
+        addDebugLog(`API Error: ${response.status} - ${errorText}`);
         throw new Error(`Error ${response.status}: ${response.statusText}`);
       }
 
       if (!response.body) {
+        addDebugLog("Response body is null");
         throw new Error("Response body is null");
       }
 
-      // Process the stream
+      // Process the stream with improved error handling and logging
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = "";
-      let incompleteChunk = "";
+      let buffer = "";
+
+      addDebugLog("Starting to process stream...");
 
       while (true) {
         const { done, value } = await reader.read();
         
         if (done) {
-          console.log("Stream complete");
+          addDebugLog("Stream complete");
           break;
         }
         
-        // Decode the chunk
-        const chunk = decoder.decode(value, { stream: true });
+        // Decode the chunk and log raw data for debugging
+        const chunkText = decoder.decode(value, { stream: true });
         
-        // Combine with any incomplete chunk from previous iteration
-        const textToParse = incompleteChunk + chunk;
+        // Log raw chunk data
+        addDebugLog(`Raw chunk received (${chunkText.length} bytes)`);
+        console.log("Raw chunk data:", chunkText);
         
-        // Process the text as SSE (Server-Sent Events)
-        const lines = textToParse.split('\n');
+        // Append to buffer for processing
+        buffer += chunkText;
         
-        let processedUpTo = 0;
+        // Process complete SSE messages from buffer
+        const lines = buffer.split('\n');
+        let newBuffer = "";
+        
         for (let i = 0; i < lines.length; i++) {
-          const line = lines[i].trim();
+          const line = lines[i];
           
-          // Skip empty lines
-          if (!line) continue;
-          
-          // Update the processedUpTo pointer
-          processedUpTo = textToParse.indexOf(line) + line.length + 1; // +1 for the newline
-          
-          // Check if this is a data line
+          // If this is a complete data line
           if (line.startsWith('data: ')) {
             const data = line.substring(6); // Remove "data: " prefix
             
-            // Skip "[DONE]" message which indicates the end of the stream
-            if (data === '[DONE]') continue;
+            // Skip "[DONE]" which indicates end of stream
+            if (data === '[DONE]') {
+              addDebugLog("Received [DONE] message");
+              continue;
+            }
             
             try {
               // Parse the JSON data
-              const jsonData = JSON.parse(data);
+              const parsedData = JSON.parse(data);
+              console.log("Parsed SSE data:", parsedData);
               
-              if (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                const content = jsonData.choices[0].delta.content;
+              // Extract content if available
+              if (parsedData.choices && 
+                  parsedData.choices[0] && 
+                  parsedData.choices[0].delta && 
+                  parsedData.choices[0].delta.content) {
                 
-                // Append to the full content
+                const content = parsedData.choices[0].delta.content;
                 fullContent += content;
                 
-                // Add the chunk to the streaming content
-                console.log(`Received chunk: "${content}"`);
+                // Log each content piece
+                addDebugLog(`Content chunk: "${content}" (${content.length} chars)`);
+                
+                // Add the chunk to streaming display
                 addChunk(content);
               }
             } catch (parseError) {
-              console.error(`Error parsing JSON in streaming chunk:`, parseError);
-              // Continue processing other chunks even if one fails
+              console.error("Error parsing SSE JSON:", parseError, "Raw data:", data);
+              addDebugLog(`Parse error: ${parseError.message}`);
             }
+          } else if (line.trim()) {
+            // Keep incomplete lines in the buffer
+            newBuffer += line + '\n';
           }
         }
         
-        // Save any incomplete chunk for the next iteration
-        incompleteChunk = textToParse.substring(processedUpTo);
+        // Update buffer to contain only incomplete data
+        buffer = newBuffer;
       }
 
-      // No longer trying to parse JSON automatically
-      // Just notify that generation is complete
+      addDebugLog(`Generation complete. Total content: ${fullContent.length} chars`);
       toast.success("Historical event generated successfully!");
     } catch (error) {
       console.error("Error generating historical event:", error);
+      addDebugLog(`Error: ${error.message}`);
       toast.error("Failed to generate historical event");
     } finally {
       setIsLoading(false);
-      stopStreaming(); // Stop streaming and ensure final content is set
+      stopStreaming(); // Stop streaming and ensure final content is displayed
     }
   };
 
@@ -518,6 +546,31 @@ ${streamingContent}`;
               )}
             </Button>
             
+            {/* Debug logs section */}
+            <div className="mt-4 bg-gray-50 dark:bg-gray-900 p-2 rounded border border-gray-200 dark:border-gray-700 text-xs font-mono">
+              <div className="flex justify-between items-center mb-1">
+                <h4 className="font-medium">Stream Debug ({debugLogs.length} logs)</h4>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setDebugLogs([])}
+                  className="h-6 text-xs"
+                >
+                  Clear
+                </Button>
+              </div>
+              <div className="max-h-24 overflow-auto">
+                {debugLogs.length === 0 ? 
+                  <p className="text-muted-foreground">No logs yet</p> : 
+                  debugLogs.map((log, i) => (
+                    <div key={i} className="py-0.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                      {log}
+                    </div>
+                  ))
+                }
+              </div>
+            </div>
+            
             {showRawResponse && (
               <div className="mt-4">
                 <div className="flex justify-between items-center mb-2">
@@ -540,11 +593,23 @@ ${streamingContent}`;
                     </Button>
                   )}
                 </div>
+
+                {/* Use the updated StreamingContentDisplay component */}
                 <StreamingContentDisplay 
                   content={streamingContent} 
                   isStreaming={isStreaming}
                   maxHeight="200px"
                 />
+
+                {/* Also show raw text for debugging */}
+                <details className="mt-2">
+                  <summary className="text-xs text-muted-foreground cursor-pointer">
+                    Show raw text ({streamingContent.length} chars)
+                  </summary>
+                  <pre className="text-xs mt-1 p-2 bg-gray-50 dark:bg-gray-800 rounded border overflow-auto max-h-32">
+                    {streamingContent || "(empty)"}
+                  </pre>
+                </details>
               </div>
             )}
 
@@ -650,7 +715,7 @@ ${streamingContent}`;
                 </Button>
               </div>
             </div>
-
+              
             <Button 
               onClick={saveHistoricalEvent}
               disabled={isLoading || !eventTitle || !eventDate || !imageUrl}

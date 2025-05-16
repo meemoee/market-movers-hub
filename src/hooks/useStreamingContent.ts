@@ -2,7 +2,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 // Adjust this to control how fast content appears to stream
-const ARTIFICIAL_DELAY = 50; // milliseconds between character displays
+const ARTIFICIAL_DELAY = 25; // milliseconds between character displays (reduced for more responsive display)
 
 /**
  * Custom hook for handling streaming content with real-time updates
@@ -29,6 +29,9 @@ export function useStreamingContent() {
   // Ref to hold interval IDs
   const intervalRef = useRef<number | null>(null);
   const typewriterIntervalRef = useRef<number | null>(null);
+
+  // Track last update for debugging
+  const lastUpdateRef = useRef<number>(0);
   
   // Start streaming with reset state
   const startStreaming = useCallback(() => {
@@ -56,14 +59,18 @@ export function useStreamingContent() {
     
     // Start the typewriter effect interval
     typewriterIntervalRef.current = window.setInterval(() => {
+      // Log when typewriter runs and what it does
+      console.log(`Typewriter tick: buffer=${contentBuffer.current.length}, position=${displayPositionRef.current}`);
+      
       // If we've caught up to the buffer, do nothing
       if (displayPositionRef.current >= contentBuffer.current.length) {
+        console.log(`No new content to display (buffer: ${contentBuffer.current.length}, position: ${displayPositionRef.current})`);
         return;
       }
       
-      // Display the next character
+      // Display the next character(s)
       const nextPosition = Math.min(
-        displayPositionRef.current + 3, // Show 3 characters at a time for smoother display
+        displayPositionRef.current + 2, // Show 2 characters at a time for smoother display
         contentBuffer.current.length
       );
       
@@ -75,18 +82,35 @@ export function useStreamingContent() {
       setContent(visibleContent);
       
       console.log(`Typewriter update: ${displayPositionRef.current}/${contentBuffer.current.length} characters`);
+      lastUpdateRef.current = Date.now();
     }, ARTIFICIAL_DELAY);
     
     // Also set a regular polling interval to update content if chunks are delayed
     intervalRef.current = window.setInterval(() => {
       // Only update if streaming is active and there's new content
       if (isStreamingRef.current && displayPositionRef.current < contentBuffer.current.length) {
-        console.log(`Polling update: ${displayPositionRef.current}/${contentBuffer.current.length} characters`);
+        const now = Date.now();
+        console.log(`Polling update: ${displayPositionRef.current}/${contentBuffer.current.length} chars, last update was ${now - lastUpdateRef.current}ms ago`);
+        
+        // If it's been too long since the typewriter ran, force an update
+        if (now - lastUpdateRef.current > 500) {
+          console.log('Forcing update due to delay');
+          
+          // Force display a chunk of content
+          const nextPosition = Math.min(
+            displayPositionRef.current + 10,
+            contentBuffer.current.length
+          );
+          
+          displayPositionRef.current = nextPosition;
+          setContent(contentBuffer.current.substring(0, nextPosition));
+          lastUpdateRef.current = now;
+        }
       }
     }, 500);
   }, []);
   
-  // Add a chunk to the stream
+  // Add a chunk to the stream with improved debugging
   const addChunk = useCallback((chunk: string) => {
     if (!isStreamingRef.current) {
       console.log(`Not streaming, ignoring chunk: "${chunk}"`);
@@ -102,10 +126,8 @@ export function useStreamingContent() {
     
     console.log(`[${timestamp}] Added chunk (${chunk.length} chars). Buffer: ${oldLength} → ${contentBuffer.current.length}`);
     
-    // For debugging, log the actual chunk content if it's short
-    if (chunk.length < 50) {
-      console.log(`Chunk content: "${chunk}"`);
-    }
+    // For debugging, log the actual chunk content
+    console.log(`Chunk content (${chunk.length} chars): "${chunk}"`);
   }, []);
   
   // Stop streaming and ensure full content is displayed immediately
