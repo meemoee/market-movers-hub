@@ -8,8 +8,11 @@ export function useStreamingContent() {
   // State to hold the current content
   const [content, setContent] = useState('');
   
-  // State to track if streaming is active
+  // State to track if streaming is active (for UI purposes)
   const [isStreaming, setIsStreaming] = useState(false);
+  
+  // Ref to track streaming state (for immediate access in callbacks)
+  const isStreamingRef = useRef(false);
   
   // Ref to hold the accumulated content (not subject to React's batching)
   const contentBuffer = useRef('');
@@ -23,6 +26,9 @@ export function useStreamingContent() {
     // Clear existing content
     contentBuffer.current = '';
     setContent('');
+    
+    // Update both the ref and the state
+    isStreamingRef.current = true;
     setIsStreaming(true);
     
     // Set up an interval to update the UI regularly
@@ -39,7 +45,7 @@ export function useStreamingContent() {
   
   // Function to add a chunk to the stream
   const addChunk = useCallback((chunk: string) => {
-    if (!isStreaming) {
+    if (!isStreamingRef.current) {
       console.log(`Not streaming, ignoring chunk: "${chunk}"`);
       return;
     }
@@ -47,11 +53,14 @@ export function useStreamingContent() {
     // Add the chunk to the buffer
     contentBuffer.current += chunk;
     console.log(`Added chunk to buffer. Buffer length: ${contentBuffer.current.length}`);
-  }, [isStreaming]);
+  }, []); // Remove isStreaming from dependencies
   
   // Function to stop streaming
   const stopStreaming = useCallback(() => {
     console.log(`Stopping streaming... Final buffer length: ${contentBuffer.current.length}`);
+    
+    // Update both the ref and the state
+    isStreamingRef.current = false;
     setIsStreaming(false);
     
     // Clear the interval
