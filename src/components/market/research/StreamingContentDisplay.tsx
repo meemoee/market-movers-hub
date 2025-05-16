@@ -7,71 +7,43 @@ interface StreamingContentDisplayProps {
   content: string;
   isStreaming: boolean;
   maxHeight?: string | number;
+  rawBuffer?: string;  // Optional access to raw buffer for debugging
+  displayPosition?: number; // Optional access to display position for debugging
 }
 
 export function StreamingContentDisplay({ 
   content, 
   isStreaming, 
-  maxHeight = "200px" 
+  maxHeight = "200px",
+  rawBuffer,
+  displayPosition
 }: StreamingContentDisplayProps) {
   // Refs for DOM elements
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const lastContentRef = useRef<string>('');
   const shouldScrollRef = useRef<boolean>(true);
   
-  // Track the last rendered content length to determine what's new
-  const lastRenderedLengthRef = useRef<number>(0);
-
-  // Effect to handle direct DOM updates for streaming content
+  // State to show debug info (available in development only)
+  const [showDebugInfo, setShowDebugInfo] = useState(false);
+  
   useEffect(() => {
-    if (!contentRef.current) return;
+    // Set up a keyboard shortcut (Alt+D) to toggle debug info
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key === 'd') {
+        setShowDebugInfo(prev => !prev);
+      }
+    };
     
-    // Only update the DOM if the content has changed
-    if (content !== lastContentRef.current) {
-      // Store the new content
-      lastContentRef.current = content;
-      
-      // Update the content directly in the DOM
-      if (isStreaming) {
-        // For streaming, we want to APPEND only the new content, not replace it all
-        const newContentPortion = content.substring(lastRenderedLengthRef.current);
-        
-        if (newContentPortion.length > 0) {
-          // Create a new text node with just the new portion
-          const newNode = document.createTextNode(newContentPortion);
-          
-          // Append only the new text to the content div
-          contentRef.current.appendChild(newNode);
-          
-          // Update the last rendered length
-          lastRenderedLengthRef.current = content.length;
-          
-          console.log(`Appended ${newContentPortion.length} new characters`);
-        }
-      } else {
-        // When not streaming, we can just set the full content
-        contentRef.current.textContent = content;
-        lastRenderedLengthRef.current = content.length;
-      }
-      
-      // Scroll to bottom if auto-scroll is enabled
-      if (shouldScrollRef.current && containerRef.current) {
-        containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      }
-    }
-  }, [content, isStreaming]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
-  // Reset the last rendered length when streaming starts
+  // Scroll to bottom when content changes if auto-scroll is enabled
   useEffect(() => {
-    if (isStreaming) {
-      lastRenderedLengthRef.current = 0;
-      if (contentRef.current) {
-        // Clear content when streaming starts
-        contentRef.current.textContent = '';
-      }
+    if (contentRef.current && containerRef.current && shouldScrollRef.current) {
+      containerRef.current.scrollTop = containerRef.current.scrollHeight;
     }
-  }, [isStreaming]);
+  }, [content]);
 
   // Handle scroll events to detect if user has scrolled up
   useEffect(() => {
@@ -103,14 +75,39 @@ export function StreamingContentDisplay({
         className="rounded-md border p-4 bg-accent/5 w-full max-w-full overflow-y-auto"
         style={{ height: maxHeight, maxHeight }}
       >
+        {/* Main content display */}
         <div 
           ref={contentRef}
           className="text-sm whitespace-pre-wrap break-words w-full max-w-full"
         >
-          {/* Content is managed imperatively via the ref */}
+          {/* Use ReactMarkdown to render streaming content */}
+          <ReactMarkdown>
+            {content}
+          </ReactMarkdown>
         </div>
+        
+        {/* Debug information overlay (toggled with Alt+D) */}
+        {showDebugInfo && (
+          <div className="mt-4 p-2 border-t border-dashed border-gray-500 text-xs">
+            <div className="font-mono">
+              <div>Streaming: {isStreaming ? 'Yes' : 'No'}</div>
+              <div>Content length: {content.length} chars</div>
+              {rawBuffer !== undefined && (
+                <div>Raw buffer: {rawBuffer.length} chars</div>
+              )}
+              {displayPosition !== undefined && (
+                <div>Display position: {displayPosition}/{rawBuffer?.length || 0}</div>
+              )}
+              <div>
+                Segments: {content.split('\n\n').length}, 
+                Lines: {content.split('\n').length}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       
+      {/* Streaming indicators */}
       {isStreaming && (
         <div className="absolute bottom-2 right-2">
           <div className="flex items-center space-x-2">

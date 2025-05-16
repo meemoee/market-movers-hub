@@ -78,13 +78,64 @@ serve(async (req) => {
       throw new Error(`OpenRouter API error: ${openRouterResponse.status}`)
     }
 
-    // Return the stream directly without transformation
-    return new Response(openRouterResponse.body, {
+    console.log('Streaming response from OpenRouter')
+    
+    // Get the readable stream from the response
+    const readableStream = openRouterResponse.body
+    
+    // Transform the stream to add debugging information
+    // We'll create a TransformStream to log chunks as they arrive
+    const { readable, writable } = new TransformStream()
+    
+    if (readableStream) {
+      const reader = readableStream.getReader()
+      const writer = writable.getWriter()
+      
+      // Process the stream
+      const processStream = async () => {
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) {
+              console.log('Stream finished')
+              await writer.close()
+              break
+            }
+            
+            // Log the raw chunk for debugging
+            const chunk = new TextDecoder().decode(value)
+            console.log(`Raw chunk: ${chunk.length} bytes`)
+            
+            // Write the chunk to the output stream
+            await writer.write(value)
+          }
+        } catch (err) {
+          console.error('Error processing stream:', err)
+          writer.abort(err)
+        }
+      }
+      
+      processStream()
+    } else {
+      console.error('OpenRouter response body is null')
+      return new Response(JSON.stringify({ error: 'Response body is null' }), {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      })
+    }
+
+    // Return the transformed stream with detailed headers
+    return new Response(readable, {
       headers: {
         ...corsHeaders,
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
+        'Transfer-Encoding': 'chunked',
+        'X-Accel-Buffering': 'no'
       }
     })
 

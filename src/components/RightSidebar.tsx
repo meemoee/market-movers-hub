@@ -1,16 +1,29 @@
+
 import { Send } from 'lucide-react'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from "@/integrations/supabase/client"
 import ReactMarkdown from 'react-markdown'
 import { Separator } from './ui/separator'
+import { useStreamingContent } from '@/hooks/useStreamingContent'
+import { toast } from 'sonner'
 
 export default function RightSidebar() {
   const [chatMessage, setChatMessage] = useState('')
   const [messages, setMessages] = useState<Message[]>([])
   const [hasStartedChat, setHasStartedChat] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [streamingContent, setStreamingContent] = useState('')
   const abortControllerRef = useRef<AbortController | null>(null)
+  
+  // Use our improved streaming hook
+  const { 
+    content: streamingContent, 
+    isStreaming, 
+    rawBuffer,
+    displayPosition,
+    startStreaming,
+    addChunk, 
+    stopStreaming 
+  } = useStreamingContent()
 
   interface Message {
     type: 'user' | 'assistant'
@@ -33,6 +46,10 @@ export default function RightSidebar() {
       abortControllerRef.current = new AbortController()
 
       console.log('Sending request to market-analysis function...')
+      
+      // Start streaming mode before making the request
+      startStreaming()
+      
       const { data, error } = await supabase.functions.invoke('market-analysis', {
         body: {
           message: userMessage,
@@ -45,48 +62,68 @@ export default function RightSidebar() {
         throw error
       }
 
-      console.log('Received response from market-analysis:', data)
+      console.log('Received response stream from market-analysis')
       
-      let accumulatedContent = ''
+      if (!data?.body) {
+        throw new Error('No response body received')
+      }
       
+      // Process the SSE stream
       const stream = new ReadableStream({
         start(controller) {
           const textDecoder = new TextDecoder()
           const reader = new Response(data.body).body?.getReader()
           
+          // Function to process SSE events and extract delta content
+          const processEvent = (event: string) => {
+            if (event.startsWith('data: ')) {
+              const jsonStr = event.slice(6).trim()
+              
+              if (jsonStr === '[DONE]') {
+                console.log('Stream complete [DONE] marker received')
+                return
+              }
+              
+              try {
+                const parsed = JSON.parse(jsonStr)
+                const content = parsed.choices?.[0]?.delta?.content
+                
+                if (content) {
+                  // Add the chunk to our streaming content
+                  addChunk(content)
+                }
+              } catch (e) {
+                console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
+              }
+            }
+          }
+          
+          // Push function to process chunks
           function push() {
             reader?.read().then(({done, value}) => {
               if (done) {
-                console.log('Stream complete')
+                console.log('Stream reader complete')
                 controller.close()
                 return
               }
               
-              const chunk = textDecoder.decode(value)
+              const chunk = textDecoder.decode(value, { stream: true })
+              console.log(`Received chunk of ${chunk.length} bytes`)
               
-              const lines = chunk.split('\n').filter(line => line.trim())
+              // Split by SSE delimiter (double newline) 
+              // and then by individual lines
+              const events = chunk.split('\n\n')
               
-              for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                  const jsonStr = line.slice(6).trim()
-                  
-                  if (jsonStr === '[DONE]') continue
-                  
-                  try {
-                    const parsed = JSON.parse(jsonStr)
-                    
-                    const content = parsed.choices?.[0]?.delta?.content
-                    if (content) {
-                      accumulatedContent += content
-                      setStreamingContent(accumulatedContent)
-                    }
-                  } catch (e) {
-                    console.error('Error parsing SSE data:', e, 'Raw data:', jsonStr)
-                  }
+              for (const event of events) {
+                if (event.trim()) {
+                  processEvent(event.trim())
                 }
               }
               
               push()
+            }).catch(err => {
+              console.error('Error reading from stream:', err)
+              controller.error(err)
             })
           }
           
@@ -94,26 +131,36 @@ export default function RightSidebar() {
         }
       })
 
+      // Read the stream to completion
       const reader = stream.getReader()
-      while (true) {
-        const { done } = await reader.read()
-        if (done) break
+      try {
+        while (true) {
+          const { done } = await reader.read()
+          if (done) break
+        }
+        console.log('Finished reading entire stream')
+      } catch (err) {
+        console.error('Error consuming stream:', err)
+      } finally {
+        reader.releaseLock()
       }
 
+      // When stream is complete, add the message to history
       setMessages(prev => [...prev, { 
         type: 'assistant', 
-        content: accumulatedContent 
+        content: rawBuffer // Use the complete content from buffer
       }])
 
     } catch (error) {
       console.error('Error in chat:', error)
+      toast.error('Error processing your request')
       setMessages(prev => [...prev, { 
         type: 'assistant', 
         content: 'Sorry, I encountered an error processing your request.' 
       }])
     } finally {
       setIsLoading(false)
-      setStreamingContent('')
+      stopStreaming()
       abortControllerRef.current = null
     }
   }
@@ -158,14 +205,25 @@ export default function RightSidebar() {
                 )}
               </div>
             ))}
-            {streamingContent && (
+            
+            {/* Show streaming content while loading */}
+            {isStreaming && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
                 <ReactMarkdown className="text-white text-sm prose prose-invert prose-sm max-w-none">
                   {streamingContent}
                 </ReactMarkdown>
+                <div className="flex items-center gap-2 mt-2">
+                  <div className="flex space-x-1">
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse delay-100" />
+                    <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse delay-200" />
+                  </div>
+                  <span className="text-xs text-blue-400">Processing...</span>
+                </div>
               </div>
             )}
-            {isLoading && !streamingContent && (
+            
+            {isLoading && !isStreaming && (
               <div className="bg-[#2c2e33] p-3 rounded-lg">
                 <p className="text-white text-sm">Thinking...</p>
               </div>
